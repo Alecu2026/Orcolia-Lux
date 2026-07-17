@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+/* Dark mode prin clasă pe <html> (toggle manual din setări). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-app: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef0f4;
+  --color-ink: #0f172a;
+  --color-ink-soft: #475569;
+  --color-line: #e2e8f0;
+
+  --color-brand: #0d9488;
+  --color-brand-strong: #0f766e;
+  --color-brand-soft: #ccfbf1;
+
+  --color-st-new: #64748b;
+  --color-st-confirmed: #2563eb;
+  --color-st-progress: #d97706;
+  --color-st-done: #059669;
+  --color-st-cancelled: #e11d48;
+  --color-st-noshow: #9333ea;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-xl: 1rem;
+}
+
+/* Tokeni care se schimbă în dark */
+.dark {
+  --color-app: #0a0c10;
+  --color-surface: #12161d;
+  --color-surface-2: #1b212b;
+  --color-ink: #e6e9ef;
+  --color-ink-soft: #94a3b8;
+  --color-line: #232b36;
+  --color-brand-soft: #134e4a;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-app);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  /* previne scroll orizontal accidental fără a rupe position: sticky */
+  overflow-x: clip;
+}
+
+/* Scrollbar discret */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+
+@layer utilities {
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-xl);
+  }
+  .tap {
+    transition: transform 0.08s ease, background-color 0.15s ease, border-color 0.15s ease;
+  }
+  .tap:active {
+    transform: scale(0.97);
+  }
+  /* Arrow for styled <select> — use with appearance-none + pl-2 pr-7 */
+  .sel-arrow {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.35rem center;
+    background-size: 1.15em 1.15em;
+  }
+}

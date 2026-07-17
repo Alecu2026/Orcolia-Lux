@@ -1,0 +1,713 @@
+// Prisma schema — MongoDB
+// Optimizat pentru viteză: select peste tot în query-uri, indexuri compuse,
+// snapshot-uri denormalizate pe Appointment pentru listări fără join (ex. Telegram).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+enum AppointmentStatus {
+  NEW
+  CONFIRMED
+  IN_PROGRESS
+  DONE
+  CANCELLED
+  NO_SHOW
+}
+
+enum CreatedFrom {
+  WEB
+  TELEGRAM
+  VOICE
+}
+
+enum ReminderType {
+  EMAIL
+  TELEGRAM
+  PWA
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  EMAIL
+  TELEGRAM
+  PWA
+}
+
+enum VoiceSource {
+  WEB
+  TELEGRAM
+}
+
+enum VoiceStatus {
+  TRANSCRIBED
+  PARSED
+  CONFIRMED
+  DISCARDED
+  FAILED
+}
+
+// --- Task / Ticket management ---
+
+enum TaskType {
+  TASK
+  TICKET
+  WORK_ORDER
+}
+
+enum TaskStatus {
+  NEW
+  ASSIGNED
+  READ
+  IN_PROGRESS
+  ON_HOLD
+  REVIEW
+  DONE
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  DONE
+  ARCHIVED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  CANCELLED
+  OVERDUE
+}
+
+// ----------------------------------------------------------------------------
+// Models
+// ----------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  email        String   @unique
+  phone        String?
+  passwordHash String
+  role         UserRole @default(ADMIN)
+  isActive     Boolean  @default(true)
+  // Super-admin: vede Audit Logs și gestionează ceilalți super-admini (peste rolul ADMIN)
+  isSuperAdmin Boolean  @default(false)
+  // Permisiuni individuale (chei din lib/permissions.ts). ADMIN le are pe toate.
+  permissions  String[] @default([])
+  // Evenimente la care primește notificări „observator" (chei din lib/notify-meta.ts).
+  // Listă vidă = toate evenimentele (când notifyScope permite).
+  notifyEvents String[] @default([])
+  // Chat ID Telegram setat manual de admin (pentru notificări), independent de linkarea prin bot
+  telegramChatId String?
+
+  // --- Filtrare notificări „administrator" (ce echipe/membri îl interesează) ---
+  // ALL = toate echipele/membrii; TEAMS = doar notifyTeamIds; MEMBERS = doar notifyMemberIds
+  notifyScope     String   @default("ALL")
+  notifyTeamIds   String[] @db.ObjectId
+  notifyMemberIds String[] @db.ObjectId
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions        Session[]
+  clients         Client[]
+  appointments    Appointment[]
+  categories      Category[]
+  reminders       Reminder[]
+  // Listă (nu 1:1): TelegramAccount.userId NU e @unique — pe MongoDB, un index unic pe un
+  // câmp opțional ar trata toate contactele „pending" (userId absent) ca duplicate de null.
+  telegramAccounts TelegramAccount[]
+  settings        AppSettings?
+  notificationLog NotificationLog[]
+  voiceLog        VoiceCommandLog[]
+  pushSubs        PushSubscription[]
+
+  // Task management
+  teamIds        String[]      @db.ObjectId
+  teams          Team[]        @relation(fields: [teamIds], references: [id])
+  ownedProjects  Project[]     @relation("ProjectOwner")
+  createdTasks   Task[]        @relation("TaskCreator")
+  assignedTasks  Task[]        @relation("TaskAssignee")
+  taskActivities TaskActivity[]
+  taskComments    TaskComment[]
+  taskAttachments TaskAttachment[]
+  invoices       Invoice[]
+  notifications  Notification[]
+}
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String?
+  url       String?
+  taskId    String?  @db.ObjectId
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read, createdAt])
+}
+
+// Audit log — fără relație la User intenționat: logurile rămân chiar dacă userul
+// sau obiectul (task/client/proiect) e șters. Date denormalizate (snapshot).
+model AuditLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String?  @db.ObjectId // cine a făcut acțiunea (poate fi șters ulterior)
+  userName   String                // snapshot nume
+  userRole   String                // snapshot rol (ADMIN/STAFF, + SUPER dacă e cazul)
+  action     String                // ex: task.create, task.status_change, auth.login
+  module     String                // Tasks/Tickets/Projects/Clients/Invoices/Users/Settings/Auth/Notifications
+  objectId   String?               // id-ul obiectului afectat
+  objectName String?               // nume/titlu snapshot
+  oldValue   String?               // valoare veche (text sau JSON)
+  newValue   String?               // valoare nouă
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([module, createdAt])
+}
+
+model Team {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberIds String[] @db.ObjectId
+  members   User[]   @relation(fields: [memberIds], references: [id])
+
+  projects Project[]
+  tasks    Task[]
+}
+
+model Project {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  seq         Int?
+  name        String
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+
+  ownerId String @db.ObjectId
+  owner   User   @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Client asociat (opțional) — folosit la facturare (lanț client→proiect→task)
+  clientId String? @db.ObjectId
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  // Asignare opțională: toate task-urile noi din proiect merg implicit la acest user/echipă
+  assigneeId String? @db.ObjectId
+  teamId     String? @db.ObjectId
+  team       Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  // Locație (opțional)
+  address String?
+  lat     Float?
+  lng     Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasks    Task[]
+  invoices Invoice[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([clientId])
+}
+
+model Task {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  // Identificator scurt, secvențial (#123), pentru afișare ușoară (UI + Telegram).
+  // Opțional în schemă fiindcă task-urile vechi nu îl au — vezi scripts/backfill-task-seq.mjs.
+  seq         Int?
+  type        TaskType     @default(TASK)
+  title       String
+  description String?
+  status      TaskStatus   @default(NEW)
+  priority    TaskPriority @default(MEDIUM)
+  progress    Int          @default(0)
+
+  creatorId String @db.ObjectId
+  creator   User   @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+
+  // Asignat unui user și/sau unei echipe
+  assigneeId String? @db.ObjectId
+  assignee   User?   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  teamId     String? @db.ObjectId
+  team       Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  // Multi-asignare: IDs suplimentari (pe lângă assigneeId/teamId primar)
+  extraAssigneeIds String[] @db.ObjectId
+  extraTeamIds     String[] @db.ObjectId
+  // JSON: [{userId?:"id", teamId?:"id", notifyUntilStatus?:"STATUS"|null}]
+  assignmentSettingsJson String?
+  // Dacă true, notificările Telegram se trimit și în orele de somn pentru acest task
+  bypassQuietHours Boolean @default(false)
+
+  projectId String?  @db.ObjectId
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  categoryId String?   @db.ObjectId
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // Denormalizat din project.clientId — evită JOIN la filtrare după client
+  clientId   String?   @db.ObjectId
+
+  dueAt       DateTime?
+  createdFrom CreatedFrom @default(WEB)
+
+  // id-ul mesajului trimis în Telegram asignatului (pentru editarea butoanelor)
+  telegramChatId    String?
+  telegramMessageId Int?
+
+  // Setat când s-a trimis deja notificarea de întârziere, ca să nu se repete la fiecare rulare de cron
+  overdueNotifiedAt DateTime?
+
+  // Reamintire periodică: interval în minute (null = dezactivat). nextReminderAt = ora trimiterii următoare.
+  reminderIntervalMinutes Int?
+  nextReminderAt          DateTime?
+
+  // Ultimul mesaj de reamintire Telegram trimis asignatului (pentru a-l șterge la reamintirea următoare)
+  reminderMsgChatId String?
+  reminderMsgId     Int?
+
+  // --- Email → Tichet ---
+  // Câmpuri populate când tichetul a fost creat dintr-un email primit
+  emailSource       Boolean   @default(false)
+  fromEmail         String?   // adresa expeditorului
+  fromName          String?   // numele expeditorului
+  emailMessageId    String?   // Message-ID al primului email (pentru threading)
+  emailThreadId     String?   // thread ID (= emailMessageId al primului email din conversație)
+  lastClientEmailAt DateTime? // când a scris ultima dată clientul (pt. nerăspuns + auto-close)
+  autoCloseWarnedAt DateTime? // când am trimis avertismentul de auto-închidere (2 zile)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities    TaskActivity[]
+  comments      TaskComment[]
+  attachments   TaskAttachment[]
+  invoices      Invoice[]
+  emailMessages EmailMessage[]
+
+  @@index([assigneeId, status])
+  @@index([creatorId, status])
+  @@index([projectId])
+  @@index([teamId, status])
+  @@index([status])
+  @@index([dueAt, status])
+  @@index([seq])
+  @@index([categoryId])
+  @@index([clientId, status])
+  @@index([type, status])
+  @@index([updatedAt])
+  @@index([emailThreadId])
+  @@index([emailSource, status])
+}
+
+// Mesaje email legate de un tichet (inbound = de la client, outbound = răspuns staff)
+model EmailMessage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  taskId    String   @db.ObjectId
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  direction String   // INBOUND | OUTBOUND
+  fromEmail String
+  fromName  String?
+  toEmail   String
+  subject   String?
+  body      String
+  messageId String?  // Message-ID header (pentru threading)
+  sentAt    DateTime @default(now())
+
+  @@index([taskId, sentAt])
+  @@index([messageId])
+}
+
+model TaskAttachment {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  taskId    String   @db.ObjectId
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  url       String
+  size      Int
+  mimeType  String?
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+// Contor atomic generic (folosit pentru Task.seq) — MongoDB nu are autoincrement nativ.
+model Counter {
+  id    String @id @default(auto()) @map("_id") @db.ObjectId
+  name  String @unique
+  value Int    @default(0)
+}
+
+// Checkpoint pentru cron jobs — stochează ultima rulare per job.
+model CronState {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique
+  lastRunAt DateTime @default(now())
+}
+
+model TaskComment {
+  id        String      @id @default(auto()) @map("_id") @db.ObjectId
+  taskId    String      @db.ObjectId
+  task      Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String      @db.ObjectId
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String
+  source    CreatedFrom @default(WEB)
+  createdAt DateTime    @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+model TaskActivity {
+  id         String      @id @default(auto()) @map("_id") @db.ObjectId
+  taskId     String      @db.ObjectId
+  task       Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId     String      @db.ObjectId
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // null = STATUS_CHANGED (date vechi fără action); altfel: STATUS_CHANGED | EDITED | COMMENTED | ATTACHMENT_ADDED | ATTACHMENT_DELETED
+  action     String?
+  fromStatus TaskStatus?
+  toStatus   TaskStatus?
+  meta       Json?
+  note       String?
+  createdAt  DateTime    @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+// --- Facturare ---
+
+model CompanySettings {
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  singleton   String  @unique @default("main") // garantează o singură înregistrare
+  companyName String  @default("")
+  logo        String? // data URL (base64) sau URL
+  phone       String?
+  email       String?
+  address     String?
+  taxId       String? // IDNO / Tax ID
+  vatNumber   String?
+  bankDetails String? // IBAN / detalii bancare
+  currency    String  @default("MDL")
+  invoicePrefix String @default("INV")
+  // Etichetă personalizată pentru modulul de programări (afișată în meniu și header)
+  appointmentsLabel String @default("Programări")
+  // Token pentru link public de invitație Telegram (null = link dezactivat)
+  telegramInviteToken String?
+
+  // Configurare per-status pentru notificări tichete (JSON array de StatusConfig)
+  ticketStatusConfig Json?
+
+  // Ore de somn — botul nu răspunde și reminderele sunt suspendate în acest interval
+  quietHoursEnabled Boolean @default(false)
+  quietHoursStart   String  @default("22:00")
+  quietHoursEnd     String  @default("07:00")
+  quietHoursTz      String  @default("Europe/Bucharest")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Invoice {
+  id        String        @id @default(auto()) @map("_id") @db.ObjectId
+  number    String        @unique
+  status    InvoiceStatus @default(DRAFT)
+  issueDate DateTime      @default(now())
+  dueDate   DateTime?
+
+  // Relații opționale (nullable)
+  clientId  String? @db.ObjectId
+  client    Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  projectId String? @db.ObjectId
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  taskId    String? @db.ObjectId
+  task      Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskIds   String[] @db.ObjectId
+
+  notes    String?
+  terms    String?
+  currency String  @default("MDL")
+
+  subtotal   Float @default(0)
+  taxTotal   Float @default(0)
+  grandTotal Float @default(0)
+
+  publicToken String @unique
+
+  userId String @db.ObjectId
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items InvoiceItem[]
+
+  @@index([status])
+  @@index([clientId])
+  @@index([createdAt])
+}
+
+model InvoiceItem {
+  id           String  @id @default(auto()) @map("_id") @db.ObjectId
+  invoiceId    String  @db.ObjectId
+  invoice      Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description  String
+  quantity     Float   @default(1)
+  unitPrice    Float   @default(0)
+  taxRate      Float   @default(0)
+  lineSubtotal Float   @default(0)
+  lineTotal    Float   @default(0)
+  position     Int     @default(0)
+
+  @@index([invoiceId])
+}
+
+model PushSubscription {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Session {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  userAgent  String?
+  ip         String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Client {
+  id                String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String   @db.ObjectId
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name              String
+  phone             String?
+  email             String?
+  telegramChatId    String?
+  notes             String?
+  noShowCount       Int      @default(0)
+  lastAppointmentAt DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  appointments Appointment[]
+  projects     Project[]
+  invoices     Invoice[]
+
+  @@index([userId, name])
+  @@index([userId, createdAt])
+  @@index([userId, phone])
+}
+
+model Category {
+  id                     String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId                 String   @db.ObjectId
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                   String
+  color                  String   @default("#6366f1")
+  defaultDurationMinutes Int      @default(30)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  appointments Appointment[]
+  tasks        Task[]
+
+  @@index([userId, name])
+}
+
+model Appointment {
+  id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String  @db.ObjectId
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientId  String  @db.ObjectId
+  client    Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  categoryId String? @db.ObjectId
+  category  Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  title   String
+  message String?
+  status  AppointmentStatus @default(NEW)
+
+  startAt DateTime
+  endAt   DateTime
+  // dateKey: "YYYY-MM-DD" (în fusul orar al userului) pentru query-uri zilnice ultra-rapide
+  dateKey String
+
+  // Snapshot-uri denormalizate — Telegram/listări afișează fără include/join
+  clientNameSnapshot   String
+  categoryNameSnapshot String?
+  categoryColorSnapshot String?
+
+  reminderEmailEnabled    Boolean @default(false)
+  reminderTelegramEnabled Boolean @default(false)
+  // Praguri selectate pt. această programare: ex. ["DAY_BEFORE_8AM","H3"] — vezi lib/reminder-presets.ts
+  reminderOffsets         String[] @default(["DAY_BEFORE_8AM", "H3"])
+
+  createdFrom CreatedFrom @default(WEB)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reminders Reminder[]
+
+  @@index([userId, dateKey])
+  @@index([userId, startAt])
+  @@index([userId, status])
+  @@index([userId, clientId])
+  @@index([clientId])
+}
+
+model Reminder {
+  id            String         @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String         @db.ObjectId
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appointmentId String         @db.ObjectId
+  appointment   Appointment    @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  type          ReminderType
+  sendAt        DateTime
+  status        ReminderStatus @default(PENDING)
+  attempts      Int            @default(0)
+  lastError     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status, sendAt])
+  @@index([appointmentId])
+  @@index([userId])
+}
+
+// userId nul = contact Telegram „pending": a apăsat /start dar niciun admin
+// nu i-a creat încă profilul în CRM (lucrătorul nu are și nu are nevoie de cont CRM).
+// Notă: userId NU e @unique — pe MongoDB un index unic pe un câmp opțional ar respinge
+// al doilea contact „pending" (toate documentele fără userId sunt tratate ca null duplicat).
+// Unicitatea per-user e garantată la nivel de aplicație (approveTelegramContact).
+model TelegramAccount {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String?  @db.ObjectId
+  user           User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  telegramUserId String   @unique
+  chatId         String
+  username       String?
+  firstName      String?
+  lastName       String?
+  // ce view e activ în bot, pentru context la callback-uri (ex. „awaiting_comment:<taskId>")
+  lastMenuState  String?
+  linkedAt       DateTime @default(now())
+
+  // telegramUserId e deja indexat prin @unique
+  @@index([chatId])
+  @@index([userId])
+}
+
+model NotificationLog {
+  id            String              @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String              @db.ObjectId
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel       NotificationChannel
+  target        String?
+  appointmentId String?             @db.ObjectId
+  reminderId    String?             @db.ObjectId
+  success       Boolean
+  error         String?
+  createdAt     DateTime            @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model VoiceCommandLog {
+  id            String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String      @db.ObjectId
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source        VoiceSource @default(WEB)
+  transcript    String
+  parsedJson    Json?
+  status        VoiceStatus @default(TRANSCRIBED)
+  appointmentId String?     @db.ObjectId
+  createdAt     DateTime    @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model AppSettings {
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  userId String @unique @db.ObjectId
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  timezone String @default("Europe/Bucharest")
+  locale   String @default("ro")
+  theme    String @default("system") // system | light | dark
+
+  // Program de lucru (folosit la calendar + verificare slot ocupat)
+  workdayStart String @default("09:00")
+  workdayEnd   String @default("18:00")
+  slotMinutes  Int    @default(30)
+
+  // Default-uri pentru programări noi
+  defaultReminderEmail    Boolean  @default(false)
+  defaultReminderTelegram Boolean  @default(true)
+  // "Standardul" — presetările bifate implicit la o programare nouă (ajustabile per programare)
+  reminderOffsets         String[] @default(["DAY_BEFORE_8AM", "H3"])
+
+  // Email (override peste env, opțional)
+  emailFromName  String?
+  emailFromAddr  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fără conexiune</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
+    :root { --bg: #f8fafc; --card: #fff; --ink: #0f172a; --soft: #64748b; --brand: #0d9488 }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0a0c10; --card: #111318; --ink: #f1f5f9; --soft: #94a3b8 }
+    }
+    body {
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 1.5rem;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 1.5rem;
+      padding: 2.5rem 2rem;
+      text-align: center;
+      max-width: 360px;
+      width: 100%;
+      box-shadow: 0 4px 24px rgba(0,0,0,.08);
+    }
+    .icon {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 1.25rem;
+      border-radius: 1rem;
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: .5rem }
+    p { font-size: .9rem; color: var(--soft); line-height: 1.6; margin-bottom: 1.5rem }
+    button {
+      background: var(--brand);
+      color: #fff;
+      border: none;
+      border-radius: .875rem;
+      padding: .75rem 1.75rem;
+      font-size: .95rem;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+    }
+    button:active { opacity: .85 }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="/icons/icon-192.png" alt="" class="icon" />
+    <h1>Fără conexiune</h1>
+    <p>Nu există conexiune la internet. Verifică rețeaua și încearcă din nou.</p>
+    <button onclick="location.reload()">Încearcă din nou</button>
+  </div>
+</body>
+</html>
