@@ -836,9 +836,10 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: {
-      id: true, title: true, type: true,
+      id: true, seq: true, title: true, type: true,
       description: true, priority: true, dueAt: true,
       assigneeId: true, teamId: true, projectId: true,
+      creatorId: true, extraAssigneeIds: true, extraTeamIds: true,
       assignee: { select: { name: true } },
       team: { select: { name: true } },
       project: { select: { name: true } },
@@ -942,6 +943,48 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
       await prisma.taskActivity
         .create({ data: { taskId, userId: actorId, action: "EDITED", meta: { changes } } })
         .catch(() => {});
+
+      // Notificare Telegram — trimisă asignaților/creatorului (best-effort)
+      try {
+        const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { name: true } });
+        const actorName = actor?.name ?? "Cineva";
+
+        const recipients = new Set<string>([task.creatorId]);
+        if (task.assigneeId) recipients.add(task.assigneeId);
+        for (const uid of task.extraAssigneeIds ?? []) recipients.add(uid);
+        if (task.teamId) {
+          const t = await prisma.team.findUnique({ where: { id: task.teamId }, select: { memberIds: true } });
+          t?.memberIds.forEach((id) => recipients.add(id));
+        }
+        for (const tid of task.extraTeamIds ?? []) {
+          const t = await prisma.team.findUnique({ where: { id: tid }, select: { memberIds: true } });
+          t?.memberIds.forEach((id) => recipients.add(id));
+        }
+        recipients.delete(actorId);
+
+        if (recipients.size > 0) {
+          const changeLines = (changes as { field: string; from: string | null; to: string | null }[])
+            .map((c) => `• ${c.field}: ${c.from ?? "—"} → ${c.to ?? "—"}`)
+            .join("\n");
+          const text = [
+            "✏️ <b>Task modificat</b>",
+            "",
+            `Lucrător: ${escapeHtml(actorName)}`,
+            `Task: ${escapeHtml(task.title)} (${taskRef(task.seq, taskId)})`,
+            "Modificări:",
+            changeLines,
+            `Ora: ${formatTime(new Date(), DEFAULT_TZ)}`,
+          ].join("\n");
+
+          await Promise.all([...recipients].map(async (uid) => {
+            try {
+              const chatId = await telegramChatFor(uid);
+              if (!chatId) return;
+              await sendMessage(chatId, text, taskOpenButton(task.seq, taskId));
+            } catch { /* best-effort */ }
+          }));
+        }
+      } catch { /* non-blocking */ }
     }
   } catch {
     // non-blocking

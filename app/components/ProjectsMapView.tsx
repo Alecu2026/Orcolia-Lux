@@ -173,24 +173,35 @@ export default function ProjectsMapView({ pins }: { pins: ProjectPin[] }) {
           },
         });
 
-        // ── Click pe cluster → popup cu lista proiectelor ──
-        map.on("click", "clusters", async (e) => {
+        // ── Click pe cluster → zoom in sau popup cu lista ──
+        map.on("click", "clusters", (e) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const features = map.queryRenderedFeatures(e.point, { layers: ["clusters"] }) as any[];
           if (!features.length) return;
           const clusterId = features[0].properties?.cluster_id as number;
-          const source = map.getSource("projects") as import("mapbox-gl").GeoJSONSource;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const coords = (features[0].geometry as any).coordinates as [number, number];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const source = map.getSource("projects") as any;
 
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const leaves = await (source as any).getClusterLeaves(clusterId, 100, 0);
-            new mbgl.default.Popup({ maxWidth: "280px" })
-              .setLngLat(e.lngLat)
-              .setHTML(clusterPopupHtml(leaves as { properties: Record<string, unknown> }[]))
-              .addTo(map);
-          } catch {
-            // ignoră erori de cluster
-          }
+          // getClusterExpansionZoom e callback-based în Mapbox GL v2
+          source.getClusterExpansionZoom(clusterId, (err: Error | null, expansionZoom: number) => {
+            if (err) return;
+
+            if (expansionZoom <= map.getZoom() + 0.5 || expansionZoom >= 16) {
+              // Punctele sunt în același loc — zoom nu ajută, afișăm lista
+              source.getClusterLeaves(clusterId, 100, 0, (leafErr: Error | null, leaves: { properties: Record<string, unknown> }[]) => {
+                if (leafErr || !leaves?.length) return;
+                new mbgl.default.Popup({ maxWidth: "280px" })
+                  .setLngLat(e.lngLat)
+                  .setHTML(clusterPopupHtml(leaves))
+                  .addTo(map);
+              });
+            } else {
+              // Punctele sunt în locuri diferite — zoomăm să le desfacem
+              map.easeTo({ center: coords, zoom: expansionZoom });
+            }
+          });
         });
 
         // ── Click pe punct individual → popup ──

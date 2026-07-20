@@ -9,6 +9,7 @@ import { voiceCreateClient, quickCreateClient } from "@/app/actions/clients";
 import { quickDraftInvoice } from "@/app/actions/invoices";
 import { useToast } from "./toast";
 import { IconX, IconMic } from "./icons";
+import MultiAssignPicker from "./MultiAssignPicker";
 import type { UniversalVoiceParsed } from "@/lib/validation";
 import { useMessages } from "@/lib/i18n/context";
 
@@ -52,6 +53,7 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
 
   // Task / Ticket fields
   const [title, setTitle] = useState(parsed.title ?? "");
+  const [description, setDescription] = useState(parsed.description ?? "");
   const [taskType, setTaskType] = useState<"TASK" | "TICKET">(entity === "ticket" ? "TICKET" : "TASK");
   const [priority, setPriority] = useState(parsed.priority ?? "MEDIUM");
   const [dueDate, setDueDate] = useState(parsed.dueDate ?? "");
@@ -108,7 +110,7 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
     return null;
   }
 
-  async function handleTask(e: React.FormEvent) {
+  async function handleTask(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!title.trim()) { toast.error(m.voice.titleRequired); return; }
     setSubmitting(true);
@@ -116,14 +118,15 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
       const resolvedProjectId = await resolveProject();
       if (resolvedProjectId === null && newProjectName.trim()) { setSubmitting(false); return; }
       await resolveClient();
-      const fd = new FormData();
-      fd.append("title", title.trim());
-      fd.append("type", taskType);
-      fd.append("priority", priority);
-      if (dueDate) fd.append("dueDate", dueDate);
-      if (dueTime) fd.append("dueTime", dueTime);
-      if (assigneeId) fd.append("assigneeId", assigneeId);
-      if (teamId) fd.append("teamId", teamId);
+      // Citim FormData din form — prinde hidden inputs de la MultiAssignPicker (assigneeIds, notifyUntil_*)
+      const fd = new FormData(e.currentTarget);
+      fd.set("title", title.trim());
+      fd.set("type", taskType);
+      fd.set("priority", priority);
+      fd.set("description", description);
+      if (dueDate) fd.set("dueDate", dueDate); else fd.delete("dueDate");
+      if (dueTime) fd.set("dueTime", dueTime); else fd.delete("dueTime");
+      fd.delete("projectId");
       if (resolvedProjectId) fd.append("projectId", resolvedProjectId);
       const result = await createTaskAction(undefined, fd);
       if (result?.error) { toast.error(result.error); setSubmitting(false); return; }
@@ -180,12 +183,12 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
       });
       if (!res.ok) { toast.error(res.error); setSubmitting(false); return; }
       toast.success(m.voice.invoiceDraftCreated);
-      router.push(`/invoices/${res.id}`);
+      router.push(`/invoices/${res.id}/edit`);
       onClose();
     } catch { toast.error(m.voice.createError); setSubmitting(false); }
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     if (entity === "task" || entity === "ticket") return handleTask(e);
     if (entity === "project") return handleProject(e);
     if (entity === "client") return handleClient(e);
@@ -236,6 +239,14 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
             <>
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={m.tasks.titlePlaceholder} required autoFocus className={dlgInput} />
 
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={m.tasks.descriptionPlaceholder}
+                rows={2}
+                className={`${dlgInput} h-auto resize-none py-2.5`}
+              />
+
               <div className="flex flex-wrap gap-2">
                 {(["TASK", "TICKET"] as const).map((t) => (
                   <button key={t} type="button" onClick={() => { setTaskType(t); setEntity(t === "TICKET" ? "ticket" : "task"); }} className={chip(taskType === t)}>
@@ -263,16 +274,12 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
                 </div>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-2">
-                <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} className={dlgInput}>
-                  <option value="">{m.projects.personPlaceholder}</option>
-                  {context.users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
-                <select value={teamId} onChange={(e) => setTeamId(e.target.value)} className={dlgInput}>
-                  <option value="">{m.projects.teamPlaceholder}</option>
-                  {context.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </div>
+              <MultiAssignPicker
+                users={context.users}
+                teams={context.teams}
+                initialAssigneeIds={assigneeId ? [assigneeId] : []}
+                initialTeamIds={teamId ? [teamId] : []}
+              />
 
               <div>
                 <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.metaProject}</label>
