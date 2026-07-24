@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
@@ -26,10 +26,18 @@ export async function updateCompanySettings(
   if (!companyName) return { error: "Numele companiei e obligatoriu." };
 
   const logo = String(formData.get("logo") ?? "");
-  // Logo: data URL (base64). Limităm la ~700KB ca să nu îngreunăm DB-ul.
-  if (logo && logo.length > 950_000) {
-    return { error: "Logo prea mare (max ~700KB). Alege o imagine mai mică." };
+  // Logo: data URL (base64), stocat direct în documentul CompanySettings din MongoDB.
+  // MongoDB are o limită dură de 16MB per document, deci nu poate fi "fără limită" —
+  // 7MB de text base64 (~5MB fișier original) lasă loc suficient pentru restul câmpurilor.
+  if (logo && logo.length > 7_000_000) {
+    return { error: "Logo prea mare (max ~5MB). Alege o imagine mai mică." };
   }
+  const apaCanalLogo = String(formData.get("apaCanalLogo") ?? "");
+  if (apaCanalLogo && apaCanalLogo.length > 7_000_000) {
+    return { error: "Logo Apă-Canal prea mare (max ~5MB). Alege o imagine mai mică." };
+  }
+
+  const reqText = (key: string, fallback: string) => String(formData.get(key) ?? "").trim() || fallback;
 
   const data = {
     companyName,
@@ -43,6 +51,17 @@ export async function updateCompanySettings(
     currency: String(formData.get("currency") ?? "MDL").trim() || "MDL",
     invoicePrefix: String(formData.get("invoicePrefix") ?? "INV").trim() || "INV",
     appointmentsLabel: String(formData.get("appointmentsLabel") ?? "").trim() || "Programări",
+    apaCanalLogo: apaCanalLogo || null,
+    apaCanalCompanyLine: reqText("apaCanalCompanyLine", "S.A. Apa-Canal Cahul"),
+    apaCanalAddress: reqText("apaCanalAddress", "mun.Cahul, str.31 August 1989 nr.1"),
+    apaCanalEmail: reqText("apaCanalEmail", "apacanalmega@gmail.com"),
+    apaCanalCodFiscal: reqText("apaCanalCodFiscal", "Cod fiscal 1002603000859"),
+    apaCanalContactName: reqText("apaCanalContactName", "Corneliu"),
+    apaCanalContactsText: reqText("apaCanalContactsText", ""),
+    apaCanalAtentieText: reqText("apaCanalAtentieText", ""),
+    apaCanalAnuntText: reqText("apaCanalAnuntText", ""),
+    apaCanalTarifApa: Number(formData.get("apaCanalTarifApa")) || 0,
+    apaCanalTarifCanal: Number(formData.get("apaCanalTarifCanal")) || 0,
   };
 
   await prisma.companySettings.upsert({
@@ -57,6 +76,6 @@ export async function updateCompanySettings(
   );
 
   revalidatePath("/settings");
-  revalidateTag("company", "max");
+  updateTag("company");
   return { ok: true };
 }

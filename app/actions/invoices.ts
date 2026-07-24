@@ -6,12 +6,13 @@ import { after } from "next/server";
 import { requireUser, type CurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
-import { createInvoice, updateInvoice } from "@/lib/services/invoices";
+import { createInvoice, updateInvoice, type ApaCanalInput } from "@/lib/services/invoices";
+import { getSettings } from "@/lib/queries/settings";
 import { logAudit } from "@/lib/services/audit";
 import { notifyUsers, observerRecipients } from "@/lib/services/notifications";
 import { sendInvoiceEmail } from "@/lib/email";
 import { env } from "@/lib/env";
-import type { InvoiceStatus } from "@prisma/client";
+import type { InvoiceStatus, InvoiceKind } from "@prisma/client";
 
 const actor = (u: CurrentUser) => ({ id: u.id, name: u.name, role: u.role, isSuperAdmin: u.isSuperAdmin });
 
@@ -28,14 +29,19 @@ function notifyClientEmail(invoiceId: string) {
           dueDate: true,
           publicToken: true,
           status: true,
+          userId: true,
           client: { select: { name: true, email: true } },
         },
       });
-      if (!inv || inv.status !== "SENT" || !inv.client?.email) return;
-      const company = await prisma.companySettings.findFirst({
-        where: { singleton: "main" },
-        select: { companyName: true, emailFromName: true, emailFromAddr: true },
-      });
+      if (!inv || inv.status !== "SENT") return;
+      if (!inv.client?.email) {
+        console.warn(`[invoices] email neconfigurat/lipsă pentru clientul facturii ${inv.number} — trimitere sărită`);
+        return;
+      }
+      const [company, senderSettings] = await Promise.all([
+        prisma.companySettings.findFirst({ where: { singleton: "main" }, select: { companyName: true } }),
+        getSettings(inv.userId),
+      ]);
       await sendInvoiceEmail({
         to: inv.client.email,
         clientName: inv.client.name,
@@ -45,11 +51,12 @@ function notifyClientEmail(invoiceId: string) {
         dueDate: inv.dueDate,
         publicUrl: `${env.appUrl}/invoice/public/${inv.publicToken}`,
         companyName: company?.companyName || null,
-        fromName: company?.emailFromName || null,
-        fromAddr: company?.emailFromAddr || null,
+        fromName: senderSettings.emailFromName || null,
+        fromAddr: senderSettings.emailFromAddr || null,
       });
-    } catch {
-      /* best-effort */
+      console.log(`[invoices] email factură ${inv.number} trimis către ${inv.client.email}`);
+    } catch (e) {
+      console.error(`[invoices] eșec trimitere email factură ${invoiceId}:`, e);
     }
   });
 }
@@ -69,6 +76,7 @@ function notifyInvoiceEvent(eventKey: string, title: string, actorId: string) {
 export type InvoicePayload = {
   id?: string;
   status: InvoiceStatus;
+  kind?: InvoiceKind;
   issueDate: string; // YYYY-MM-DD
   dueDate: string | null;
   clientId: string | null;
@@ -77,6 +85,7 @@ export type InvoicePayload = {
   notes: string;
   terms: string;
   items: { description: string; quantity: number; unitPrice: number; taxRate: number }[];
+  apaCanal?: ApaCanalInput;
 };
 
 export type InvoiceActionResult = { ok: boolean; id?: string; error?: string };
@@ -101,6 +110,7 @@ export async function saveInvoice(payload: InvoicePayload): Promise<InvoiceActio
 
   const input = {
     status,
+    kind: payload.kind ?? "STANDARD" as InvoiceKind,
     issueDate: toDate(payload.issueDate) ?? new Date(),
     dueDate: toDate(payload.dueDate),
     clientId: payload.clientId,
@@ -109,6 +119,7 @@ export async function saveInvoice(payload: InvoicePayload): Promise<InvoiceActio
     notes: payload.notes,
     terms: payload.terms,
     items: payload.items,
+    apaCanal: payload.apaCanal,
   };
 
   const res = payload.id

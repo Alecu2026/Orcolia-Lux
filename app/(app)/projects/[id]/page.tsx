@@ -98,14 +98,52 @@ export default async function ProjectDetailPage({
         </div>
       </div>
 
-      {/* ── Hartă ── */}
-      {hasLocation && (
+      {/* ── Locație ── */}
+      {(hasLocation || project.address) && (
         <div className="card mb-4 p-5">
           <h2 className="mb-3 text-sm font-semibold">{m.projects.locationHeading}</h2>
           {project.address && (
-            <p className="mb-2 text-sm text-ink-soft">{project.address}</p>
+            <p className="mb-2 text-sm text-ink-soft">📍 {project.address}</p>
           )}
-          <ProjectMap lat={project.lat!} lng={project.lng!} address={project.address} />
+          {/* Butoane navigație */}
+          <div className="mb-3 flex flex-wrap gap-2">
+            {hasLocation ? (
+              <>
+                <a
+                  href={`https://waze.com/ul?ll=${project.lat},${project.lng}&navigate=yes`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="tap inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface)]"
+                >
+                  🚗 Waze
+                </a>
+                <a
+                  href={`https://www.google.com/maps?q=${project.lat},${project.lng}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="tap inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface)]"
+                >
+                  🗺️ Google Maps
+                </a>
+                <a
+                  href={`https://maps.apple.com/?ll=${project.lat},${project.lng}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="tap inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface)]"
+                >
+                  🍎 Apple Maps
+                </a>
+              </>
+            ) : project.address ? (
+              <a
+                href={`https://www.google.com/maps?q=${encodeURIComponent(project.address)}`}
+                target="_blank" rel="noopener noreferrer"
+                className="tap inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface)]"
+              >
+                🗺️ Google Maps
+              </a>
+            ) : null}
+          </div>
+          {hasLocation && (
+            <ProjectMap lat={project.lat!} lng={project.lng!} address={project.address} />
+          )}
         </div>
       )}
 

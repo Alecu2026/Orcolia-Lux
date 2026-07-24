@@ -6,7 +6,11 @@ import AuthForm from "@/app/components/AuthForm";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ reset?: string }>;
+}) {
   // Mod demo (fără DB/secret): intri direct în aplicație cu date de exemplu.
   if (!env.isConfigured) {
     redirect("/dashboard");
@@ -14,6 +18,7 @@ export default async function LoginPage() {
 
   const hasUser = (await prisma.user.count().catch(() => 1)) > 0;
   const mode = hasUser ? "login" : "register";
+  const { reset } = await searchParams;
 
   return (
     <main className="flex min-h-dvh items-center justify-center p-5">
@@ -32,6 +37,12 @@ export default async function LoginPage() {
             </p>
           </div>
         </div>
+
+        {reset === "1" && mode === "login" && (
+          <p className="mb-4 rounded-xl bg-brand-soft px-3 py-2 text-xs text-brand-strong">
+            Parola a fost schimbată. Autentifică-te cu noua parolă.
+          </p>
+        )}
 
         {mode === "register" && (
           <p className="mb-4 rounded-xl bg-brand-soft px-3 py-2 text-xs text-brand-strong">

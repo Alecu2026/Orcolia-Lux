@@ -685,7 +685,7 @@
     title: "Date companie",
     subtitle: "Folosite automat pe toate facturile generate.",
     noEditPermission: "Doar administratorul poate edita aceste date.",
-    logoTooLarge: "Imagine prea mare (max ~700KB). Alege una mai mică.",
+    logoTooLarge: "Imagine prea mare (max ~5MB). Alege una mai mică.",
     uploadLogo: "Încarcă logo",
     removeLogo: "Elimină",
     nameLabel: "Nume companie *",

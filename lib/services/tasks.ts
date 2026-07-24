@@ -840,7 +840,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
       description: true, priority: true, dueAt: true,
       assigneeId: true, teamId: true, projectId: true,
       creatorId: true, extraAssigneeIds: true, extraTeamIds: true,
-      assignee: { select: { name: true } },
+      assignee: { select: { name: true, teamIds: true } },
       team: { select: { name: true } },
       project: { select: { name: true } },
     },
@@ -944,25 +944,35 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
         .create({ data: { taskId, userId: actorId, action: "EDITED", meta: { changes } } })
         .catch(() => {});
 
-      // Notificare Telegram — trimisă asignaților/creatorului (best-effort)
+      // Notificare Telegram — trimisă asignaților/creatorului + observatori admini (best-effort)
       try {
-        const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { name: true } });
+        const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { name: true, teamIds: true } });
         const actorName = actor?.name ?? "Cineva";
 
-        const recipients = new Set<string>([task.creatorId]);
-        if (task.assigneeId) recipients.add(task.assigneeId);
-        for (const uid of task.extraAssigneeIds ?? []) recipients.add(uid);
+        const directRecipients = new Set<string>([task.creatorId]);
+        if (task.assigneeId) directRecipients.add(task.assigneeId);
+        for (const uid of task.extraAssigneeIds ?? []) directRecipients.add(uid);
         if (task.teamId) {
           const t = await prisma.team.findUnique({ where: { id: task.teamId }, select: { memberIds: true } });
-          t?.memberIds.forEach((id) => recipients.add(id));
+          t?.memberIds.forEach((id) => directRecipients.add(id));
         }
         for (const tid of task.extraTeamIds ?? []) {
           const t = await prisma.team.findUnique({ where: { id: tid }, select: { memberIds: true } });
-          t?.memberIds.forEach((id) => recipients.add(id));
+          t?.memberIds.forEach((id) => directRecipients.add(id));
         }
-        recipients.delete(actorId);
+        directRecipients.delete(actorId);
 
-        if (recipients.size > 0) {
+        // Admini observatori (filtrați după scope/event task.edit)
+        const adminIds = await filteredAdminRecipients({
+          eventKeys: ["task.edit"],
+          teamIds: [task.teamId, ...(task.extraTeamIds ?? []), ...(task.assignee?.teamIds ?? []), ...(actor?.teamIds ?? [])],
+          memberIds: [actorId, task.assigneeId, ...task.extraAssigneeIds ?? []],
+        });
+        const observerAdminIds = await observerRecipients("task.edit");
+        const allRecipients = new Set<string>([...directRecipients, ...adminIds, ...observerAdminIds]);
+        allRecipients.delete(actorId);
+
+        if (allRecipients.size > 0) {
           const changeLines = (changes as { field: string; from: string | null; to: string | null }[])
             .map((c) => `• ${c.field}: ${c.from ?? "—"} → ${c.to ?? "—"}`)
             .join("\n");
@@ -976,13 +986,26 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
             `Ora: ${formatTime(new Date(), DEFAULT_TZ)}`,
           ].join("\n");
 
-          await Promise.all([...recipients].map(async (uid) => {
+          await Promise.all([...allRecipients].map(async (uid) => {
             try {
               const chatId = await telegramChatFor(uid);
               if (!chatId) return;
               await sendMessage(chatId, text, taskOpenButton(task.seq, taskId));
             } catch { /* best-effort */ }
           }));
+
+          // In-app + push pentru toți
+          await notifyUsers(
+            [...allRecipients],
+            {
+              title: `${TASK_TYPE_RO[task.type]} modificat: ${taskLabel(task.seq, task.title)}`,
+              body: `de ${actorName}`,
+              taskId,
+              seq: task.seq,
+              url: `/tasks/${taskId}`,
+            },
+            { telegram: false },
+          );
         }
       } catch { /* non-blocking */ }
     }

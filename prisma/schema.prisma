@@ -108,6 +108,11 @@ enum InvoiceStatus {
   OVERDUE
 }
 
+enum InvoiceKind {
+  STANDARD
+  APA_CANAL
+}
+
 // ----------------------------------------------------------------------------
 // Models
 // ----------------------------------------------------------------------------
@@ -163,6 +168,21 @@ model User {
   taskAttachments TaskAttachment[]
   invoices       Invoice[]
   notifications  Notification[]
+  verificationCodes VerificationCode[]
+}
+
+// Coduri de unică folosință trimise pe email (schimbare parolă / resetare parolă uitată).
+model VerificationCode {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   String   // PASSWORD_CHANGE | PASSWORD_RESET
+  codeHash  String   // hash SHA-256 al codului din 6 cifre — codul brut nu se stochează niciodată
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, purpose, createdAt])
 }
 
 model Notification {
@@ -447,6 +467,22 @@ model CompanySettings {
   quietHoursEnd     String  @default("07:00")
   quietHoursTz      String  @default("Europe/Bucharest")
 
+  // --- Letterhead pentru facturile de tip „Apă-Canal" (editabil, altfel identic cu modelul primit) ---
+  // Logo dedicat (separat de logo-ul principal al firmei) — folosit doar pe facturile Apă-Canal.
+  apaCanalLogo        String?
+  apaCanalCompanyLine String @default("S.A. Apa-Canal Cahul")
+  apaCanalAddress     String @default("mun.Cahul, str.31 August 1989 nr.1")
+  apaCanalEmail       String @default("apacanalmega@gmail.com")
+  apaCanalCodFiscal   String @default("Cod fiscal 1002603000859")
+  apaCanalContactName String @default("Corneliu")
+  apaCanalContactsText String @default("0 600-99-490 · Controlor Viber/Whatsapp\n0 (299) 2-20-00 · serviciul dispecerat 24/24\n0 601-05-866 · secția evidență și control\n0 605-58-819 · secția calcul\n0 688-96-964 · secția tehnică\n0 688-96-930 · anticamera")
+  apaCanalAtentieText String @default("Vă atenționăm că în cazul neachitării acestei facturi de plată, în decurs de 10 zile de la data-limită de achitare indicată în ea, în conformitate cu legislația, operatorul este în drept să deconecteze instalațiile interne de apă și de canalizare ce aparțin, de la sistemul public de alimentare cu apă și de canalizare. Reconectarea instalațiilor interne de apă și de canalizare va fi posibilă după eliminarea cauzei care a dus la deconectare și după achitarea tarifului pentru reconectare.")
+  apaCanalAnuntText   String @default("Stimați consumatori, DVS aveți posibilitatea de a transmite indicii contorului de apă prin aplicația Viber sau WhatsApp, pe primul număr indicat mai jos, din data de 17 până pe data de 27.")
+
+  // Tarife implicite (lei/m3), pre-completate la crearea unei facturi noi Apă-Canal — pot fi modificate pe factură.
+  apaCanalTarifApa   Float @default(0)
+  apaCanalTarifCanal Float @default(0)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -455,8 +491,25 @@ model Invoice {
   id        String        @id @default(auto()) @map("_id") @db.ObjectId
   number    String        @unique
   status    InvoiceStatus @default(DRAFT)
+  kind      InvoiceKind   @default(STANDARD)
   issueDate DateTime      @default(now())
   dueDate   DateTime?
+
+  // --- Câmpuri specifice facturii „Apă-Canal" (folosite doar când kind = APA_CANAL) ---
+  contPersonal        String?
+  sectorNr            String?
+  consumAddress       String?
+  consumerName        String?
+  meterNumber         String?
+  meterPrevReading    String?
+  meterCurrReading    String?
+  isEstimatedVolume   Boolean  @default(false)
+  billingPeriodLabel  String?
+  recalculari         Float    @default(0)
+  penalitati          Float    @default(0)
+  datoriiAvans        Float    @default(0)
+  // Istoric consum lunar pt. graficul cu bare — JSON: [{ label: "7", value: 8 }, ...]
+  monthlyConsumption  Json?
 
   // Relații opționale (nullable)
   clientId  String? @db.ObjectId

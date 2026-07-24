@@ -29,6 +29,23 @@ export function IconX({ className = "size-4" }: IconProps) {
   );
 }
 
+export function IconDroplet({ className = "size-4" }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M12 2.5s6.5 7.2 6.5 12A6.5 6.5 0 0 1 5.5 14.5C5.5 9.7 12 2.5 12 2.5Z" />
+    </svg>
+  );
+}
+
+export function IconFileText({ className = "size-4" }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 2v6h6M8 13h8M8 17h8M8 9h2" />
+    </svg>
+  );
+}
+
 export function IconPlus({ className = "size-4" }: IconProps) {
   return (
     <svg {...base} className={className}>

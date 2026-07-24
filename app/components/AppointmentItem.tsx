@@ -64,11 +64,11 @@ export default function AppointmentItem({ appt }: { appt: ApptVM }) {
 
   return (
     <div className={`card overflow-hidden ${busy ? "opacity-60" : ""}`}>
-      <div className="flex items-center gap-2.5 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 sm:flex-nowrap">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
-          className="min-w-0 flex-1 text-left"
+          className="min-w-0 basis-full text-left sm:basis-0 sm:flex-1"
         >
           <div className="flex items-center gap-2">
             <span className="shrink-0 rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-brand">
@@ -100,16 +100,18 @@ export default function AppointmentItem({ appt }: { appt: ApptVM }) {
           </p>
         </button>
 
-        <ApptStatusDropdown status={status} pending={busy} onChange={change} />
+        <div className="flex flex-1 items-center justify-between gap-2 sm:flex-none sm:justify-end">
+          <ApptStatusDropdown status={status} pending={busy} onChange={change} />
 
-        <button
-          onClick={remove}
-          disabled={busy}
-          className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)] disabled:opacity-50"
-          title={m.common.delete}
-        >
-          <IconTrash className="size-3.5" />
-        </button>
+          <button
+            onClick={remove}
+            disabled={busy}
+            className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)] disabled:opacity-50"
+            title={m.common.delete}
+          >
+            <IconTrash className="size-3.5" />
+          </button>
+        </div>
       </div>
 
       {open && appt.title && (

@@ -33,15 +33,32 @@ export default function ProjectMap({
         zoom: 14,
       });
 
+      const navHtml = `
+        <div style="font-family:system-ui,sans-serif;padding:2px 0;min-width:180px">
+          ${address ? `<p style="font-size:13px;font-weight:600;margin:0 0 8px">${address}</p>` : ""}
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <a href="https://waze.com/ul?ll=${lat},${lng}&navigate=yes" target="_blank" rel="noopener noreferrer"
+              style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#2563eb;text-decoration:none">
+              🚗 Waze
+            </a>
+            <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" rel="noopener noreferrer"
+              style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#2563eb;text-decoration:none">
+              🗺️ Google Maps
+            </a>
+            <a href="https://maps.apple.com/?ll=${lat},${lng}" target="_blank" rel="noopener noreferrer"
+              style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#2563eb;text-decoration:none">
+              🍎 Apple Maps
+            </a>
+          </div>
+        </div>
+      `;
+
       const marker = new mbgl.default.Marker({ color: "#2563eb" })
         .setLngLat([lng, lat])
+        .setPopup(new mbgl.default.Popup({ offset: 28 }).setHTML(navHtml))
         .addTo(map);
 
-      if (address) {
-        marker
-          .setPopup(new mbgl.default.Popup({ offset: 28 }).setText(address))
-          .togglePopup();
-      }
+      marker.togglePopup();
     });
 
     return () => {

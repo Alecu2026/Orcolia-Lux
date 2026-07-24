@@ -29,7 +29,7 @@ export default function ProjectsMapView({ pins }: { pins: ProjectPin[] }) {
 
   const statusLabels = m.projects.status;
 
-  function pinPopupHtml(pin: { id: string; seq?: number | null; name: string; status: string; address: string | null; taskCount: number }) {
+  function pinPopupHtml(pin: { id: string; seq?: number | null; name: string; status: string; address: string | null; taskCount: number; lat: number; lng: number }) {
     const seq = pin.seq != null ? `<span style="font-family:monospace;font-size:11px;background:#eff6ff;color:#2563eb;padding:1px 6px;border-radius:4px;margin-right:6px">#${String(pin.seq).padStart(3, "0")}</span>` : "";
     const statusLabel = statusLabels[pin.status as keyof typeof statusLabels] ?? pin.status;
     return `
@@ -43,6 +43,11 @@ export default function ProjectsMapView({ pins }: { pins: ProjectPin[] }) {
         <div style="display:flex;gap:8px;margin-top:8px">
           <a href="/projects/${pin.id}" style="font-size:12px;font-weight:600;color:#2563eb;text-decoration:none">${m.projects.map.details} →</a>
           <a href="/tasks?scope=all&proj=${pin.id}" style="font-size:12px;font-weight:600;color:#2563eb;text-decoration:none">${m.nav.tasks} →</a>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:6px;padding-top:6px;border-top:1px solid #f3f4f6">
+          <a href="https://waze.com/ul?ll=${pin.lat},${pin.lng}&navigate=yes" target="_blank" rel="noopener noreferrer" style="font-size:11px;font-weight:600;color:#2563eb;text-decoration:none">🚗 Waze</a>
+          <a href="https://www.google.com/maps?q=${pin.lat},${pin.lng}" target="_blank" rel="noopener noreferrer" style="font-size:11px;font-weight:600;color:#2563eb;text-decoration:none">🗺️ Maps</a>
+          <a href="https://maps.apple.com/?ll=${pin.lat},${pin.lng}" target="_blank" rel="noopener noreferrer" style="font-size:11px;font-weight:600;color:#2563eb;text-decoration:none">🍎 Apple</a>
         </div>
       </div>
     `;
@@ -115,6 +120,8 @@ export default function ProjectsMapView({ pins }: { pins: ProjectPin[] }) {
                 status: p.status,
                 address: p.address,
                 taskCount: p.taskCount,
+                lat: p.lat,
+                lng: p.lng,
               },
             })),
           },
@@ -219,6 +226,8 @@ export default function ProjectsMapView({ pins }: { pins: ProjectPin[] }) {
               status: p.status as string,
               address: p.address as string | null,
               taskCount: p.taskCount as number,
+              lat: p.lat as number,
+              lng: p.lng as number,
             }))
             .addTo(map);
         });

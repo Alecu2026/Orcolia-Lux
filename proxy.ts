@@ -9,7 +9,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const COOKIE = process.env.SESSION_COOKIE_NAME || "pr_session";
 
 // Rute accesibile fără autentificare
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password"];
 
 // Mod demo: fără bază de date/secret, nu blocăm nimic.
 const DEMO = !process.env.DATABASE_URL || !process.env.SESSION_SECRET;

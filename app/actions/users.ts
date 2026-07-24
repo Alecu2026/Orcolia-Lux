@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isSuper, type CurrentUser } from "@/lib/dal";
@@ -18,7 +18,7 @@ const sameSet = (a: string[], b: string[]) =>
 
 function invalidate() {
   revalidatePath("/users");
-  revalidateTag("users", "max");
+  updateTag("users");
 }
 
 function parsePerms(formData: FormData): string[] {

@@ -13,6 +13,7 @@ export const NOTIFY_EVENTS = [
   { key: "task.overdue", label: "Task în întârziere" },
   { key: "task.comment", label: "Comentariu nou pe task" },
   { key: "task.progress", label: "Progres task actualizat" },
+  { key: "task.edit", label: "Task/tichet modificat" },
   { key: "project.created", label: "Proiect creat" },
   { key: "invoice.created", label: "Factură creată" },
   { key: "invoice.status", label: "Status factură schimbat" },

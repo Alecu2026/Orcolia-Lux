@@ -2,7 +2,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
-import type { InvoiceStatus, Prisma } from "@prisma/client";
+import type { InvoiceStatus, InvoiceKind, Prisma } from "@prisma/client";
 
 const PAGE_SIZE = 25;
 
@@ -10,6 +10,7 @@ export type InvoiceListItem = {
   id: string;
   number: string;
   status: InvoiceStatus;
+  kind: InvoiceKind;
   issueDate: Date;
   dueDate: Date | null;
   grandTotal: number;
@@ -38,6 +39,7 @@ export async function listInvoices(opts: {
       id: true,
       number: true,
       status: true,
+      kind: true,
       issueDate: true,
       dueDate: true,
       grandTotal: true,
@@ -56,6 +58,7 @@ export async function listInvoices(opts: {
       id: r.id,
       number: r.number,
       status: r.status,
+      kind: r.kind,
       issueDate: r.issueDate,
       dueDate: r.dueDate,
       grandTotal: r.grandTotal,
@@ -72,6 +75,7 @@ const FULL_SELECT = {
   id: true,
   number: true,
   status: true,
+  kind: true,
   issueDate: true,
   dueDate: true,
   notes: true,
@@ -85,6 +89,19 @@ const FULL_SELECT = {
   projectId: true,
   taskId: true,
   taskIds: true,
+  contPersonal: true,
+  sectorNr: true,
+  consumAddress: true,
+  consumerName: true,
+  meterNumber: true,
+  meterPrevReading: true,
+  meterCurrReading: true,
+  isEstimatedVolume: true,
+  billingPeriodLabel: true,
+  recalculari: true,
+  penalitati: true,
+  datoriiAvans: true,
+  monthlyConsumption: true,
   client: { select: { id: true, name: true, phone: true, email: true, notes: true } },
   project: { select: { id: true, name: true } },
   task: { select: { id: true, title: true } },

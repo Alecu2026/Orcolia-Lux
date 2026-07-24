@@ -19,6 +19,7 @@ type Row = {
   id: string;
   number: string;
   status: InvoiceStatusKey;
+  kind: "STANDARD" | "APA_CANAL";
   issueDate: string | Date;
   dueDate: string | Date | null;
   grandTotal: number;
@@ -144,7 +145,12 @@ export default function InvoicesList({
             <div key={r.id} className="card p-3.5">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-semibold">{r.number}</p>
+                  <p className="font-semibold">
+                    {r.number}
+                    {r.kind === "APA_CANAL" && (
+                      <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">Apă-Canal</span>
+                    )}
+                  </p>
                   <p className="mt-0.5 text-xs text-ink-soft">
                     {r.clientName ?? m.invoices.noClient} · {m.invoices.issuedOn} {fmtDate(r.issueDate)} · {m.invoices.dueOn} {fmtDate(r.dueDate)}
                   </p>
@@ -167,11 +173,9 @@ export default function InvoicesList({
                     <option key={s} value={s}>{INVOICE_STATUS[s].label}</option>
                   ))}
                 </select>
-                {r.status === "DRAFT" && (
-                  <Link href={`/invoices/${r.id}/edit`} className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs hover:bg-[var(--color-surface-2)]">
-                    {m.common.edit}
-                  </Link>
-                )}
+                <Link href={`/invoices/${r.id}/edit`} className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs hover:bg-[var(--color-surface-2)]">
+                  {m.common.edit}
+                </Link>
                 <button onClick={() => copyLink(r.publicToken)} className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs hover:bg-[var(--color-surface-2)]">
                   {copied === r.publicToken ? m.invoices.copied : m.invoices.copyLink}
                 </button>

@@ -5,6 +5,7 @@ import { deleteClient } from "@/app/actions/clients";
 import ClientDialog, { type ClientEdit } from "./ClientDialog";
 import { useToast } from "./toast";
 import { IconPencil, IconTrash } from "./icons";
+import CardActionsMenu from "./CardActionsMenu";
 import { useMessages } from "@/lib/i18n/context";
 
 export type ClientRow = {
@@ -75,32 +76,57 @@ export default function ClientsList({
                   )}
                 </p>
               </div>
-              <button
-                onClick={() =>
-                  setDialog({
-                    open: true,
-                    client: {
-                      id: c.id,
-                      name: c.name,
-                      phone: c.phone,
-                      email: c.email,
-                      telegramChatId: c.telegramChatId,
-                      notes: c.notes,
-                    },
-                  })
-                }
-                className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] hover:bg-[var(--color-surface-2)]"
-                title={m.common.edit}
-              >
-                <IconPencil className="size-4" />
-              </button>
-              <button
-                onClick={() => remove(c.id)}
-                className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)]"
-                title={m.common.delete}
-              >
-                <IconTrash className="size-4" />
-              </button>
+              <div className="hidden shrink-0 items-center gap-2 sm:flex">
+                <button
+                  onClick={() =>
+                    setDialog({
+                      open: true,
+                      client: {
+                        id: c.id,
+                        name: c.name,
+                        phone: c.phone,
+                        email: c.email,
+                        telegramChatId: c.telegramChatId,
+                        notes: c.notes,
+                      },
+                    })
+                  }
+                  className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] hover:bg-[var(--color-surface-2)]"
+                  title={m.common.edit}
+                >
+                  <IconPencil className="size-4" />
+                </button>
+                <button
+                  onClick={() => remove(c.id)}
+                  className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)]"
+                  title={m.common.delete}
+                >
+                  <IconTrash className="size-4" />
+                </button>
+              </div>
+              <CardActionsMenu
+                className="sm:hidden"
+                items={[
+                  {
+                    key: "edit",
+                    label: m.common.edit,
+                    icon: <IconPencil className="size-3.5" />,
+                    onClick: () =>
+                      setDialog({
+                        open: true,
+                        client: {
+                          id: c.id,
+                          name: c.name,
+                          phone: c.phone,
+                          email: c.email,
+                          telegramChatId: c.telegramChatId,
+                          notes: c.notes,
+                        },
+                      }),
+                  },
+                  { key: "delete", label: m.common.delete, icon: <IconTrash className="size-3.5" />, onClick: () => remove(c.id), danger: true },
+                ]}
+              />
             </div>
           ))}
         </div>

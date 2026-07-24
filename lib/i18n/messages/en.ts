@@ -687,7 +687,7 @@ const en: Messages = {
     title: "Company details",
     subtitle: "Used automatically on all generated invoices.",
     noEditPermission: "Only the administrator can edit these details.",
-    logoTooLarge: "Image too large (max ~700KB). Choose a smaller one.",
+    logoTooLarge: "Image too large (max ~5MB). Choose a smaller one.",
     uploadLogo: "Upload logo",
     removeLogo: "Remove",
     nameLabel: "Company name *",

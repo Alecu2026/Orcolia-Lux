@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { after } from "next/server";
 import { requireUser, type CurrentUser } from "@/lib/dal";
@@ -81,7 +81,7 @@ export async function createProject(
   await logAudit(actor(user), { action: "project.create", module: "Projects", objectId: p.id, objectName: d.name });
   notifyProjectCreated(p.id, d.name, user.id);
   revalidatePath("/projects");
-  revalidateTag("projects", "max");
+  updateTag("projects");
   return { ok: true, id: p.id };
 }
 
@@ -109,7 +109,7 @@ export async function quickCreateProject(name: string): Promise<QuickCreateResul
   await logAudit(actor(user), { action: "project.create", module: "Projects", objectId: p.id, objectName: p.name });
   notifyProjectCreated(p.id, p.name, user.id);
   revalidatePath("/projects");
-  revalidateTag("projects", "max");
+  updateTag("projects");
   return { ok: true, id: p.id, name: p.name };
 }
 
@@ -147,7 +147,7 @@ export async function updateProject(
     newValue: JSON.stringify({ name: d.name, status: d.status }),
   });
   revalidatePath("/projects");
-  revalidateTag("projects", "max");
+  updateTag("projects");
   return { ok: true, id };
 }
 
@@ -161,7 +161,7 @@ export async function deleteProject(id: string): Promise<void> {
   await prisma.project.delete({ where: { id } }).catch(() => {});
   await logAudit(actor(user), { action: "project.delete", module: "Projects", objectId: id, objectName: proj?.name ?? null });
   revalidatePath("/projects");
-  revalidateTag("projects", "max");
+  updateTag("projects");
 }
 
 /** Atribuie seq secvențial tuturor proiectelor care nu au încă unul. */

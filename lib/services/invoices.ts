@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { getCompanySettings } from "../queries/company";
-import type { InvoiceStatus } from "@prisma/client";
+import type { InvoiceStatus, InvoiceKind } from "@prisma/client";
 
 export type InvoiceItemInput = {
   description: string;
@@ -12,8 +12,27 @@ export type InvoiceItemInput = {
   taxRate: number;
 };
 
+export type MonthlyConsumptionPoint = { label: string; value: number };
+
+export type ApaCanalInput = {
+  contPersonal?: string | null;
+  sectorNr?: string | null;
+  consumAddress?: string | null;
+  consumerName?: string | null;
+  meterNumber?: string | null;
+  meterPrevReading?: string | null;
+  meterCurrReading?: string | null;
+  isEstimatedVolume?: boolean;
+  billingPeriodLabel?: string | null;
+  recalculari?: number;
+  penalitati?: number;
+  datoriiAvans?: number;
+  monthlyConsumption?: MonthlyConsumptionPoint[];
+};
+
 export type InvoiceInput = {
   status?: InvoiceStatus;
+  kind?: InvoiceKind;
   issueDate?: Date;
   dueDate?: Date | null;
   clientId?: string | null;
@@ -23,6 +42,7 @@ export type InvoiceInput = {
   notes?: string;
   terms?: string;
   items: InvoiceItemInput[];
+  apaCanal?: ApaCanalInput;
 };
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -78,16 +98,45 @@ async function genNumber(prefix: string): Promise<string> {
   return number;
 }
 
+const round2b = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/** Câmpurile specifice Apă-Canal, cu total recalculat (subtotal + recalculări + penalități +/- datorii/avans). */
+function apaCanalData(input: InvoiceInput, subtotal: number) {
+  const ac = input.apaCanal ?? {};
+  const recalculari = Number(ac.recalculari) || 0;
+  const penalitati = Number(ac.penalitati) || 0;
+  const datoriiAvans = Number(ac.datoriiAvans) || 0;
+  return {
+    contPersonal: ac.contPersonal?.trim() || null,
+    sectorNr: ac.sectorNr?.trim() || null,
+    consumAddress: ac.consumAddress?.trim() || null,
+    consumerName: ac.consumerName?.trim() || null,
+    meterNumber: ac.meterNumber?.trim() || null,
+    meterPrevReading: ac.meterPrevReading?.trim() || null,
+    meterCurrReading: ac.meterCurrReading?.trim() || null,
+    isEstimatedVolume: ac.isEstimatedVolume ?? false,
+    billingPeriodLabel: ac.billingPeriodLabel?.trim() || null,
+    recalculari,
+    penalitati,
+    datoriiAvans,
+    monthlyConsumption: ac.monthlyConsumption ?? undefined,
+    grandTotal: round2b(subtotal + recalculari + penalitati + datoriiAvans),
+  };
+}
+
 export async function createInvoice(userId: string, input: InvoiceInput) {
   if (DEMO) return { ok: false as const, error: "Mod demo: conectează o bază de date." };
   const company = await getCompanySettings();
   const { lines, subtotal, taxTotal, grandTotal } = computeTotals(input.items);
   const number = await genNumber(company.invoicePrefix || "INV");
+  const kind = input.kind ?? "STANDARD";
+  const apaCanal = kind === "APA_CANAL" ? apaCanalData(input, subtotal) : null;
 
   const inv = await prisma.invoice.create({
     data: {
       number,
       status: input.status ?? "DRAFT",
+      kind,
       issueDate: input.issueDate ?? new Date(),
       dueDate: input.dueDate ?? null,
       clientId: input.clientId || null,
@@ -99,10 +148,11 @@ export async function createInvoice(userId: string, input: InvoiceInput) {
       currency: company.currency || "MDL",
       subtotal,
       taxTotal,
-      grandTotal,
+      grandTotal: apaCanal?.grandTotal ?? grandTotal,
       publicToken: genToken(),
       userId,
       items: { create: lines },
+      ...(apaCanal ?? {}),
     },
     select: { id: true },
   });
@@ -112,11 +162,14 @@ export async function createInvoice(userId: string, input: InvoiceInput) {
 export async function updateInvoice(id: string, input: InvoiceInput) {
   if (DEMO) return { ok: false as const, error: "Mod demo." };
   const { lines, subtotal, taxTotal, grandTotal } = computeTotals(input.items);
+  const kind = input.kind ?? "STANDARD";
+  const apaCanal = kind === "APA_CANAL" ? apaCanalData(input, subtotal) : null;
   await prisma.invoiceItem.deleteMany({ where: { invoiceId: id } });
   await prisma.invoice.update({
     where: { id },
     data: {
       status: input.status,
+      kind,
       issueDate: input.issueDate,
       dueDate: input.dueDate ?? null,
       clientId: input.clientId || null,
@@ -127,8 +180,9 @@ export async function updateInvoice(id: string, input: InvoiceInput) {
       terms: input.terms?.trim() || null,
       subtotal,
       taxTotal,
-      grandTotal,
+      grandTotal: apaCanal?.grandTotal ?? grandTotal,
       items: { create: lines },
+      ...(apaCanal ?? {}),
     },
   });
   return { ok: true as const, id };

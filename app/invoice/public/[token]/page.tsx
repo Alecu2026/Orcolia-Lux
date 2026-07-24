@@ -4,6 +4,7 @@ import { getCompanySettings } from "@/lib/queries/company";
 import { env } from "@/lib/env";
 import { money, fmtDate, INVOICE_STATUS, type InvoiceStatusKey } from "@/app/components/invoice-meta";
 import PrintButton from "@/app/components/PrintButton";
+import ApaCanalInvoicePublic from "@/app/components/ApaCanalInvoicePublic";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,21 @@ export default async function PublicInvoicePage({
     getCompanySettings(),
   ]);
   if (!invoice) notFound();
+
+  if (invoice.kind === "APA_CANAL") {
+    return (
+      <main className="min-h-dvh bg-zinc-100 print:bg-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 pt-4 no-print print:hidden">
+          <h1 className="text-sm font-medium text-zinc-500">Factură {invoice.number}</h1>
+          <PrintButton token={token} origin={env.appUrl} />
+        </div>
+        <div className="overflow-x-auto p-4 print:p-0">
+          <ApaCanalInvoicePublic invoice={invoice} company={company} />
+        </div>
+      </main>
+    );
+  }
+
   const invoiceTasks = await getInvoiceTaskTitles(invoice.taskIds ?? []);
 
   const st = INVOICE_STATUS[invoice.status as InvoiceStatusKey];

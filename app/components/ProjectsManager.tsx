@@ -16,6 +16,7 @@ import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
 import ProjectFilesPanel from "./ProjectFilesPanel";
 import ProjectMapPickerDynamic from "./ProjectMapPickerDynamic";
+import CardActionsMenu from "./CardActionsMenu";
 import { useMessages } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
@@ -262,25 +263,33 @@ export default function ProjectsManager({
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 14 8 14s8-8.75 8-14a8 8 0 0 0-8-8Z"/></svg>
                   </Link>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setFilesOpenId((id) => id === p.id ? null : p.id)}
-                  className={`tap grid size-8 shrink-0 place-items-center rounded-lg border text-sm sm:size-9 ${filesOpenId === p.id ? "border-brand bg-brand/10 text-brand" : "border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-                  title={m.projects.files}
-                >
-                  📎
-                </button>
                 {/* + Task: doar icon pe mobile, icon+text pe desktop */}
                 <Link href={`/tasks?create=task&project=${p.id}`} className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-brand hover:bg-brand-soft sm:inline-flex sm:h-9 sm:w-auto sm:gap-1 sm:px-2.5 sm:text-xs sm:font-medium" title={m.projects.addTask}>
                   <IconPlus className="size-3.5" />
                   <span className="hidden sm:inline text-xs font-medium">{m.projects.taskLabel}</span>
                 </Link>
-                <button onClick={() => setDialog({ open: true, project: p })} className="tap grid size-8 place-items-center rounded-lg border border-[var(--color-line)] hover:bg-[var(--color-surface-2)] sm:size-9" title={m.common.edit}>
-                  <IconPencil className="size-3.5 sm:size-4" />
+                <button
+                  type="button"
+                  onClick={() => setFilesOpenId((id) => id === p.id ? null : p.id)}
+                  className={`tap hidden size-9 shrink-0 place-items-center rounded-lg border text-sm sm:grid ${filesOpenId === p.id ? "border-brand bg-brand/10 text-brand" : "border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+                  title={m.projects.files}
+                >
+                  📎
                 </button>
-                <button onClick={() => remove(p.id)} className="tap grid size-8 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)] sm:size-9" title={m.common.delete}>
-                  <IconTrash className="size-3.5 sm:size-4" />
+                <button onClick={() => setDialog({ open: true, project: p })} className="tap hidden size-9 place-items-center rounded-lg border border-[var(--color-line)] hover:bg-[var(--color-surface-2)] sm:grid" title={m.common.edit}>
+                  <IconPencil className="size-4" />
                 </button>
+                <button onClick={() => remove(p.id)} className="tap hidden size-9 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)] sm:grid" title={m.common.delete}>
+                  <IconTrash className="size-4" />
+                </button>
+                <CardActionsMenu
+                  className="sm:hidden"
+                  items={[
+                    { key: "files", label: m.projects.files, icon: <span className="text-sm">📎</span>, onClick: () => setFilesOpenId((id) => (id === p.id ? null : p.id)) },
+                    { key: "edit", label: m.common.edit, icon: <IconPencil className="size-3.5" />, onClick: () => setDialog({ open: true, project: p }) },
+                    { key: "delete", label: m.common.delete, icon: <IconTrash className="size-3.5" />, onClick: () => remove(p.id), danger: true },
+                  ]}
+                />
               </div>
 
               {/* ── Task-uri expandate ── */}

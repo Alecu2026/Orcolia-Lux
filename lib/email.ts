@@ -182,6 +182,57 @@ export async function sendInvoiceEmail(d: InvoiceEmailData): Promise<void> {
   });
 }
 
+export type VerificationCodeEmailData = {
+  to: string;
+  name: string;
+  code: string;
+  purpose: "PASSWORD_CHANGE" | "PASSWORD_RESET";
+};
+
+function verificationCodeTemplate(d: VerificationCodeEmailData): string {
+  const title = d.purpose === "PASSWORD_RESET" ? "Resetare parolă" : "Schimbare parolă";
+  const desc =
+    d.purpose === "PASSWORD_RESET"
+      ? "Ai cerut resetarea parolei contului tău. Folosește codul de mai jos pentru a continua."
+      : "Ai cerut schimbarea parolei contului tău. Folosește codul de mai jos pentru a confirma.";
+  return `<!doctype html>
+<html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+        <tr><td style="background:#0d9488;padding:20px 24px;color:#fff;font-size:18px;font-weight:700">
+          🔐 ${title}
+        </td></tr>
+        <tr><td style="padding:28px">
+          <p style="margin:0 0 16px;font-size:16px">Bună, <b>${d.name}</b>.</p>
+          <p style="margin:0 0 20px;font-size:15px;line-height:1.6">${desc}</p>
+          <div style="background:#f1f5f9;border-radius:12px;padding:20px;margin-bottom:20px;text-align:center">
+            <span style="font-size:32px;font-weight:700;letter-spacing:8px;color:#0f766e">${d.code}</span>
+          </div>
+          <p style="margin:0;font-size:13px;color:#64748b">Codul expiră în 15 minute. Dacă nu ai cerut tu această acțiune, ignoră acest email.</p>
+        </td></tr>
+        <tr><td style="padding:14px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">
+          Mesaj automat — te rugăm să nu răspunzi.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+export async function sendVerificationCodeEmail(d: VerificationCodeEmailData): Promise<void> {
+  const transporter = getTransporter();
+  if (!transporter) throw new Error("SMTP neconfigurat.");
+  const subject = d.purpose === "PASSWORD_RESET" ? "Codul tău de resetare parolă" : "Codul tău de schimbare parolă";
+  await transporter.sendMail({
+    from: env.smtp.from,
+    to: d.to,
+    subject,
+    text: `Bună, ${d.name}. Codul tău este: ${d.code} (expiră în 15 minute).`,
+    html: verificationCodeTemplate(d),
+  });
+}
+
 /** Trimite reminder-ul. Aruncă eroare la eșec (pentru logica de retry). */
 export async function sendReminderEmail(d: ReminderEmailData): Promise<void> {
   const transporter = getTransporter();

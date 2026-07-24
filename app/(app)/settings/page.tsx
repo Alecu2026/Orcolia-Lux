@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { getSettings } from "@/lib/queries/settings";
 import { listCategories } from "@/lib/queries/categories";
 import { getCompanySettings, getQuietHoursSettings } from "@/lib/queries/company";
 import SettingsForm from "@/app/components/SettingsForm";
+import MyProfileForm from "@/app/components/MyProfileForm";
 import CategoriesManager from "@/app/components/CategoriesManager";
 import CompanyDetailsForm from "@/app/components/CompanyDetailsForm";
 import QuietHoursForm from "@/app/components/QuietHoursForm";
@@ -17,16 +19,18 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const [settings, categories, company, quietHours, statusConfigs] = await Promise.all([
+  const [settings, categories, company, quietHours, statusConfigs, me] = await Promise.all([
     getSettings(user.id),
     listCategories(),
     getCompanySettings(),
     getQuietHoursSettings(),
     loadStatusConfigs(),
+    prisma.user.findUnique({ where: { id: user.id }, select: { telegramChatId: true } }),
   ]);
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5">
+      <MyProfileForm name={user.name} email={user.email} telegramChatId={me?.telegramChatId ?? null} />
       <CompanyDetailsForm company={company} canEdit={can(user, "admin")} />
       <SettingsForm settings={settings} />
       <CategoriesManager categories={categories} canManage={user.role === "ADMIN"} />

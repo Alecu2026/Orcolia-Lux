@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser, type CurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
@@ -50,7 +50,7 @@ export async function createClient(
   });
   await logAudit(actor(user), { action: "client.create", module: "Clients", objectId: client.id, objectName: d.name });
   revalidatePath("/clients");
-  revalidateTag("clients", "max");
+  updateTag("clients");
   return { ok: true, id: client.id };
 }
 
@@ -80,7 +80,7 @@ export async function voiceCreateClient(
   });
   await logAudit(actor(user), { action: "client.create", module: "Clients", objectId: client.id, objectName: client.name });
   revalidatePath("/clients");
-  revalidateTag("clients", "max");
+  updateTag("clients");
   return { ok: true, id: client.id, name: client.name };
 }
 
@@ -97,7 +97,7 @@ export async function quickCreateClient(name: string): Promise<QuickCreateResult
   });
   await logAudit(actor(user), { action: "client.create", module: "Clients", objectId: client.id, objectName: client.name });
   revalidatePath("/clients");
-  revalidateTag("clients", "max");
+  updateTag("clients");
   return { ok: true, id: client.id, name: client.name };
 }
 
@@ -145,7 +145,7 @@ export async function updateClient(
     newValue: JSON.stringify({ name: d.name, phone: d.phone || null, email: d.email || null }),
   });
   revalidatePath("/clients");
-  revalidateTag("clients", "max");
+  updateTag("clients");
   return { ok: true, id };
 }
 
@@ -157,5 +157,5 @@ export async function deleteClient(id: string): Promise<void> {
   await prisma.client.deleteMany({ where: { id } });
   await logAudit(actor(user), { action: "client.delete", module: "Clients", objectId: id, objectName: c?.name ?? null });
   revalidatePath("/clients");
-  revalidateTag("clients", "max");
+  updateTag("clients");
 }

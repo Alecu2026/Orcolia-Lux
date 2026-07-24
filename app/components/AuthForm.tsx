@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { login, register, type AuthState } from "@/app/actions/auth";
 import { useMessages } from "@/lib/i18n/context";
@@ -46,6 +47,12 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
         required
         className={input}
       />
+
+      {mode === "login" && (
+        <Link href="/forgot-password" className="-mt-1 self-end text-xs text-brand hover:underline">
+          Ai uitat parola?
+        </Link>
+      )}
 
       {state?.error && (
         <p className="text-sm text-st-cancelled">{state.error}</p>

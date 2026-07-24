@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { saveInvoice, type InvoicePayload } from "@/app/actions/invoices";
 import { quickCreateClient } from "@/app/actions/clients";
 import { quickCreateProject } from "@/app/actions/projects";
-import { money } from "./invoice-meta";
+import { money, INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import { useToast } from "./toast";
 import { IconTrash, IconPlus, IconCheck, IconX } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
@@ -120,6 +120,13 @@ export default function InvoiceForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Editarea unei facturi deja Plătite/Anulate/Restante nu trebuie să-i schimbe
+  // statusul înapoi la Ciornă/Trimisă — acel status se schimbă separat, din listă.
+  const lockedStatus: InvoiceStatusKey | null =
+    initial && !["DRAFT", "SENT"].includes(initial.status)
+      ? (initial.status as InvoiceStatusKey)
+      : null;
+
   // Proiectele clientului selectat (sau toate dacă nu e client)
   const filteredProjects = useMemo(
     () => (clientId ? projectList.filter((p) => p.clientId === clientId) : projectList),
@@ -188,7 +195,7 @@ export default function InvoiceForm({
     setItems((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
   }
 
-  async function submit(status: "DRAFT" | "SENT") {
+  async function submit(status: "DRAFT" | "SENT" | "PAID" | "CANCELLED" | "OVERDUE") {
     setError("");
     const valid = items.filter((it) => it.description.trim() !== "");
     if (valid.length === 0) {
@@ -381,13 +388,26 @@ export default function InvoiceForm({
       {error && <p className="text-sm text-st-cancelled">{error}</p>}
 
       <div className="flex flex-wrap gap-3">
-        <button onClick={() => submit("DRAFT")} disabled={saving} className="tap h-12 flex-1 rounded-xl border border-[var(--color-line)] font-semibold hover:bg-[var(--color-surface-2)] disabled:opacity-60">
-          {saving ? m.common.saving : m.invoices.saveDraft}
-        </button>
-        <button onClick={() => submit("SENT")} disabled={saving} className="tap h-12 flex-1 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
-          {saving ? m.common.saving : m.invoices.saveAndSend}
-        </button>
+        {lockedStatus ? (
+          <button onClick={() => submit(lockedStatus)} disabled={saving} className="tap h-12 flex-1 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
+            {saving ? m.common.saving : m.common.save}
+          </button>
+        ) : (
+          <>
+            <button onClick={() => submit("DRAFT")} disabled={saving} className="tap h-12 flex-1 rounded-xl border border-[var(--color-line)] font-semibold hover:bg-[var(--color-surface-2)] disabled:opacity-60">
+              {saving ? m.common.saving : m.invoices.saveDraft}
+            </button>
+            <button onClick={() => submit("SENT")} disabled={saving} className="tap h-12 flex-1 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
+              {saving ? m.common.saving : m.invoices.saveAndSend}
+            </button>
+          </>
+        )}
       </div>
+      {lockedStatus && (
+        <p className="text-center text-xs text-ink-soft">
+          Această factură are statusul „{INVOICE_STATUS[lockedStatus].label}" — salvarea modificărilor nu îi schimbă statusul. Îl poți schimba separat din lista de facturi.
+        </p>
+      )}
     </div>
   );
 }

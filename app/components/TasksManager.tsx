@@ -22,6 +22,7 @@ import { dateKeyOf, formatTime } from "@/lib/date";
 import { optimizeImage } from "@/lib/image-optimize";
 import { useToast } from "./toast";
 import { IconTrash, IconX, IconChevronLeft, IconChevronRight, IconPencil } from "./icons";
+import CardActionsMenu from "./CardActionsMenu";
 import QuickSelect from "./QuickSelect";
 import MultiAssignPicker from "./MultiAssignPicker";
 import ExportButton from "./ExportButton";
@@ -543,11 +544,11 @@ export default function TasksManager({
               <div className="flex flex-col gap-1.5">
           {group.map((t) => (
             <div key={t.id} className="card overflow-hidden">
-              <div className="flex items-center gap-2.5 px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2 px-3 py-2 sm:flex-nowrap">
                 <button
                   type="button"
                   onClick={() => toggleHistory(t.id)}
-                  className="min-w-0 flex-1 text-left"
+                  className="min-w-0 basis-full text-left sm:basis-0 sm:flex-1"
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     {t.seq != null && (
@@ -582,37 +583,60 @@ export default function TasksManager({
                     )}
                   </p>
                 </button>
-                <select
-                  value={t.progress}
-                  onChange={(e) => changeProgress(t.id, Number(e.target.value))}
-                  disabled={progressPending === t.id}
-                  title="Progres"
-                  className="hidden h-8 w-16 shrink-0 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-[11px] outline-none focus:border-brand disabled:opacity-50 sm:block"
-                >
-                  {PROGRESS.map((p) => <option key={p} value={p}>{p}%</option>)}
-                </select>
-                <StatusDropdown
-                  status={t.status}
-                  pending={statusPending === t.id}
-                  onChange={(s) => changeStatus(t.id, s)}
-                />
-                <button
-                  onClick={() => setFilesOpenId((id) => id === t.id ? null : t.id)}
-                  className={`tap grid size-8 shrink-0 place-items-center rounded-lg border text-sm ${filesOpenId === t.id ? "border-brand bg-brand/10 text-brand" : "border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-                  title={m.tasks.attachmentsTitle}
-                >
-                  📎
-                </button>
-                {canEdit && (
-                  <button onClick={() => setEditTask(t)} className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)]" title={m.common.edit}>
-                    <IconPencil className="size-3.5" />
-                  </button>
-                )}
-                {canDelete && (
-                  <button onClick={() => remove(t.id)} className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)]" title={m.common.delete}>
-                    <IconTrash className="size-3.5" />
-                  </button>
-                )}
+
+                <div className="flex flex-1 items-center justify-between gap-2 sm:flex-none sm:justify-end">
+                  <StatusDropdown
+                    status={t.status}
+                    pending={statusPending === t.id}
+                    onChange={(s) => changeStatus(t.id, s)}
+                  />
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={t.progress}
+                      onChange={(e) => changeProgress(t.id, Number(e.target.value))}
+                      disabled={progressPending === t.id}
+                      title="Progres"
+                      className="hidden h-8 w-16 shrink-0 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-[11px] outline-none focus:border-brand disabled:opacity-50 sm:block"
+                    >
+                      {PROGRESS.map((p) => <option key={p} value={p}>{p}%</option>)}
+                    </select>
+                    <button
+                      onClick={() => setFilesOpenId((id) => id === t.id ? null : t.id)}
+                      className={`tap hidden size-8 shrink-0 place-items-center rounded-lg border text-sm sm:grid ${filesOpenId === t.id ? "border-brand bg-brand/10 text-brand" : "border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+                      title={m.tasks.attachmentsTitle}
+                    >
+                      📎
+                    </button>
+                    {canEdit && (
+                      <button onClick={() => setEditTask(t)} className="tap hidden size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] sm:grid" title={m.common.edit}>
+                        <IconPencil className="size-3.5" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button onClick={() => remove(t.id)} className="tap hidden size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)] sm:grid" title={m.common.delete}>
+                        <IconTrash className="size-3.5" />
+                      </button>
+                    )}
+                    <CardActionsMenu
+                      className="sm:hidden"
+                      items={[
+                        {
+                          key: "files",
+                          label: m.tasks.attachmentsTitle,
+                          icon: <span className="text-sm">📎</span>,
+                          onClick: () => setFilesOpenId((id) => (id === t.id ? null : t.id)),
+                        },
+                        ...(canEdit
+                          ? [{ key: "edit", label: m.common.edit, icon: <IconPencil className="size-3.5" />, onClick: () => setEditTask(t) }]
+                          : []),
+                        ...(canDelete
+                          ? [{ key: "delete", label: m.common.delete, icon: <IconTrash className="size-3.5" />, onClick: () => remove(t.id), danger: true }]
+                          : []),
+                      ]}
+                    />
+                  </div>
+                </div>
               </div>
               {openId === t.id && (
                 <>

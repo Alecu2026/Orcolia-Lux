@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/teams";
 import { useToast } from "./toast";
 import { IconX, IconPencil, IconTrash } from "./icons";
+import CardActionsMenu from "./CardActionsMenu";
 import { useMessages } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
@@ -85,12 +86,21 @@ export default function TeamsManager({ teams, users }: { teams: Team[]; users: O
                   {t.members.length} {m.team.membersLabel.toLowerCase()}{t.members.length ? `: ${t.members.map((mem) => mem.name).join(", ")}` : ""}
                 </p>
               </div>
-              <button onClick={() => setDialog({ open: true, team: t })} className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] hover:bg-[var(--color-surface-2)]" title={m.common.edit}>
-                <IconPencil className="size-4" />
-              </button>
-              <button onClick={() => remove(t.id)} className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)]" title={m.common.delete}>
-                <IconTrash className="size-4" />
-              </button>
+              <div className="hidden shrink-0 items-center gap-2 sm:flex">
+                <button onClick={() => setDialog({ open: true, team: t })} className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] hover:bg-[var(--color-surface-2)]" title={m.common.edit}>
+                  <IconPencil className="size-4" />
+                </button>
+                <button onClick={() => remove(t.id)} className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)]" title={m.common.delete}>
+                  <IconTrash className="size-4" />
+                </button>
+              </div>
+              <CardActionsMenu
+                className="sm:hidden"
+                items={[
+                  { key: "edit", label: m.common.edit, icon: <IconPencil className="size-3.5" />, onClick: () => setDialog({ open: true, team: t }) },
+                  { key: "delete", label: m.common.delete, icon: <IconTrash className="size-3.5" />, onClick: () => remove(t.id), danger: true },
+                ]}
+              />
             </div>
           ))}
         </div>

@@ -112,14 +112,14 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
 
   async function handleTask(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const formEl = e.currentTarget; // capturat înainte de orice await — currentTarget devine null după
     if (!title.trim()) { toast.error(m.voice.titleRequired); return; }
     setSubmitting(true);
     try {
       const resolvedProjectId = await resolveProject();
       if (resolvedProjectId === null && newProjectName.trim()) { setSubmitting(false); return; }
       await resolveClient();
-      // Citim FormData din form — prinde hidden inputs de la MultiAssignPicker (assigneeIds, notifyUntil_*)
-      const fd = new FormData(e.currentTarget);
+      const fd = new FormData(formEl);
       fd.set("title", title.trim());
       fd.set("type", taskType);
       fd.set("priority", priority);
