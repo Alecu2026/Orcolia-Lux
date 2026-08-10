@@ -16,8 +16,15 @@ import type { InvoiceStatus, InvoiceKind } from "@prisma/client";
 
 const actor = (u: CurrentUser) => ({ id: u.id, name: u.name, role: u.role, isSuperAdmin: u.isSuperAdmin });
 
-/** Trimite email clientului dacă factura are status SENT și clientul are email. */
-function notifyClientEmail(invoiceId: string) {
+/**
+ * Trimite email clientului dacă factura are status SENT și clientul are email.
+ * `recipientOverride` — folosit când clientul facturii tocmai s-a schimbat: fostul client
+ * (dinainte de editare) primește aceeași factură pe email ca înștiințare, alături de noul
+ * client (care oricum o primește prin apelul normal, fără override, pe clientul curent al
+ * facturii). Fără asta, dacă factura fusese legată greșit de alt client și se corectează,
+ * doar noul client afla — fostul rămânea cu impresia (greșită) că factura e valabilă pe numele lui.
+ */
+function notifyClientEmail(invoiceId: string, recipientOverride?: { email: string; name: string }) {
   after(async () => {
     try {
       const inv = await prisma.invoice.findUnique({
@@ -34,7 +41,8 @@ function notifyClientEmail(invoiceId: string) {
         },
       });
       if (!inv || inv.status !== "SENT") return;
-      if (!inv.client?.email) {
+      const recipient = recipientOverride ?? (inv.client?.email ? { email: inv.client.email, name: inv.client.name } : null);
+      if (!recipient) {
         console.warn(`[invoices] email neconfigurat/lipsă pentru clientul facturii ${inv.number} — trimitere sărită`);
         return;
       }
@@ -43,8 +51,8 @@ function notifyClientEmail(invoiceId: string) {
         getSettings(inv.userId),
       ]);
       await sendInvoiceEmail({
-        to: inv.client.email,
-        clientName: inv.client.name,
+        to: recipient.email,
+        clientName: recipient.name,
         invoiceNumber: inv.number,
         grandTotal: inv.grandTotal,
         currency: inv.currency,
@@ -54,7 +62,7 @@ function notifyClientEmail(invoiceId: string) {
         fromName: senderSettings.emailFromName || null,
         fromAddr: senderSettings.emailFromAddr || null,
       });
-      console.log(`[invoices] email factură ${inv.number} trimis către ${inv.client.email}`);
+      console.log(`[invoices] email factură ${inv.number} trimis către ${recipient.email}`);
     } catch (e) {
       console.error(`[invoices] eșec trimitere email factură ${invoiceId}:`, e);
     }
@@ -108,6 +116,16 @@ export async function saveInvoice(payload: InvoicePayload): Promise<InvoiceActio
   }
   const status = STATUSES.includes(payload.status) ? payload.status : "DRAFT";
 
+  // Reținem clientul dinaintea editării, ca să detectăm o schimbare de client la salvare și
+  // să anunțăm și fostul client (vezi notifyClientEmail) — altfel, dacă factura fusese legată
+  // greșit de alt client, doar noul client afla la corectare.
+  const previousClient = payload.id
+    ? await prisma.invoice.findUnique({
+        where: { id: payload.id },
+        select: { clientId: true, client: { select: { name: true, email: true } } },
+      })
+    : null;
+
   const input = {
     status,
     kind: payload.kind ?? "STANDARD" as InvoiceKind,
@@ -138,7 +156,13 @@ export async function saveInvoice(payload: InvoicePayload): Promise<InvoiceActio
   if (!payload.id) {
     notifyInvoiceEvent("invoice.created", `Factură nouă: ${inv?.number ?? ""}`.trim(), user.id);
   }
-  if (status === "SENT") notifyClientEmail(res.id!);
+  if (status === "SENT") {
+    notifyClientEmail(res.id!);
+    const clientChanged = !!previousClient?.clientId && previousClient.clientId !== payload.clientId;
+    if (clientChanged && previousClient?.client?.email) {
+      notifyClientEmail(res.id!, { email: previousClient.client.email, name: previousClient.client.name });
+    }
+  }
   revalidatePath("/invoices");
   return { ok: true, id: res.id };
 }

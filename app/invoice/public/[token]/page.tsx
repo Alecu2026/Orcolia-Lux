@@ -28,7 +28,7 @@ export default async function PublicInvoicePage({
           <PrintButton token={token} origin={env.appUrl} />
         </div>
         <div className="overflow-x-auto p-4 print:p-0">
-          <ApaCanalInvoicePublic invoice={invoice} company={company} />
+          <ApaCanalInvoicePublic invoice={invoice} company={company} layout={company.apaCanalLayout} />
         </div>
       </main>
     );

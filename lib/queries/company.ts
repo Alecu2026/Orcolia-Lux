@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import type { QuietHoursConfig } from "../quiet-hours";
+import type { ApaCanalLayout } from "../apa-canal-layout";
 
 export type Company = {
   companyName: string;
@@ -27,6 +28,7 @@ export type Company = {
   apaCanalAnuntText: string;
   apaCanalTarifApa: number;
   apaCanalTarifCanal: number;
+  apaCanalLayout: ApaCanalLayout | null;
 };
 
 const APA_CANAL_DEFAULTS = {
@@ -59,6 +61,7 @@ const DEFAULTS: Company = {
   ...APA_CANAL_DEFAULTS,
   apaCanalTarifApa: 0,
   apaCanalTarifCanal: 0,
+  apaCanalLayout: null,
 };
 
 const SELECT = {
@@ -84,6 +87,7 @@ const SELECT = {
   apaCanalAnuntText: true,
   apaCanalTarifApa: true,
   apaCanalTarifCanal: true,
+  apaCanalLayout: true,
 } as const;
 
 const QH_DEFAULTS: QuietHoursConfig = {
@@ -124,7 +128,8 @@ export const getCompanySettings = unstable_cache(
       where: { singleton: "main" },
       select: SELECT,
     });
-    return row ?? DEFAULTS;
+    if (!row) return DEFAULTS;
+    return { ...row, apaCanalLayout: (row.apaCanalLayout as ApaCanalLayout | null) ?? null };
   },
   ["company-settings"],
   { tags: ["company"], revalidate: 600 },

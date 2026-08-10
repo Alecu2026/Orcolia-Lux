@@ -483,6 +483,10 @@ model CompanySettings {
   apaCanalTarifApa   Float @default(0)
   apaCanalTarifCanal Float @default(0)
 
+  // Suprascrieri poziție/mărime pentru editorul vizual al facturii Apă-Canal.
+  // Formă: { [elementKey]: { xMm, yMm, widthMm, heightMm?, fontSizeMm?, bold? } }
+  apaCanalLayout Json?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -599,13 +603,61 @@ model Client {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  appointments Appointment[]
-  projects     Project[]
-  invoices     Invoice[]
+  // --- Portal client (autentificare proprie, separată de userii staff) ---
+  // "Serie contor" — identificator de login din tabelul Apă-Canal; unic per client.
+  meterSeries        String? @unique
+  // Setat abia după ce clientul finalizează înregistrarea — null = cont neactivat încă.
+  portalPasswordHash String?
+  // Pentru pagina de admin cu lista conturilor portal (cine s-a activat, cine s-a logat ultima dată).
+  portalActivatedAt  DateTime?
+  portalLastLoginAt  DateTime?
+
+  // Instantaneu al datelor de contor (din exportul Axioma) — folosit ca să generăm automat
+  // prima factură Apă-Canal exact când clientul își activează contul (vezi confirmClientRegistration).
+  meterNumber            String?
+  meterCurrReading       Float?
+  meterReadingEstimated  Boolean @default(false)
+  consumAddress          String?
+
+  appointments            Appointment[]
+  projects                Project[]
+  invoices                Invoice[]
+  clientSessions          ClientSession[]
+  clientVerificationCodes ClientVerificationCode[]
 
   @@index([userId, name])
   @@index([userId, createdAt])
   @@index([userId, phone])
+}
+
+// --- Autentificare portal client (oglindă Session/VerificationCode, dar legată de Client) ---
+
+model ClientSession {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  clientId   String   @db.ObjectId
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  userAgent  String?
+  ip         String?
+
+  @@index([clientId])
+  @@index([expiresAt])
+}
+
+model ClientVerificationCode {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  clientId  String    @db.ObjectId
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  purpose   String // REGISTRATION | PASSWORD_RESET
+  codeHash  String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([clientId, purpose, createdAt])
 }
 
 model Category {

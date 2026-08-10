@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
-import { can } from "@/lib/permissions";
+import { can, canEditTask } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { zonedToUtc } from "@/lib/date";
 import {
@@ -260,11 +260,17 @@ export async function updateTaskAction(
 ): Promise<TaskState> {
   try {
     const user = await requireUser();
-    if (!can(user, "tasks.edit")) return { error: "Nu ai permisiunea de editare." };
     if (DEMO) return { error: "Mod demo: conectează o bază de date." };
 
     const id = String(formData.get("id") ?? "").trim();
     if (!id) return { error: "ID task lipsă." };
+
+    const existing = await prisma.task.findUnique({
+      where: { id },
+      select: { creatorId: true, assigneeId: true, extraAssigneeIds: true },
+    });
+    if (!existing) return { error: "Task inexistent." };
+    if (!canEditTask(user, existing)) return { error: "Nu ai permisiunea de editare." };
 
     const title = String(formData.get("title") ?? "").trim();
     const description = String(formData.get("description") ?? "");

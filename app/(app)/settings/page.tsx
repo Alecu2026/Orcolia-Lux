@@ -49,6 +49,32 @@ export default async function SettingsPage() {
         </div>
       )}
 
+      {can(user, "admin") && (
+        <Link
+          href="/settings/apa-canal-layout"
+          className="card tap flex items-center justify-between p-5 hover:border-brand"
+        >
+          <div>
+            <h2 className="text-base font-bold">Șablon factură Apă-Canal</h2>
+            <p className="text-sm text-ink-soft">Editor vizual — trage, redimensionează, ajustează text și linii pe factură.</p>
+          </div>
+          <IconChevronRight className="size-5 text-brand" />
+        </Link>
+      )}
+
+      {can(user, "admin") && (
+        <Link
+          href="/settings/portal-accounts"
+          className="card tap flex items-center justify-between p-5 hover:border-brand"
+        >
+          <div>
+            <h2 className="text-base font-bold">Conturi portal clienți</h2>
+            <p className="text-sm text-ink-soft">Cine s-a activat, cine nu, când s-a logat ultima dată.</p>
+          </div>
+          <IconChevronRight className="size-5 text-brand" />
+        </Link>
+      )}
+
       <Link
         href="/telegram"
         className="card tap flex items-center justify-between p-5 hover:border-brand"

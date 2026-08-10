@@ -186,15 +186,22 @@ export type VerificationCodeEmailData = {
   to: string;
   name: string;
   code: string;
-  purpose: "PASSWORD_CHANGE" | "PASSWORD_RESET";
+  purpose: "PASSWORD_CHANGE" | "PASSWORD_RESET" | "CLIENT_REGISTRATION" | "CLIENT_PASSWORD_RESET";
 };
 
 function verificationCodeTemplate(d: VerificationCodeEmailData): string {
-  const title = d.purpose === "PASSWORD_RESET" ? "Resetare parolă" : "Schimbare parolă";
+  const title =
+    d.purpose === "PASSWORD_RESET" || d.purpose === "CLIENT_PASSWORD_RESET"
+      ? "Resetare parolă"
+      : d.purpose === "CLIENT_REGISTRATION"
+        ? "Activare cont"
+        : "Schimbare parolă";
   const desc =
-    d.purpose === "PASSWORD_RESET"
+    d.purpose === "PASSWORD_RESET" || d.purpose === "CLIENT_PASSWORD_RESET"
       ? "Ai cerut resetarea parolei contului tău. Folosește codul de mai jos pentru a continua."
-      : "Ai cerut schimbarea parolei contului tău. Folosește codul de mai jos pentru a confirma.";
+      : d.purpose === "CLIENT_REGISTRATION"
+        ? "Ai cerut activarea contului tău în portalul de clienți. Folosește codul de mai jos pentru a continua."
+        : "Ai cerut schimbarea parolei contului tău. Folosește codul de mai jos pentru a confirma.";
   return `<!doctype html>
 <html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
@@ -223,7 +230,12 @@ function verificationCodeTemplate(d: VerificationCodeEmailData): string {
 export async function sendVerificationCodeEmail(d: VerificationCodeEmailData): Promise<void> {
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
-  const subject = d.purpose === "PASSWORD_RESET" ? "Codul tău de resetare parolă" : "Codul tău de schimbare parolă";
+  const subject =
+    d.purpose === "PASSWORD_RESET" || d.purpose === "CLIENT_PASSWORD_RESET"
+      ? "Codul tău de resetare parolă"
+      : d.purpose === "CLIENT_REGISTRATION"
+        ? "Codul tău de activare cont"
+        : "Codul tău de schimbare parolă";
   await transporter.sendMail({
     from: env.smtp.from,
     to: d.to,

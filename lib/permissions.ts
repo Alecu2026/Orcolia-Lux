@@ -126,3 +126,26 @@ export function can(user: PermissionSubject, key: PermissionKey): boolean {
 export function canAny(user: PermissionSubject, keys: PermissionKey[]): boolean {
   return keys.some((k) => can(user, k));
 }
+
+export type TaskOwnership = {
+  creatorId: string;
+  assigneeId: string | null;
+  extraAssigneeIds?: string[];
+};
+
+/**
+ * Editare task: fie permisiunea generală "tasks.edit"/ADMIN, fie ești creatorul/asignatul
+ * task-ului respectiv. Fără fallback-ul de proprietate, un STAFF fără "tasks.edit" nu-și putea
+ * edita propriile task-uri (create sau asignate lui) — vedea "Nu ai permisiunea de editare"
+ * deși era exact persoana vizată de task.
+ */
+export function canEditTask(
+  user: PermissionSubject & { id: string },
+  task: TaskOwnership,
+): boolean {
+  if (can(user, "tasks.edit")) return true;
+  if (task.creatorId === user.id) return true;
+  if (task.assigneeId === user.id) return true;
+  if (task.extraAssigneeIds?.includes(user.id)) return true;
+  return false;
+}

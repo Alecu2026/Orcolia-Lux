@@ -2,12 +2,16 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { env } from "@/lib/env";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  // Necesar ca og:image/twitter:image (generate din app/opengraph-image.tsx) să fie URL-uri
+  // absolute corecte, indiferent de domeniul pe care rulează build-ul.
+  metadataBase: new URL(env.appUrl),
   title: "CRM Proiecte",
   description: "Gestionare proiecte, task-uri și tichete — rapid și simplu.",
   manifest: "/manifest.webmanifest",

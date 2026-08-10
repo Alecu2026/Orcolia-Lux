@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requirePermission } from "@/lib/dal";
-import { can } from "@/lib/permissions";
+import { can, canEditTask } from "@/lib/permissions";
 import { getTask } from "@/lib/queries/tasks";
 import { listTaskComments } from "@/lib/services/tasks";
 import { dateKeyOf, formatDate, formatTime } from "@/lib/date";
@@ -102,7 +102,7 @@ export default async function TaskDetailPage({
   if (!task) notFound();
 
   const canDelete = can(user, "tasks.delete");
-  const canEdit = can(user, "tasks.edit");
+  const canEdit = canEditTask(user, task);
 
   const attachments = (task.attachments ?? []).map((a) => ({
     id: a.id,

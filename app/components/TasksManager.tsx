@@ -61,6 +61,7 @@ type Task = {
   progress: number;
   dueAt: string | Date | null;
   reminderIntervalMinutes: number | null;
+  creatorId: string;
   assigneeId: string | null;
   teamId: string | null;
   extraAssigneeIds: string[];
@@ -154,6 +155,7 @@ export default function TasksManager({
   canCreate,
   canDelete,
   canEdit = false,
+  userId,
   canCreateProject = false,
   quietHoursEnabled = false,
   blobEnabled = false,
@@ -178,6 +180,8 @@ export default function TasksManager({
   canCreate: boolean;
   canDelete: boolean;
   canEdit?: boolean;
+  /** Id-ul utilizatorului curent — permite editarea rândului chiar fără `canEdit` global, dacă e creatorul/asignatul acelui task. */
+  userId?: string;
   canCreateProject?: boolean;
   quietHoursEnabled?: boolean;
   blobEnabled?: boolean;
@@ -192,6 +196,11 @@ export default function TasksManager({
   const toast = useToast();
   const m = useMessages();
   const [navPending, startNav] = useTransition();
+
+  // Fără "tasks.edit" global, tot poți edita task-urile pe care le-ai creat sau la care ești
+  // asignat — vezi lib/permissions.ts canEditTask (aceeași regulă, verificată și pe server).
+  const canEditRow = (t: Task) =>
+    canEdit || (!!userId && (t.creatorId === userId || t.assigneeId === userId || t.extraAssigneeIds.includes(userId)));
 
   // ── Tipuri fixe per pagină (/tasks → TASK, /tickets → TICKET) ──
   const fixedTypes = basePath === "/tickets" ? ["TICKET"] : basePath === "/tasks" ? ["TASK"] : undefined;
@@ -608,7 +617,7 @@ export default function TasksManager({
                     >
                       📎
                     </button>
-                    {canEdit && (
+                    {canEditRow(t) && (
                       <button onClick={() => setEditTask(t)} className="tap hidden size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] sm:grid" title={m.common.edit}>
                         <IconPencil className="size-3.5" />
                       </button>
@@ -627,7 +636,7 @@ export default function TasksManager({
                           icon: <span className="text-sm">📎</span>,
                           onClick: () => setFilesOpenId((id) => (id === t.id ? null : t.id)),
                         },
-                        ...(canEdit
+                        ...(canEditRow(t)
                           ? [{ key: "edit", label: m.common.edit, icon: <IconPencil className="size-3.5" />, onClick: () => setEditTask(t) }]
                           : []),
                         ...(canDelete

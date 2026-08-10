@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
+import type { ApaCanalLayout } from "@/lib/apa-canal-layout";
 
 export type CompanyState = { ok?: boolean; error?: string } | undefined;
 
@@ -76,6 +77,30 @@ export async function updateCompanySettings(
   );
 
   revalidatePath("/settings");
+  updateTag("company");
+  return { ok: true };
+}
+
+export type LayoutState = { ok?: boolean; error?: string } | undefined;
+
+/** Salvează suprascrierile de poziție/mărime din editorul vizual al facturii Apă-Canal. */
+export async function updateApaCanalLayout(layout: ApaCanalLayout): Promise<LayoutState> {
+  const user = await requireUser();
+  if (!can(user, "admin")) return { error: "Doar administratorul poate edita șablonul facturii." };
+  if (DEMO) return { error: "Mod demo: conectează o bază de date." };
+
+  await prisma.companySettings.upsert({
+    where: { singleton: "main" },
+    create: { singleton: "main", companyName: "Compania", apaCanalLayout: layout },
+    update: { apaCanalLayout: layout },
+  });
+
+  await logAudit(
+    { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
+    { action: "settings.update", module: "Settings", objectName: "Șablon factură Apă-Canal" },
+  );
+
+  revalidatePath("/settings/apa-canal-layout");
   updateTag("company");
   return { ok: true };
 }
