@@ -145,7 +145,11 @@ export type ExistingInvoiceLite = {
   subtotal?: number | null;
   datoriiAvans?: number | null;
   grandTotal?: number | null;
+  dueDate?: Date | null;
 };
+
+const DUE_DAYS = 10;
+const dueDateFrom = (issueDate: Date) => new Date(issueDate.getTime() + DUE_DAYS * 24 * 60 * 60 * 1000);
 
 export type ApaCanalPlanStats = {
   documenteTotale: number;
@@ -396,6 +400,7 @@ export function buildApaCanalPlan(
             subtotal: apiValues.calculat,
             datoriiAvans: apiValues.datorie,
             grandTotal: apiValues.deAchitat,
+            ...(stored.dueDate ? {} : { dueDate: dueDateFrom(stored.issueDate) }),
             ...(sectorNr ? { sectorNr } : {}),
             ...(reading ? { monthlyConsumption: [{ label: String(issueDate.getUTCMonth() + 1), value: round2(reading.total) }] } : {}),
           },
@@ -528,6 +533,7 @@ export function buildApaCanalPlan(
       status: "SENT",
       kind: "APA_CANAL",
       issueDate,
+      dueDate: dueDateFrom(issueDate),
       contPersonal: contPersonalRaw || null,
       sectorNr,
       consumAddress,
@@ -738,7 +744,7 @@ export async function importApaCanalBuffer(buf: Buffer, opts: { ownerId: string;
     prisma.invoice.findMany({
       select: {
         id: true, number: true, clientId: true, issueDate: true, meterNumber: true, meterPrevReading: true,
-        meterCurrReading: true, subtotal: true, datoriiAvans: true, grandTotal: true,
+        meterCurrReading: true, subtotal: true, datoriiAvans: true, grandTotal: true, dueDate: true,
       },
     }),
   ]);
