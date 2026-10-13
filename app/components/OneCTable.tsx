@@ -10,6 +10,7 @@ type Row = Record<string, string | number | null> & {
   invoiceNumber: string | null;
   pwaTotal: number | null;
   diff: number | null;
+  invoiceToken: string | null;
 };
 type Payload = {
   items: Row[];
@@ -61,6 +62,7 @@ export default function OneCTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [previewToken, setPreviewToken] = useState<string | null>(null);
   const req = useRef(0);
   const appliedRef = useRef<Record<string, string>>({});
 
@@ -206,6 +208,7 @@ export default function OneCTable() {
                 </th>
               ))}
               <th className="border-b border-[var(--color-line)] px-2 pt-2 text-left align-top font-semibold" style={{ minWidth: 110 }}>Factură PWA</th>
+              <th className="border-b border-[var(--color-line)] px-2 pt-2 text-center align-top font-semibold" style={{ minWidth: 50 }}>Vezi</th>
               <th className="border-b border-[var(--color-line)] px-2 pt-2 text-right align-top font-semibold" style={{ minWidth: 100 }}>Total PWA</th>
               <th className="border-b border-[var(--color-line)] px-2 pt-2 text-right align-top font-semibold" style={{ minWidth: 110 }}>Diferență PWA − 1C</th>
             </tr>
@@ -223,12 +226,24 @@ export default function OneCTable() {
                   </td>
                 ))}
                 <td className="border-b border-[var(--color-line)] px-2 py-1.5">{r.invoiceNumber}</td>
+                <td className="border-b border-[var(--color-line)] px-2 py-1.5 text-center">
+                  {r.invoiceToken && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setPreviewToken(r.invoiceToken); }}
+                      title="Vezi factura (pop-up, fără să navighezi)"
+                      className="tap rounded-lg border border-[var(--color-line)] px-2 py-1 text-xs hover:bg-brand-soft hover:text-brand-strong"
+                    >
+                      👁
+                    </button>
+                  )}
+                </td>
                 <td className="border-b border-[var(--color-line)] px-2 py-1.5 text-right tabular-nums">{money(r.pwaTotal)}</td>
                 <td className={`border-b border-[var(--color-line)] px-2 py-1.5 text-right tabular-nums ${r.diff && Math.abs(r.diff) > 0.011 ? "font-semibold text-st-cancelled" : ""}`}>{money(r.diff)}</td>
               </tr>
             ))}
             {data && data.items.length === 0 && (
-              <tr><td colSpan={ONEC_COLUMNS.length + 3} className="p-8 text-center text-ink-soft">Niciun abonat cu filtrele acestea.</td></tr>
+              <tr><td colSpan={ONEC_COLUMNS.length + 4} className="p-8 text-center text-ink-soft">Niciun abonat cu filtrele acestea.</td></tr>
             )}
           </tbody>
         </table>
@@ -244,6 +259,28 @@ export default function OneCTable() {
       </div>
 
       {detailId && <DetailDialog id={detailId} onClose={() => setDetailId(null)} />}
+      {previewToken && <InvoicePreviewDialog token={previewToken} onClose={() => setPreviewToken(null)} />}
+    </div>
+  );
+}
+
+/** Pop-up cu factura reală (exact ce vede clientul/PDF-ul), pentru verificare rapidă rând cu rând —
+ * randează pagina publică într-un iframe, nu o reimplementare separată, ca să fie mereu identică. */
+function InvoicePreviewDialog({ token, onClose }: { token: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" onClick={onClose}>
+      <div className="flex h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl bg-[var(--color-surface)] shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--color-line)] px-4 py-2.5">
+          <h2 className="text-sm font-semibold">Factură — verificare rapidă</h2>
+          <div className="flex items-center gap-2">
+            <a href={`/invoice/public/${token}`} target="_blank" rel="noreferrer" className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs hover:bg-[var(--color-surface-2)]">
+              Deschide în filă nouă
+            </a>
+            <button type="button" onClick={onClose} className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide">✕</button>
+          </div>
+        </div>
+        <iframe src={`/invoice/public/${token}`} title="Factură" className="w-full flex-1 bg-white" />
+      </div>
     </div>
   );
 }

@@ -152,6 +152,8 @@ export type OneCRow = Record<string, string | number | null> & {
   /** Total al facturii din PWA (live) și diferența față de "De achitat" din 1C. */
   pwaTotal: number | null;
   diff: number | null;
+  /** Token public al facturii — ca să poată fi deschisă într-un pop-up de verificare rapidă. */
+  invoiceToken: string | null;
 };
 
 const SELECT: Record<string, true> = { id: true, clientId: true, invoiceNumber: true };
@@ -205,14 +207,16 @@ export async function listOneC(q: OneCQuery) {
 
   const numbers = ordered.map((r) => r.invoiceNumber).filter((n): n is string => typeof n === "string" && n !== "");
   const invs = numbers.length
-    ? await prisma.invoice.findMany({ where: { number: { in: numbers } }, select: { number: true, grandTotal: true } })
+    ? await prisma.invoice.findMany({ where: { number: { in: numbers } }, select: { number: true, grandTotal: true, publicToken: true } })
     : [];
   const pwa = new Map(invs.map((i) => [i.number, i.grandTotal]));
+  const tokenByNumber = new Map(invs.map((i) => [i.number, i.publicToken]));
 
   const items = ordered.map((r) => {
     const pwaTotal = typeof r.invoiceNumber === "string" && r.invoiceNumber ? pwa.get(r.invoiceNumber) ?? null : null;
+    const invoiceToken = typeof r.invoiceNumber === "string" && r.invoiceNumber ? tokenByNumber.get(r.invoiceNumber) ?? null : null;
     const de = Number(r.deAchitat) || 0;
-    return { ...r, pwaTotal, diff: pwaTotal == null ? null : round2(pwaTotal - de) } as OneCRow;
+    return { ...r, pwaTotal, diff: pwaTotal == null ? null : round2(pwaTotal - de), invoiceToken } as OneCRow;
   });
 
   return {
