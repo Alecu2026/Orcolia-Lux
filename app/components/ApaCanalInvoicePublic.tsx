@@ -365,6 +365,7 @@ export default function ApaCanalInvoicePublic({
   onLayoutChange,
   onCustomImageChange,
   previewScale = 1,
+  consumptionHistory,
 }: {
   invoice: ApaCanalInvoiceData;
   company: Company;
@@ -374,6 +375,9 @@ export default function ApaCanalInvoicePublic({
   onCustomImageChange?: (id: string, patch: Partial<ApaCanalCustomImage>) => void;
   /** Factorul de scalare CSS aplicat de containerul din editor (vezi ApaCanalLayoutEditor). */
   previewScale?: number;
+  /** Trend pe ultimele luni ale clientului (vezi getApaCanalConsumptionHistory) — dacă lipsește
+   * (ex. în editorul de șablon, care nu are un client real), cade pe luna facturii curente. */
+  consumptionHistory?: ConsumPoint[];
 }) {
   // "ap[aă]" — acceptă atât "apa" (fără diacritice, cum scriu formularele din aplicație), cât
   // și "apă" (corect gramatical, cum apare în descrierile importate din exportul 1C) — fără
@@ -399,9 +403,8 @@ export default function ApaCanalInvoicePublic({
   // — 6.2mm/rând, măsurat direct din randare la acest font/padding.
   const TABLE_BASELINE_ROWS = 2;
   const TABLE_ROW_HEIGHT_MM = 6.2;
-  const points: ConsumPoint[] = Array.isArray(invoice.monthlyConsumption)
-    ? (invoice.monthlyConsumption as ConsumPoint[])
-    : [];
+  const points: ConsumPoint[] =
+    consumptionHistory ?? (Array.isArray(invoice.monthlyConsumption) ? (invoice.monthlyConsumption as ConsumPoint[]) : []);
 
   // Necesar doar în editor (`editable`): ținta portalului prin care randăm fiecare Rnd
   // direct în `.invoice-page` — vezi explicația din LayoutField.

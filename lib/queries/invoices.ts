@@ -129,6 +129,35 @@ export async function getInvoiceByToken(token: string) {
   return prisma.invoice.findUnique({ where: { publicToken: token }, select: FULL_SELECT });
 }
 
+export type ConsumptionPoint = { label: string; value: number };
+
+/**
+ * Istoricul de consum al unui client (ultimele `limit` facturi Apă-Canal, inclusiv cea curentă),
+ * pentru graficul din factură — `invoice.monthlyConsumption` are un singur punct (doar luna lui),
+ * deci fără asta graficul arăta mereu o bară solitară, niciodată un trend pe mai multe luni.
+ * O lună apărută de mai multe ori (corecție ulterioară) se reține o singură dată — factura cea
+ * mai recentă pentru luna aia.
+ */
+export async function getApaCanalConsumptionHistory(clientId: string, limit = 6): Promise<ConsumptionPoint[]> {
+  if (DEMO) return [];
+  const invoices = await prisma.invoice.findMany({
+    where: { clientId, kind: "APA_CANAL" },
+    orderBy: { issueDate: "desc" },
+    take: limit,
+    select: { issueDate: true, monthlyConsumption: true },
+  });
+  const byMonth = new Map<string, ConsumptionPoint>();
+  for (const inv of invoices) {
+    const monthKey = `${inv.issueDate.getUTCFullYear()}-${inv.issueDate.getUTCMonth()}`;
+    if (byMonth.has(monthKey)) continue; // prima întâlnită = cea mai recentă (orderBy desc)
+    const points = Array.isArray(inv.monthlyConsumption) ? (inv.monthlyConsumption as ConsumptionPoint[]) : [];
+    if (points[0]) byMonth.set(monthKey, points[0]);
+  }
+  return [...byMonth.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([, p]) => p);
+}
+
 // --- Date reactive pentru formularul de creare ---
 
 export const invoiceProjectOptions = unstable_cache(

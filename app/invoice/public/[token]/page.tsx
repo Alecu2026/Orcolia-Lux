@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getInvoiceByToken, getInvoiceTaskTitles } from "@/lib/queries/invoices";
+import { getInvoiceByToken, getInvoiceTaskTitles, getApaCanalConsumptionHistory } from "@/lib/queries/invoices";
 import { getCompanySettings } from "@/lib/queries/company";
 import { env } from "@/lib/env";
 import { money, fmtDate, INVOICE_STATUS, type InvoiceStatusKey } from "@/app/components/invoice-meta";
@@ -21,6 +21,9 @@ export default async function PublicInvoicePage({
   if (!invoice) notFound();
 
   if (invoice.kind === "APA_CANAL") {
+    // Graficul din factură: trend pe ultimele luni ale clientului, nu doar luna facturii curente
+    // (vezi getApaCanalConsumptionHistory — invoice.monthlyConsumption singur are un punct).
+    const consumptionHistory = invoice.clientId ? await getApaCanalConsumptionHistory(invoice.clientId) : [];
     return (
       <main className="min-h-dvh bg-zinc-100 p-4 print:bg-white print:p-0">
         <div className="mx-auto max-w-[1180px]">
@@ -29,7 +32,7 @@ export default async function PublicInvoicePage({
             <PrintButton token={token} origin={env.appUrl} />
           </div>
           <div className="overflow-x-auto rounded-2xl bg-white p-4 shadow-sm ring-1 ring-zinc-200 print:rounded-none print:p-0 print:shadow-none print:ring-0">
-            <ApaCanalInvoicePublic invoice={invoice} company={company} layout={company.apaCanalLayout} />
+            <ApaCanalInvoicePublic invoice={invoice} company={company} layout={company.apaCanalLayout} consumptionHistory={consumptionHistory} />
           </div>
         </div>
       </main>
