@@ -23,6 +23,7 @@ export default function InvoicePreviewDialog({
 }) {
   const [zoom, setZoom] = useState(1);
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef(1);
   // undefined = încă nu s-a încărcat; true = zoom CSS direct în documentul facturii; false = nu avem acces → scalăm iframe-ul.
   const [native, setNative] = useState<boolean | undefined>(undefined);
@@ -36,6 +37,18 @@ export default function InvoicePreviewDialog({
       if (el) el.style.setProperty("zoom", String(zoom));
     } catch {}
   }, [zoom, native]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      setZoom((z) => clamp(z * Math.exp(-e.deltaY * 0.0025)));
+    };
+    root.addEventListener("wheel", onWheel, { passive: false });
+    return () => root.removeEventListener("wheel", onWheel);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -62,10 +75,28 @@ export default function InvoicePreviewDialog({
       (e) => {
         if (!(e.ctrlKey || e.metaKey)) return;
         e.preventDefault();
-        setZoom((z) => clamp(z + (e.deltaY < 0 ? STEP : -STEP)));
+        setZoom((z) => clamp(z * Math.exp(-e.deltaY * 0.0025)));
       },
       { passive: false },
     );
+
+    // Pinch cu două degete: browserul ar mări toată pagina (inclusiv butoanele) — îl oprim și mărim doar factura.
+    const root = win.document.documentElement;
+    root.style.touchAction = "pan-x pan-y";
+    win.document.body.style.touchAction = "pan-x pan-y";
+    let startDist = 0;
+    let startZoom = 1;
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    win.addEventListener("touchstart", (e) => {
+      if (e.touches.length === 2) { startDist = dist(e.touches); startZoom = zoomRef.current; }
+    }, { passive: true });
+    win.addEventListener("touchmove", (e) => {
+      if (e.touches.length === 2 && startDist > 0) {
+        e.preventDefault();
+        setZoom(clamp(startZoom * (dist(e.touches) / startDist)));
+      }
+    }, { passive: false });
+    win.addEventListener("touchend", () => { startDist = 0; });
     win.addEventListener("keydown", (e) => {
       if (e.key === "Escape") onClose();
       else if (e.key === "+" || e.key === "=") setZoom((z) => clamp(z + STEP));
@@ -79,6 +110,8 @@ export default function InvoicePreviewDialog({
 
   return (
     <div
+      ref={rootRef}
+      style={{ touchAction: "pan-x pan-y" }}
       className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
