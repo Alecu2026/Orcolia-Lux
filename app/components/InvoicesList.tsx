@@ -16,6 +16,7 @@ import { IconTrash, IconChevronLeft, IconChevronRight } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
 import ApaCanalJsonImport from "./ApaCanalJsonImport";
 import InvoiceViewButton from "./InvoiceViewButton";
+import { DEFAULT_PER_PAGE, NOTIFY_PER_PAGE, perPageLabel } from "@/lib/payer-notify";
 
 type Row = {
   id: string;
@@ -35,6 +36,7 @@ export default function InvoicesList({
   items,
   hasMore,
   page,
+  perPage = DEFAULT_PER_PAGE,
   status,
   q,
   origin,
@@ -43,6 +45,7 @@ export default function InvoicesList({
   items: Row[];
   hasMore: boolean;
   page: number;
+  perPage?: number;
   status: string;
   q: string;
   origin: string;
@@ -59,10 +62,11 @@ export default function InvoicesList({
 
   function navigate(params: Record<string, string | number>) {
     const sp = new URLSearchParams();
-    const merged = { status, q, page, ...params };
+    const merged = { status, q, page, ps: perPage, ...params };
     if (merged.status) sp.set("status", String(merged.status));
     if (merged.q) sp.set("q", String(merged.q));
     if (merged.page && Number(merged.page) > 1) sp.set("page", String(merged.page));
+    if (Number(merged.ps) !== DEFAULT_PER_PAGE) sp.set("ps", String(merged.ps));
     router.push(`/invoices${sp.toString() ? `?${sp}` : ""}`);
   }
 
@@ -163,6 +167,19 @@ export default function InvoicesList({
       <div className="mb-1 flex flex-wrap items-center gap-x-3 text-xs">
         <span><b>{rows.length}</b>{hasMore ? "+" : ""} facturi pe această pagină</span>
         <span className="text-ink-soft">Σ pagină: <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-soft">
+          Afișează
+          <select
+            value={perPage}
+            onChange={(e) => navigate({ ps: Number(e.target.value), page: 1 })}
+            className={`h-7 appearance-none sel-arrow rounded-lg border pl-1.5 pr-6 text-[11px] outline-none focus:border-brand ${
+              perPage === DEFAULT_PER_PAGE ? "border-[var(--color-line)] bg-[var(--color-surface)] text-ink" : "border-brand bg-brand/10 font-semibold text-brand"
+            }`}
+            aria-label="Câte pe pagină"
+          >
+            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n)}</option>)}
+          </select>
+        </label>
       </div>
 
       <div className="card overflow-auto">

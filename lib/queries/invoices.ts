@@ -4,7 +4,9 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import type { InvoiceStatus, InvoiceKind, Prisma } from "@prisma/client";
 
-const PAGE_SIZE = 50;
+import { PER_PAGE_ALL } from "../payer-notify";
+
+const DEFAULT_PAGE_SIZE = 50;
 
 export type InvoiceListItem = {
   id: string;
@@ -24,10 +26,13 @@ export async function listInvoices(opts: {
   status?: InvoiceStatus;
   search?: string;
   page?: number;
+  /** Câte pe pagină (implicit 50; PER_PAGE_ALL = toate). */
+  perPage?: number;
 }): Promise<{ items: InvoiceListItem[]; hasMore: boolean; page: number }> {
   if (DEMO) return { items: [], hasMore: false, page: 1 };
   const page = Math.max(1, opts.page ?? 1);
   const search = opts.search?.trim();
+  const PAGE_SIZE = Math.min(Math.max(1, Math.floor(opts.perPage ?? DEFAULT_PAGE_SIZE) || DEFAULT_PAGE_SIZE), PER_PAGE_ALL);
 
   const where: Prisma.InvoiceWhereInput = {
     ...(opts.status ? { status: opts.status } : {}),
@@ -43,25 +48,34 @@ export async function listInvoices(opts: {
       : {}),
   };
 
-  const rows = await prisma.invoice.findMany({
-    where,
-    select: {
-      id: true,
-      number: true,
-      status: true,
-      kind: true,
-      issueDate: true,
-      dueDate: true,
-      paidAt: true,
-      grandTotal: true,
-      currency: true,
-      publicToken: true,
-      client: { select: { name: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    skip: (page - 1) * PAGE_SIZE,
-    take: PAGE_SIZE + 1,
-  });
+  // La pagini mari (1000+ / „Toate") relația `client` ar însemna un `id: { in: [mii de id-uri] }` — foarte lent în MongoDB;
+  // atunci citim numele clienților o singură dată (id + nume, câteva zeci de mii de rânduri mici) și le potrivim aici.
+  const bigPage = PAGE_SIZE > 1000;
+  const base = {
+    id: true,
+    number: true,
+    status: true,
+    kind: true,
+    issueDate: true,
+    dueDate: true,
+    paidAt: true,
+    grandTotal: true,
+    currency: true,
+    publicToken: true,
+  } as const;
+  const [rawRows, nameById] = await Promise.all([
+    prisma.invoice.findMany({
+      where,
+      select: bigPage ? { ...base, clientId: true } : { ...base, client: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE + 1,
+    }),
+    bigPage
+      ? prisma.client.findMany({ select: { id: true, name: true } }).then((cs) => new Map(cs.map((c) => [c.id, c.name])))
+      : Promise.resolve(null),
+  ]);
+  const rows = rawRows as (Omit<(typeof rawRows)[number], "client"> & { client?: { name: string } | null; clientId?: string | null })[];
 
   const hasMore = rows.length > PAGE_SIZE;
   return {
@@ -75,7 +89,7 @@ export async function listInvoices(opts: {
       paidAt: r.paidAt,
       grandTotal: r.grandTotal,
       currency: r.currency,
-      clientName: r.client?.name ?? null,
+      clientName: nameById ? (r.clientId ? (nameById.get(r.clientId) ?? null) : null) : (r.client?.name ?? null),
       publicToken: r.publicToken,
     })),
     hasMore,

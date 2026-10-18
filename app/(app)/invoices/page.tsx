@@ -3,6 +3,7 @@ import { can } from "@/lib/permissions";
 import { listInvoices } from "@/lib/queries/invoices";
 import { env } from "@/lib/env";
 import InvoicesList from "@/app/components/InvoicesList";
+import { normalizePerPageClient } from "@/lib/payer-notify";
 import type { InvoiceStatus } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ const STATUSES: InvoiceStatus[] = ["DRAFT", "SENT", "PAID", "CANCELLED", "OVERDU
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; page?: string; ps?: string }>;
 }) {
   const user = await requirePermission("invoices.view");
   const sp = await searchParams;
@@ -22,7 +23,8 @@ export default async function InvoicesPage({
   const q = sp.q?.trim() || "";
   const page = Math.max(1, Number(sp.page) || 1);
 
-  const result = await listInvoices({ status, search: q, page });
+  const perPage = normalizePerPageClient(sp.ps);
+  const result = await listInvoices({ status, search: q, page, perPage });
 
   return (
     <div className="w-full">
@@ -30,6 +32,7 @@ export default async function InvoicesPage({
         items={result.items}
         hasMore={result.hasMore}
         page={result.page}
+        perPage={perPage}
         status={status ?? ""}
         q={q}
         origin={env.appUrl}

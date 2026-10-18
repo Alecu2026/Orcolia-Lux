@@ -37,7 +37,10 @@ export const EMPTY_FILTERS: NotifyFilters = {
   minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", installedFrom: "", sort: "", nameFix: "", invoices: "",
 };
 
-export const NOTIFY_PER_PAGE = [20, 50, 100, 200, 500] as const;
+/** „Toate" = o pagină cât toată lista (plafon de siguranță; sunt ~19.000 de plătitori). */
+export const PER_PAGE_ALL = 25_000;
+export const NOTIFY_PER_PAGE = [20, 50, 100, 200, 500, 1000, PER_PAGE_ALL] as const;
+export const perPageLabel = (n: number) => (n === PER_PAGE_ALL ? "Toate" : `${n} / pagină`);
 export const DEFAULT_PER_PAGE = 50;
 
 export const CONTACT_OPTIONS: { value: NotifyFilters["contact"]; label: string }[] = [

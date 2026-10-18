@@ -8,6 +8,7 @@ import {
   EMPTY_FILTERS,
   NOTIFIED_OPTIONS,
   NOTIFY_PER_PAGE,
+  perPageLabel,
   agoLabel,
   buildVars,
   countActiveFilters,
@@ -611,7 +612,7 @@ export default function PayerNotifyManager({
             className={fld(perPage === DEFAULT_PER_PAGE ? "" : "x")}
             aria-label="Rânduri pe pagină"
           >
-            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{n} / pagină</option>)}
+            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n)}</option>)}
           </select>
         </label>
       </div>

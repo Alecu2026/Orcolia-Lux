@@ -2,14 +2,15 @@ import "server-only";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import type { InvoiceStatus, Prisma } from "@prisma/client";
+import { PER_PAGE_ALL } from "../payer-notify";
 
 const PAGE_SIZE = 50;
 /** Câți plătitori pe pagină alege utilizatorul (?perPage=) — plafonat ca să nu încărcăm mii de rânduri odată. */
-export const PER_PAGE_OPTIONS = [20, 50, 100, 200, 500] as const;
+export const PER_PAGE_OPTIONS = [20, 50, 100, 200, 500, 1000, PER_PAGE_ALL] as const;
 export function normalizePerPage(v: unknown): number {
   const n = Math.floor(Number(v));
   if (!Number.isFinite(n) || n < 1) return PAGE_SIZE;
-  return Math.min(n, 500);
+  return Math.min(n, PER_PAGE_ALL);
 }
 
 export type PayerRow = {
@@ -282,6 +283,37 @@ function toPayerRow(c: PayerClient, latest: PayerInvoice | undefined, invoiceCou
   };
 }
 
+// Un filtru `id: { in: [mii de id-uri] }` e extrem de lent în MongoDB (~80 s la 19.000) — peste prag citim totul
+// (proiecții mici) și potrivim în memorie, ca la „Toate" / pagini foarte mari.
+const BIG = 1000;
+const PAYER_BASE: Prisma.ClientWhereInput = { OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] };
+
+async function clientsByIds(ids: string[]) {
+  if (ids.length <= BIG) return prisma.client.findMany({ where: { id: { in: ids } }, select: PAYER_SELECT });
+  const set = new Set(ids);
+  return (await prisma.client.findMany({ where: PAYER_BASE, select: PAYER_SELECT })).filter((c) => set.has(c.id));
+}
+
+async function invoicesByClientIds(ids: string[]) {
+  if (ids.length <= BIG) {
+    return prisma.invoice.findMany({ where: { clientId: { in: ids } }, orderBy: { issueDate: "desc" }, select: INVOICE_SELECT });
+  }
+  const set = new Set(ids);
+  const all = await prisma.invoice.findMany({ where: { clientId: { not: null } }, orderBy: { issueDate: "desc" }, select: INVOICE_SELECT });
+  return all.filter((i) => i.clientId && set.has(i.clientId));
+}
+
+async function invoiceCountsByClientIds(ids: string[]) {
+  const rows = await prisma.invoice.groupBy({
+    by: ["clientId"],
+    where: ids.length <= BIG ? { clientId: { in: ids } } : { clientId: { not: null } },
+    _count: { _all: true },
+  });
+  if (ids.length <= BIG) return rows;
+  const set = new Set(ids);
+  return rows.filter((r) => r.clientId && set.has(r.clientId));
+}
+
 export async function listPayers(opts: ListPayersOpts = {}) {
   if (DEMO) return { items: [] as PayerRow[], total: 0, page: 1, hasMore: false };
 
@@ -313,13 +345,7 @@ export async function listPayers(opts: ListPayersOpts = {}) {
   ]);
 
   const ids = items.map((c) => c.id);
-  const invoices = ids.length
-    ? await prisma.invoice.findMany({
-        where: { clientId: { in: ids } },
-        orderBy: { issueDate: "desc" },
-        select: INVOICE_SELECT,
-      })
-    : [];
+  const invoices = ids.length ? await invoicesByClientIds(ids) : [];
 
   const byClient = new Map<string, typeof invoices>();
   for (const inv of invoices) {
@@ -397,15 +423,8 @@ async function listPayersByInstall(opts: ListPayersOpts, installedFrom: string |
 async function hydratePayerRows(ids: string[], installBy?: Map<string, string | null>): Promise<PayerRow[]> {
   if (!ids.length) return [];
   const [clients, invoices] = await Promise.all([
-    prisma.client.findMany({
-      where: { id: { in: ids } },
-      select: PAYER_SELECT,
-    }),
-    prisma.invoice.findMany({
-      where: { clientId: { in: ids } },
-      orderBy: { issueDate: "desc" },
-      select: INVOICE_SELECT,
-    }),
+    clientsByIds(ids),
+    invoicesByClientIds(ids),
   ]);
   const byId = new Map(clients.map((c) => [c.id, c]));
   const invByClient = new Map<string, typeof invoices>();
@@ -474,8 +493,8 @@ async function listPayersForMonth(month: string, opts: ListPayersOpts, page: num
   const ids = matched.slice((page - 1) * perPage, page * perPage).map((c) => c.id);
   const [pageClients, counts] = ids.length
     ? await Promise.all([
-        prisma.client.findMany({ where: { id: { in: ids } }, select: PAYER_SELECT }),
-        prisma.invoice.groupBy({ by: ["clientId"], where: { clientId: { in: ids } }, _count: { _all: true } }),
+        clientsByIds(ids),
+        invoiceCountsByClientIds(ids),
       ])
     : [[], []];
   const byId = new Map(pageClients.map((c) => [c.id, c]));
