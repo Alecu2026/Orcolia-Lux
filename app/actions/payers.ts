@@ -63,6 +63,67 @@ export async function deletePayer(id: string): Promise<void> {
   revalidatePath("/platitori");
 }
 
+export type BulkDeleteResult =
+  | {
+      ok: true;
+      deletedIds: string[];
+      skipped: { withInvoices: number; withActivity: number; activated: number; missing: number };
+    }
+  | { ok: false; error: string };
+
+/**
+ * Ștergere în masă (curățarea datelor de test). Șterge DOAR plătitorii fără facturi, programări, proiecte,
+ * task-uri și fără cont de portal activat — verificat aici, pe server, indiferent ce trimite clientul; restul
+ * sunt omiși și numărați. Un lot are cel mult 100 de id-uri.
+ */
+export async function deletePayersBulkAction(ids: string[]): Promise<BulkDeleteResult> {
+  const user = await requireUser();
+  if (!can(user, "clients.delete")) return { ok: false, error: "Fără permisiune de ștergere." };
+  if (DEMO) return { ok: false, error: "Mod demo: conectează o bază de date." };
+  const unique = [...new Set(Array.isArray(ids) ? ids : [])];
+  if (unique.length === 0) return { ok: true, deletedIds: [], skipped: { withInvoices: 0, withActivity: 0, activated: 0, missing: 0 } };
+  if (unique.length > 100 || unique.some((id) => typeof id !== "string" || !/^[0-9a-f]{24}$/i.test(id))) {
+    return { ok: false, error: "Lot invalid." };
+  }
+
+  const payers = await prisma.client.findMany({
+    where: { id: { in: unique }, OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] },
+    select: { id: true, name: true, portalPasswordHash: true },
+  });
+  const found = payers.map((p) => p.id);
+  const [inv, appt, proj, task] = await Promise.all([
+    prisma.invoice.groupBy({ by: ["clientId"], where: { clientId: { in: found } }, _count: { _all: true } }),
+    prisma.appointment.groupBy({ by: ["clientId"], where: { clientId: { in: found } }, _count: { _all: true } }),
+    prisma.project.groupBy({ by: ["clientId"], where: { clientId: { in: found } }, _count: { _all: true } }),
+    prisma.task.groupBy({ by: ["clientId"], where: { clientId: { in: found } }, _count: { _all: true } }),
+  ]);
+  const withInv = new Set(inv.map((r) => r.clientId));
+  const withAct = new Set([...appt, ...proj, ...task].map((r) => r.clientId));
+
+  const skipped = { withInvoices: 0, withActivity: 0, activated: 0, missing: unique.length - payers.length };
+  const deletable: typeof payers = [];
+  for (const p of payers) {
+    if (withInv.has(p.id)) skipped.withInvoices++;
+    else if (withAct.has(p.id)) skipped.withActivity++;
+    else if (p.portalPasswordHash) skipped.activated++;
+    else deletable.push(p);
+  }
+
+  const delIds = deletable.map((p) => p.id);
+  if (delIds.length) {
+    await prisma.payerNote.deleteMany({ where: { clientId: { in: delIds } } });
+    await prisma.client.deleteMany({ where: { id: { in: delIds } } });
+    await logAudit(actor(user), {
+      action: "client.bulk_delete",
+      module: "Payers",
+      objectName: `${delIds.length} plătitori fără facturi șterși`,
+      oldValue: deletable.slice(0, 5).map((p) => p.name).join(", ") + (deletable.length > 5 ? "…" : ""),
+    });
+    revalidatePath("/platitori");
+  }
+  return { ok: true, deletedIds: delIds, skipped };
+}
+
 /**
  * Revocă accesul curent la portal (parolă + sesiuni) — clientul se poate reactiva de la zero
  * (aceeași serie de contor, poate cu alt email) prin fluxul normal de înregistrare.

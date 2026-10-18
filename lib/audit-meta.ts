@@ -50,6 +50,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "client.create": "Creare client",
   "client.update": "Editare client",
   "client.delete": "Ștergere client",
+  "client.bulk_delete": "Ștergere în masă plătitori",
 
   "invoice.create": "Creare factură",
   "invoice.update": "Editare factură",
@@ -93,6 +94,7 @@ const SHORT_LABELS: Record<string, string> = {
   "client.create": "Client creat",
   "client.update": "Client editat",
   "client.delete": "Client șters",
+  "client.bulk_delete": "Plătitori șterși în masă",
   "invoice.create": "Factură creată",
   "invoice.update": "Factură editată",
   "invoice.delete": "Factură ștearsă",

@@ -23,6 +23,7 @@ export function filtersToListOpts(f: NotifyFilters): ListPayersOpts {
     notified: f.notified || undefined,
     installedFrom: f.installedFrom || undefined,
     needsNameFix: f.nameFix === "1" || undefined,
+    noInvoices: f.invoices === "none" || undefined,
     sort: f.sort || "name",
   };
 }

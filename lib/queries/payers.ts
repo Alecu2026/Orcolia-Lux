@@ -68,6 +68,8 @@ export type ListPayersOpts = {
   kind?: "person" | "company";
   /** Filtru după Client.lastNotifiedAt: niciodată / în / nu în ultimele 7 sau 30 de zile. */
   notified?: "never" | "7d" | "30d" | "not7d" | "not30d";
+  /** Doar plătitorii fără nicio factură (snapshot-ul ultimei facturi e gol). */
+  noInvoices?: boolean;
   page?: number;
   perPage?: number;
 };
@@ -204,6 +206,7 @@ export async function buildPayerWhere(opts: ListPayersOpts = {}): Promise<Prisma
       ...(opts.kind === "company" ? [{ meterSeries: null }] : []),
       ...contact,
       ...notified,
+      ...(opts.noInvoices ? [{ lastInvoiceStatus: null }, { lastInvoiceGrandTotal: null }] : []),
     ],
     ...(nameFixIds ? { id: { in: nameFixIds } } : {}),
     ...(opts.status === "activated" ? { portalPasswordHash: { not: null } } : {}),

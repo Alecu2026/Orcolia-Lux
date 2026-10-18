@@ -28,11 +28,13 @@ export type NotifyFilters = {
   sort: "" | "debtDesc" | "debtAsc" | "installDesc" | "installAsc";
   /** "1" = doar numele cu „?" (litere românești pierdute la importul din 1C). */
   nameFix: "" | "1";
+  /** "none" = plătitori fără nicio factură (de ex. conturi de test de curățat). */
+  invoices: "" | "none";
 };
 
 export const EMPTY_FILTERS: NotifyFilters = {
   q: "", street: "", month: "", account: "", sector: "", invoiceStatus: "", debt: "",
-  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", installedFrom: "", sort: "", nameFix: "",
+  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", installedFrom: "", sort: "", nameFix: "", invoices: "",
 };
 
 export const NOTIFY_PER_PAGE = [20, 50, 100, 200, 500] as const;
@@ -90,6 +92,7 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     installedFrom: /^\d{4}-\d{2}-\d{2}$/.test(installedFrom) ? installedFrom : "",
     sort: ONE_OF(get(src, "sort"), ["debtDesc", "debtAsc", "installDesc", "installAsc"] as const),
     nameFix: ONE_OF(get(src, "nameFix"), ["1"] as const),
+    invoices: ONE_OF(get(src, "invoices"), ["none"] as const),
   };
 }
 

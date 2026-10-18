@@ -27,6 +27,7 @@ import { useToast } from "./toast";
 import PayerNotifyDialog, { type Recipient } from "./PayerNotifyDialog";
 import PayerTemplatesDialog from "./PayerTemplatesDialog";
 import PayerDetailDialog from "./PayerDetailDialog";
+import PayerBulkDeleteDialog from "./PayerBulkDeleteDialog";
 import ExportButton from "./ExportButton";
 import {
   createPayerTemplateAction,
@@ -89,6 +90,7 @@ export default function PayerNotifyManager({
   userEmail,
   userId = "",
   isAdmin = false,
+  canDelete = false,
   basePath = "/notificari-platitori",
   browseOnly = false,
   nameFixCount = 0,
@@ -103,6 +105,8 @@ export default function PayerNotifyManager({
   /** Utilizatorul curent — pentru notițe (cine le poate modifica). */
   userId?: string;
   isAdmin?: boolean;
+  /** Poate șterge plătitori (clients.delete) — arată selecția și „Șterge selectați", chiar și în modul de răsfoire. */
+  canDelete?: boolean;
   /** Ruta paginii — pentru URL și cheia de salvare a filtrelor (fiecare pagină își ține filtrele separat). */
   basePath?: string;
   /** Mod „răsfoire" (/platitori): același tabel, fără bife/trimitere/șabloane, cu export. */
@@ -112,6 +116,8 @@ export default function PayerNotifyManager({
 }) {
   const toast = useToast();
   const canSend = canSendProp && !browseOnly;
+  const canSelect = canSend || canDelete;
+  const [deleting, setDeleting] = useState(false);
   const BASE_PATH = basePath;
   const STORAGE_KEY = `filters:${basePath}`;
 
@@ -397,7 +403,7 @@ export default function PayerNotifyManager({
   const pageButtons = buildPageButtons(page, totalPages);
   const from = data.total === 0 ? 0 : (page - 1) * perPage + 1;
   const to = Math.min(page * perPage, data.total);
-  const colCount = canSend ? 14 : 12;
+  const colCount = 12 + (canSelect ? 1 : 0) + (canSend ? 1 : 0);
 
   return (
     <div>
@@ -480,6 +486,10 @@ export default function PayerNotifyManager({
           <option value="">Notificat: oricând</option>
           {NOTIFIED_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
+        <select value={filters.invoices} onChange={(e) => setFilter({ invoices: e.target.value as NotifyFilters["invoices"] })} className={fld(filters.invoices)} aria-label="Facturi">
+          <option value="">Facturi: toate</option>
+          <option value="none">Fără nicio factură</option>
+        </select>
         <select value={filters.kind} onChange={(e) => setFilter({ kind: e.target.value as NotifyFilters["kind"] })} className={fld(filters.kind)} aria-label="Tip plătitor">
           <option value="">Tip: toți</option>
           <option value="person">Persoane fizice</option>
@@ -533,6 +543,9 @@ export default function PayerNotifyManager({
         <button type="button" onClick={() => applyPreset({ contact: "none" })} className="tap h-6 rounded-full border border-[var(--color-line)] px-2.5 hover:border-brand hover:bg-brand-soft">
           Fără contact (de completat)
         </button>
+        <button type="button" onClick={() => applyPreset({ invoices: "none" })} className="tap h-6 rounded-full border border-[var(--color-line)] px-2.5 hover:border-brand hover:bg-brand-soft">
+          Fără facturi (curățenie)
+        </button>
         {browseOnly && (
           <span className="ml-auto">
             <ExportButton
@@ -556,11 +569,11 @@ export default function PayerNotifyManager({
       </div>
 
       {/* ── Bară de selecție / acțiuni ─────────────────────────────────────── */}
-      {canSend && (
+      {canSelect && (
         <div className={`mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs ${selCount ? "border-brand bg-brand/10" : "border-[var(--color-line)] bg-[var(--color-surface-2)]"}`}>
           {selCount > 0 ? (
             <span className="font-semibold text-brand">
-              {nf(selCount)} selectați <span className="font-normal text-ink-soft">· {nf(selEmail)} cu email · {nf(selPhone)} cu telefon</span>
+              {nf(selCount)} selectați {canSend && <span className="font-normal text-ink-soft">· {nf(selEmail)} cu email · {nf(selPhone)} cu telefon</span>}
             </span>
           ) : (
             <span className="text-ink-soft">Bifează plătitorii (Shift = interval) sau selectează-i pe toți din filtru. Click pe un rând = datele lui.</span>
@@ -581,14 +594,27 @@ export default function PayerNotifyManager({
                 Golește selecția
               </button>
             )}
-            <button
-              type="button"
-              onClick={openForSelection}
-              disabled={selCount === 0}
-              className="tap h-7 rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:opacity-40"
-            >
-              ✉ Trimite notificare{selCount ? ` (${nf(selCount)})` : ""}
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => setDeleting(true)}
+                disabled={selCount === 0}
+                className="tap h-7 rounded-lg border border-st-cancelled/40 px-3 text-[11px] font-semibold text-st-cancelled hover:bg-st-cancelled/10 disabled:opacity-40"
+                title="Șterge plătitorii selectați (doar cei fără facturi etc.)"
+              >
+                🗑 Șterge selectați{selCount ? ` (${nf(selCount)})` : ""}
+              </button>
+            )}
+            {canSend && (
+              <button
+                type="button"
+                onClick={openForSelection}
+                disabled={selCount === 0}
+                className="tap h-7 rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:opacity-40"
+              >
+                ✉ Trimite notificare{selCount ? ` (${nf(selCount)})` : ""}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -623,7 +649,7 @@ export default function PayerNotifyManager({
         <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] leading-[14px]">
           <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
             <tr>
-              {canSend && (
+              {canSelect && (
                 <th className="sticky left-0 z-30 w-7 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1">
                   <input
                     ref={headerCheck}
@@ -635,7 +661,7 @@ export default function PayerNotifyManager({
                   />
                 </th>
               )}
-              <Th sticky={canSend ? "left-7" : "left-0"} minW={190}>
+              <Th sticky={canSelect ? "left-7" : "left-0"} minW={190}>
                 <button type="button" onClick={() => setFilter({ sort: "" })} className="font-semibold hover:text-brand">Plătitor</button>
               </Th>
               <Th minW={95}>Cont / contract</Th>
@@ -669,7 +695,7 @@ export default function PayerNotifyManager({
                   onClick={() => setDetailRow(r)}
                   className={`cursor-pointer ${sel ? "bg-brand-soft/60" : "hover:bg-brand-soft/30"}`}
                 >
-                  {canSend && (
+                  {canSelect && (
                     <td
                       className={`sticky left-0 z-10 cursor-pointer border-b border-[var(--color-line)] px-1.5 py-px ${bg}`}
                       onClick={(e) => { e.stopPropagation(); toggleRow(i, e.shiftKey); }}
@@ -679,7 +705,7 @@ export default function PayerNotifyManager({
                       <input type="checkbox" checked={sel} readOnly tabIndex={-1} className="pointer-events-none block size-3 accent-[var(--color-brand)]" aria-label={`Selectează ${r.name}`} />
                     </td>
                   )}
-                  <td className={`sticky ${canSend ? "left-7" : "left-0"} z-10 border-b border-[var(--color-line)] px-1.5 py-px font-medium ${bg}`} style={{ maxWidth: 220 }}>
+                  <td className={`sticky ${canSelect ? "left-7" : "left-0"} z-10 border-b border-[var(--color-line)] px-1.5 py-px font-medium ${bg}`} style={{ maxWidth: 220 }}>
                     <div className="truncate hover:text-brand" title={r.name}>{r.name}</div>
                   </td>
                   <td className="border-b border-[var(--color-line)] px-1.5 py-px">{r.meterSeries ?? r.contract ?? "—"}</td>
@@ -785,6 +811,21 @@ export default function PayerNotifyManager({
           onUpdate={updateTemplate}
           onDelete={deleteTemplate}
           onClose={() => setTplOpen(false)}
+        />
+      )}
+
+      {deleting && (
+        <PayerBulkDeleteDialog
+          ids={[...selected.keys()]}
+          onClose={() => setDeleting(false)}
+          onDone={(deletedIds) => {
+            setDeleting(false);
+            if (deletedIds.length) {
+              const gone = new Set(deletedIds);
+              setSelected((prev) => new Map([...prev].filter(([id]) => !gone.has(id))));
+              reload();
+            }
+          }}
         />
       )}
 

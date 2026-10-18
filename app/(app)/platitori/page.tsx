@@ -75,6 +75,7 @@ export default async function PayersPage({
         userEmail={user.email}
         userId={user.id}
         isAdmin={can(user, "admin")}
+        canDelete={can(user, "clients.delete")}
       />
     </div>
   );
