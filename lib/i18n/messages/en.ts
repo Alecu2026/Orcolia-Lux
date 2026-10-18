@@ -13,6 +13,7 @@ const en: Messages = {
     invoices: "Invoices",
     clients: "Clients",
     payers: "Payers",
+    payerNotify: "Notifications",
     users: "Users",
     auditLogs: "Audit Logs",
     telegram: "Telegram",

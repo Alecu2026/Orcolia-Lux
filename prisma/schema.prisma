@@ -643,6 +643,9 @@ model Client {
   // același contract = același plătitor, în toate lunile. (Persoanele fizice se identifică după meterSeries.)
   apaCanalContract      String?
   lastInvoiceIssueDate  DateTime?
+  // Ultima dată când i-am trimis o notificare (email/SMS) din /notificari-platitori — denormalizat
+  // din PayerNotificationLog ca să putem filtra/sorta plătitorii după el fără join (Mongo).
+  lastNotifiedAt        DateTime?
 
   appointments            Appointment[]
   projects                Project[]
@@ -656,6 +659,31 @@ model Client {
   @@index([userId, lastInvoiceGrandTotal])
   @@index([userId, lastInvoiceStatus])
   @@index([userId, lastInvoiceSectorNr])
+  @@index([lastNotifiedAt])
+}
+
+// Jurnal al notificărilor trimise plătitorilor (email/SMS) — fără relație la Client/User intenționat
+// (ca AuditLog): istoricul rămâne chiar dacă plătitorul sau operatorul e șters. Un rând = un mesaj
+// către un destinatar pe un canal. `campaignId` grupează o trimitere în masă și face retrimiterea
+// unui lot idempotentă (nu trimitem de două ori același canal aceluiași plătitor în aceeași campanie).
+model PayerNotificationLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String
+  clientId   String   @db.ObjectId
+  clientName String
+  channel    String // EMAIL | SMS
+  to         String
+  status     String // SENT | FAILED
+  error      String?
+  subject    String?
+  body       String
+  userId     String   @db.ObjectId
+  userName   String
+  createdAt  DateTime @default(now())
+
+  @@index([campaignId, clientId])
+  @@index([clientId, createdAt])
+  @@index([createdAt])
 }
 
 // --- Autentificare portal client (oglindă Session/VerificationCode, dar legată de Client) ---

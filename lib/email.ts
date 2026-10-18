@@ -263,3 +263,50 @@ export async function sendReminderEmail(d: ReminderEmailData): Promise<void> {
     html: template(d),
   });
 }
+
+export type PayerNotificationEmailData = {
+  to: string;
+  subject: string;
+  /** Text simplu, cu rânduri noi — se escapează și se afișează cu <br>. */
+  body: string;
+  companyName?: string | null;
+};
+
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function payerNotificationTemplate(d: PayerNotificationEmailData): string {
+  const company = d.companyName ? escapeHtml(d.companyName) : "Apă-Canal";
+  const body = escapeHtml(d.body).replace(/\r?\n/g, "<br>");
+  return `<!doctype html>
+<html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+        <tr><td style="background:#0d9488;padding:20px 28px;color:#fff;font-size:19px;font-weight:700">
+          ${company}
+        </td></tr>
+        <tr><td style="padding:28px;font-size:15px;line-height:1.6">
+          ${body}
+        </td></tr>
+        <tr><td style="padding:14px 28px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">
+          Mesaj automat de la ${company} — te rugăm să nu răspunzi la acest email.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+/** Notificare către un plătitor (din /notificari-platitori). Aruncă eroare la eșec. */
+export async function sendPayerNotificationEmail(d: PayerNotificationEmailData): Promise<void> {
+  const transporter = getTransporter();
+  if (!transporter) throw new Error("SMTP neconfigurat.");
+  await transporter.sendMail({
+    from: env.smtp.from,
+    to: d.to,
+    subject: d.subject,
+    text: d.body,
+    html: payerNotificationTemplate(d),
+  });
+}

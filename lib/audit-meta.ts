@@ -68,6 +68,7 @@ export const ACTION_LABELS: Record<string, string> = {
 
   "settings.update": "Modificare setări",
   "notifications.settings_change": "Setări notificări",
+  "payer.notify": "Notificare plătitori (email/SMS)",
 };
 
 // Etichete scurte pentru afișarea compactă (un singur rând).
@@ -107,6 +108,7 @@ const SHORT_LABELS: Record<string, string> = {
   "user.superadmin_change": "Super-admin schimbat",
   "settings.update": "Setări modificate",
   "notifications.settings_change": "Setări notificări",
+  "payer.notify": "Notificare plătitori",
 };
 
 export function actionLabel(action: string): string {

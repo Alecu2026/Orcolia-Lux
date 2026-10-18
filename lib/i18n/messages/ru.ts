@@ -13,6 +13,7 @@ const ru: Messages = {
     invoices: "Счета",
     clients: "Клиенты",
     payers: "Плательщики",
+    payerNotify: "Уведомления",
     users: "Пользователи",
     auditLogs: "Журнал аудита",
     telegram: "Telegram",

@@ -22,7 +22,10 @@ export type PayerRow = {
   phone: string | null;
   activated: boolean;
   invoiceCount: number;
-  latestInvoice: { number: string; status: InvoiceStatus; grandTotal: number; currency: string } | null;
+  latestInvoice: { number: string; status: InvoiceStatus; grandTotal: number; currency: string; dueDate: string | null } | null;
+  consumAddress: string | null;
+  /** ISO — ultima notificare trimisă din /notificari-platitori (null = niciodată). */
+  lastNotifiedAt: string | null;
   /** "YYYY-MM-DD" instalării contorului activ (din 1C) — completat doar când sortarea/filtrarea
    * cerută îl folosește (vezi installDateMap); altfel rămâne null, fără cost suplimentar. */
   installedAt: string | null;
@@ -56,6 +59,15 @@ export type ListPayersOpts = {
   month?: string;
   /** "YYYY-MM-DD": doar plătitorii cu contorul activ instalat la sau după data asta (din 1C). */
   installedFrom?: string;
+  /** Interval de sold ("de achitat") — pe ultima factură sau, cu `month`, pe factura lunii alese. */
+  minDebt?: number;
+  maxDebt?: number;
+  /** Ce date de contact are plătitorul (vezi /notificari-platitori). */
+  contact?: "email" | "phone" | "both" | "any" | "none" | "noemail" | "nophone";
+  /** "person" = cu cont personal (meterSeries); "company" = firmă/instituție (doar nr. de contract). */
+  kind?: "person" | "company";
+  /** Filtru după Client.lastNotifiedAt: niciodată / în / nu în ultimele 7 sau 30 de zile. */
+  notified?: "never" | "7d" | "30d" | "not7d" | "not30d";
   page?: number;
   perPage?: number;
 };
@@ -92,11 +104,13 @@ export async function listPayerMonths(): Promise<{ month: string; count: number 
 /** Filtrele de sold/status aplicate pe factura unei luni (în memorie). */
 export function matchesMonthInvoice(
   inv: { status: InvoiceStatus; grandTotal: number },
-  opts: Pick<ListPayersOpts, "debt" | "invoiceStatus">,
+  opts: Pick<ListPayersOpts, "debt" | "invoiceStatus" | "minDebt" | "maxDebt">,
 ): boolean {
   if (opts.invoiceStatus && inv.status !== opts.invoiceStatus) return false;
   if (opts.debt === "has" && !(inv.grandTotal > 0)) return false;
   if (opts.debt === "none" && inv.grandTotal > 0) return false;
+  if (opts.minDebt != null && inv.grandTotal < opts.minDebt) return false;
+  if (opts.maxDebt != null && inv.grandTotal > opts.maxDebt) return false;
   return true;
 }
 
@@ -137,6 +151,38 @@ export async function buildPayerWhere(opts: ListPayersOpts = {}): Promise<Prisma
   const street = opts.street?.trim();
   const nameFixIds = opts.needsNameFix ? await findClientIdsNeedingNameFix() : null;
 
+  // Câmpurile opționale (email/phone) sunt "goale" fie null, fie "" (importurile vechi au salvat șiruri goale).
+  const hasEmail: Prisma.ClientWhereInput[] = [{ email: { not: null } }, { email: { not: "" } }];
+  const hasPhone: Prisma.ClientWhereInput[] = [{ phone: { not: null } }, { phone: { not: "" } }];
+  const noEmail: Prisma.ClientWhereInput = { OR: [{ email: null }, { email: "" }] };
+  const noPhone: Prisma.ClientWhereInput = { OR: [{ phone: null }, { phone: "" }] };
+  const contact: Prisma.ClientWhereInput[] =
+    opts.contact === "email" ? hasEmail
+    : opts.contact === "phone" ? hasPhone
+    : opts.contact === "both" ? [...hasEmail, ...hasPhone]
+    : opts.contact === "any" ? [{ OR: [{ AND: hasEmail }, { AND: hasPhone }] }]
+    : opts.contact === "noemail" ? [noEmail]
+    : opts.contact === "nophone" ? [noPhone]
+    : opts.contact === "none" ? [noEmail, noPhone]
+    : [];
+
+  let notified: Prisma.ClientWhereInput[] = [];
+  if (opts.notified) {
+    const days = opts.notified.endsWith("30d") ? 30 : 7;
+    const since = new Date(Date.now() - days * 86_400_000);
+    notified =
+      opts.notified === "never" ? [{ lastNotifiedAt: null }]
+      : opts.notified === "7d" || opts.notified === "30d" ? [{ lastNotifiedAt: { gte: since } }]
+      : [{ OR: [{ lastNotifiedAt: null }, { lastNotifiedAt: { lt: since } }] }];
+  }
+
+  // Sold: "cu/fără datorie" și intervalul min–max se aplică pe același câmp, deci le combinăm într-un singur filtru.
+  const total: Prisma.FloatNullableFilter = {};
+  if (opts.debt === "has") total.gt = 0;
+  if (opts.debt === "none") total.lte = 0;
+  if (opts.minDebt != null) total.gte = opts.minDebt;
+  if (opts.maxDebt != null) total.lte = opts.debt === "none" ? Math.min(0, opts.maxDebt) : opts.maxDebt;
+
   return {
     // Plătitori = abonații Apă-Canal: persoanele (cont personal) și firmele/instituțiile (nr. contract 1C).
     AND: [
@@ -149,18 +195,22 @@ export async function buildPayerWhere(opts: ListPayersOpts = {}): Promise<Prisma
                 { meterSeries: { contains: search, mode: "insensitive" as const } },
                 { apaCanalContract: { contains: search, mode: "insensitive" as const } },
                 { email: { contains: search, mode: "insensitive" as const } },
+                { phone: { contains: search, mode: "insensitive" as const } },
               ],
             },
           ]
         : []),
+      ...(opts.kind === "person" ? [{ meterSeries: { not: null } }] : []),
+      ...(opts.kind === "company" ? [{ meterSeries: null }] : []),
+      ...contact,
+      ...notified,
     ],
     ...(nameFixIds ? { id: { in: nameFixIds } } : {}),
     ...(opts.status === "activated" ? { portalPasswordHash: { not: null } } : {}),
     ...(opts.status === "pending" ? { portalPasswordHash: null } : {}),
     ...(opts.sector ? { lastInvoiceSectorNr: SECTOR_VALUE[opts.sector] } : {}),
     ...(opts.invoiceStatus ? { lastInvoiceStatus: opts.invoiceStatus } : {}),
-    ...(opts.debt === "has" ? { lastInvoiceGrandTotal: { gt: 0 } } : {}),
-    ...(opts.debt === "none" ? { lastInvoiceGrandTotal: { lte: 0 } } : {}),
+    ...(Object.keys(total).length ? { lastInvoiceGrandTotal: total } : {}),
     ...(street ? { consumAddress: { contains: street, mode: "insensitive" as const } } : {}),
   };
 }
@@ -196,6 +246,39 @@ function sortByInstall<T extends { id: string; name: string }>(
   });
 }
 
+const PAYER_SELECT = {
+  id: true, name: true, meterSeries: true, apaCanalContract: true, email: true, phone: true,
+  portalPasswordHash: true, consumAddress: true, lastNotifiedAt: true,
+} as const;
+const INVOICE_SELECT = { clientId: true, number: true, status: true, grandTotal: true, currency: true, dueDate: true } as const;
+type PayerClient = Prisma.ClientGetPayload<{ select: typeof PAYER_SELECT }>;
+type PayerInvoice = { number: string; status: InvoiceStatus; grandTotal: number; currency: string; dueDate: Date | null };
+
+function toPayerRow(c: PayerClient, latest: PayerInvoice | undefined, invoiceCount: number, installedAt: string | null): PayerRow {
+  return {
+    id: c.id,
+    name: c.name,
+    meterSeries: c.meterSeries,
+    contract: c.apaCanalContract,
+    email: c.email,
+    phone: c.phone,
+    activated: !!c.portalPasswordHash,
+    invoiceCount,
+    latestInvoice: latest
+      ? {
+          number: latest.number,
+          status: latest.status,
+          grandTotal: latest.grandTotal,
+          currency: latest.currency,
+          dueDate: latest.dueDate ? latest.dueDate.toISOString() : null,
+        }
+      : null,
+    consumAddress: c.consumAddress,
+    lastNotifiedAt: c.lastNotifiedAt ? c.lastNotifiedAt.toISOString() : null,
+    installedAt,
+  };
+}
+
 export async function listPayers(opts: ListPayersOpts = {}) {
   if (DEMO) return { items: [] as PayerRow[], total: 0, page: 1, hasMore: false };
 
@@ -221,7 +304,7 @@ export async function listPayers(opts: ListPayersOpts = {}) {
       orderBy,
       skip: (page - 1) * perPage,
       take: perPage,
-      select: { id: true, name: true, meterSeries: true, apaCanalContract: true, email: true, phone: true, portalPasswordHash: true },
+      select: PAYER_SELECT,
     }),
     prisma.client.count({ where }),
   ]);
@@ -231,7 +314,7 @@ export async function listPayers(opts: ListPayersOpts = {}) {
     ? await prisma.invoice.findMany({
         where: { clientId: { in: ids } },
         orderBy: { issueDate: "desc" },
-        select: { clientId: true, number: true, status: true, grandTotal: true, currency: true },
+        select: INVOICE_SELECT,
       })
     : [];
 
@@ -244,28 +327,33 @@ export async function listPayers(opts: ListPayersOpts = {}) {
 
   const rows: PayerRow[] = items.map((c) => {
     const clientInvoices = byClient.get(c.id) ?? [];
-    return {
-      id: c.id,
-      name: c.name,
-      meterSeries: c.meterSeries,
-      contract: c.apaCanalContract,
-      email: c.email,
-      phone: c.phone,
-      activated: !!c.portalPasswordHash,
-      invoiceCount: clientInvoices.length,
-      latestInvoice: clientInvoices[0]
-        ? {
-            number: clientInvoices[0].number,
-            status: clientInvoices[0].status,
-            grandTotal: clientInvoices[0].grandTotal,
-            currency: clientInvoices[0].currency,
-          }
-        : null,
-      installedAt: null,
-    };
+    return toPayerRow(c, clientInvoices[0], clientInvoices.length, null);
   });
 
   return { items: rows, total, page, perPage, hasMore: page * perPage < total };
+}
+
+/** Contact minim al unui plătitor din lista filtrată — pentru "selectează toți cei din filtru". */
+export type PayerContact = { id: string; name: string; email: string | null; phone: string | null };
+
+/**
+ * TOȚI plătitorii care respectă filtrele (fără paginare), doar id+nume+contact — ca să putem selecta
+ * "toți cei 1 234 din filtru" și trimite notificări fără să ținem pe client mii de rânduri complete.
+ * Aceeași logică de potrivire ca listPayers (inclusiv luna facturii și data instalării).
+ */
+export async function listMatchingPayerContacts(opts: ListPayersOpts = {}): Promise<PayerContact[]> {
+  if (DEMO) return [];
+  const month = parsePayerMonth(opts.month);
+  const installedFrom = parseInstalledFrom(opts.installedFrom);
+  if (month) return (await matchPayersForMonth(month, { ...opts, installedFrom })).matched;
+  if (installedFrom || opts.sort === "installDesc" || opts.sort === "installAsc") {
+    return (await matchPayersByInstall(opts, installedFrom)).matched;
+  }
+  return prisma.client.findMany({
+    where: await buildPayerWhere(opts),
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true, phone: true },
+  });
 }
 
 /**
@@ -274,10 +362,10 @@ export async function listPayers(opts: ListPayersOpts = {}) {
  * în MongoDB). La fel ca listPayersForMonth: aducem id-urile filtrate + mapa de date, sortăm/
  * paginăm în memorie, apoi hidratăm doar pagina cerută (nu toți ~19k dintr-o dată).
  */
-async function listPayersByInstall(opts: ListPayersOpts, installedFrom: string | undefined, page: number, perPage: number) {
+async function matchPayersByInstall(opts: ListPayersOpts, installedFrom: string | undefined) {
   const where = await buildPayerWhere(opts);
   const [clients, installBy] = await Promise.all([
-    prisma.client.findMany({ where, select: { id: true, name: true } }),
+    prisma.client.findMany({ where, select: { id: true, name: true, email: true, phone: true } }),
     installDateMap(),
   ]);
 
@@ -289,7 +377,11 @@ async function listPayersByInstall(opts: ListPayersOpts, installedFrom: string |
     });
   }
   matched = sortByInstall(matched, installBy, opts.sort === "installAsc" ? 1 : -1);
+  return { matched, installBy };
+}
 
+async function listPayersByInstall(opts: ListPayersOpts, installedFrom: string | undefined, page: number, perPage: number) {
+  const { matched, installBy } = await matchPayersByInstall(opts, installedFrom);
   const total = matched.length;
   const ids = matched.slice((page - 1) * perPage, page * perPage).map((c) => c.id);
   const rows = await hydratePayerRows(ids, installBy);
@@ -304,12 +396,12 @@ async function hydratePayerRows(ids: string[], installBy?: Map<string, string | 
   const [clients, invoices] = await Promise.all([
     prisma.client.findMany({
       where: { id: { in: ids } },
-      select: { id: true, name: true, meterSeries: true, apaCanalContract: true, email: true, phone: true, portalPasswordHash: true },
+      select: PAYER_SELECT,
     }),
     prisma.invoice.findMany({
       where: { clientId: { in: ids } },
       orderBy: { issueDate: "desc" },
-      select: { clientId: true, number: true, status: true, grandTotal: true, currency: true },
+      select: INVOICE_SELECT,
     }),
   ]);
   const byId = new Map(clients.map((c) => [c.id, c]));
@@ -324,20 +416,7 @@ async function hydratePayerRows(ids: string[], installBy?: Map<string, string | 
     .filter((c): c is NonNullable<typeof c> => !!c)
     .map((c) => {
       const clientInvoices = invByClient.get(c.id) ?? [];
-      return {
-        id: c.id,
-        name: c.name,
-        meterSeries: c.meterSeries,
-        contract: c.apaCanalContract,
-        email: c.email,
-        phone: c.phone,
-        activated: !!c.portalPasswordHash,
-        invoiceCount: clientInvoices.length,
-        latestInvoice: clientInvoices[0]
-          ? { number: clientInvoices[0].number, status: clientInvoices[0].status, grandTotal: clientInvoices[0].grandTotal, currency: clientInvoices[0].currency }
-          : null,
-        installedAt: installBy?.get(c.id) ?? null,
-      };
+      return toPayerRow(c, clientInvoices[0], clientInvoices.length, installBy?.get(c.id) ?? null);
     });
 }
 
@@ -348,16 +427,17 @@ const collator = new Intl.Collator("ro");
  * `id: { in: [~19.000 de id-uri] }` durează ~80 s în MongoDB (măsurat), deci aducem proiecții mici
  * (clienți filtrați + facturile lunii), le potrivim aici și citim din bază doar rândurile paginii.
  */
-async function listPayersForMonth(month: string, opts: ListPayersOpts, page: number, perPage: number) {
+async function matchPayersForMonth(month: string, opts: ListPayersOpts) {
   const installedFrom = parseInstalledFrom(opts.installedFrom);
-  const needsInstall = installedFrom || opts.sort === "installDesc" || opts.sort === "installAsc";
-  const where = await buildPayerWhere({ ...opts, debt: undefined, invoiceStatus: undefined });
+  const needsInstall = !!installedFrom || opts.sort === "installDesc" || opts.sort === "installAsc";
+  // Sold/status (inclusiv intervalul min–max) se aplică pe factura lunii, în memorie — nu pe snapshot-ul ultimei facturi.
+  const where = await buildPayerWhere({ ...opts, debt: undefined, invoiceStatus: undefined, minDebt: undefined, maxDebt: undefined });
   const [clients, monthInvoices, installBy] = await Promise.all([
-    prisma.client.findMany({ where, select: { id: true, name: true } }),
+    prisma.client.findMany({ where, select: { id: true, name: true, email: true, phone: true } }),
     prisma.invoice.findMany({
       where: { kind: "APA_CANAL", issueDate: monthRange(month), clientId: { not: null } },
       orderBy: { issueDate: "desc" },
-      select: { clientId: true, number: true, status: true, grandTotal: true, currency: true },
+      select: INVOICE_SELECT,
     }),
     needsInstall ? installDateMap() : Promise.resolve(new Map<string, string | null>()),
   ]);
@@ -382,12 +462,16 @@ async function listPayersForMonth(month: string, opts: ListPayersOpts, page: num
   } else {
     matched.sort((a, b) => collator.compare(a.name, b.name));
   }
+  return { matched, invByClient, installBy, needsInstall };
+}
 
+async function listPayersForMonth(month: string, opts: ListPayersOpts, page: number, perPage: number) {
+  const { matched, invByClient, installBy, needsInstall } = await matchPayersForMonth(month, opts);
   const total = matched.length;
   const ids = matched.slice((page - 1) * perPage, page * perPage).map((c) => c.id);
   const [pageClients, counts] = ids.length
     ? await Promise.all([
-        prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, meterSeries: true, apaCanalContract: true, email: true, phone: true, portalPasswordHash: true } }),
+        prisma.client.findMany({ where: { id: { in: ids } }, select: PAYER_SELECT }),
         prisma.invoice.groupBy({ by: ["clientId"], where: { clientId: { in: ids } }, _count: { _all: true } }),
       ])
     : [[], []];
@@ -397,21 +481,7 @@ async function listPayersForMonth(month: string, opts: ListPayersOpts, page: num
   const rows: PayerRow[] = ids
     .map((id) => byId.get(id))
     .filter((c): c is NonNullable<typeof c> => !!c)
-    .map((c) => {
-      const inv = invByClient.get(c.id)!;
-      return {
-        id: c.id,
-        name: c.name,
-        meterSeries: c.meterSeries,
-        contract: c.apaCanalContract,
-        email: c.email,
-        phone: c.phone,
-        activated: !!c.portalPasswordHash,
-        invoiceCount: countBy.get(c.id) ?? 0,
-        latestInvoice: { number: inv.number, status: inv.status, grandTotal: inv.grandTotal, currency: inv.currency },
-        installedAt: needsInstall ? (installBy.get(c.id) ?? null) : null,
-      };
-    });
+    .map((c) => toPayerRow(c, invByClient.get(c.id)!, countBy.get(c.id) ?? 0, needsInstall ? (installBy.get(c.id) ?? null) : null));
 
   return { items: rows, total, page, perPage, hasMore: page * perPage < total };
 }

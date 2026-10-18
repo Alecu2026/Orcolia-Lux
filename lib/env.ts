@@ -61,6 +61,24 @@ export const env = {
     },
   },
 
+  // SMS: Twilio (TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + SMS_FROM) sau orice gateway HTTP propriu
+  // (SMS_HTTP_URL [+ SMS_HTTP_TOKEN]) care primește POST JSON { to, message, from } — vezi lib/sms.ts.
+  sms: {
+    from: optional("SMS_FROM"),
+    twilioSid: optional("TWILIO_ACCOUNT_SID"),
+    twilioToken: optional("TWILIO_AUTH_TOKEN"),
+    httpUrl: optional("SMS_HTTP_URL"),
+    httpToken: optional("SMS_HTTP_TOKEN"),
+    get provider(): "twilio" | "http" | null {
+      if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.SMS_FROM) return "twilio";
+      if (process.env.SMS_HTTP_URL) return "http";
+      return null;
+    },
+    get enabled() {
+      return this.provider !== null;
+    },
+  },
+
   imap: {
     host: optional("IMAP_HOST"),
     port: int("IMAP_PORT", 993),

@@ -23,6 +23,7 @@ const NAV: NavItem[] = [
   { href: "/calendar",         labelKey: "calendar",    icon: calIcon(),       perm: "tasks.view" },
   { href: "/clients",          labelKey: "clients",     icon: usersIcon(),     perm: "clients.view" },
   { href: "/platitori",        labelKey: "payers",      icon: invoiceIcon(),   perm: "clients.view" },
+  { href: "/notificari-platitori", labelKey: "payerNotify", icon: bellIcon(),  perm: "clients.view" },
   { href: "/invoices",         labelKey: "invoices",    icon: invoiceIcon(),   perm: "invoices.view" },
   { href: "/users",            labelKey: "users",       icon: userIcon(),      perm: "users.manage" },
   { href: "/team",             labelKey: "team",        icon: usersIcon(),     perm: "teams.view" },
@@ -343,6 +344,9 @@ function folderIcon() {
 }
 function invoiceIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2h9l3 3v15l-2.5-1.5L13 20l-2.5-1.5L8 20l-2.5-1.5L6 20V2Z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>;
+}
+function bellIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>;
 }
 function sendIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 3 11 13M22 3l-7 18-4-8-8-4 19-6Z"/></svg>;
