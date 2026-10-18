@@ -21,12 +21,14 @@ export default async function PayerNotificationsPage({
   // Prima încărcare vine de pe server (cu filtrele din URL, dacă sunt); după aceea filtrele/paginile se schimbă pe client.
   const filters = sanitizeFilters(sp as Record<string, unknown>);
   const perPage = normalizePerPageClient(sp.perPage);
-  const opts = { ...filtersToListOpts(filters), perPage: normalizePerPage(perPage) };
+  // Prima încărcare: cel mult 100 de rânduri de pe server (pentru „Toate" lista completă vine apoi din snapshot-ul local).
+  const ssrPerPage = Math.min(perPage, 100);
+  const opts = { ...filtersToListOpts(filters), perPage: normalizePerPage(ssrPerPage) };
   let page = Math.max(1, Math.floor(Number(sp.page)) || 1);
 
   const [first, months, templates] = await Promise.all([listPayers({ ...opts, page }), listPayerMonths(), listPayerTemplates()]);
   let res = first;
-  const lastPage = Math.max(1, Math.ceil(first.total / perPage));
+  const lastPage = Math.max(1, Math.ceil(first.total / ssrPerPage));
   if (page > lastPage) {
     page = lastPage;
     res = await listPayers({ ...opts, page });
@@ -51,6 +53,7 @@ export default async function PayerNotificationsPage({
         userId={user.id}
         isAdmin={can(user, "admin")}
         canDelete={can(user, "clients.delete")}
+        canEditInvoices={can(user, "invoices.edit")}
       />
     </div>
   );

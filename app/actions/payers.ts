@@ -36,7 +36,13 @@ export async function updatePayer(
 
   await prisma.client.update({
     where: { id },
-    data: { name: d.name, phone: d.phone || null, email: d.email || null, notes: d.notes || null },
+    data: {
+      name: d.name,
+      phone: d.phone || null,
+      email: d.email || null,
+      // formularul din popup nu trimite câmpul „notes" — atunci notița veche din fișă rămâne neatinsă
+      ...(formData.has("notes") ? { notes: d.notes || null } : {}),
+    },
   });
   // consumerName e o copie denormalizată, înghețată pe fiecare factură la creare — corectarea
   // numelui aici NU se vedea pe facturile deja emise ale clientului (inclusiv pe cea publică,

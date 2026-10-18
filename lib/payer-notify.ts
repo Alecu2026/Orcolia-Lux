@@ -4,6 +4,8 @@
  * rulează și în browser (previzualizare mesaj, contor SMS, salvarea filtrelor în localStorage).
  */
 
+import type { PayerRow } from "./queries/payers";
+
 // ── Filtre ──────────────────────────────────────────────────────────────────────────────────────
 
 export type NotifyFilters = {
@@ -277,3 +279,139 @@ export const NOTIFY_MAX_TEMPLATES = 100;
 
 export type PayerNoteItem = { id: string; body: string; userId: string; userName: string; createdAt: string; updatedAt: string };
 export const NOTIFY_MAX_NOTE = 2_000;
+
+// ── Motor local: toți plătitorii în memorie, filtrați/sortați/paginați în JS ───────────────────
+// Serverul trimite O DATĂ un snapshot compact (toți plătitorii, ~19.000), iar filtrele/sortarea/paginarea rulează
+// în browser — instant, fără interogări în baza de date la fiecare filtru (MongoDB filtrează lent, JS rapid).
+
+
+export type SnapInvoice = NonNullable<PayerRow["latestInvoice"]>;
+export type SnapRow = PayerRow & { sector: string | null; _h: string };
+
+/** Un plătitor în snapshot, ca tuplu (mai puțin JSON): vezi encodarea în getPayerSnapshot (lib/queries/payers.ts). */
+export type SnapTuple = [
+  id: string, name: string, meterSeries: string | null, contract: string | null, email: string | null, phone: string | null,
+  activated: 0 | 1, invoiceCount: number,
+  invNumber: string | null, invStatus: string | null, invTotal: number | null, invCurrency: string | null, invDueMs: number | null,
+  address: string | null, notifiedMs: number | null, installed: string | null, sector: string | null,
+];
+/** Factura unei luni: [clientId, număr, status, total, valută, scadență ms]. */
+export type MonthTuple = [clientId: string, number: string, status: string, total: number, currency: string, dueMs: number | null];
+
+const collatorRo = new Intl.Collator("ro");
+const iso = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString());
+
+export function decodeSnapshot(tuples: SnapTuple[]): SnapRow[] {
+  const rows: SnapRow[] = tuples.map((t) => ({
+    id: t[0],
+    name: t[1],
+    meterSeries: t[2],
+    contract: t[3],
+    email: t[4],
+    phone: t[5],
+    activated: t[6] === 1,
+    invoiceCount: t[7],
+    latestInvoice:
+      t[8] == null
+        ? null
+        : { number: t[8], status: (t[9] ?? "SENT") as SnapInvoice["status"], grandTotal: t[10] ?? 0, currency: t[11] ?? "MDL", dueDate: iso(t[12]) },
+    consumAddress: t[13],
+    lastNotifiedAt: iso(t[14]),
+    installedAt: t[15],
+    sector: t[16],
+    _h: [t[1], t[2], t[3], t[4], t[5]].filter(Boolean).join("\n").toLowerCase(),
+  }));
+  rows.sort((a, b) => collatorRo.compare(a.name, b.name)); // o singură dată; filtrarea păstrează ordinea
+  return rows;
+}
+
+export function decodeMonth(tuples: MonthTuple[]): Map<string, SnapInvoice> {
+  return new Map(
+    tuples.map((t) => [t[0], { number: t[1], status: t[2] as SnapInvoice["status"], grandTotal: t[3], currency: t[4], dueDate: iso(t[5]) }]),
+  );
+}
+
+const SECTOR_NAME = { privat: "Sector privat", comunal: "Sector comunal" } as const;
+
+/**
+ * Aceeași semantică ca filtrele de pe server (buildPayerWhere / matchesMonthInvoice), dar în memorie.
+ * Cu `month`, suma/statusul sunt ale facturii acelei luni (`monthMap`); fără, ale ultimei facturi.
+ */
+export function filterSnapshot(rows: SnapRow[], f: NotifyFilters, monthMap: Map<string, SnapInvoice> | null): SnapRow[] {
+  const q = f.q.trim().toLowerCase();
+  const street = f.street.trim().toLowerCase();
+  const min = f.minDebt === "" ? null : Number(f.minDebt);
+  const max = f.maxDebt === "" ? null : Number(f.maxDebt);
+  const now = Date.now();
+  const d7 = now - 7 * 86_400_000;
+  const d30 = now - 30 * 86_400_000;
+  const out: SnapRow[] = [];
+
+  for (const r of rows) {
+    if (q && !r._h.includes(q)) continue;
+    if (street && !(r.consumAddress ?? "").toLowerCase().includes(street)) continue;
+    if (f.account === "activated" && !r.activated) continue;
+    if (f.account === "pending" && r.activated) continue;
+    if (f.sector && r.sector !== SECTOR_NAME[f.sector]) continue;
+    if (f.kind === "person" && r.meterSeries == null) continue;
+    if (f.kind === "company" && r.meterSeries != null) continue;
+    if (f.nameFix && !r.name.includes("?")) continue;
+
+    const he = r.email != null && r.email !== "";
+    const hp = r.phone != null && r.phone !== "";
+    switch (f.contact) {
+      case "email": if (!he) continue; break;
+      case "phone": if (!hp) continue; break;
+      case "both": if (!(he && hp)) continue; break;
+      case "any": if (!(he || hp)) continue; break;
+      case "noemail": if (he) continue; break;
+      case "nophone": if (hp) continue; break;
+      case "none": if (he || hp) continue; break;
+    }
+
+    if (f.notified) {
+      const t = r.lastNotifiedAt ? new Date(r.lastNotifiedAt).getTime() : null;
+      if (f.notified === "never" && t != null) continue;
+      if (f.notified === "7d" && !(t != null && t >= d7)) continue;
+      if (f.notified === "30d" && !(t != null && t >= d30)) continue;
+      if (f.notified === "not7d" && t != null && t >= d7) continue;
+      if (f.notified === "not30d" && t != null && t >= d30) continue;
+    }
+
+    if (f.installedFrom && !(r.installedAt && r.installedAt >= f.installedFrom)) continue;
+    if (f.invoices === "none" && r.latestInvoice) continue;
+
+    const inv = f.month ? (monthMap?.get(r.id) ?? null) : r.latestInvoice;
+    if (f.month && !inv) continue;
+    if (f.invoiceStatus && inv?.status !== f.invoiceStatus) continue;
+    if (f.debt === "has" && !(inv && inv.grandTotal > 0)) continue;
+    if (f.debt === "none" && !(inv && inv.grandTotal <= 0)) continue;
+    if (min != null && !(inv && inv.grandTotal >= min)) continue;
+    if (max != null && !(inv && inv.grandTotal <= max)) continue;
+
+    out.push(f.month ? { ...r, latestInvoice: inv } : r);
+  }
+
+  if (f.sort === "debtDesc" || f.sort === "debtAsc") {
+    const mul = f.sort === "debtAsc" ? 1 : -1;
+    out.sort((a, b) => {
+      const x = a.latestInvoice?.grandTotal;
+      const y = b.latestInvoice?.grandTotal;
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return (x - y) * mul;
+    });
+  } else if (f.sort === "installDesc" || f.sort === "installAsc") {
+    const dir = f.sort === "installAsc" ? 1 : -1;
+    out.sort((a, b) => {
+      const x = a.installedAt ?? "";
+      const y = b.installedAt ?? "";
+      if (!x && !y) return 0;
+      if (!x) return 1; // fără dată → la final, indiferent de direcție
+      if (!y) return -1;
+      return (x < y ? -1 : x > y ? 1 : 0) * dir;
+    });
+  }
+  return out;
+}

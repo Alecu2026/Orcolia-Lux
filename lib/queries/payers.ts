@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import type { InvoiceStatus, Prisma } from "@prisma/client";
-import { PER_PAGE_ALL } from "../payer-notify";
+import { PER_PAGE_ALL, type MonthTuple, type SnapTuple } from "../payer-notify";
 
 const PAGE_SIZE = 50;
 /** Câți plătitori pe pagină alege utilizatorul (?perPage=) — plafonat ca să nu încărcăm mii de rânduri odată. */
@@ -593,4 +593,54 @@ export async function getPayerTickets(clientId: string) {
     orderBy: { createdAt: "desc" },
     select: { id: true, seq: true, title: true, status: true, createdAt: true },
   });
+}
+
+/**
+ * Snapshot COMPLET al plătitorilor (tupluri compacte — vezi SnapTuple în lib/payer-notify.ts), pentru motorul
+ * local din browser: încărcat o singură dată, apoi filtrat/sortat/paginat în JS, fără interogări la fiecare filtru.
+ * Trei citiri în bloc (clienți, facturi, date de instalare) potrivite în memorie — aceeași tehnică ca exportul.
+ */
+export async function getPayerSnapshot(): Promise<SnapTuple[]> {
+  if (DEMO) return [];
+  const [clients, invoices, installBy] = await Promise.all([
+    prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true } }),
+    prisma.invoice.findMany({ where: { clientId: { not: null } }, orderBy: { issueDate: "desc" }, select: INVOICE_SELECT }),
+    installDateMap(),
+  ]);
+  const latest = new Map<string, (typeof invoices)[number]>();
+  const count = new Map<string, number>();
+  for (const inv of invoices) {
+    if (!inv.clientId) continue;
+    if (!latest.has(inv.clientId)) latest.set(inv.clientId, inv); // sortat desc → prima = cea mai recentă
+    count.set(inv.clientId, (count.get(inv.clientId) ?? 0) + 1);
+  }
+  return clients.map((c): SnapTuple => {
+    const inv = latest.get(c.id);
+    return [
+      c.id, c.name, c.meterSeries, c.apaCanalContract, c.email || null, c.phone || null,
+      c.portalPasswordHash ? 1 : 0, count.get(c.id) ?? 0,
+      inv?.number ?? null, inv?.status ?? null, inv?.grandTotal ?? null, inv?.currency ?? null, inv?.dueDate ? inv.dueDate.getTime() : null,
+      c.consumAddress, c.lastNotifiedAt ? c.lastNotifiedAt.getTime() : null, installBy.get(c.id) ?? null, c.lastInvoiceSectorNr,
+    ];
+  });
+}
+
+/** Facturile Apă-Canal ale unei luni (prima per plătitor) — pentru filtrul „Luna facturii" din motorul local. */
+export async function getPayerMonthSlice(month: string): Promise<MonthTuple[]> {
+  if (DEMO) return [];
+  const parsed = parsePayerMonth(month);
+  if (!parsed) return [];
+  const invoices = await prisma.invoice.findMany({
+    where: { kind: "APA_CANAL", issueDate: monthRange(parsed), clientId: { not: null } },
+    orderBy: { issueDate: "desc" },
+    select: INVOICE_SELECT,
+  });
+  const seen = new Set<string>();
+  const out: MonthTuple[] = [];
+  for (const inv of invoices) {
+    if (!inv.clientId || seen.has(inv.clientId)) continue;
+    seen.add(inv.clientId);
+    out.push([inv.clientId, inv.number, inv.status, inv.grandTotal, inv.currency, inv.dueDate ? inv.dueDate.getTime() : null]);
+  }
+  return out;
 }

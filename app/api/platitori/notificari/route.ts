@@ -54,7 +54,9 @@ export async function GET(req: Request) {
   }
   const filters = sanitizeFilters(sp);
   const page = Math.max(1, Math.floor(Number(sp.get("page"))) || 1);
-  const perPage = normalizePerPage(normalizePerPageClient(sp.get("perPage")));
+  // Plafon la 1000 de rânduri: un răspuns obișnuit de funcție nu poate depăși ~4,5 MB pe Vercel („Toate" = 19.000 de rânduri → 500).
+  // „Toate" se servește din snapshot-ul local (vezi /api/platitori/snapshot), nu de aici.
+  const perPage = Math.min(1000, normalizePerPage(normalizePerPageClient(sp.get("perPage"))));
 
   try {
     const res = await listPayers({ ...filtersToListOpts(filters), page, perPage });

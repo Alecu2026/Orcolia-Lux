@@ -7,11 +7,13 @@ import {
   DEFAULT_PER_PAGE,
   EMPTY_FILTERS,
   NOTIFIED_OPTIONS,
+  NOTIFY_MAX_RECIPIENTS,
   NOTIFY_PER_PAGE,
   perPageLabel,
   agoLabel,
   buildVars,
   countActiveFilters,
+  filterSnapshot,
   filtersToParams,
   isEmail,
   normalizePerPageClient,
@@ -27,8 +29,9 @@ import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useToast } from "./toast";
 import PayerNotifyDialog, { type Recipient } from "./PayerNotifyDialog";
 import PayerTemplatesDialog from "./PayerTemplatesDialog";
-import PayerDetailDialog from "./PayerDetailDialog";
+import PayerDetailDialog, { type PayerPatch } from "./PayerDetailDialog";
 import PayerBulkDeleteDialog from "./PayerBulkDeleteDialog";
+import { usePayerDataset } from "./usePayerDataset";
 import ExportButton from "./ExportButton";
 import {
   createPayerTemplateAction,
@@ -92,6 +95,7 @@ export default function PayerNotifyManager({
   userId = "",
   isAdmin = false,
   canDelete = false,
+  canEditInvoices = false,
   basePath = "/notificari-platitori",
   browseOnly = false,
   nameFixCount = 0,
@@ -108,6 +112,8 @@ export default function PayerNotifyManager({
   isAdmin?: boolean;
   /** Poate șterge plătitori (clients.delete) — arată selecția și „Șterge selectați", chiar și în modul de răsfoire. */
   canDelete?: boolean;
+  /** Poate edita facturi (invoices.edit) — „Editează" lângă „Vezi" în popup. */
+  canEditInvoices?: boolean;
   /** Ruta paginii — pentru URL și cheia de salvare a filtrelor (fiecare pagină își ține filtrele separat). */
   basePath?: string;
   /** Mod „răsfoire" (/platitori): același tabel, fără bife/trimitere/șabloane, cu export. */
@@ -136,7 +142,7 @@ export default function PayerNotifyManager({
 
   const initialKey = useMemo(() => queryKey(initial.filters, initial.page, initial.perPage), [initial]);
   const cache = useRef(new Map<string, Page>([[initialKey, { items: initial.items, total: initial.total }]]));
-  const freshKey = useRef(initialKey);
+  const freshKey = useRef(initial.items.length < Math.min(initial.total, initial.perPage) ? "" : initialKey);
   const forceReload = useRef(false);
   const [reloadTick, setReloadTick] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -187,8 +193,31 @@ export default function PayerNotifyManager({
   const [compose, setCompose] = useState<{ recipients: Recipient[]; previewRow: PayerRow | null } | null>(null);
   const sentSomething = useRef(false);
 
-  const totalPages = Math.max(1, Math.ceil(data.total / perPage));
   const key = queryKey(filters, page, perPage);
+
+  // ── Motor local: toți plătitorii în memorie, filtrați/sortați/paginați în JS (instant). Până se încarcă setul
+  //    (sau cât timp se încarcă o lună nouă), se folosește interogarea clasică pe server de mai jos. ──
+  const ds = usePayerDataset(ready);
+  const monthMap = filters.month ? (ds.monthMaps.get(filters.month) ?? null) : null;
+  const useLocal = !!ds.rows && (!filters.month || !!monthMap);
+  const localList = useMemo(
+    () => (useLocal && ds.rows ? filterSnapshot(ds.rows, sanitizeFilters(filters), monthMap) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [useLocal, ds.rows, ds.version, filters, monthMap],
+  );
+  const view: Page = localList
+    ? { items: localList.slice((page - 1) * perPage, page * perPage), total: localList.length }
+    : data;
+  const totalPages = Math.max(1, Math.ceil(view.total / perPage));
+  const ensureMonth = ds.ensureMonth;
+  useEffect(() => {
+    if (filters.month && ds.rows) ensureMonth(filters.month);
+  }, [filters.month, ds.rows, ensureMonth]);
+  // Pagina cerută a dispărut (ex. filtrul a redus rezultatele) → ultima pagină validă.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (localList && page > totalPages) setPage(totalPages);
+  }, [localList, page, totalPages]);
 
   // Restaurează filtrele salvate (doar dacă URL-ul nu are propriile filtre) — ca în Task-uri.
   useEffect(() => {
@@ -233,6 +262,12 @@ export default function PayerNotifyManager({
   // o cerere nouă anulează pe cea veche, deci filtrarea rapidă nu se „îneacă" în răspunsuri vechi.
   useEffect(() => {
     if (!ready) return;
+    if (useLocal) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+      setError(null);
+      return;
+    }
     const cached = cache.current.get(key);
     if (cached) setData(cached);
     if (!forceReload.current && key === freshKey.current) {
@@ -272,13 +307,15 @@ export default function PayerNotifyManager({
       });
     return () => ctl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, ready, reloadTick]);
+  }, [key, ready, reloadTick, useLocal]);
 
+  const refreshDataset = ds.refresh;
   const reload = useCallback(() => {
+    void refreshDataset();
     cache.current.clear();
     forceReload.current = true;
     setReloadTick((t) => t + 1);
-  }, []);
+  }, [refreshDataset]);
 
   function setFilter(patch: Partial<NotifyFilters>) {
     setFilters((f) => ({ ...f, ...patch }));
@@ -302,7 +339,7 @@ export default function PayerNotifyManager({
   const active = countActiveFilters({ ...filters, q: draft.q, street: draft.street, minDebt: draft.minDebt, maxDebt: draft.maxDebt });
 
   // ── Selecție ──
-  const pageRows = data.items;
+  const pageRows = view.items;
   const allOnPage = pageRows.length > 0 && pageRows.every((r) => selected.has(r.id));
   const someOnPage = pageRows.some((r) => selected.has(r.id));
   const headerCheck = useRef<HTMLInputElement>(null);
@@ -338,6 +375,16 @@ export default function PayerNotifyManager({
   }
 
   async function selectAllMatching() {
+    if (localList) {
+      const capped = localList.slice(0, NOTIFY_MAX_RECIPIENTS);
+      setSelected(new Map(capped.map((r) => [r.id, flagsOf(r)] as [string, number])));
+      toast.success(
+        localList.length > capped.length
+          ? `Am selectat primii ${nf(capped.length)} din ${nf(localList.length)} (limita unei trimiteri).`
+          : `${nf(capped.length)} plătitori selectați.`,
+      );
+      return;
+    }
     const token = ++resolveToken.current;
     setResolving(true);
     try {
@@ -371,6 +418,17 @@ export default function PayerNotifyManager({
   const openForSelection = () => openCompose([...selected].map(([id, flags]) => ({ id, flags })));
   const openForRow = (r: PayerRow) => openCompose([{ id: r.id, flags: flagsOf(r) }]);
 
+  const patchNotified = ds.patchNotified;
+  const patchRow = ds.patchRow;
+  // „Editează" din popup: tabelul (și setul local) se schimbă imediat; popup-ul ține și el rândul curent.
+  const onPayerUpdated = useCallback(
+    (id: string, patch: PayerPatch) => {
+      setDetailRow((r) => (r && r.id === id ? { ...r, ...patch } : r));
+      setData((d) => ({ ...d, items: d.items.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
+      patchRow(id, patch);
+    },
+    [patchRow],
+  );
   // Actualizare optimistă: imediat ce un lot a plecat, „Ultima notificare" se vede în tabel, fără reîncărcare.
   const onSent = useCallback((results: RecipientResult[]) => {
     const sent = new Set(results.filter((r) => r.email.status === "sent" || r.sms.status === "sent").map((r) => r.id));
@@ -378,13 +436,14 @@ export default function PayerNotifyManager({
     sentSomething.current = true;
     const now = new Date().toISOString();
     setData((d) => ({ ...d, items: d.items.map((r) => (sent.has(r.id) ? { ...r, lastNotifiedAt: now } : r)) }));
-  }, []);
+    patchNotified(sent, now);
+  }, [patchNotified]);
 
   function closeCompose() {
     setCompose(null);
     if (sentSomething.current) {
       sentSomething.current = false;
-      reload(); // filtrul „notificat" / sortarea se pot schimba după trimitere
+      if (!useLocal) reload(); // cu motorul local, „Ultima notificare" e deja actualizată în memorie
     }
   }
 
@@ -394,8 +453,8 @@ export default function PayerNotifyManager({
     filters.sort === up ? "▲" : filters.sort === down ? "▼" : "↕";
 
   const pageButtons = buildPageButtons(page, totalPages);
-  const from = data.total === 0 ? 0 : (page - 1) * perPage + 1;
-  const to = Math.min(page * perPage, data.total);
+  const from = view.total === 0 ? 0 : (page - 1) * perPage + 1;
+  const to = Math.min(page * perPage, view.total);
   const colCount = 12 + (canSelect ? 1 : 0) + (canSend ? 1 : 0);
 
   return (
@@ -559,14 +618,14 @@ export default function PayerNotifyManager({
             <span className="text-ink-soft">Bifează plătitorii (Shift = interval) sau selectează-i pe toți din filtru. Click pe un rând = datele lui.</span>
           )}
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            {data.total > 0 && (
+            {view.total > 0 && (
               <button
                 type="button"
                 onClick={selectAllMatching}
                 disabled={resolving}
                 className="tap h-7 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-60"
               >
-                {resolving ? "Se selectează…" : (data.total > pageRows.length ? `Selectează toți cei ${nf(data.total)} din filtru (toate paginile)` : `Selectează toți cei ${nf(data.total)} din filtru`)}
+                {resolving ? "Se selectează…" : (view.total > pageRows.length ? `Selectează toți cei ${nf(view.total)} din filtru (toate paginile)` : `Selectează toți cei ${nf(view.total)} din filtru`)}
               </button>
             )}
             {selCount > 0 && (
@@ -601,9 +660,22 @@ export default function PayerNotifyManager({
 
       {/* ── Sumar + rânduri pe pagină ─────────────────────────────────────── */}
       <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-        <span><b>{nf(data.total)}</b> plătitori{active > 0 ? " (filtrat)" : ""}</span>
-        {data.total > 0 && <span className="text-ink-soft">afișați {nf(from)}–{nf(to)} din {nf(data.total)}{totalPages > 1 ? ` · pagina ${page}/${totalPages}` : ""}</span>}
+        <span><b>{nf(view.total)}</b> plătitori{active > 0 ? " (filtrat)" : ""}</span>
+        {view.total > 0 && <span className="text-ink-soft">afișați {nf(from)}–{nf(to)} din {nf(view.total)}{totalPages > 1 ? ` · pagina ${page}/${totalPages}` : ""}</span>}
         {loading && <span className="text-ink-soft">se încarcă…</span>}
+        {ds.rows ? (
+          <button
+            type="button"
+            onClick={() => void ds.refresh()}
+            disabled={ds.loading}
+            title="Lista e ținută în memorie și filtrată instant în browser. Apasă ca să o reîncarci de pe server."
+            className="tap cursor-pointer text-ink-soft hover:text-brand disabled:cursor-default"
+          >
+            ⚡ local{ds.loading ? " · se reîmprospătează…" : ds.loadedAt ? ` · ${agoLabel(new Date(ds.loadedAt).toISOString())}` : ""} ↻
+          </button>
+        ) : ds.loading ? (
+          <span className="text-ink-soft">se încarcă lista completă…</span>
+        ) : null}
         <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-soft">
           Afișează
           <select
@@ -748,7 +820,7 @@ export default function PayerNotifyManager({
       </div>
 
       {/* ── Paginare numerică (ca în Task-uri) ─────────────────────────────── */}
-      {data.total > 0 && (
+      {view.total > 0 && (
         <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
           <button
             disabled={page <= 1}
@@ -814,6 +886,8 @@ export default function PayerNotifyManager({
           row={detailRow}
           canSend={canSend}
           canNote={canSendProp}
+          canEditInvoices={canEditInvoices}
+          onUpdated={onPayerUpdated}
           userId={userId}
           isAdmin={isAdmin}
           hasContact={flagsOf(detailRow) !== 0}
