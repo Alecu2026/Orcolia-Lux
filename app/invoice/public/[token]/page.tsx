@@ -25,7 +25,7 @@ export default async function PublicInvoicePage({
     // (vezi getApaCanalConsumptionHistory — invoice.monthlyConsumption singur are un punct).
     const consumptionHistory = invoice.clientId ? await getApaCanalConsumptionHistory(invoice.clientId) : [];
     return (
-      <main className="min-h-dvh bg-zinc-100 p-4 print:bg-white print:p-0">
+      <main className="min-h-dvh bg-zinc-100 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] print:bg-white print:p-0">
         <div className="mx-auto max-w-[1180px]">
           <div className="mb-4 flex items-center justify-between no-print print:hidden">
             <h1 className="text-sm font-medium text-zinc-500">Factură {invoice.number}</h1>
@@ -44,7 +44,7 @@ export default async function PublicInvoicePage({
   const st = INVOICE_STATUS[invoice.status as InvoiceStatusKey];
 
   return (
-    <main className="min-h-dvh bg-zinc-100 p-4 text-zinc-900 print:bg-white print:p-0">
+    <main className="min-h-dvh bg-zinc-100 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-zinc-900 print:bg-white print:p-0">
       <div className="mx-auto max-w-3xl">
         <div className="mb-4 flex items-center justify-between print:hidden">
           <h1 className="text-sm font-medium text-zinc-500">Factură {invoice.number}</h1>

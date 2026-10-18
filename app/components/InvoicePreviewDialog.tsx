@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconX } from "./icons";
 
 const MIN = 0.5;
@@ -22,7 +22,20 @@ export default function InvoicePreviewDialog({
   onClose: () => void;
 }) {
   const [zoom, setZoom] = useState(1);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const zoomRef = useRef(1);
+  // undefined = încă nu s-a încărcat; true = zoom CSS direct în documentul facturii; false = nu avem acces → scalăm iframe-ul.
+  const [native, setNative] = useState<boolean | undefined>(undefined);
   const clamp = (z: number) => Math.min(MAX, Math.max(MIN, Math.round(z * 100) / 100));
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+    if (!native) return;
+    try {
+      const el = frameRef.current?.contentDocument?.documentElement;
+      if (el) el.style.setProperty("zoom", String(zoom));
+    } catch {}
+  }, [zoom, native]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -102,17 +115,24 @@ export default function InvoicePreviewDialog({
         </div>
         <div className="relative flex-1 overflow-hidden bg-zinc-100">
           <div
-            style={{ width: `${100 / zoom}%`, height: `${100 / zoom}%`, transform: `scale(${zoom})`, transformOrigin: "0 0" }}
-            className="transition-transform duration-150"
+            style={native === false ? { width: `${100 / zoom}%`, height: `${100 / zoom}%`, transform: `scale(${zoom})`, transformOrigin: "0 0" } : { width: "100%", height: "100%" }}
           >
             <iframe
+              ref={frameRef}
               src={`/invoice/public/${token}`}
               title={title}
               className="size-full border-0 bg-white"
               onLoad={(e) => {
                 try {
-                  attachIframeListeners(e.currentTarget.contentWindow);
-                } catch {}
+                  const win = e.currentTarget.contentWindow;
+                  const el = e.currentTarget.contentDocument?.documentElement;
+                  if (!win || !el) throw new Error("no access");
+                  el.style.setProperty("zoom", String(zoomRef.current));
+                  attachIframeListeners(win);
+                  setNative(true);
+                } catch {
+                  setNative(false);
+                }
               }}
             />
           </div>
