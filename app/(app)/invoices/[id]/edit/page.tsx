@@ -64,10 +64,12 @@ export default async function EditInvoicePage({
 
     return (
       <div className="w-full">
-        <Link href="/invoices" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink">
-          <IconChevronLeft className="size-4" /> Înapoi la facturi
-        </Link>
-        <h1 className="mb-4 text-xl font-bold">Editează {invoice.number} (Apă-Canal)</h1>
+        <div className="mb-2 flex flex-wrap items-center gap-x-3">
+          <Link href="/invoices" className="inline-flex items-center gap-1 text-xs text-ink-soft hover:text-ink">
+            <IconChevronLeft className="size-3.5" /> Facturi
+          </Link>
+          <h1 className="text-lg font-bold">Editează {invoice.number} <span className="text-sm font-normal text-ink-soft">(Apă-Canal)</span></h1>
+        </div>
         <ApaCanalInvoiceForm
           clients={clients}
           currency={company.currency}
@@ -99,10 +101,12 @@ export default async function EditInvoicePage({
 
   return (
     <div className="w-full">
-      <Link href="/invoices" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink">
-        <IconChevronLeft className="size-4" /> Înapoi la facturi
-      </Link>
-      <h1 className="mb-4 text-xl font-bold">Editează {invoice.number}</h1>
+      <div className="mb-2 flex flex-wrap items-center gap-x-3">
+        <Link href="/invoices" className="inline-flex items-center gap-1 text-xs text-ink-soft hover:text-ink">
+          <IconChevronLeft className="size-3.5" /> Facturi
+        </Link>
+        <h1 className="text-lg font-bold">Editează {invoice.number}</h1>
+      </div>
       <InvoiceForm
         clients={clients}
         projects={projects}

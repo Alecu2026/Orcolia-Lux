@@ -2,7 +2,7 @@ import { requirePermission } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { env } from "@/lib/env";
 import { listPayers, listPayerMonths, normalizePerPage } from "@/lib/queries/payers";
-import { filtersToListOpts } from "@/lib/queries/payer-notify";
+import { filtersToListOpts, listPayerTemplates } from "@/lib/queries/payer-notify";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
 import PayerNotifyManager from "@/app/components/PayerNotifyManager";
 
@@ -24,7 +24,7 @@ export default async function PayerNotificationsPage({
   const opts = { ...filtersToListOpts(filters), perPage: normalizePerPage(perPage) };
   let page = Math.max(1, Math.floor(Number(sp.page)) || 1);
 
-  const [first, months] = await Promise.all([listPayers({ ...opts, page }), listPayerMonths()]);
+  const [first, months, templates] = await Promise.all([listPayers({ ...opts, page }), listPayerMonths(), listPayerTemplates()]);
   let res = first;
   const lastPage = Math.max(1, Math.ceil(first.total / perPage));
   if (page > lastPage) {
@@ -35,8 +35,7 @@ export default async function PayerNotificationsPage({
   return (
     <div className="w-full">
       <div className="mb-4">
-        <h1 className="text-xl font-bold">Notificări plătitori</h1>
-        <p className="mt-1 text-sm text-ink-soft">
+        <p className="text-sm text-ink-soft">
           Tabelul tuturor plătitorilor, cu filtre pe orice criteriu. Bifează destinatarii (sau ia-i pe toți din filtru) și trimite-le un
           email și/sau SMS — cu {"{nume}"}, {"{suma}"}, {"{factura}"} completate automat pentru fiecare.
         </p>
@@ -44,6 +43,7 @@ export default async function PayerNotificationsPage({
       <PayerNotifyManager
         initial={{ filters, page, perPage, items: res.items, total: res.total }}
         months={months}
+        initialTemplates={templates}
         canSend={can(user, "clients.edit")}
         emailEnabled={env.smtp.enabled}
         smsEnabled={env.sms.enabled}

@@ -2,6 +2,8 @@ import { getCurrentUser } from "@/lib/dal";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
 import { listClients } from "@/lib/queries/clients";
 import { buildPayerWhere, matchesMonthInvoice, monthRange, parsePayerMonth, parseInstalledFrom } from "@/lib/queries/payers";
+import { filtersToListOpts } from "@/lib/queries/payer-notify";
+import { sanitizeFilters } from "@/lib/payer-notify";
 import { INVOICE_STATUS_LIST, INVOICE_STATUS } from "@/app/components/invoice-meta";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
@@ -194,23 +196,19 @@ export async function GET(req: Request) {
     // Aceleași filtre ca pagina /platitori (vezi buildPayerWhere) — altfel un export lansat
     // cu un filtru activ pe ecran (sector, sold, stradă...) ar întoarce toți plătitorii, nu
     // doar cei filtrați, fără nicio indicație vizibilă că sunt mai mulți decât cei afișați.
-    const sectorParam = sp.get("sector");
-    const debtParam = sp.get("debt");
-    const invoiceStatusParam = sp.get("invoiceStatus");
-    const invoiceStatusFilter = invoiceStatusParam && INVOICE_STATUS_LIST.includes(invoiceStatusParam as InvoiceStatus)
-      ? (invoiceStatusParam as InvoiceStatus)
-      : undefined;
-    const debtFilter = debtParam === "has" || debtParam === "none" ? debtParam : undefined;
+    // Filtrele vin cu aceleași chei ca tabelul din /platitori (vezi NotifyFilters); "status" e cheia veche pentru "account".
+    const f = sanitizeFilters({ ...Object.fromEntries(sp.entries()), account: sp.get("account") ?? sp.get("status") });
+    const fo = filtersToListOpts(f);
+    const invoiceStatusFilter = fo.invoiceStatus;
+    const debtFilter = fo.debt;
     // Cu o lună aleasă, soldul/statusul se filtrează pe factura acelei luni (mai jos, în memorie), nu pe ultima.
     const month = parsePayerMonth(sp.get("month"));
     const where = await buildPayerWhere({
-      search: sp.get("q") || undefined,
-      status: sp.get("status") === "activated" || sp.get("status") === "pending" ? (sp.get("status") as "activated" | "pending") : undefined,
-      sector: sectorParam === "privat" || sectorParam === "comunal" ? sectorParam : undefined,
+      ...fo,
       invoiceStatus: month ? undefined : invoiceStatusFilter,
       debt: month ? undefined : debtFilter,
-      street: sp.get("street") || undefined,
-      needsNameFix: sp.get("nameFix") === "1",
+      minDebt: month ? undefined : fo.minDebt,
+      maxDebt: month ? undefined : fo.maxDebt,
     });
     const payersAll = await prisma.client.findMany({
       where,
@@ -263,7 +261,7 @@ export async function GET(req: Request) {
       .filter((p) => {
         if (!month) return true;
         const inv = lastInvoice.get(p.id);
-        return inv && matchesMonthInvoice(inv, { debt: debtFilter, invoiceStatus: invoiceStatusFilter });
+        return inv && matchesMonthInvoice(inv, { debt: debtFilter, invoiceStatus: invoiceStatusFilter, minDebt: fo.minDebt, maxDebt: fo.maxDebt });
       })
       .filter((p) => {
         if (!installedFrom) return true;

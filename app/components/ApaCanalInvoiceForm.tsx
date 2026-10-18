@@ -37,9 +37,12 @@ export type ApaCanalInitial = {
   monthlyConsumption: ConsumPoint[];
 };
 
+// Formular compact: inputuri joase, spații mici și carduri pe 2–3 coloane, ca să se vadă toată factura deodată.
 const input =
-  "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
-const label = "mb-1.5 block text-xs font-semibold text-ink-soft";
+  "h-8 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-[13px] outline-none focus:border-brand";
+const label = "mb-0.5 block text-[11px] font-semibold text-ink-soft";
+const cardCls = "card flex flex-col gap-2 p-3";
+const h2Cls = "text-sm font-bold";
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const num = (s: string) => Number(s) || 0;
 
@@ -194,196 +197,199 @@ export default function ApaCanalInvoiceForm({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="card flex flex-col gap-4 p-5">
-        <h2 className="text-base font-bold">Client și date factură</h2>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={label}>Data emiterii</label>
-            <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} className={input} />
+    <div className="flex flex-col gap-2.5">
+      <div className="grid items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-3">
+        <div className={cardCls}>
+          <h2 className={h2Cls}>Client și date factură</h2>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={label}>Data emiterii</label>
+              <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} className={input} />
+            </div>
+            <div>
+              <label className={label}>Data limită de achitare</label>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={input} />
+            </div>
           </div>
-          <div>
-            <label className={label}>Data limită de achitare</label>
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={input} />
-          </div>
-        </div>
 
-        <div>
-          <label className={label}>Client</label>
-          <div className="flex gap-2">
-            <select value={clientId} onChange={(e) => setClientId(e.target.value)} className={input}>
-              <option value="">—</option>
-              {clientList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            {canCreateClient && !addingClient && (
-              <button type="button" onClick={() => setAddingClient(true)} className="tap grid size-11 shrink-0 place-items-center rounded-xl border border-[var(--color-line)] text-brand hover:bg-brand-soft" title="Adaugă client">
-                <IconPlus className="size-4" />
-              </button>
+          <div>
+            <label className={label}>Client</label>
+            <div className="flex gap-1.5">
+              <select value={clientId} onChange={(e) => setClientId(e.target.value)} className={input}>
+                <option value="">—</option>
+                {clientList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              {canCreateClient && !addingClient && (
+                <button type="button" onClick={() => setAddingClient(true)} className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-brand hover:bg-brand-soft" title="Adaugă client">
+                  <IconPlus className="size-4" />
+                </button>
+              )}
+            </div>
+            {addingClient && (
+              <div className="mt-1.5 flex gap-1.5">
+                <input autoFocus value={newClient} onChange={(e) => setNewClient(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); createClientInline(); } if (e.key === "Escape") { setAddingClient(false); setNewClient(""); } }}
+                  placeholder="Nume client…" className={input} />
+                <button type="button" disabled={busy || !newClient.trim()} onClick={createClientInline} className="tap grid size-8 shrink-0 place-items-center rounded-lg bg-brand text-white hover:bg-brand-strong disabled:opacity-50"><IconCheck className="size-4" /></button>
+                <button type="button" onClick={() => { setAddingClient(false); setNewClient(""); }} className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)]"><IconX className="size-4" /></button>
+              </div>
             )}
           </div>
-          {addingClient && (
-            <div className="mt-2 flex gap-2">
-              <input autoFocus value={newClient} onChange={(e) => setNewClient(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); createClientInline(); } if (e.key === "Escape") { setAddingClient(false); setNewClient(""); } }}
-                placeholder="Nume client…" className={input} />
-              <button type="button" disabled={busy || !newClient.trim()} onClick={createClientInline} className="tap grid size-11 shrink-0 place-items-center rounded-xl bg-brand text-white hover:bg-brand-strong disabled:opacity-50"><IconCheck className="size-4" /></button>
-              <button type="button" onClick={() => { setAddingClient(false); setNewClient(""); }} className="tap grid size-11 shrink-0 place-items-center rounded-xl border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)]"><IconX className="size-4" /></button>
+
+          <div>
+            <label className={label}>Nume consumator (dacă diferă de client)</label>
+            <input value={consumerName} onChange={(e) => setConsumerName(e.target.value)} placeholder="ex. ANTONIU GHEORGHE TEODOR" className={input} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={label}>Cont personal</label>
+              <input value={contPersonal} onChange={(e) => setContPersonal(e.target.value)} placeholder="900616" className={input} />
             </div>
+            <div>
+              <label className={label}>Sector nr.</label>
+              <input value={sectorNr} onChange={(e) => setSectorNr(e.target.value)} placeholder="5sp" className={input} />
+            </div>
+          </div>
+
+          <div>
+            <label className={label}>Adresa locului de consum</label>
+            <input value={consumAddress} onChange={(e) => setConsumAddress(e.target.value)} placeholder="or.Cahul, STROESCU, 31" className={input} />
+          </div>
+        </div>
+
+        <div className={cardCls}>
+          <h2 className={h2Cls}>Contor și perioadă</h2>
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className={label}>Nr. contor</label>
+              <input value={meterNumber} onChange={(e) => setMeterNumber(e.target.value)} placeholder="294170" className={input} />
+            </div>
+            <div>
+              <label className={label}>Indici preced.</label>
+              <input value={meterPrevReading} onChange={(e) => setMeterPrevReading(e.target.value)} placeholder="00647" className={input} />
+            </div>
+            <div>
+              <label className={label}>Indici actuali</label>
+              <input value={meterCurrReading} onChange={(e) => setMeterCurrReading(e.target.value)} placeholder="00660" className={input} />
+            </div>
+          </div>
+          <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+            <div>
+              <label className={label}>Perioada de calcul</label>
+              <input value={billingPeriodLabel} onChange={(e) => setBillingPeriodLabel(e.target.value)} placeholder="IULIE 2026" className={input} />
+            </div>
+            <label className="flex h-8 items-center gap-1.5 text-xs">
+              <input type="checkbox" checked={isEstimatedVolume} onChange={(e) => setIsEstimatedVolume(e.target.checked)} className="size-3.5 accent-[var(--color-brand)]" />
+              Volum estimativ
+            </label>
+          </div>
+        </div>
+
+        <div className={cardCls}>
+          <h2 className={h2Cls}>Servicii</h2>
+          <div className="rounded-lg border border-[var(--color-line)] p-2">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold">Alimentare cu apă</p>
+              <p className="text-xs text-ink-soft">Sumă: <strong>{money(totals.apaSuma, currency)}</strong></p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={label}>Volum, m³</label>
+                <input type="number" inputMode="decimal" step="any" value={apaVolum} onChange={(e) => setApaVolum(e.target.value)} className={input} />
+              </div>
+              <div>
+                <label className={label}>Tarif, lei/m³</label>
+                <input type="number" inputMode="decimal" step="any" value={apaTarif} onChange={(e) => setApaTarif(e.target.value)} className={input} />
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg border border-[var(--color-line)] p-2">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold">Canalizare</p>
+              <p className="text-xs text-ink-soft">Sumă: <strong>{money(totals.canalSuma, currency)}</strong></p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className={label}>Volum, m³</label>
+                <input type="number" inputMode="decimal" step="any" value={canalVolum} onChange={(e) => setCanalVolum(e.target.value)} className={input} />
+              </div>
+              <div>
+                <label className={label}>Tarif, lei/m³</label>
+                <input type="number" inputMode="decimal" step="any" value={canalTarif} onChange={(e) => setCanalTarif(e.target.value)} className={input} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className={label}>Recalculări</label>
+              <input type="number" inputMode="decimal" step="any" value={recalculari} onChange={(e) => setRecalculari(e.target.value)} className={input} />
+            </div>
+            <div>
+              <label className={label}>Penalitate</label>
+              <input type="number" inputMode="decimal" step="any" value={penalitati} onChange={(e) => setPenalitati(e.target.value)} className={input} />
+            </div>
+            <div>
+              <label className={label}>Datorii(+)/avans(-)</label>
+              <input type="number" inputMode="decimal" step="any" value={datoriiAvans} onChange={(e) => setDatoriiAvans(e.target.value)} className={input} />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-[var(--color-line)] pt-2 text-sm">
+            <span className="text-xs text-ink-soft">Calculată: <span className="tabular-nums">{money(totals.sumaCalculata, currency)}</span></span>
+            <span className="font-bold">Spre plată: <span className="tabular-nums">{money(totals.sumaSprePlata, currency)}</span></span>
+          </div>
+        </div>
+
+        <div className={`${cardCls} lg:col-span-2 xl:col-span-3`}>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <h2 className={h2Cls}>Consum lunar (grafic pe factură)</h2>
+            <p className="text-[11px] text-ink-soft">m³ pe ultimele 12 luni (de la data emiterii) · gol = bara rămâne 0</p>
+          </div>
+          <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-12">
+            {monthLabels.map((l, i) => (
+              <div key={i}>
+                <label className="mb-0.5 block text-[10px] font-semibold text-ink-soft">Luna {l}</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  value={consumValues[i]}
+                  onChange={(e) => setConsumValue(i, e.target.value)}
+                  placeholder="m³"
+                  className={input}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {error && <p className="text-sm text-st-cancelled">{error}</p>}
+        {lockedStatus && (
+          <p className="text-xs text-ink-soft">
+            Statusul rămâne „{INVOICE_STATUS[lockedStatus].label}” — salvarea nu îl schimbă.
+          </p>
+        )}
+        <div className="ml-auto flex gap-2">
+          {lockedStatus ? (
+            <button onClick={() => submit(lockedStatus)} disabled={saving} className="tap h-9 rounded-lg bg-brand px-6 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
+              {saving ? "Se salvează…" : "Salvează"}
+            </button>
+          ) : (
+            <>
+              <button onClick={() => submit("DRAFT")} disabled={saving} className="tap h-9 rounded-lg border border-[var(--color-line)] px-4 text-sm font-semibold hover:bg-[var(--color-surface-2)] disabled:opacity-60">
+                {saving ? "Se salvează…" : "Salvează ciornă"}
+              </button>
+              <button onClick={() => submit("SENT")} disabled={saving} className="tap h-9 rounded-lg bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
+                {saving ? "Se salvează…" : "Generează factura"}
+              </button>
+            </>
           )}
         </div>
-
-        <div>
-          <label className={label}>Nume consumator (dacă diferă de numele clientului)</label>
-          <input value={consumerName} onChange={(e) => setConsumerName(e.target.value)} placeholder="ex. ANTONIU GHEORGHE TEODOR" className={input} />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={label}>Cont personal</label>
-            <input value={contPersonal} onChange={(e) => setContPersonal(e.target.value)} placeholder="900616" className={input} />
-          </div>
-          <div>
-            <label className={label}>Sector nr.</label>
-            <input value={sectorNr} onChange={(e) => setSectorNr(e.target.value)} placeholder="5sp" className={input} />
-          </div>
-        </div>
-
-        <div>
-          <label className={label}>Adresa locului de consum</label>
-          <input value={consumAddress} onChange={(e) => setConsumAddress(e.target.value)} placeholder="or.Cahul, STROESCU, 31" className={input} />
-        </div>
       </div>
-
-      <div className="card flex flex-col gap-4 p-5">
-        <h2 className="text-base font-bold">Contor și perioadă</h2>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className={label}>Numărul contorului</label>
-            <input value={meterNumber} onChange={(e) => setMeterNumber(e.target.value)} placeholder="294170" className={input} />
-          </div>
-          <div>
-            <label className={label}>Indicii precedenți</label>
-            <input value={meterPrevReading} onChange={(e) => setMeterPrevReading(e.target.value)} placeholder="00647" className={input} />
-          </div>
-          <div>
-            <label className={label}>Indicii actuali</label>
-            <input value={meterCurrReading} onChange={(e) => setMeterCurrReading(e.target.value)} placeholder="00660" className={input} />
-          </div>
-        </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isEstimatedVolume} onChange={(e) => setIsEstimatedVolume(e.target.checked)} className="size-4 accent-[var(--color-brand)]" />
-          Volum estimativ
-        </label>
-        <div>
-          <label className={label}>Perioada de calcul</label>
-          <input value={billingPeriodLabel} onChange={(e) => setBillingPeriodLabel(e.target.value)} placeholder="IULIE 2026" className={input} />
-        </div>
-      </div>
-
-      <div className="card flex flex-col gap-4 p-5">
-        <h2 className="text-base font-bold">Servicii</h2>
-        <div className="rounded-xl border border-[var(--color-line)] p-3">
-          <p className="mb-2 text-sm font-semibold">Serviciul de alimentare cu apă</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={label}>Volumul, m³</label>
-              <input type="number" inputMode="decimal" step="any" value={apaVolum} onChange={(e) => setApaVolum(e.target.value)} className={input} />
-            </div>
-            <div>
-              <label className={label}>Tariful, lei/m³</label>
-              <input type="number" inputMode="decimal" step="any" value={apaTarif} onChange={(e) => setApaTarif(e.target.value)} className={input} />
-            </div>
-          </div>
-          <p className="mt-2 text-right text-sm text-ink-soft">Sumă: <strong>{money(totals.apaSuma, currency)}</strong></p>
-        </div>
-        <div className="rounded-xl border border-[var(--color-line)] p-3">
-          <p className="mb-2 text-sm font-semibold">Serviciul de canalizare</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={label}>Volumul, m³</label>
-              <input type="number" inputMode="decimal" step="any" value={canalVolum} onChange={(e) => setCanalVolum(e.target.value)} className={input} />
-            </div>
-            <div>
-              <label className={label}>Tariful, lei/m³</label>
-              <input type="number" inputMode="decimal" step="any" value={canalTarif} onChange={(e) => setCanalTarif(e.target.value)} className={input} />
-            </div>
-          </div>
-          <p className="mt-2 text-right text-sm text-ink-soft">Sumă: <strong>{money(totals.canalSuma, currency)}</strong></p>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className={label}>Recalculări</label>
-            <input type="number" inputMode="decimal" step="any" value={recalculari} onChange={(e) => setRecalculari(e.target.value)} className={input} />
-          </div>
-          <div>
-            <label className={label}>Penalitate</label>
-            <input type="number" inputMode="decimal" step="any" value={penalitati} onChange={(e) => setPenalitati(e.target.value)} className={input} />
-          </div>
-          <div>
-            <label className={label}>Datorii(+)/avans(-)</label>
-            <input type="number" inputMode="decimal" step="any" value={datoriiAvans} onChange={(e) => setDatoriiAvans(e.target.value)} className={input} />
-          </div>
-        </div>
-
-        <div className="flex flex-col items-end gap-1 border-t border-[var(--color-line)] pt-4 text-sm">
-          <div className="flex w-64 justify-between text-ink-soft">
-            <span>Suma calculată</span>
-            <span className="tabular-nums">{money(totals.sumaCalculata, currency)}</span>
-          </div>
-          <div className="flex w-64 justify-between text-base font-bold">
-            <span>Suma spre plată</span>
-            <span className="tabular-nums">{money(totals.sumaSprePlata, currency)}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="card flex flex-col gap-3 p-5">
-        <h2 className="text-base font-bold">Consum lunar (grafic pe factură)</h2>
-        <p className="-mt-2 text-xs text-ink-soft">
-          Volumul (m³) pentru fiecare din ultimele 12 luni, calculate automat de la data emiterii. Lasă gol dacă nu ai date pentru o lună — bara rămâne 0.
-        </p>
-        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-6">
-          {monthLabels.map((l, i) => (
-            <div key={i}>
-              <label className="mb-1 block text-[10px] font-semibold text-ink-soft">Luna {l}</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                step="any"
-                value={consumValues[i]}
-                onChange={(e) => setConsumValue(i, e.target.value)}
-                placeholder="m³"
-                className={input}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {error && <p className="text-sm text-st-cancelled">{error}</p>}
-
-      <div className="flex flex-wrap gap-3">
-        {lockedStatus ? (
-          <button onClick={() => submit(lockedStatus)} disabled={saving} className="tap h-12 flex-1 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
-            {saving ? "Se salvează…" : "Salvează"}
-          </button>
-        ) : (
-          <>
-            <button onClick={() => submit("DRAFT")} disabled={saving} className="tap h-12 flex-1 rounded-xl border border-[var(--color-line)] font-semibold hover:bg-[var(--color-surface-2)] disabled:opacity-60">
-              {saving ? "Se salvează…" : "Salvează ciornă"}
-            </button>
-            <button onClick={() => submit("SENT")} disabled={saving} className="tap h-12 flex-1 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
-              {saving ? "Se salvează…" : "Generează factura"}
-            </button>
-          </>
-        )}
-      </div>
-      {lockedStatus && (
-        <p className="text-center text-xs text-ink-soft">
-          Această factură are statusul „{INVOICE_STATUS[lockedStatus].label}" — salvarea modificărilor nu îi schimbă statusul.
-        </p>
-      )}
     </div>
   );
 }

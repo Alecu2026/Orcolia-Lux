@@ -14,6 +14,8 @@ import {
   NOTIFY_PRESETS,
   NOTIFY_TOKENS,
   renderTemplate,
+  type PayerTemplate,
+  type PayerTemplateDraft,
   smsInfo,
   stripLatinDiacritics,
   type NotifyVars,
@@ -60,6 +62,8 @@ export default function PayerNotifyDialog({
   emailEnabled,
   smsEnabled,
   userEmail,
+  templates,
+  onSaveTemplate,
   onClose,
   onSent,
   onSelectFailed,
@@ -70,6 +74,9 @@ export default function PayerNotifyDialog({
   emailEnabled: boolean;
   smsEnabled: boolean;
   userEmail: string;
+  templates: PayerTemplate[];
+  /** Salvează textul curent ca șablon nou (optimist, în pagină). */
+  onSaveTemplate: (draft: PayerTemplateDraft) => void;
   onClose: () => void;
   /** Apelat după fiecare lot trimis — pagina actualizează „Ultima notificare" imediat (optimist). */
   onSent: (results: RecipientResult[]) => void;
@@ -94,6 +101,8 @@ export default function PayerNotifyDialog({
   const [testPhone, setTestPhone] = useState(readTestPhone);
   const [testing, setTesting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [savingTpl, setSavingTpl] = useState(false);
+  const [tplName, setTplName] = useState("");
 
   const [processed, setProcessed] = useState(0);
   const [emailStats, setEmailStats] = useState<Channel>({ sent: 0, failed: 0, skipped: 0 });
@@ -131,12 +140,21 @@ export default function PayerNotifyDialog({
   }, [smsBody, previewVars, ascii]);
   const sms = smsInfo(renderedSms);
 
-  function applyPreset(key: string) {
-    const p = NOTIFY_PRESETS.find((x) => x.key === key);
-    if (!p) return;
+  function applyPreset(p: { subject: string; email: string; sms: string }) {
     setSubject(p.subject);
     setEmailBody(p.email);
     setSmsBody(p.sms);
+  }
+
+  function saveAsTemplate() {
+    const name = tplName.trim();
+    if (!name) return;
+    if (!emailBody.trim() && !smsBody.trim()) { setFormError("Scrie întâi un mesaj pe care să-l salvezi."); return; }
+    onSaveTemplate({ name, subject, email: emailBody, sms: smsBody });
+    setSavingTpl(false);
+    setTplName("");
+    setFormError(null);
+    toast.success("Șablon salvat.");
   }
 
   function insertToken(token: string) {
@@ -314,11 +332,34 @@ export default function PayerNotifyDialog({
             {/* Șabloane */}
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs font-semibold text-ink-soft">Șablon:</span>
+              {templates.map((t) => (
+                <button key={t.id} type="button" onClick={() => applyPreset(t)} className="tap h-7 rounded-full border border-brand/40 bg-brand/5 px-3 text-xs text-brand hover:bg-brand-soft">
+                  {t.name}
+                </button>
+              ))}
               {NOTIFY_PRESETS.map((p) => (
-                <button key={p.key} type="button" onClick={() => applyPreset(p.key)} className="tap h-7 rounded-full border border-[var(--color-line)] px-3 text-xs hover:border-brand hover:bg-brand-soft">
+                <button key={p.key} type="button" onClick={() => applyPreset(p)} className="tap h-7 rounded-full border border-[var(--color-line)] px-3 text-xs hover:border-brand hover:bg-brand-soft">
                   {p.label}
                 </button>
               ))}
+              {savingTpl ? (
+                <span className="flex items-center gap-1">
+                  <input
+                    value={tplName}
+                    onChange={(e) => setTplName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); saveAsTemplate(); } if (e.key === "Escape") setSavingTpl(false); }}
+                    placeholder="Nume șablon"
+                    maxLength={60}
+                    autoFocus
+                    className="h-7 w-32 rounded-lg border border-brand bg-[var(--color-surface)] px-2 text-xs outline-none"
+                  />
+                  <button type="button" onClick={saveAsTemplate} disabled={!tplName.trim()} className="tap h-7 rounded-lg bg-brand px-2.5 text-xs font-semibold text-white disabled:opacity-40">OK</button>
+                </span>
+              ) : (
+                <button type="button" onClick={() => setSavingTpl(true)} className="tap ml-auto h-7 rounded-full px-2 text-xs text-ink-soft underline hover:text-brand">
+                  + Salvează ca șablon
+                </button>
+              )}
             </div>
 
             {/* Variabile */}

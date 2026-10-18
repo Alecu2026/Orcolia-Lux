@@ -26,11 +26,13 @@ export type NotifyFilters = {
   /** "YYYY-MM-DD" — contor instalat la sau după data asta. */
   installedFrom: string;
   sort: "" | "debtDesc" | "debtAsc" | "installDesc" | "installAsc";
+  /** "1" = doar numele cu „?" (litere românești pierdute la importul din 1C). */
+  nameFix: "" | "1";
 };
 
 export const EMPTY_FILTERS: NotifyFilters = {
   q: "", street: "", month: "", account: "", sector: "", invoiceStatus: "", debt: "",
-  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", installedFrom: "", sort: "",
+  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", installedFrom: "", sort: "", nameFix: "",
 };
 
 export const NOTIFY_PER_PAGE = [20, 50, 100, 200, 500] as const;
@@ -87,6 +89,7 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     notified: ONE_OF(get(src, "notified"), ["never", "7d", "30d", "not7d", "not30d"] as const),
     installedFrom: /^\d{4}-\d{2}-\d{2}$/.test(installedFrom) ? installedFrom : "",
     sort: ONE_OF(get(src, "sort"), ["debtDesc", "debtAsc", "installDesc", "installAsc"] as const),
+    nameFix: ONE_OF(get(src, "nameFix"), ["1"] as const),
   };
 }
 
@@ -256,3 +259,10 @@ export const NOTIFY_MAX_SMS_BODY = 1_000;
 export function notifiedRecently(d: string | Date | null): boolean {
   return !!d && Date.now() - new Date(d).getTime() < 7 * 86_400_000;
 }
+
+// ── Șabloane salvate ───────────────────────────────────────────────────────────────────────────
+
+export type PayerTemplate = { id: string; name: string; subject: string; email: string; sms: string };
+export type PayerTemplateDraft = Omit<PayerTemplate, "id">;
+export const NOTIFY_MAX_TEMPLATE_NAME = 60;
+export const NOTIFY_MAX_TEMPLATES = 100;

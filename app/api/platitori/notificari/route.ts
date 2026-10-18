@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
-import { listPayers, normalizePerPage } from "@/lib/queries/payers";
+import { getPayer, getPayerInvoices, listPayers, normalizePerPage } from "@/lib/queries/payers";
+import { prisma } from "@/lib/prisma";
 import { filtersToListOpts } from "@/lib/queries/payer-notify";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
 
@@ -18,6 +19,37 @@ export async function GET(req: Request) {
   if (!can(user, "clients.view")) return Response.json({ error: "Fără permisiune." }, { status: 403 });
 
   const sp = new URL(req.url).searchParams;
+
+  // ?detail=<id> — datele din pop-up-ul unui plătitor (contor, ultimele facturi, istoricul notificărilor).
+  const detailId = sp.get("detail");
+  if (detailId) {
+    if (!/^[0-9a-f]{24}$/i.test(detailId)) return Response.json({ error: "Id invalid." }, { status: 400 });
+    const [payer, invoices, notifications] = await Promise.all([
+      getPayer(detailId),
+      getPayerInvoices(detailId),
+      prisma.payerNotificationLog.findMany({
+        where: { clientId: detailId },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        select: { id: true, channel: true, status: true, error: true, subject: true, body: true, userName: true, createdAt: true },
+      }),
+    ]);
+    if (!payer) return Response.json({ error: "Plătitor inexistent." }, { status: 404 });
+    return Response.json({
+      payer: {
+        notes: payer.notes,
+        meterNumber: payer.meterNumber,
+        meterCurrReading: payer.meterCurrReading,
+        portalActivatedAt: payer.portalActivatedAt,
+        portalLastLoginAt: payer.portalLastLoginAt,
+      },
+      invoices: invoices.slice(0, 5).map((i) => ({
+        id: i.id, number: i.number, status: i.status, grandTotal: i.grandTotal, currency: i.currency,
+        issueDate: i.issueDate, billingPeriodLabel: i.billingPeriodLabel,
+      })),
+      notifications,
+    });
+  }
   const filters = sanitizeFilters(sp);
   const page = Math.max(1, Math.floor(Number(sp.get("page"))) || 1);
   const perPage = normalizePerPage(normalizePerPageClient(sp.get("perPage")));

@@ -962,3 +962,18 @@ model ApiIntegration {
 
   @@index([key])
 }
+
+// Șabloane de mesaj pentru notificările către plătitori (/notificari-platitori) — comune pentru toți operatorii.
+// Textele pot conține variabile {nume}, {suma}, {factura}, {cont}, {scadenta}, {adresa}.
+model PayerNotifyTemplate {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  subject   String   @default("")
+  email     String   @default("")
+  sms       String   @default("")
+  createdBy String   @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+}

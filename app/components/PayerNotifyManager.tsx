@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PayerRow } from "@/lib/queries/payers";
 import {
@@ -26,11 +25,18 @@ import { INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatusKey } from "./in
 import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useToast } from "./toast";
 import PayerNotifyDialog, { type Recipient } from "./PayerNotifyDialog";
+import PayerTemplatesDialog from "./PayerTemplatesDialog";
+import PayerDetailDialog from "./PayerDetailDialog";
+import ExportButton from "./ExportButton";
+import {
+  createPayerTemplateAction,
+  deletePayerTemplateAction,
+  updatePayerTemplateAction,
+} from "@/app/actions/payer-templates";
+import type { PayerTemplate, PayerTemplateDraft } from "@/lib/payer-notify";
 
 type Page = { items: PayerRow[]; total: number };
 
-const BASE_PATH = "/notificari-platitori";
-const STORAGE_KEY = `filters:${BASE_PATH}`;
 const LUNI = ["ianuarie", "februarie", "martie", "aprilie", "mai", "iunie", "iulie", "august", "septembrie", "octombrie", "noiembrie", "decembrie"];
 const monthLabel = (m: string) => `${LUNI[Number(m.slice(5, 7)) - 1] ?? m.slice(5, 7)} ${m.slice(0, 4)}`;
 const nf = (n: number) => n.toLocaleString("ro-RO");
@@ -40,11 +46,11 @@ const fmtDay = (iso: string) =>
 
 // Aceleași clase ca filtrele din Task-uri: câmpul cu valoare aleasă capătă fundal/chenar colorat.
 const fld = (val: string) =>
-  `h-9 min-w-0 max-w-full appearance-none sel-arrow rounded-lg border pl-2 pr-7 text-xs outline-none focus:border-brand ${
+  `h-7 min-w-0 max-w-full appearance-none sel-arrow rounded-lg border pl-1.5 pr-6 text-[11px] outline-none focus:border-brand ${
     val ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"
   }`;
 const txtFld = (val: string) =>
-  `h-9 min-w-0 rounded-lg border px-3 text-xs outline-none focus:border-brand ${
+  `h-7 min-w-0 rounded-lg border px-2 text-[11px] outline-none focus:border-brand ${
     val ? "border-brand bg-brand/10 font-semibold text-brand placeholder:font-normal" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"
   }`;
 
@@ -76,19 +82,33 @@ type TextKey = "q" | "street" | "minDebt" | "maxDebt";
 export default function PayerNotifyManager({
   initial,
   months,
-  canSend,
+  initialTemplates,
+  canSend: canSendProp,
   emailEnabled,
   smsEnabled,
   userEmail,
+  basePath = "/notificari-platitori",
+  browseOnly = false,
+  nameFixCount = 0,
 }: {
   initial: { filters: NotifyFilters; page: number; perPage: number; items: PayerRow[]; total: number };
   months: { month: string; count: number }[];
+  initialTemplates: PayerTemplate[];
   canSend: boolean;
   emailEnabled: boolean;
   smsEnabled: boolean;
   userEmail: string;
+  /** Ruta paginii — pentru URL și cheia de salvare a filtrelor (fiecare pagină își ține filtrele separat). */
+  basePath?: string;
+  /** Mod „răsfoire" (/platitori): același tabel, fără bife/trimitere/șabloane, cu export. */
+  browseOnly?: boolean;
+  /** Câte nume au „?" — arată bannerul de corectare (doar în modul răsfoire). */
+  nameFixCount?: number;
 }) {
   const toast = useToast();
+  const canSend = canSendProp && !browseOnly;
+  const BASE_PATH = basePath;
+  const STORAGE_KEY = `filters:${basePath}`;
 
   // ── Stare: filtrele sunt locale (schimbarea lor e instantanee în UI), datele vin de pe server ──
   const [filters, setFilters] = useState<NotifyFilters>(initial.filters);
@@ -115,6 +135,43 @@ export default function PayerNotifyManager({
   const [resolving, setResolving] = useState(false);
   const resolveToken = useRef(0);
   const lastClicked = useRef<number | null>(null);
+  // ── Șabloane (optimist: UI-ul se schimbă pe loc, serverul confirmă din urmă; la eșec revenim + mesaj) ──
+  const [templates, setTemplates] = useState<PayerTemplate[]>(initialTemplates);
+  const [tplOpen, setTplOpen] = useState(false);
+  const [detailRow, setDetailRow] = useState<PayerRow | null>(null);
+
+  function createTemplate(d: PayerTemplateDraft) {
+    const tmp = `tmp-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    setTemplates((t) => [{ id: tmp, ...d }, ...t]);
+    createPayerTemplateAction(d)
+      .then((res) => {
+        if (res.ok) setTemplates((t) => t.map((x) => (x.id === tmp ? res.template : x)));
+        else { setTemplates((t) => t.filter((x) => x.id !== tmp)); toast.error(res.error); }
+      })
+      .catch(() => { setTemplates((t) => t.filter((x) => x.id !== tmp)); toast.error("Nu am putut salva șablonul."); });
+  }
+
+  function updateTemplate(id: string, d: PayerTemplateDraft) {
+    const prev = templates.find((x) => x.id === id);
+    setTemplates((t) => t.map((x) => (x.id === id ? { id, ...d } : x)));
+    const revert = (msg: string) => {
+      if (prev) setTemplates((t) => t.map((x) => (x.id === id ? prev : x)));
+      toast.error(msg);
+    };
+    updatePayerTemplateAction(id, d)
+      .then((res) => { if (!res.ok) revert(res.error); })
+      .catch(() => revert("Nu am putut salva modificarea."));
+  }
+
+  function deleteTemplate(id: string) {
+    const prevList = templates;
+    setTemplates((t) => t.filter((x) => x.id !== id));
+    const revert = (msg: string) => { setTemplates(prevList); toast.error(msg); };
+    deletePayerTemplateAction(id)
+      .then((res) => { if (!res.ok) revert(res.error); })
+      .catch(() => revert("Nu am putut șterge șablonul."));
+  }
+
   const [compose, setCompose] = useState<{ recipients: Recipient[]; previewRow: PayerRow | null } | null>(null);
   const sentSomething = useRef(false);
 
@@ -158,7 +215,7 @@ export default function PayerNotifyManager({
     if (perPage !== DEFAULT_PER_PAGE) usp.set("perPage", String(perPage));
     const qs = usp.toString();
     window.history.replaceState(null, "", `${BASE_PATH}${qs ? `?${qs}` : ""}`);
-  }, [filters, page, perPage, ready]);
+  }, [filters, page, perPage, ready, BASE_PATH, STORAGE_KEY]);
 
   // Încărcarea datelor: răspuns instant din cache (dacă am mai văzut pagina), apoi reîmprospătare de pe server;
   // o cerere nouă anulează pe cea veche, deci filtrarea rapidă nu se „îneacă" în răspunsuri vechi.
@@ -335,23 +392,36 @@ export default function PayerNotifyManager({
   const pageButtons = buildPageButtons(page, totalPages);
   const from = data.total === 0 ? 0 : (page - 1) * perPage + 1;
   const to = Math.min(page * perPage, data.total);
-  const colCount = canSend ? 12 : 10;
+  const colCount = canSend ? 14 : 12;
 
   return (
     <div>
-      {!emailEnabled && !smsEnabled && (
+      {!browseOnly && !emailEnabled && !smsEnabled && (
         <div className="mb-3 rounded-xl border border-st-progress/30 bg-st-progress/10 px-4 py-3 text-sm text-st-progress">
           Niciun canal de trimitere nu este configurat. Setează <b>SMTP_*</b> pentru email și <b>TWILIO_*</b> sau <b>SMS_HTTP_URL</b> pentru SMS (vezi .env.example).
         </div>
       )}
-      {(emailEnabled !== smsEnabled) && (
+      {!browseOnly && (emailEnabled !== smsEnabled) && (
         <p className="mb-3 text-xs text-ink-soft">
           {emailEnabled ? "SMS-ul nu este configurat — poți trimite doar email." : "Emailul nu este configurat — poți trimite doar SMS."}
         </p>
       )}
 
+      {browseOnly && nameFixCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setFilter({ nameFix: filters.nameFix ? "" : "1" })}
+          className={`tap mb-2 flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-1.5 text-left text-xs ${
+            filters.nameFix ? "border-brand bg-brand-soft text-brand-strong" : "border-st-progress/30 bg-st-progress/10 text-st-progress"
+          }`}
+        >
+          <span><b>{nf(nameFixCount)} nume</b> conțin un caracter „?” — litere românești (Ș/Ț) pe care exportul original nu le putea reprezenta.</span>
+          <span className="shrink-0 font-medium underline">{filters.nameFix ? "Arată pe toți" : "Arată-le"}</span>
+        </button>
+      )}
+
       {/* ── Filtre (stil Task-uri: colorate când sunt active) ─────────────────── */}
-      <div className="mb-2 flex flex-wrap items-center gap-2">
+      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
         <input
           value={draft.q}
           onChange={(e) => onText("q", e.target.value)}
@@ -439,7 +509,7 @@ export default function PayerNotifyManager({
           <button
             type="button"
             onClick={clearAll}
-            className="tap h-9 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]"
+            className="tap h-7 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]"
           >
             Resetează filtrele{active > 0 ? ` (${active})` : ""}
           </button>
@@ -447,28 +517,48 @@ export default function PayerNotifyManager({
       </div>
 
       {/* Filtre rapide */}
-      <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
+      <div className="mb-2 flex flex-wrap items-center gap-1 text-[11px]">
         <span className="font-semibold text-ink-soft">Rapid:</span>
-        <button type="button" onClick={() => applyPreset({ debt: "has", contact: "any", notified: "not7d", sort: "debtDesc" })} className="tap h-7 rounded-full border border-[var(--color-line)] px-3 hover:border-brand hover:bg-brand-soft">
+        <button type="button" onClick={() => applyPreset({ debt: "has", contact: "any", notified: "not7d", sort: "debtDesc" })} className="tap h-6 rounded-full border border-[var(--color-line)] px-2.5 hover:border-brand hover:bg-brand-soft">
           Datornici de contactat
         </button>
-        <button type="button" onClick={() => applyPreset({ notified: "never", contact: "any" })} className="tap h-7 rounded-full border border-[var(--color-line)] px-3 hover:border-brand hover:bg-brand-soft">
+        <button type="button" onClick={() => applyPreset({ notified: "never", contact: "any" })} className="tap h-6 rounded-full border border-[var(--color-line)] px-2.5 hover:border-brand hover:bg-brand-soft">
           Niciodată notificați
         </button>
-        <button type="button" onClick={() => applyPreset({ contact: "none" })} className="tap h-7 rounded-full border border-[var(--color-line)] px-3 hover:border-brand hover:bg-brand-soft">
+        <button type="button" onClick={() => applyPreset({ contact: "none" })} className="tap h-6 rounded-full border border-[var(--color-line)] px-2.5 hover:border-brand hover:bg-brand-soft">
           Fără contact (de completat)
         </button>
+        {browseOnly && (
+          <span className="ml-auto">
+            <ExportButton
+              entity="payers"
+              params={{ ...Object.fromEntries(Object.entries(sanitizeFilters(filters)).filter(([, v]) => v)) }}
+              label="Export (cu filtrele)"
+              className="tap inline-flex h-6 items-center gap-1 rounded-full border border-[var(--color-line)] px-2.5 text-[11px] hover:border-brand hover:bg-brand-soft"
+            />
+          </span>
+        )}
+        {canSend && (
+          <button
+            type="button"
+            onClick={() => setTplOpen(true)}
+            className="tap ml-auto h-6 rounded-full border border-[var(--color-line)] px-3 hover:border-brand hover:bg-brand-soft"
+            title="Creează, editează sau șterge șabloanele de mesaje"
+          >
+            📝 Șabloane{templates.length ? ` (${templates.length})` : ""}
+          </button>
+        )}
       </div>
 
       {/* ── Bară de selecție / acțiuni ─────────────────────────────────────── */}
       {canSend && (
-        <div className={`mb-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-sm ${selCount ? "border-brand bg-brand/10" : "border-[var(--color-line)] bg-[var(--color-surface-2)]"}`}>
+        <div className={`mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs ${selCount ? "border-brand bg-brand/10" : "border-[var(--color-line)] bg-[var(--color-surface-2)]"}`}>
           {selCount > 0 ? (
             <span className="font-semibold text-brand">
               {nf(selCount)} selectați <span className="font-normal text-ink-soft">· {nf(selEmail)} cu email · {nf(selPhone)} cu telefon</span>
             </span>
           ) : (
-            <span className="text-ink-soft">Bifează plătitorii (Shift = interval) sau selectează-i pe toți din filtru.</span>
+            <span className="text-ink-soft">Bifează plătitorii (Shift = interval) sau selectează-i pe toți din filtru. Click pe un rând = datele lui.</span>
           )}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {data.total > 0 && (
@@ -476,13 +566,13 @@ export default function PayerNotifyManager({
                 type="button"
                 onClick={selectAllMatching}
                 disabled={resolving}
-                className="tap h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-xs font-medium hover:bg-brand-soft disabled:opacity-60"
+                className="tap h-7 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-60"
               >
-                {resolving ? "Se selectează…" : `Selectează toți cei ${nf(data.total)} din filtru`}
+                {resolving ? "Se selectează…" : (data.total > pageRows.length ? `Selectează toți cei ${nf(data.total)} din filtru (toate paginile)` : `Selectează toți cei ${nf(data.total)} din filtru`)}
               </button>
             )}
             {selCount > 0 && (
-              <button type="button" onClick={() => setSelected(new Map())} className="tap h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-xs hover:bg-[var(--color-surface-2)]">
+              <button type="button" onClick={() => setSelected(new Map())} className="tap h-7 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] hover:bg-[var(--color-surface-2)]">
                 Golește selecția
               </button>
             )}
@@ -490,7 +580,7 @@ export default function PayerNotifyManager({
               type="button"
               onClick={openForSelection}
               disabled={selCount === 0}
-              className="tap h-9 rounded-lg bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-strong disabled:opacity-40"
+              className="tap h-7 rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:opacity-40"
             >
               ✉ Trimite notificare{selCount ? ` (${nf(selCount)})` : ""}
             </button>
@@ -499,9 +589,9 @@ export default function PayerNotifyManager({
       )}
 
       {/* ── Sumar + rânduri pe pagină ─────────────────────────────────────── */}
-      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+      <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
         <span><b>{nf(data.total)}</b> plătitori{active > 0 ? " (filtrat)" : ""}</span>
-        {data.total > 0 && <span className="text-ink-soft">{nf(from)}–{nf(to)}</span>}
+        {data.total > 0 && <span className="text-ink-soft">afișați {nf(from)}–{nf(to)} din {nf(data.total)}{totalPages > 1 ? ` · pagina ${page}/${totalPages}` : ""}</span>}
         {loading && <span className="text-ink-soft">se încarcă…</span>}
         <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-soft">
           Afișează
@@ -524,39 +614,41 @@ export default function PayerNotifyManager({
       )}
 
       {/* ── Tabel (stil 1C) ───────────────────────────────────────────────── */}
-      <div className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`} style={{ maxHeight: "68vh" }}>
-        <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
+      <div className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`} style={{ maxHeight: "74vh" }}>
+        <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] leading-[15px]">
           <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
             <tr>
               {canSend && (
-                <th className="sticky left-0 z-30 w-10 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 py-2">
+                <th className="sticky left-0 z-30 w-7 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1">
                   <input
                     ref={headerCheck}
                     type="checkbox"
                     checked={allOnPage}
                     onChange={togglePage}
-                    className="size-4 accent-[var(--color-brand)]"
+                    className="size-3 accent-[var(--color-brand)]"
                     aria-label="Selectează pagina"
                   />
                 </th>
               )}
-              <Th sticky={canSend ? "left-10" : "left-0"} minW={230}>
+              <Th sticky={canSend ? "left-7" : "left-0"} minW={190}>
                 <button type="button" onClick={() => setFilter({ sort: "" })} className="font-semibold hover:text-brand">Plătitor</button>
               </Th>
-              <Th minW={120}>Cont / contract</Th>
-              <Th minW={200}>Adresă</Th>
-              <Th minW={190}>Email</Th>
-              <Th minW={120}>Telefon</Th>
-              <Th minW={100}>Factură</Th>
-              <Th minW={90}>Scadență</Th>
-              <Th minW={110} right>
+              <Th minW={95}>Cont / contract</Th>
+              <Th minW={160}>Adresă</Th>
+              <Th minW={160}>Email</Th>
+              <Th minW={95}>Telefon</Th>
+              <Th minW={80}>Factură</Th>
+              <Th minW={70}>Scadență</Th>
+              <Th minW={80} right>
                 <button type="button" onClick={() => sortToggle("debtDesc", "debtAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
                   De achitat <span className="text-[10px] text-ink-soft">{arrow("debtDesc", "debtAsc")}</span>
                 </button>
               </Th>
-              <Th minW={90}>Status</Th>
-              <Th minW={120}>Ultima notificare</Th>
-              {canSend && <Th minW={60}> </Th>}
+              <Th minW={65}>Status</Th>
+              <Th minW={50}>Portal</Th>
+              <Th minW={45} right>Facturi</Th>
+              <Th minW={95}>Ultima notificare</Th>
+              {canSend && <Th minW={32}> </Th>}
             </tr>
           </thead>
           <tbody>
@@ -569,62 +661,61 @@ export default function PayerNotifyManager({
               return (
                 <tr
                   key={r.id}
-                  onClick={canSend ? (e) => toggleRow(i, e.shiftKey) : undefined}
-                  onMouseDown={canSend ? (e) => { if (e.shiftKey) e.preventDefault(); } : undefined}
-                  className={`${canSend ? "cursor-pointer" : ""} ${sel ? "bg-brand-soft/60" : "hover:bg-brand-soft/30"}`}
+                  onClick={() => setDetailRow(r)}
+                  className={`cursor-pointer ${sel ? "bg-brand-soft/60" : "hover:bg-brand-soft/30"}`}
                 >
                   {canSend && (
-                    <td className={`sticky left-0 z-10 border-b border-[var(--color-line)] px-2 py-1.5 ${bg}`}>
-                      <input type="checkbox" checked={sel} readOnly tabIndex={-1} className="pointer-events-none size-4 accent-[var(--color-brand)]" aria-label={`Selectează ${r.name}`} />
+                    <td
+                      className={`sticky left-0 z-10 cursor-pointer border-b border-[var(--color-line)] px-1.5 py-px ${bg}`}
+                      onClick={(e) => { e.stopPropagation(); toggleRow(i, e.shiftKey); }}
+                      onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
+                      title="Bifează (Shift = interval)"
+                    >
+                      <input type="checkbox" checked={sel} readOnly tabIndex={-1} className="pointer-events-none block size-3 accent-[var(--color-brand)]" aria-label={`Selectează ${r.name}`} />
                     </td>
                   )}
-                  <td className={`sticky ${canSend ? "left-10" : "left-0"} z-10 border-b border-[var(--color-line)] px-2 py-1.5 font-medium ${bg}`} style={{ maxWidth: 280 }}>
-                    <Link
-                      href={`/platitori/${r.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="block truncate hover:text-brand hover:underline"
-                      title={`${r.name} — deschide fișa`}
-                    >
-                      {r.name}
-                    </Link>
+                  <td className={`sticky ${canSend ? "left-7" : "left-0"} z-10 border-b border-[var(--color-line)] px-1.5 py-px font-medium ${bg}`} style={{ maxWidth: 220 }}>
+                    <div className="truncate hover:text-brand" title={r.name}>{r.name}</div>
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-2 py-1.5">{r.meterSeries ?? r.contract ?? "—"}</td>
-                  <td className="border-b border-[var(--color-line)] px-2 py-1.5" style={{ maxWidth: 240 }}>
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px">{r.meterSeries ?? r.contract ?? "—"}</td>
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px" style={{ maxWidth: 190 }}>
                     <div className="truncate" title={r.consumAddress ?? ""}>{r.consumAddress ?? <Dash />}</div>
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-2 py-1.5" style={{ maxWidth: 230 }}>
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px" style={{ maxWidth: 190 }}>
                     {r.email ? (
                       <div className={`truncate ${flags & 1 ? "" : "text-st-progress"}`} title={flags & 1 ? r.email : `Adresă invalidă: ${r.email}`}>{r.email}</div>
                     ) : <Dash />}
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-2 py-1.5 tabular-nums">
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px tabular-nums">
                     {r.phone ? (
                       <span className={flags & 2 ? "" : "text-st-progress"} title={flags & 2 ? undefined : "Număr invalid pentru SMS"}>{r.phone}</span>
                     ) : <Dash />}
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-2 py-1.5">{r.latestInvoice?.number ?? <Dash />}</td>
-                  <td className="border-b border-[var(--color-line)] px-2 py-1.5">{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</td>
-                  <td className={`border-b border-[var(--color-line)] px-2 py-1.5 text-right tabular-nums ${r.latestInvoice && r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px">{r.latestInvoice?.number ?? <Dash />}</td>
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px">{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</td>
+                  <td className={`border-b border-[var(--color-line)] px-1.5 py-px text-right tabular-nums ${r.latestInvoice && r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>
                     {r.latestInvoice ? money(r.latestInvoice.grandTotal) : <Dash />}
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-2 py-1.5">
-                    {st ? <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span> : <Dash />}
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px">
+                    {st ? <span className={`inline-block rounded-full px-1.5 text-[10px] leading-[14px] font-medium ${st.cls}`}>{st.label}</span> : <Dash />}
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-2 py-1.5 whitespace-nowrap" title={r.lastNotifiedAt ? new Date(r.lastNotifiedAt).toLocaleString("ro-RO") : "Niciodată notificat"}>
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px" title={r.activated ? "Cont portal activat" : "Cont portal neactivat"}>
+                    {r.activated ? <span className="text-st-done">✓ activ</span> : <span className="text-ink-soft/60">—</span>}
+                  </td>
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px text-right tabular-nums text-ink-soft">{r.invoiceCount}</td>
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px whitespace-nowrap" title={r.lastNotifiedAt ? new Date(r.lastNotifiedAt).toLocaleString("ro-RO") : "Niciodată notificat"}>
                     {r.lastNotifiedAt ? (
                       <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt)}</span>
                     ) : <Dash />}
                   </td>
                   {canSend && (
-                    <td className="border-b border-[var(--color-line)] px-2 py-1.5">
+                    <td className="border-b border-[var(--color-line)] px-1.5 py-px">
                       <button
                         type="button"
                         disabled={flags === 0}
                         onClick={(e) => { e.stopPropagation(); openForRow(r); }}
                         title={flags === 0 ? "Fără email/telefon valid" : "Trimite doar acestui plătitor"}
-                        className="tap grid size-7 place-items-center rounded-md border border-[var(--color-line)] hover:bg-brand-soft disabled:opacity-30"
+                        className="tap grid size-4 place-items-center rounded border text-[9px] leading-none border-[var(--color-line)] hover:bg-brand-soft disabled:opacity-30"
                       >
                         ✉
                       </button>
@@ -647,23 +738,23 @@ export default function PayerNotifyManager({
 
       {/* ── Paginare numerică (ca în Task-uri) ─────────────────────────────── */}
       {data.total > 0 && (
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-1">
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
           <button
             disabled={page <= 1}
             onClick={() => setPage(page - 1)}
-            className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
+            className="tap grid size-7 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
             aria-label="Pagina anterioară"
           >
             <IconChevronLeft className="size-4" />
           </button>
           {pageButtons.map((b, i) =>
             b === "…" ? (
-              <span key={`e${i}`} className="flex h-9 w-6 items-center justify-center text-sm text-ink-soft">…</span>
+              <span key={`e${i}`} className="flex h-7 w-6 items-center justify-center text-sm text-ink-soft">…</span>
             ) : (
               <button
                 key={b}
                 onClick={() => setPage(b)}
-                className={`tap h-9 min-w-[36px] rounded-lg px-2.5 text-sm font-medium ${
+                className={`tap h-7 min-w-[28px] rounded-lg px-2 text-xs font-medium ${
                   b === page ? "bg-brand text-white" : "border border-[var(--color-line)] text-ink hover:bg-[var(--color-surface-2)]"
                 }`}
               >
@@ -674,12 +765,32 @@ export default function PayerNotifyManager({
           <button
             disabled={page >= totalPages}
             onClick={() => setPage(page + 1)}
-            className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
+            className="tap grid size-7 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
             aria-label="Pagina următoare"
           >
             <IconChevronRight className="size-4" />
           </button>
         </div>
+      )}
+
+      {tplOpen && (
+        <PayerTemplatesDialog
+          templates={templates}
+          onCreate={createTemplate}
+          onUpdate={updateTemplate}
+          onDelete={deleteTemplate}
+          onClose={() => setTplOpen(false)}
+        />
+      )}
+
+      {detailRow && (
+        <PayerDetailDialog
+          row={detailRow}
+          canSend={canSend}
+          hasContact={flagsOf(detailRow) !== 0}
+          onSend={() => { const r = detailRow; setDetailRow(null); openForRow(r); }}
+          onClose={() => setDetailRow(null)}
+        />
       )}
 
       {compose && (
@@ -690,6 +801,8 @@ export default function PayerNotifyManager({
           emailEnabled={emailEnabled}
           smsEnabled={smsEnabled}
           userEmail={userEmail}
+          templates={templates}
+          onSaveTemplate={createTemplate}
           onClose={closeCompose}
           onSent={onSent}
           onSelectFailed={(ids) => {
@@ -719,7 +832,7 @@ function Th({
   return (
     <th
       style={{ minWidth: minW }}
-      className={`border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 py-2 font-semibold ${right ? "text-right" : "text-left"} ${
+      className={`border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1 font-semibold ${right ? "text-right" : "text-left"} ${
         sticky ? `sticky ${sticky} z-30` : ""
       }`}
     >
