@@ -266,3 +266,8 @@ export type PayerTemplate = { id: string; name: string; subject: string; email: 
 export type PayerTemplateDraft = Omit<PayerTemplate, "id">;
 export const NOTIFY_MAX_TEMPLATE_NAME = 60;
 export const NOTIFY_MAX_TEMPLATES = 100;
+
+// ── Notițe pe plătitor ─────────────────────────────────────────────────────────────────────────
+
+export type PayerNoteItem = { id: string; body: string; userId: string; userName: string; createdAt: string; updatedAt: string };
+export const NOTIFY_MAX_NOTE = 2_000;

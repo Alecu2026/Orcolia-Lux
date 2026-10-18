@@ -37,3 +37,17 @@ export async function listPayerTemplates(): Promise<PayerTemplate[]> {
   });
   return rows;
 }
+
+import type { PayerNoteItem } from "../payer-notify";
+
+/** Notițele unui plătitor, cele mai noi primele. */
+export async function listPayerNotes(clientId: string, take = 100): Promise<PayerNoteItem[]> {
+  if (DEMO) return [];
+  const rows = await prisma.payerNote.findMany({
+    where: { clientId },
+    orderBy: { createdAt: "desc" },
+    take,
+    select: { id: true, body: true, userId: true, userName: true, createdAt: true, updatedAt: true },
+  });
+  return rows.map((n) => ({ ...n, createdAt: n.createdAt.toISOString(), updatedAt: n.updatedAt.toISOString() }));
+}

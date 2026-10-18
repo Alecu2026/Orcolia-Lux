@@ -5,6 +5,7 @@ import { can } from "@/lib/permissions";
 import { getInvoice, invoiceProjectOptions } from "@/lib/queries/invoices";
 import { getCompanySettings } from "@/lib/queries/company";
 import { crmClientOptionsPlus } from "@/lib/queries/clients";
+import { prisma } from "@/lib/prisma";
 import InvoiceForm, { type InvoiceInitial } from "@/app/components/InvoiceForm";
 import ApaCanalInvoiceForm, { type ApaCanalInitial } from "@/app/components/ApaCanalInvoiceForm";
 import { IconChevronLeft } from "@/app/components/icons";
@@ -36,6 +37,18 @@ export default async function EditInvoicePage({
       ? (invoice.monthlyConsumption as { label: string; value: number }[])
       : [];
 
+    // Facturile create de importuri mai vechi pot avea contul personal / adresa goale, deși plătitorul le are pe fișă —
+    // le completăm din fișa lui (doar în formular; se salvează pe factură abia când apeși Salvează).
+    const needFill = !invoice.contPersonal || !invoice.consumAddress;
+    const payer =
+      needFill && invoice.clientId
+        ? await prisma.client.findUnique({ where: { id: invoice.clientId }, select: { meterSeries: true, consumAddress: true } })
+        : null;
+    const prefilled = {
+      contPersonal: !invoice.contPersonal && !!payer?.meterSeries,
+      consumAddress: !invoice.consumAddress && !!payer?.consumAddress,
+    };
+
     const apaCanalInitial: ApaCanalInitial = {
       id: invoice.id,
       status: invoice.status,
@@ -43,9 +56,9 @@ export default async function EditInvoicePage({
       dueDate: invoice.dueDate ? invoice.dueDate.toISOString().slice(0, 10) : "",
       clientId: invoice.clientId,
       currency: invoice.currency,
-      contPersonal: invoice.contPersonal ?? "",
+      contPersonal: invoice.contPersonal ?? payer?.meterSeries ?? "",
       sectorNr: invoice.sectorNr ?? "",
-      consumAddress: invoice.consumAddress ?? "",
+      consumAddress: invoice.consumAddress ?? payer?.consumAddress ?? "",
       consumerName: invoice.consumerName ?? "",
       meterNumber: invoice.meterNumber ?? "",
       meterPrevReading: invoice.meterPrevReading ?? "",
@@ -74,6 +87,7 @@ export default async function EditInvoicePage({
           clients={clients}
           currency={company.currency}
           initial={apaCanalInitial}
+          prefilled={prefilled}
           canCreateClient={can(user, "clients.create")}
         />
       </div>

@@ -2,7 +2,7 @@ import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { getPayer, getPayerInvoices, listPayers, normalizePerPage } from "@/lib/queries/payers";
 import { prisma } from "@/lib/prisma";
-import { filtersToListOpts } from "@/lib/queries/payer-notify";
+import { filtersToListOpts, listPayerNotes } from "@/lib/queries/payer-notify";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   const detailId = sp.get("detail");
   if (detailId) {
     if (!/^[0-9a-f]{24}$/i.test(detailId)) return Response.json({ error: "Id invalid." }, { status: 400 });
-    const [payer, invoices, notifications] = await Promise.all([
+    const [payer, invoices, notifications, notes] = await Promise.all([
       getPayer(detailId),
       getPayerInvoices(detailId),
       prisma.payerNotificationLog.findMany({
@@ -33,6 +33,7 @@ export async function GET(req: Request) {
         take: 8,
         select: { id: true, channel: true, status: true, error: true, subject: true, body: true, userName: true, createdAt: true },
       }),
+      listPayerNotes(detailId, 50),
     ]);
     if (!payer) return Response.json({ error: "Plătitor inexistent." }, { status: 404 });
     return Response.json({
@@ -44,10 +45,11 @@ export async function GET(req: Request) {
         portalLastLoginAt: payer.portalLastLoginAt,
       },
       invoices: invoices.slice(0, 5).map((i) => ({
-        id: i.id, number: i.number, status: i.status, grandTotal: i.grandTotal, currency: i.currency,
-        issueDate: i.issueDate, billingPeriodLabel: i.billingPeriodLabel,
+        id: i.id, publicToken: i.publicToken, number: i.number, status: i.status, grandTotal: i.grandTotal, currency: i.currency,
+        issueDate: i.issueDate, dueDate: i.dueDate, paidAt: i.paidAt, billingPeriodLabel: i.billingPeriodLabel,
       })),
       notifications,
+      notes,
     });
   }
   const filters = sanitizeFilters(sp);

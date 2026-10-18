@@ -55,6 +55,7 @@ export default function ApaCanalInvoiceForm({
   currency,
   initial,
   canCreateClient = false,
+  prefilled,
   defaultTarifApa = 0,
   defaultTarifCanal = 0,
 }: {
@@ -62,6 +63,8 @@ export default function ApaCanalInvoiceForm({
   currency: string;
   initial?: ApaCanalInitial;
   canCreateClient?: boolean;
+  /** Câmpuri completate din fișa plătitorului (factura le avea goale) — arătăm o mențiune lângă ele. */
+  prefilled?: { contPersonal?: boolean; consumAddress?: boolean };
   defaultTarifApa?: number;
   defaultTarifCanal?: number;
 }) {
@@ -243,7 +246,7 @@ export default function ApaCanalInvoiceForm({
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className={label}>Cont personal</label>
+              <label className={label}>Cont personal{prefilled?.contPersonal && <span className="font-normal text-brand"> · din fișa plătitorului</span>}</label>
               <input value={contPersonal} onChange={(e) => setContPersonal(e.target.value)} placeholder="900616" className={input} />
             </div>
             <div>
@@ -253,7 +256,7 @@ export default function ApaCanalInvoiceForm({
           </div>
 
           <div>
-            <label className={label}>Adresa locului de consum</label>
+            <label className={label}>Adresa locului de consum{prefilled?.consumAddress && <span className="font-normal text-brand"> · din fișa plătitorului</span>}</label>
             <input value={consumAddress} onChange={(e) => setConsumAddress(e.target.value)} placeholder="or.Cahul, STROESCU, 31" className={input} />
           </div>
         </div>

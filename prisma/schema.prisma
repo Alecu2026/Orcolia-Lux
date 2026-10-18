@@ -508,6 +508,8 @@ model Invoice {
   kind      InvoiceKind   @default(STANDARD)
   issueDate DateTime      @default(now())
   dueDate   DateTime?
+  // Când a fost marcată „Plătită" în aplicație. 1C nu trimite plăți (nici stare, nici dată), deci data vine doar din marcarea manuală.
+  paidAt    DateTime?
 
   // --- Câmpuri specifice facturii „Apă-Canal" (folosite doar când kind = APA_CANAL) ---
   contPersonal        String?
@@ -976,4 +978,18 @@ model PayerNotifyTemplate {
   updatedAt DateTime @updatedAt
 
   @@index([createdAt])
+}
+
+// Notițe interne pe un plătitor (cine a scris, când) — mai multe pe plătitor, ca un jurnal. Fără relație la
+// Client/User intenționat (ca AuditLog): se șterg explicit odată cu plătitorul (vezi deletePayer).
+model PayerNote {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  clientId  String   @db.ObjectId
+  body      String
+  userId    String   @db.ObjectId
+  userName  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId, createdAt])
 }

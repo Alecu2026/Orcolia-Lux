@@ -87,6 +87,8 @@ export default function PayerNotifyManager({
   emailEnabled,
   smsEnabled,
   userEmail,
+  userId = "",
+  isAdmin = false,
   basePath = "/notificari-platitori",
   browseOnly = false,
   nameFixCount = 0,
@@ -98,6 +100,9 @@ export default function PayerNotifyManager({
   emailEnabled: boolean;
   smsEnabled: boolean;
   userEmail: string;
+  /** Utilizatorul curent — pentru notițe (cine le poate modifica). */
+  userId?: string;
+  isAdmin?: boolean;
   /** Ruta paginii — pentru URL și cheia de salvare a filtrelor (fiecare pagină își ține filtrele separat). */
   basePath?: string;
   /** Mod „răsfoire" (/platitori): același tabel, fără bife/trimitere/șabloane, cu export. */
@@ -614,8 +619,8 @@ export default function PayerNotifyManager({
       )}
 
       {/* ── Tabel (stil 1C) ───────────────────────────────────────────────── */}
-      <div className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`} style={{ maxHeight: "74vh" }}>
-        <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] leading-[15px]">
+      <div className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`} style={{ maxHeight: perPage > 50 ? "max(78vh, 890px)" : undefined }}>
+        <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] leading-[14px]">
           <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
             <tr>
               {canSend && (
@@ -787,6 +792,9 @@ export default function PayerNotifyManager({
         <PayerDetailDialog
           row={detailRow}
           canSend={canSend}
+          canNote={canSendProp}
+          userId={userId}
+          isAdmin={isAdmin}
           hasContact={flagsOf(detailRow) !== 0}
           onSend={() => { const r = detailRow; setDetailRow(null); openForRow(r); }}
           onClose={() => setDetailRow(null)}

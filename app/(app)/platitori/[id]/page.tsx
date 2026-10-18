@@ -6,6 +6,9 @@ import { getPayer, getPayerInvoices, getPayerTickets } from "@/lib/queries/payer
 import { money, fmtDate, INVOICE_STATUS, type InvoiceStatusKey } from "@/app/components/invoice-meta";
 import { TASK_STATUS_RO } from "@/lib/telegram";
 import PayerActions from "@/app/components/PayerActions";
+import PayerNotes from "@/app/components/PayerNotes";
+import InvoiceViewButton from "@/app/components/InvoiceViewButton";
+import { listPayerNotes } from "@/lib/queries/payer-notify";
 import { IconChevronLeft } from "@/app/components/icons";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +24,7 @@ export default async function PayerDetailPage({
   const payer = await getPayer(id);
   if (!payer) notFound();
 
-  const [invoices, tickets] = await Promise.all([getPayerInvoices(id), getPayerTickets(id)]);
+  const [invoices, tickets, notes] = await Promise.all([getPayerInvoices(id), getPayerTickets(id), listPayerNotes(id)]);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
@@ -89,6 +92,20 @@ export default async function PayerDetailPage({
         </Link>
       </div>
 
+      <div>
+        <h2 className="mb-2 text-base font-bold">Notițe ({notes.length + (payer.notes ? 1 : 0)})</h2>
+        <div className="card p-3">
+          <PayerNotes
+            payerId={payer.id}
+            initial={notes}
+            legacy={payer.notes}
+            canAdd={can(user, "clients.edit")}
+            userId={user.id}
+            isAdmin={can(user, "admin")}
+          />
+        </div>
+      </div>
+
       <PayerActions
         payer={{ id: payer.id, name: payer.name, phone: payer.phone, email: payer.email, notes: payer.notes }}
         canEdit={can(user, "clients.edit")}
@@ -126,9 +143,7 @@ export default async function PayerDetailPage({
                       <p className="text-sm font-semibold tabular-nums">{money(inv.grandTotal, inv.currency)}</p>
                       <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
                     </div>
-                    <Link href={`/invoice/public/${inv.publicToken}`} className="tap h-9 rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium leading-9 hover:bg-[var(--color-surface-2)]">
-                      Vezi
-                    </Link>
+                    <InvoiceViewButton token={inv.publicToken} title={`${luna} · ${inv.number}`} />
                     <Link href={`/invoices/${inv.id}/edit`} className="tap h-9 rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium leading-9 hover:bg-[var(--color-surface-2)]">
                       Editează
                     </Link>

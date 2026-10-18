@@ -48,6 +48,8 @@ export default async function PayerNotificationsPage({
         emailEnabled={env.smtp.enabled}
         smsEnabled={env.sms.enabled}
         userEmail={user.email}
+        userId={user.id}
+        isAdmin={can(user, "admin")}
       />
     </div>
   );

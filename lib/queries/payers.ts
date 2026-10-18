@@ -556,6 +556,8 @@ export async function getPayerInvoices(clientId: string) {
       meterCurrReading: true,
       meterPrevReading: true,
       billingPeriodLabel: true,
+      dueDate: true,
+      paidAt: true,
       subtotal: true,
       datoriiAvans: true,
       kind: true,

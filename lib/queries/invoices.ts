@@ -13,6 +13,7 @@ export type InvoiceListItem = {
   kind: InvoiceKind;
   issueDate: Date;
   dueDate: Date | null;
+  paidAt: Date | null;
   grandTotal: number;
   currency: string;
   clientName: string | null;
@@ -42,6 +43,7 @@ export async function listInvoices(opts: {
       kind: true,
       issueDate: true,
       dueDate: true,
+      paidAt: true,
       grandTotal: true,
       currency: true,
       publicToken: true,
@@ -61,6 +63,7 @@ export async function listInvoices(opts: {
       kind: r.kind,
       issueDate: r.issueDate,
       dueDate: r.dueDate,
+      paidAt: r.paidAt,
       grandTotal: r.grandTotal,
       currency: r.currency,
       clientName: r.client?.name ?? null,

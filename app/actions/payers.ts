@@ -21,7 +21,7 @@ export async function updatePayer(
   if (DEMO) return { error: "Mod demo: conectează o bază de date." };
 
   const id = String(formData.get("id") ?? "");
-  const existing = await prisma.client.findFirst({ where: { id, meterSeries: { not: null } }, select: { id: true, name: true } });
+  const existing = await prisma.client.findFirst({ where: { id, OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] }, select: { id: true, name: true } });
   if (!existing) return { error: "Plătitor inexistent." };
 
   const parsed = clientSchema.safeParse({
@@ -54,9 +54,10 @@ export async function deletePayer(id: string): Promise<void> {
   const user = await requireUser();
   if (!can(user, "clients.delete")) return;
   if (DEMO) return;
-  const c = await prisma.client.findFirst({ where: { id, meterSeries: { not: null } }, select: { name: true } });
+  const c = await prisma.client.findFirst({ where: { id, OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] }, select: { name: true } });
   if (!c) return;
   // Cascade (schema): șterge și facturile/sesiunile/codurile legate de acest client.
+  await prisma.payerNote.deleteMany({ where: { clientId: id } });
   await prisma.client.delete({ where: { id } });
   await logAudit(actor(user), { action: "client.delete", module: "Payers", objectId: id, objectName: c.name });
   revalidatePath("/platitori");
@@ -70,7 +71,7 @@ export async function resetPayerPortalAccess(id: string): Promise<void> {
   const user = await requireUser();
   if (!can(user, "admin")) return;
   if (DEMO) return;
-  const c = await prisma.client.findFirst({ where: { id, meterSeries: { not: null } }, select: { name: true } });
+  const c = await prisma.client.findFirst({ where: { id, OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] }, select: { name: true } });
   if (!c) return;
 
   await prisma.client.update({

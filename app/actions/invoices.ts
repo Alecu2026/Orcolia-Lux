@@ -219,8 +219,10 @@ export async function setInvoiceStatus(
   if (!can(user, "invoices.edit")) return { ok: false, error: "Fără permisiune." };
   if (DEMO) return { ok: false, error: "Mod demo." };
   if (!STATUSES.includes(status as InvoiceStatus)) return { ok: false, error: "Status invalid." };
-  const before = await prisma.invoice.findUnique({ where: { id }, select: { number: true, status: true, clientId: true } });
-  await prisma.invoice.update({ where: { id }, data: { status: status as InvoiceStatus } });
+  const before = await prisma.invoice.findUnique({ where: { id }, select: { number: true, status: true, clientId: true, paidAt: true } });
+  // Data achitării: se fixează la prima marcare ca „Plătită" și se șterge dacă statusul se schimbă înapoi.
+  const paidAt = status === "PAID" ? (before?.paidAt ?? new Date()) : null;
+  await prisma.invoice.update({ where: { id }, data: { status: status as InvoiceStatus, paidAt } });
   await refreshClientInvoiceSnapshot(before?.clientId);
   await logAudit(actor(user), {
     action: "invoice.status_change",

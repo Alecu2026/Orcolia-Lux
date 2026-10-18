@@ -23,6 +23,7 @@ type Row = {
   kind: "STANDARD" | "APA_CANAL";
   issueDate: string | Date;
   dueDate: string | Date | null;
+  paidAt?: string | Date | null;
   grandTotal: number;
   currency: string;
   clientName: string | null;
@@ -76,7 +77,7 @@ export default function InvoicesList({
 
   function changeStatus(id: string, s: InvoiceStatusKey) {
     const prev = rows;
-    setRows((cur) => cur.map((r) => (r.id === id ? { ...r, status: s } : r)));
+    setRows((cur) => cur.map((r) => (r.id === id ? { ...r, status: s, paidAt: s === "PAID" ? (r.paidAt ?? new Date().toISOString()) : null } : r)));
     setInvoiceStatus(id, s).then((res) => {
       if (!res.ok) {
         setRows(prev);
@@ -160,6 +161,7 @@ export default function InvoicesList({
                   </p>
                   <p className="mt-0.5 text-xs text-ink-soft">
                     {r.clientName ?? m.invoices.noClient} · {m.invoices.issuedOn} {fmtDate(r.issueDate)} · {m.invoices.dueOn} {fmtDate(r.dueDate)}
+                    {r.status === "PAID" && (r.paidAt ? <> · <span className="text-st-done">achitată {fmtDate(r.paidAt)}</span></> : <> · <span className="text-ink-soft/70" title="Factura e marcată plătită, dar nu s-a înregistrat data">achitată (data necunoscută)</span></>)}
                   </p>
                 </div>
                 <div className="text-right">

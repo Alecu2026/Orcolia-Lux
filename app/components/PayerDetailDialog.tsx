@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { PayerRow } from "@/lib/queries/payers";
-import { agoLabel } from "@/lib/payer-notify";
+import { agoLabel, type PayerNoteItem } from "@/lib/payer-notify";
+import PayerNotes from "./PayerNotes";
+import InvoiceViewButton from "./InvoiceViewButton";
 import { INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import { IconX } from "./icons";
 
@@ -15,7 +17,8 @@ type Detail = {
     portalActivatedAt: string | null;
     portalLastLoginAt: string | null;
   } | null;
-  invoices: { id: string; number: string; status: string; grandTotal: number; currency: string; issueDate: string; billingPeriodLabel: string | null }[];
+  invoices: { id: string; publicToken: string; number: string; status: string; grandTotal: number; currency: string; issueDate: string; dueDate: string | null; paidAt: string | null; billingPeriodLabel: string | null }[];
+  notes: PayerNoteItem[];
   notifications: { id: string; channel: string; status: string; error: string | null; subject: string | null; body: string; userName: string; createdAt: string }[];
 };
 
@@ -31,12 +34,19 @@ const money = (n: number, cur = "MDL") =>
 export default function PayerDetailDialog({
   row,
   canSend,
+  canNote,
+  userId,
+  isAdmin,
   hasContact,
   onSend,
   onClose,
 }: {
   row: PayerRow;
   canSend: boolean;
+  /** Poate adăuga notițe (clients.edit) — și în modul de răsfoire, unde trimiterea e ascunsă. */
+  canNote: boolean;
+  userId: string;
+  isAdmin: boolean;
   hasContact: boolean;
   onSend: () => void;
   onClose: () => void;
@@ -133,11 +143,13 @@ export default function PayerDetailDialog({
           <Field label="Nr. facturi" value={String(row.invoiceCount)} />
         </Section>
 
-        {detail?.payer?.notes && (
-          <Section title="Notițe" single>
-            <p className="whitespace-pre-wrap text-sm">{detail.payer.notes}</p>
-          </Section>
-        )}
+        <Section title="Notițe" single>
+          {detail ? (
+            <PayerNotes payerId={row.id} initial={detail.notes} legacy={detail.payer?.notes} canAdd={canNote} userId={userId} isAdmin={isAdmin} compact />
+          ) : (
+            <p className="text-sm text-ink-soft">{error ?? "Se încarcă…"}</p>
+          )}
+        </Section>
 
         <Section title="Ultimele facturi" single>
           {error ? (
@@ -152,10 +164,18 @@ export default function PayerDetailDialog({
                 const s = INVOICE_STATUS[i.status as InvoiceStatusKey];
                 return (
                   <li key={i.id} className="flex items-center justify-between gap-2 py-1">
-                    <span className="min-w-0 truncate">{i.number} <span className="text-xs text-ink-soft">· {i.billingPeriodLabel ?? day(i.issueDate)}</span></span>
+                    <span className="min-w-0">
+                      <span className="block truncate">{i.number} <span className="text-xs text-ink-soft">· {i.billingPeriodLabel ?? ""}</span></span>
+                      <span className="block text-[11px] text-ink-soft">
+                        emisă {day(i.issueDate)}
+                        {i.dueDate && <> · scadentă {day(i.dueDate)}</>}
+                        {i.status === "PAID" && <> · <span className="text-st-done">achitată {i.paidAt ? day(i.paidAt) : "(data necunoscută)"}</span></>}
+                      </span>
+                    </span>
                     <span className="flex shrink-0 items-center gap-2">
                       <span className="tabular-nums">{money(i.grandTotal, i.currency)}</span>
                       {s && <span className={`rounded-full px-1.5 text-[10px] font-medium ${s.cls}`}>{s.label}</span>}
+                      <InvoiceViewButton token={i.publicToken} title={`${i.billingPeriodLabel ?? ""} · ${i.number}`} className="tap h-6 cursor-pointer rounded-md border border-[var(--color-line)] px-2 text-[11px] hover:bg-brand-soft" />
                     </span>
                   </li>
                 );
