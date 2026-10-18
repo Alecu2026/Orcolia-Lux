@@ -15,6 +15,7 @@ import { useToast } from "./toast";
 import { IconTrash, IconChevronLeft, IconChevronRight } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
 import ApaCanalJsonImport from "./ApaCanalJsonImport";
+import InvoiceViewButton from "./InvoiceViewButton";
 
 type Row = {
   id: string;
@@ -111,106 +112,164 @@ export default function InvoicesList({
     }
   }
 
+  const pageTotal = rows.reduce((sum, r) => sum + (r.status === "CANCELLED" ? 0 : r.grandTotal), 0);
+
   return (
     <>
-      <div className="mb-3 flex gap-2">
+      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={m.invoices.searchPlaceholder}
-          className="h-11 flex-1 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-sm outline-none focus:border-brand"
+          className={`h-7 min-w-48 flex-1 rounded-lg border px-2 text-[11px] outline-none focus:border-brand ${
+            search ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)]"
+          }`}
         />
         <select
           value={status}
           onChange={(e) => navigate({ status: e.target.value, page: 1 })}
-          className="h-11 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-sm outline-none"
+          className={`h-7 appearance-none sel-arrow rounded-lg border pl-1.5 pr-6 text-[11px] outline-none focus:border-brand ${
+            status ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)]"
+          }`}
+          aria-label="Status"
         >
-          <option value="">{m.invoices.filterAll}</option>
+          <option value="">Status: {m.invoices.filterAll.toLowerCase()}</option>
           {INVOICE_STATUS_LIST.map((s) => (
             <option key={s} value={s}>{INVOICE_STATUS[s].label}</option>
           ))}
         </select>
+        {(status || q) && (
+          <button
+            type="button"
+            onClick={() => { setSearch(""); navigate({ status: "", q: "", page: 1 }); }}
+            className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]"
+          >
+            Resetează filtrele
+          </button>
+        )}
+        <div className="ml-auto flex items-center gap-1.5">
+          {canImportApaCanal && (
+            <ApaCanalJsonImport className="tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium text-ink-soft hover:bg-[var(--color-surface-2)]" />
+          )}
+          <Link
+            href="/invoices/new"
+            className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong"
+          >
+            {m.invoices.new}
+          </Link>
+        </div>
       </div>
 
-      <Link
-        href="/invoices/new"
-        className="tap mb-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong"
-      >
-        {m.invoices.new}
-      </Link>
+      <div className="mb-1 flex flex-wrap items-center gap-x-3 text-xs">
+        <span><b>{rows.length}</b>{hasMore ? "+" : ""} facturi pe această pagină</span>
+        <span className="text-ink-soft">Σ pagină: <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
+      </div>
 
-      {canImportApaCanal && (
-        <ApaCanalJsonImport className="tap mb-4 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[var(--color-line)] text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]" />
-      )}
-
-      {rows.length === 0 ? (
-        <div className="card grid place-items-center p-10 text-center text-sm text-ink-soft">
-          {m.invoices.noInvoices}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2.5">
-          {rows.map((r) => (
-            <div key={r.id} className="card p-3.5">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold">
+      <div className="card overflow-auto">
+        <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] leading-[14px]">
+          <thead className="bg-[var(--color-surface-2)]">
+            <tr>
+              <Th minW={120}>Număr</Th>
+              <Th minW={200}>Client</Th>
+              <Th minW={80}>Emisă</Th>
+              <Th minW={80}>Scadență</Th>
+              <Th minW={80}>Achitată</Th>
+              <Th minW={90} right>Sumă</Th>
+              <Th minW={95}>Status</Th>
+              <Th minW={250}>Acțiuni</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const st = INVOICE_STATUS[r.status];
+              const late = r.status !== "PAID" && r.status !== "CANCELLED" && isPastDate(r.dueDate);
+              const cell = "border-b border-[var(--color-line)] px-1.5 py-[2px]";
+              return (
+                <tr key={r.id} className="hover:bg-brand-soft/30">
+                  <td className={`${cell} whitespace-nowrap font-semibold`}>
                     {r.number}
                     {r.kind === "APA_CANAL" && (
-                      <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700">Apă-Canal</span>
+                      <span className="ml-1.5 rounded bg-sky-100 px-1 text-[9px] font-semibold text-sky-700">Apă-Canal</span>
                     )}
-                  </p>
-                  <p className="mt-0.5 text-xs text-ink-soft">
-                    {r.clientName ?? m.invoices.noClient} · {m.invoices.issuedOn} {fmtDate(r.issueDate)} · {m.invoices.dueOn} {fmtDate(r.dueDate)}
-                    {r.status === "PAID" && (r.paidAt ? <> · <span className="text-st-done">achitată {fmtDate(r.paidAt)}</span></> : <> · <span className="text-ink-soft/70" title="Factura e marcată plătită, dar nu s-a înregistrat data">achitată (data necunoscută)</span></>)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold">{money(r.grandTotal, r.currency)}</p>
-                  <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${INVOICE_STATUS[r.status].cls}`}>
-                    {INVOICE_STATUS[r.status].label}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <select
-                  value={r.status}
-                  onChange={(e) => changeStatus(r.id, e.target.value as InvoiceStatusKey)}
-                  className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs outline-none"
-                >
-                  {INVOICE_STATUS_LIST.map((s) => (
-                    <option key={s} value={s}>{INVOICE_STATUS[s].label}</option>
-                  ))}
-                </select>
-                <Link href={`/invoices/${r.id}/edit`} className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs hover:bg-[var(--color-surface-2)]">
-                  {m.common.edit}
-                </Link>
-                <button onClick={() => copyLink(r.publicToken)} className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs hover:bg-[var(--color-surface-2)]">
-                  {copied === r.publicToken ? m.invoices.copied : m.invoices.copyLink}
-                </button>
-                <a href={`/invoice/public/${r.publicToken}`} target="_blank" rel="noopener noreferrer" className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs hover:bg-[var(--color-surface-2)]">
-                  {m.invoices.publicPdf}
-                </a>
-                <button onClick={() => remove(r.id)} className="tap ml-auto grid size-8 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)]" title={m.common.delete}>
-                  <IconTrash className="size-4" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+                  </td>
+                  <td className={cell} style={{ maxWidth: 260 }}>
+                    <div className="truncate" title={r.clientName ?? ""}>{r.clientName ?? <span className="text-ink-soft/60">{m.invoices.noClient}</span>}</div>
+                  </td>
+                  <td className={`${cell} whitespace-nowrap`}>{fmtDate(r.issueDate)}</td>
+                  <td className={`${cell} whitespace-nowrap ${late ? "font-semibold text-st-cancelled" : ""}`} title={late ? "Scadența a trecut" : undefined}>{fmtDate(r.dueDate)}</td>
+                  <td className={`${cell} whitespace-nowrap`}>
+                    {r.status === "PAID" ? (
+                      r.paidAt ? <span className="text-st-done">{fmtDate(r.paidAt)}</span> : <span className="text-ink-soft/70" title="Marcată plătită, dar data nu s-a înregistrat">?</span>
+                    ) : <span className="text-ink-soft/60">—</span>}
+                  </td>
+                  <td className={`${cell} whitespace-nowrap text-right font-semibold tabular-nums`}>{money(r.grandTotal, r.currency)}</td>
+                  <td className={cell}>
+                    <select
+                      value={r.status}
+                      onChange={(e) => changeStatus(r.id, e.target.value as InvoiceStatusKey)}
+                      className={`h-[18px] cursor-pointer rounded-full border-0 px-1.5 text-[10px] font-medium outline-none ${st.cls}`}
+                      aria-label={`Status ${r.number}`}
+                    >
+                      {INVOICE_STATUS_LIST.map((s) => (
+                        <option key={s} value={s}>{INVOICE_STATUS[s].label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className={cell}>
+                    <div className="flex items-center gap-1">
+                      <InvoiceViewButton token={r.publicToken} title={`${r.number}${r.clientName ? ` · ${r.clientName}` : ""}`} className={btn} />
+                      <Link href={`/invoices/${r.id}/edit`} className={btn}>{m.common.edit}</Link>
+                      <button type="button" onClick={() => copyLink(r.publicToken)} className={btn}>
+                        {copied === r.publicToken ? m.invoices.copied : m.invoices.copyLink}
+                      </button>
+                      <a href={`/invoice/public/${r.publicToken}`} target="_blank" rel="noopener noreferrer" className={btn}>
+                        {m.invoices.publicPdf} ↗
+                      </a>
+                      <button type="button" onClick={() => remove(r.id)} className={`${btn} text-st-cancelled`} title={m.common.delete} aria-label={m.common.delete}>
+                        <IconTrash className="size-3" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {rows.length === 0 && (
+              <tr><td colSpan={8} className="p-8 text-center text-ink-soft">{m.invoices.noInvoices}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {(page > 1 || hasMore) && (
-        <div className="mt-5 flex items-center justify-between">
-          <button disabled={page <= 1} onClick={() => navigate({ page: page - 1 })} className="tap card inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-40">
-            <IconChevronLeft className="size-4" /> {m.common.previous}
+        <div className="mt-3 flex items-center justify-between">
+          <button disabled={page <= 1} onClick={() => navigate({ page: page - 1 })} className="tap card inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-xs font-medium disabled:cursor-default disabled:opacity-40">
+            <IconChevronLeft className="size-3.5" /> {m.common.previous}
           </button>
-          <span className="text-sm text-ink-soft">Pagina {page}</span>
-          <button disabled={!hasMore} onClick={() => navigate({ page: page + 1 })} className="tap card inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-40">
-            {m.common.next} <IconChevronRight className="size-4" />
+          <span className="text-xs text-ink-soft">Pagina {page}</span>
+          <button disabled={!hasMore} onClick={() => navigate({ page: page + 1 })} className="tap card inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-xs font-medium disabled:cursor-default disabled:opacity-40">
+            {m.common.next} <IconChevronRight className="size-3.5" />
           </button>
         </div>
       )}
     </>
+  );
+}
+
+const btn =
+  "tap inline-flex h-5 cursor-pointer items-center rounded border border-[var(--color-line)] px-1.5 text-[10px] leading-none hover:bg-brand-soft";
+
+/** Scadența a trecut? (în afara componentei, ca randarea să rămână pură). */
+function isPastDate(d: string | Date | null): boolean {
+  return !!d && new Date(d).getTime() < Date.now();
+}
+
+function Th({ children, minW, right }: { children: React.ReactNode; minW: number; right?: boolean }) {
+  return (
+    <th
+      style={{ minWidth: minW }}
+      className={`border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1 font-semibold ${right ? "text-right" : "text-left"}`}
+    >
+      {children}
+    </th>
   );
 }

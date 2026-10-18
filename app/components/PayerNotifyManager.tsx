@@ -297,14 +297,6 @@ export default function PayerNotifyManager({
     setPage(1);
   }
 
-  function applyPreset(patch: Partial<NotifyFilters>) {
-    Object.values(debounce.current).forEach((t) => clearTimeout(t));
-    const f = { ...EMPTY_FILTERS, ...patch };
-    setFilters(f);
-    setDraft({ q: f.q, street: f.street, minDebt: f.minDebt, maxDebt: f.maxDebt });
-    setPage(1);
-  }
-
   // Filtrele „active" iau în calcul și ce e tastat dar încă neaplicat (debounce) — culoarea reacționează imediat.
   const active = countActiveFilters({ ...filters, q: draft.q, street: draft.street, minDebt: draft.minDebt, maxDebt: draft.maxDebt });
 
@@ -532,20 +524,7 @@ export default function PayerNotifyManager({
       </div>
 
       {/* Filtre rapide */}
-      <div className="mb-2 flex flex-wrap items-center gap-1 text-[11px]">
-        <span className="font-semibold text-ink-soft">Rapid:</span>
-        <button type="button" onClick={() => applyPreset({ debt: "has", contact: "any", notified: "not7d", sort: "debtDesc" })} className="tap h-6 rounded-full border border-[var(--color-line)] px-2.5 hover:border-brand hover:bg-brand-soft">
-          Datornici de contactat
-        </button>
-        <button type="button" onClick={() => applyPreset({ notified: "never", contact: "any" })} className="tap h-6 rounded-full border border-[var(--color-line)] px-2.5 hover:border-brand hover:bg-brand-soft">
-          Niciodată notificați
-        </button>
-        <button type="button" onClick={() => applyPreset({ contact: "none" })} className="tap h-6 rounded-full border border-[var(--color-line)] px-2.5 hover:border-brand hover:bg-brand-soft">
-          Fără contact (de completat)
-        </button>
-        <button type="button" onClick={() => applyPreset({ invoices: "none" })} className="tap h-6 rounded-full border border-[var(--color-line)] px-2.5 hover:border-brand hover:bg-brand-soft">
-          Fără facturi (curățenie)
-        </button>
+      <div className={`flex flex-wrap items-center gap-1 text-[11px] ${browseOnly || canSend ? "mb-2" : ""}`}>
         {browseOnly && (
           <span className="ml-auto">
             <ExportButton

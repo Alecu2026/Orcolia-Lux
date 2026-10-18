@@ -399,7 +399,7 @@
     backToList: "Înapoi la facturi",
     noInvoices: "Nicio factură.",
     noClient: "Fără client",
-    searchPlaceholder: "Caută după număr sau client…",
+    searchPlaceholder: "Caută după număr, consumator sau cont personal…",
     filterAll: "Toate",
     issuedOn: "emisă",
     dueOn: "scadent",

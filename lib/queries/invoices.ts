@@ -4,7 +4,7 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import type { InvoiceStatus, InvoiceKind, Prisma } from "@prisma/client";
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 50;
 
 export type InvoiceListItem = {
   id: string;
@@ -31,7 +31,16 @@ export async function listInvoices(opts: {
 
   const where: Prisma.InvoiceWhereInput = {
     ...(opts.status ? { status: opts.status } : {}),
-    ...(search ? { number: { contains: search, mode: "insensitive" } } : {}),
+    // Nu putem filtra după numele clientului (relație, Mongo) — dar facturile Apă-Canal au numele consumatorului și contul personal pe ele.
+    ...(search
+      ? {
+          OR: [
+            { number: { contains: search, mode: "insensitive" as const } },
+            { consumerName: { contains: search, mode: "insensitive" as const } },
+            { contPersonal: { contains: search, mode: "insensitive" as const } },
+          ],
+        }
+      : {}),
   };
 
   const rows = await prisma.invoice.findMany({
