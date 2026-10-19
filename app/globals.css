@@ -53,6 +53,21 @@ select optgroup {
   color: var(--color-ink);
 }
 
+/* Cursor „pointer" pe tot ce se poate apăsa (butoane, dropdown-uri, bife, <summary>) — inclusiv statusurile.
+   În @layer base, deci clasele utilitare (ex. cursor-default pe butoane dezactivate) o pot suprascrie. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  select:not(:disabled),
+  summary,
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="date"]:not(:disabled),
+  input[type="time"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 html,
 body {
   height: 100%;
