@@ -335,6 +335,81 @@ export async function updateTaskAction(
   }
 }
 
+export type TaskFieldPatch = {
+  title?: string;
+  priority?: string;
+  projectId?: string | null;
+  clientId?: string | null;
+  categoryId?: string | null;
+  /** "YYYY-MM-DD" (sau null/"" = fără termen) + ora opțională "HH:mm", în fusul Europe/Bucharest. */
+  dueDate?: string | null;
+  dueTime?: string | null;
+  assigneeIds?: string[];
+  teamIds?: string[];
+};
+
+const OBJECT_ID = /^[0-9a-f]{24}$/i;
+
+/**
+ * Editare rapidă dintr-un singur câmp (celulele editabile din tabelul de task-uri). Modifică DOAR câmpurile primite
+ * și respectă aceeași regulă ca editarea completă (canEditTask: permisiune generală sau creator/asignat).
+ * Schimbarea responsabililor resetează setările „notifică până la status" (erau legate de vechea listă).
+ */
+export async function updateTaskFieldAction(id: string, patch: TaskFieldPatch): Promise<TaskState> {
+  try {
+    const user = await requireUser();
+    if (DEMO) return { error: "Mod demo: conectează o bază de date." };
+    if (!OBJECT_ID.test(id ?? "")) return { error: "ID task invalid." };
+
+    const existing = await prisma.task.findUnique({
+      where: { id },
+      select: { creatorId: true, assigneeId: true, extraAssigneeIds: true },
+    });
+    if (!existing) return { error: "Task inexistent." };
+    if (!canEditTask(user, existing)) return { error: "Nu ai permisiunea de editare." };
+
+    const input: Parameters<typeof updateTask>[2] = {};
+    if ("title" in patch) input.title = String(patch.title ?? "");
+    if (patch.priority !== undefined) {
+      if (!PRIORITIES.includes(patch.priority as TaskPriority)) return { error: "Prioritate invalidă." };
+      input.priority = patch.priority as TaskPriority;
+    }
+    const idOrNull = (v: unknown) => (typeof v === "string" && OBJECT_ID.test(v) ? v : null);
+    if ("projectId" in patch) input.projectId = idOrNull(patch.projectId);
+    if ("clientId" in patch) input.clientId = idOrNull(patch.clientId);
+    if ("categoryId" in patch) input.categoryId = idOrNull(patch.categoryId);
+    if ("dueDate" in patch) {
+      const d = String(patch.dueDate ?? "").trim();
+      const t = String(patch.dueTime ?? "").trim();
+      input.dueAt = /^\d{4}-\d{2}-\d{2}$/.test(d) ? zonedToUtc(d, /^\d{2}:\d{2}$/.test(t) ? t : "00:00", "Europe/Bucharest") : null;
+    }
+    if (patch.assigneeIds !== undefined || patch.teamIds !== undefined) {
+      const users = (patch.assigneeIds ?? []).filter((x) => OBJECT_ID.test(x));
+      const teams = (patch.teamIds ?? []).filter((x) => OBJECT_ID.test(x));
+      const [assigneeId = null, ...extraAssigneeIds] = users;
+      const [teamId = null, ...extraTeamIds] = teams;
+      input.assigneeId = assigneeId;
+      input.teamId = teamId;
+      input.extraAssigneeIds = extraAssigneeIds;
+      input.extraTeamIds = extraTeamIds;
+      input.assignmentSettingsJson = null;
+    }
+
+    const res = await updateTask(id, user.id, input);
+    if (!res.ok) return { error: res.error };
+
+    await logAudit(
+      { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
+      { action: `${prefixForType(res.type)}.edit`, module: moduleForType(res.type), objectId: id, objectName: res.title },
+    );
+    revalidateTasks();
+    return { ok: true, id };
+  } catch (e) {
+    console.error("[tasks.action] updateTaskFieldAction: eșuat", e);
+    return { error: "Eroare la salvare. Încearcă din nou." };
+  }
+}
+
 export type AttachmentRow = {
   id: string;
   name: string;

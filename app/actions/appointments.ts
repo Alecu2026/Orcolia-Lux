@@ -183,3 +183,38 @@ export async function deleteAppointment(id: string): Promise<void> {
   await prisma.appointment.delete({ where: { id } });
   revalidateAll();
 }
+
+
+/** Editare rapidă (celulele din tabelul de programări): descriere și categorie. Data/ora se schimbă prin rescheduleAppointment. */
+export async function updateAppointmentFieldAction(
+  id: string,
+  patch: { title?: string; categoryId?: string | null },
+): Promise<ApptState> {
+  const user = await requireUser();
+  if (!can(user, "appointments.manage")) return { error: "Fără permisiune." };
+  if (DEMO) return { error: "Mod demo." };
+  const OID = /^[0-9a-f]{24}$/i;
+  if (!OID.test(id ?? "")) return { error: "Programare invalidă." };
+  const owned = await prisma.appointment.findFirst({ where: { id, userId: user.id }, select: { id: true } });
+  if (!owned) return { error: "Programare inexistentă." };
+
+  const data: Record<string, unknown> = {};
+  if (patch.title !== undefined) data.title = String(patch.title).trim().slice(0, 500);
+  if ("categoryId" in patch) {
+    if (patch.categoryId && OID.test(patch.categoryId)) {
+      const cat = await prisma.category.findFirst({ where: { id: patch.categoryId }, select: { id: true, name: true, color: true } });
+      if (!cat) return { error: "Categorie inexistentă." };
+      data.categoryId = cat.id;
+      data.categoryNameSnapshot = cat.name;
+      data.categoryColorSnapshot = cat.color;
+    } else {
+      data.categoryId = null;
+      data.categoryNameSnapshot = null;
+      data.categoryColorSnapshot = null;
+    }
+  }
+  if (Object.keys(data).length === 0) return { ok: true };
+  await prisma.appointment.update({ where: { id }, data });
+  revalidateAll();
+  return { ok: true };
+}

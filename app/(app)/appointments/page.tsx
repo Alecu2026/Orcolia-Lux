@@ -5,6 +5,7 @@ import { listAllForUser } from "@/lib/queries/appointments";
 import { todayKey, tomorrowKey } from "@/lib/date";
 import { toVM } from "@/lib/view";
 import AppointmentsTable from "@/app/components/AppointmentsTable";
+import { can } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,7 @@ export default async function AppointmentsPage({
       initialCreate={create === "1"}
       today={today}
       tz={tz}
+      canManage={can(user, "appointments.manage")}
     />
   );
 }

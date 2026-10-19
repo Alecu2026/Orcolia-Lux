@@ -6,12 +6,15 @@ import { useRouter } from "next/navigation";
 import {
   setTaskStatus,
   setTaskProgress,
+  updateTaskFieldAction,
+  type TaskFieldPatch,
   deleteTask,
   getTaskHistory,
   getTaskComments,
   addTaskCommentAction,
 } from "@/app/actions/tasks";
 import DataTable, { type Col, type Filter } from "./DataTable";
+import { DateTimePick, EditableSelect, EditableText, MultiPick, PopEditor } from "./InlineCells";
 import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
 import TaskAttachmentsPanel from "./TaskAttachmentsPanel";
@@ -33,7 +36,7 @@ import {
 } from "./TasksManager";
 import { useToast } from "./toast";
 import { IconPencil, IconTrash, IconX } from "./icons";
-import { addDaysToKey, dateKeyOf, todayKey } from "@/lib/date";
+import { addDaysToKey, dateKeyOf, formatTime, todayKey, zonedToUtc } from "@/lib/date";
 import { useMessages } from "@/lib/i18n/context";
 import type { CategoryLite } from "./types";
 
@@ -152,13 +155,38 @@ export default function TasksTable({
     deleteTask(id).then(() => toast.success(m.tasks.deleted)).catch(() => { setRows(prev); toast.error(m.tasks.deleteFailed); });
   }
 
+  /** Editare dintr-un câmp: se schimbă imediat în tabel (optimist), serverul confirmă; la eșec revenim + mesaj. */
+  function patchTask(t: Task, patch: TaskFieldPatch, optimistic: Partial<Task>) {
+    const prev = rows;
+    setRows((cur) => cur.map((x) => (x.id === t.id ? { ...x, ...optimistic } : x)));
+    updateTaskFieldAction(t.id, patch)
+      .then((res) => {
+        if (res?.error) { setRows(prev); toast.error(res.error); }
+        else router.refresh(); // reconciliază câmpurile derivate (ex. clientul proiectului)
+      })
+      .catch(() => { setRows(prev); toast.error(m.common.error); });
+  }
+
+  const nameIn = (list: Opt[], id: string) => list.find((o) => o.id === id)?.name ?? null;
   const dash = <span className="text-ink-soft/60">—</span>;
   const now = new Date();
   const overdue = (t: Task) => !!t.dueAt && new Date(t.dueAt) < now && t.status !== "DONE" && t.status !== "CANCELLED";
 
   const columns: Col<Task>[] = [
-    { key: "seq", label: "#", minW: 45, sort: (t) => t.seq, render: (t) => (t.seq != null ? <span className="font-mono text-ink-soft">#{t.seq}</span> : dash) },
-    { key: "title", label: "Titlu", minW: 240, maxW: 340, sticky: true, sort: (t) => t.title, render: (t) => <span title={t.title}>{t.title}</span> },
+    {
+      key: "seq", label: "#", minW: 45, sort: (t) => t.seq,
+      render: (t) => (
+        <button type="button" onClick={() => setOpenId(t.id)} title="Deschide detaliile" className="cursor-pointer rounded px-0.5 font-mono font-semibold text-brand hover:bg-brand-soft/60 hover:underline">
+          {t.seq != null ? `#${t.seq}` : "↗"}
+        </button>
+      ),
+    },
+    {
+      key: "title", label: "Titlu", minW: 240, maxW: 340, sticky: true, sort: (t) => t.title,
+      render: (t) => (
+        <EditableText value={t.title} disabled={!canEditRow(t)} onSave={(v) => patchTask(t, { title: v }, { title: v })} display={<span title={t.title}>{t.title}</span>} />
+      ),
+    },
     {
       key: "status", label: "Status", minW: 95, sort: (t) => STATUSES.indexOf(t.status),
       render: (t) => (
@@ -167,13 +195,93 @@ export default function TasksTable({
         </div>
       ),
     },
-    { key: "prio", label: "Prioritate", minW: 70, sort: (t) => PRIO_RANK[t.priority], render: (t) => <span className={PRIO_CLS[t.priority]}>{m.priority[t.priority]}</span> },
-    { key: "project", label: "Proiect", minW: 120, maxW: 170, sort: (t) => t.projectName, render: (t) => t.projectName ?? dash },
-    { key: "client", label: "Client", minW: 120, maxW: 170, sort: (t) => t.clientName, render: (t) => t.clientName ?? dash },
-    { key: "assignee", label: "Responsabil", minW: 110, maxW: 150, sort: (t) => t.assigneeName ?? t.teamName, render: (t) => t.assigneeName ?? t.teamName ?? dash },
     {
-      key: "due", label: "Termen", minW: 110, sort: (t) => (t.dueAt ? new Date(t.dueAt).getTime() : null),
-      render: (t) => (t.dueAt ? <span className={overdue(t) ? "font-semibold text-st-cancelled" : ""} title={overdue(t) ? "Termen depășit" : undefined}>{fmtDue(t.dueAt)}</span> : dash),
+      key: "prio", label: "Prioritate", minW: 80, sort: (t) => PRIO_RANK[t.priority],
+      render: (t) => (
+        <EditableSelect
+          value={t.priority}
+          emptyLabel={null}
+          disabled={!canEditRow(t)}
+          options={(["URGENT", "HIGH", "MEDIUM", "LOW"] as const).map((p) => ({ value: p, label: m.priority[p] }))}
+          onChange={(v) => patchTask(t, { priority: v }, { priority: v as Task["priority"] })}
+          display={<span className={PRIO_CLS[t.priority]}>{m.priority[t.priority]}</span>}
+        />
+      ),
+    },
+    {
+      key: "project", label: "Proiect", minW: 130, maxW: 180, sort: (t) => t.projectName,
+      render: (t) => (
+        <EditableSelect
+          value={t.projectId ?? ""}
+          disabled={!canEditRow(t)}
+          options={projects.map((o) => ({ value: o.id, label: o.name }))}
+          onChange={(v) => patchTask(t, { projectId: v || null }, { projectId: v || null, projectName: nameIn(projects, v) })}
+          display={t.projectName ?? dash}
+        />
+      ),
+    },
+    {
+      key: "client", label: "Client", minW: 130, maxW: 180, sort: (t) => t.clientName,
+      render: (t) => (
+        <EditableSelect
+          value={t.clientId ?? ""}
+          disabled={!canEditRow(t)}
+          options={clients.map((o) => ({ value: o.id, label: o.name }))}
+          onChange={(v) => patchTask(t, { clientId: v || null }, { clientId: v || null, clientName: nameIn(clients, v) })}
+          display={t.clientName ?? dash}
+        />
+      ),
+    },
+    {
+      key: "assignee", label: "Responsabili", minW: 120, maxW: 170, sort: (t) => t.assigneeName ?? t.teamName,
+      render: (t) => {
+        const names = [t.assigneeName ?? t.teamName, ...t.extraAssigneeIds.map((id) => nameIn(users, id)), ...t.extraTeamIds.map((id) => nameIn(teams, id))].filter(Boolean);
+        const display = names.length ? <span title={names.join(", ")}>{names.join(", ")}</span> : dash;
+        const selected = [...(t.assigneeId ? [t.assigneeId] : []), ...t.extraAssigneeIds, ...(t.teamId ? [t.teamId] : []), ...t.extraTeamIds];
+        return (
+          <PopEditor display={display} disabled={!canEditRow(t)} width={260}>
+            {(close) => (
+              <MultiPick
+                groups={[{ label: "Persoane", items: users }, { label: "Echipe", items: teams }]}
+                selected={selected}
+                onCancel={close}
+                onSave={(picked) => {
+                  close();
+                  const u = picked["Persoane"] ?? [];
+                  const tm = picked["Echipe"] ?? [];
+                  patchTask(t, { assigneeIds: u, teamIds: tm }, {
+                    assigneeId: u[0] ?? null, extraAssigneeIds: u.slice(1), assigneeName: u[0] ? nameIn(users, u[0]) : null,
+                    teamId: tm[0] ?? null, extraTeamIds: tm.slice(1), teamName: tm[0] ? nameIn(teams, tm[0]) : null,
+                  });
+                }}
+              />
+            )}
+          </PopEditor>
+        );
+      },
+    },
+    {
+      key: "due", label: "Termen", minW: 120, sort: (t) => (t.dueAt ? new Date(t.dueAt).getTime() : null),
+      render: (t) => {
+        const display = t.dueAt ? <span className={overdue(t) ? "font-semibold text-st-cancelled" : ""} title={overdue(t) ? "Termen depășit" : undefined}>{fmtDue(t.dueAt)}</span> : dash;
+        const dueDate = t.dueAt ? dateKeyOf(new Date(t.dueAt), TZ) : "";
+        const rawTime = t.dueAt ? formatTime(new Date(t.dueAt), TZ) : "";
+        return (
+          <PopEditor display={display} disabled={!canEditRow(t)} width={240}>
+            {(close) => (
+              <DateTimePick
+                date={dueDate}
+                time={rawTime !== "00:00" ? rawTime : ""}
+                onCancel={close}
+                onSave={(d, tm) => {
+                  close();
+                  patchTask(t, { dueDate: d || null, dueTime: tm || null }, { dueAt: d ? zonedToUtc(d, tm || "00:00", TZ).toISOString() : null });
+                }}
+              />
+            )}
+          </PopEditor>
+        );
+      },
     },
     {
       key: "progress", label: "%", minW: 50, right: true, sort: (t) => t.progress,
@@ -186,8 +294,19 @@ export default function TasksTable({
       ),
     },
     {
-      key: "cat", label: "Categorie", minW: 100, sort: (t) => t.categoryName,
-      render: (t) => (t.categoryName ? <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full" style={{ background: t.categoryColor ?? "#6366f1" }} />{t.categoryName}</span> : dash),
+      key: "cat", label: "Categorie", minW: 110, sort: (t) => t.categoryName,
+      render: (t) => (
+        <EditableSelect
+          value={t.categoryId ?? ""}
+          disabled={!canEditRow(t) || categories.length === 0}
+          options={categories.map((o) => ({ value: o.id, label: o.name }))}
+          onChange={(v) => {
+            const c = categories.find((x) => x.id === v);
+            patchTask(t, { categoryId: v || null }, { categoryId: v || null, categoryName: c?.name ?? null, categoryColor: c?.color ?? null });
+          }}
+          display={t.categoryName ? <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full" style={{ background: t.categoryColor ?? "#6366f1" }} />{t.categoryName}</span> : dash}
+        />
+      ),
     },
     { key: "creator", label: "Creat de", minW: 100, maxW: 140, sort: (t) => t.creatorName, render: (t) => t.creatorName },
     { key: "created", label: "Creat la", minW: 80, sort: (t) => new Date(t.createdAt).getTime(), render: (t) => dmy(t.createdAt) },
@@ -290,7 +409,6 @@ export default function TasksTable({
         presetValues={presetValues}
         noun={ticketMode ? "tichete" : "task-uri"}
         emptyText={m.tasks.noTasks}
-        onRowClick={(t) => setOpenId(t.id)}
         rowClassName={(t) => (overdue(t) ? "bg-st-cancelled/5" : "")}
         toolbar={
           <>

@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { deleteProject } from "@/app/actions/projects";
+import { deleteProject, updateProjectFieldAction, type ProjectFieldPatch } from "@/app/actions/projects";
 import { getProjectTasksAction, type ProjectTaskRow } from "@/app/actions/tasks";
 import DataTable, { type Col, type Filter } from "./DataTable";
+import { EditableSelect, EditableText } from "./InlineCells";
 import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
 import ProjectFilesPanel from "./ProjectFilesPanel";
@@ -36,7 +37,9 @@ export default function ProjectsTable({
   teams,
   clients,
   openCreate,
+  canEdit = true,
 }: {
+  canEdit?: boolean;
   projects: Project[];
   users: Opt[];
   teams: Opt[];
@@ -61,16 +64,60 @@ export default function ProjectsTable({
       .catch(() => { setRows(prev); toast.error(m.projects.deleteFailed); });
   }
 
+  /** Editare dintr-un câmp: se schimbă imediat în tabel (optimist), serverul confirmă; la eșec revenim + mesaj. */
+  function patchProject(p: Project, patch: ProjectFieldPatch, optimistic: Partial<Project>) {
+    const prev = rows;
+    setRows((cur) => cur.map((x) => (x.id === p.id ? { ...x, ...optimistic } : x)));
+    updateProjectFieldAction(p.id, patch)
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } })
+      .catch(() => { setRows(prev); toast.error(m.common.error); });
+  }
+  const opts = (list: Opt[]) => list.map((o) => ({ value: o.id, label: o.name }));
+
   const dash = <span className="text-ink-soft/60">—</span>;
   const columns: Col<Project>[] = [
-    { key: "seq", label: "#", minW: 45, sort: (p) => p.seq, render: (p) => (p.seq != null ? <span className="font-mono text-ink-soft">#{String(p.seq).padStart(3, "0")}</span> : dash) },
-    { key: "name", label: "Proiect", minW: 200, maxW: 280, sticky: true, sort: (p) => p.name, render: (p) => <span title={p.name}>{p.name}</span> },
-    { key: "status", label: "Status", minW: 80, sort: (p) => m.projects.status[p.status], render: (p) => <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium leading-[14px] ${STATUS_CLS[p.status]}`}>{m.projects.status[p.status]}</span> },
-    { key: "client", label: "Client", minW: 140, maxW: 200, sort: (p) => nameOf(p.clientId, clients), render: (p) => nameOf(p.clientId, clients) ?? dash },
-    { key: "assignee", label: "Responsabil", minW: 120, maxW: 160, sort: (p) => nameOf(p.assigneeId, users), render: (p) => nameOf(p.assigneeId, users) ?? dash },
-    { key: "team", label: "Echipă", minW: 100, maxW: 140, sort: (p) => nameOf(p.teamId, teams), render: (p) => nameOf(p.teamId, teams) ?? dash },
+    {
+      key: "seq", label: "#", minW: 45, sort: (p) => p.seq,
+      render: (p) => (
+        <button type="button" onClick={() => setDetail(p)} title="Deschide detaliile" className="cursor-pointer rounded px-0.5 font-mono font-semibold text-brand hover:bg-brand-soft/60 hover:underline">
+          {p.seq != null ? `#${String(p.seq).padStart(3, "0")}` : "↗"}
+        </button>
+      ),
+    },
+    {
+      key: "name", label: "Proiect", minW: 200, maxW: 280, sticky: true, sort: (p) => p.name,
+      render: (p) => <EditableText value={p.name} disabled={!canEdit} onSave={(v) => patchProject(p, { name: v }, { name: v })} display={<span title={p.name}>{p.name}</span>} />,
+    },
+    {
+      key: "status", label: "Status", minW: 90, sort: (p) => m.projects.status[p.status],
+      render: (p) => (
+        <EditableSelect
+          value={p.status}
+          emptyLabel={null}
+          disabled={!canEdit}
+          options={(["ACTIVE", "ON_HOLD", "DONE", "ARCHIVED"] as const).map((s) => ({ value: s, label: m.projects.status[s] }))}
+          onChange={(v) => patchProject(p, { status: v }, { status: v as Project["status"] })}
+          display={<span className={`inline-block rounded-full px-1.5 text-[10px] font-medium leading-[14px] ${STATUS_CLS[p.status]}`}>{m.projects.status[p.status]}</span>}
+        />
+      ),
+    },
+    {
+      key: "client", label: "Client", minW: 140, maxW: 200, sort: (p) => nameOf(p.clientId, clients),
+      render: (p) => <EditableSelect value={p.clientId ?? ""} disabled={!canEdit} options={opts(clients)} onChange={(v) => patchProject(p, { clientId: v || null }, { clientId: v || null })} display={nameOf(p.clientId, clients) ?? dash} />,
+    },
+    {
+      key: "assignee", label: "Responsabil", minW: 120, maxW: 160, sort: (p) => nameOf(p.assigneeId, users),
+      render: (p) => <EditableSelect value={p.assigneeId ?? ""} disabled={!canEdit} options={opts(users)} onChange={(v) => patchProject(p, { assigneeId: v || null }, { assigneeId: v || null })} display={nameOf(p.assigneeId, users) ?? dash} />,
+    },
+    {
+      key: "team", label: "Echipă", minW: 100, maxW: 140, sort: (p) => nameOf(p.teamId, teams),
+      render: (p) => <EditableSelect value={p.teamId ?? ""} disabled={!canEdit} options={opts(teams)} onChange={(v) => patchProject(p, { teamId: v || null }, { teamId: v || null })} display={nameOf(p.teamId, teams) ?? dash} />,
+    },
     { key: "tasks", label: "Task-uri", minW: 55, right: true, sort: (p) => p.taskCount, render: (p) => p.taskCount },
-    { key: "loc", label: "Locație", minW: 140, maxW: 220, render: (p) => (p.lat != null ? <span>📍 {p.address ?? ""}</span> : p.address ?? dash) },
+    {
+      key: "loc", label: "Locație", minW: 150, maxW: 220,
+      render: (p) => <EditableText value={p.address ?? ""} allowEmpty disabled={!canEdit} onSave={(v) => patchProject(p, { address: v || null }, { address: v || null })} display={p.lat != null ? <span>📍 {p.address ?? ""}</span> : (p.address ?? dash)} />,
+    },
     {
       key: "act", label: "", minW: 110,
       render: (p) => (
@@ -136,7 +183,6 @@ export default function ProjectsTable({
         filters={filters}
         noun="proiecte"
         emptyText={m.projects.noProjects}
-        onRowClick={(p) => setDetail(p)}
         toolbar={
           <>
             <ExportButton entity="projects" className={topBtn} />

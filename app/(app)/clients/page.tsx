@@ -1,6 +1,7 @@
 import { requirePermission } from "@/lib/dal";
 import { listClients } from "@/lib/queries/clients";
 import ClientsTable, { type ClientRow } from "@/app/components/ClientsTable";
+import { can } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export default async function ClientsPage({
 
   return (
     <div className="w-full">
-      <ClientsTable items={rows} openCreate={create === "1"} />
+      <ClientsTable items={rows} openCreate={create === "1"} canEdit={can(user, "clients.edit")} />
     </div>
   );
 }

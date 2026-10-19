@@ -188,3 +188,56 @@ export async function backfillProjectSeq(): Promise<void> {
     update: { value: next },
   });
 }
+
+
+export type ProjectFieldPatch = {
+  name?: string;
+  description?: string | null;
+  status?: string;
+  clientId?: string | null;
+  assigneeId?: string | null;
+  teamId?: string | null;
+  address?: string | null;
+};
+
+/** Editare rapidă dintr-un singur câmp (celulele editabile din tabelul de proiecte) — modifică DOAR ce primește. */
+export async function updateProjectFieldAction(id: string, patch: ProjectFieldPatch): Promise<ProjectState> {
+  const user = await requireUser();
+  if (!can(user, "projects.edit")) return { error: "Fără permisiune." };
+  if (DEMO) return { error: "Mod demo." };
+  const OID = /^[0-9a-f]{24}$/i;
+  if (!OID.test(id ?? "")) return { error: "Proiect invalid." };
+  const before = await prisma.project.findUnique({ where: { id }, select: { name: true, status: true } });
+  if (!before) return { error: "Proiect inexistent." };
+
+  const data: Record<string, unknown> = {};
+  if ("name" in patch) {
+    const n = String(patch.name ?? "").trim();
+    if (!n) return { error: "Numele e obligatoriu." };
+    data.name = n.slice(0, 200);
+  }
+  if ("description" in patch) data.description = String(patch.description ?? "").trim() || null;
+  if ("address" in patch) data.address = String(patch.address ?? "").trim() || null;
+  if (patch.status !== undefined) {
+    if (!STATUSES.includes(patch.status as ProjectStatus)) return { error: "Status invalid." };
+    data.status = patch.status;
+  }
+  const idOrNull = (v: unknown) => (typeof v === "string" && OID.test(v) ? v : null);
+  if ("clientId" in patch) data.clientId = idOrNull(patch.clientId);
+  if ("assigneeId" in patch) data.assigneeId = idOrNull(patch.assigneeId);
+  if ("teamId" in patch) data.teamId = idOrNull(patch.teamId);
+  if (Object.keys(data).length === 0) return { ok: true, id };
+
+  await prisma.project.update({ where: { id }, data });
+  await logAudit(actor(user), {
+    action: "project.update",
+    module: "Projects",
+    objectId: id,
+    objectName: (data.name as string | undefined) ?? before.name,
+    oldValue: JSON.stringify(before),
+    newValue: JSON.stringify(data),
+  });
+  revalidatePath("/projects");
+  updateTag("projects");
+  return { ok: true, id };
+}

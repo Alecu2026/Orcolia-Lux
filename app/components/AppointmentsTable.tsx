@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { setStatus as setStatusAction, deleteAppointment } from "@/app/actions/appointments";
+import { setStatus as setStatusAction, deleteAppointment, rescheduleAppointment, updateAppointmentFieldAction } from "@/app/actions/appointments";
 import DataTable, { type Col, type Filter } from "./DataTable";
+import { DateTimePick, EditableSelect, EditableText, PopEditor } from "./InlineCells";
 import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
 import OpenQuickAddButton from "./OpenQuickAddButton";
@@ -31,7 +32,9 @@ export default function AppointmentsTable({
   initialCreate,
   today,
   tz,
+  canManage = true,
 }: {
+  canManage?: boolean;
   items: ApptVM[];
   categories: CategoryLite[];
   quickDefaults: QuickDefaults;
@@ -67,15 +70,67 @@ export default function AppointmentsTable({
       .catch(() => { setRows(prev); toast.error(m.common.deleteFailed); });
   }
 
+  /** Reprogramare (dată + oră; durata rămâne): optimist, la eșec (ex. interval ocupat) revenim + mesaj. */
+  function reschedule(a: ApptVM, dateKey: string, time: string) {
+    const [h1, m1] = a.time.split(":").map(Number);
+    const [h2, m2] = a.endTime.split(":").map(Number);
+    const duration = Math.max(5, (h2 * 60 + m2) - (h1 * 60 + m1));
+    const [hh, mm] = time.split(":").map(Number);
+    const endMin = (hh * 60 + mm + duration) % (24 * 60);
+    const endTime = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+    const prev = rows;
+    setRows((cur) => cur.map((r) => (r.id === a.id ? { ...r, dateKey, time, endTime } : r)));
+    const fd = new FormData();
+    fd.set("id", a.id);
+    fd.set("dateKey", dateKey);
+    fd.set("time", time);
+    rescheduleAppointment(undefined, fd)
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } else toast.success("Reprogramat."); })
+      .catch(() => { setRows(prev); toast.error(m.common.error); });
+  }
+
+  function patchAppt(a: ApptVM, patch: { title?: string; categoryId?: string | null }, optimistic: Partial<ApptVM>) {
+    const prev = rows;
+    setRows((cur) => cur.map((r) => (r.id === a.id ? { ...r, ...optimistic } : r)));
+    updateAppointmentFieldAction(a.id, patch)
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } })
+      .catch(() => { setRows(prev); toast.error(m.common.error); });
+  }
+
   const dash = <span className="text-ink-soft/60">—</span>;
+  const dateEditor = (a: ApptVM, display: React.ReactNode) => (
+    <PopEditor display={display} disabled={!canManage} width={250}>
+      {(close) => (
+        <DateTimePick date={a.dateKey} time={a.time} allowClear={false} onCancel={close} onSave={(d, t) => { close(); if (d) reschedule(a, d, t || a.time); }} />
+      )}
+    </PopEditor>
+  );
   const columns: Col<ApptVM>[] = [
-    { key: "date", label: "Data", minW: 100, sticky: true, sort: (a) => `${a.dateKey} ${a.time}`, render: (a) => <span className={a.dateKey === today ? "font-semibold text-brand" : ""}>{dmy(a.dateKey)}</span> },
-    { key: "time", label: "Ora", minW: 90, sort: (a) => a.time, render: (a) => <span className="font-mono">{a.time}–{a.endTime}</span> },
-    { key: "client", label: "Client", minW: 180, maxW: 240, sort: (a) => a.clientName, render: (a) => <span title={a.clientName}>{a.clientName}</span> },
-    { key: "title", label: "Descriere", minW: 180, maxW: 280, render: (a) => a.title || dash },
     {
-      key: "cat", label: "Categorie", minW: 110, sort: (a) => a.categoryName,
-      render: (a) => (a.categoryName ? <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full" style={{ background: a.categoryColor ?? "#6366f1" }} />{a.categoryName}</span> : dash),
+      key: "open", label: "", minW: 28,
+      render: (a) => <button type="button" onClick={() => setDetail(a.id)} title="Deschide detaliile" className="cursor-pointer rounded px-0.5 font-semibold text-brand hover:bg-brand-soft/60">↗</button>,
+    },
+    { key: "date", label: "Data", minW: 100, sticky: true, sort: (a) => `${a.dateKey} ${a.time}`, render: (a) => dateEditor(a, <span className={a.dateKey === today ? "font-semibold text-brand" : ""}>{dmy(a.dateKey)}</span>) },
+    { key: "time", label: "Ora", minW: 95, sort: (a) => a.time, render: (a) => dateEditor(a, <span className="font-mono">{a.time}–{a.endTime}</span>) },
+    { key: "client", label: "Client", minW: 180, maxW: 240, sort: (a) => a.clientName, render: (a) => <span title={a.clientName}>{a.clientName}</span> },
+    {
+      key: "title", label: "Descriere", minW: 200, maxW: 300,
+      render: (a) => <EditableText value={a.title} allowEmpty disabled={!canManage} onSave={(v) => patchAppt(a, { title: v }, { title: v })} display={a.title ? <span title={a.title}>{a.title}</span> : undefined} />,
+    },
+    {
+      key: "cat", label: "Categorie", minW: 120, sort: (a) => a.categoryName,
+      render: (a) => (
+        <EditableSelect
+          value={categories.find((c) => c.name === a.categoryName)?.id ?? ""}
+          disabled={!canManage || categories.length === 0}
+          options={categories.map((c) => ({ value: c.id, label: c.name }))}
+          onChange={(v) => {
+            const c = categories.find((x) => x.id === v);
+            patchAppt(a, { categoryId: v || null }, { categoryName: c?.name ?? null, categoryColor: c?.color ?? null });
+          }}
+          display={a.categoryName ? <span className="inline-flex items-center gap-1"><span className="size-1.5 rounded-full" style={{ background: a.categoryColor ?? "#6366f1" }} />{a.categoryName}</span> : dash}
+        />
+      ),
     },
     {
       key: "status", label: "Status", minW: 100, sort: (a) => apptLabel(a.status, m),
@@ -148,7 +203,6 @@ export default function AppointmentsTable({
         defaultSort={{ key: "date", dir: "desc" }}
         noun="programări"
         emptyText={m.appts.noAppts}
-        onRowClick={(a) => setDetail(a.id)}
         toolbar={
           <>
             <ExportButton entity="appointments" className={topBtn} />

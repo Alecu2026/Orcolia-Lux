@@ -5,6 +5,7 @@ import { teamOptions } from "@/lib/queries/teams";
 import { crmClientOptions } from "@/lib/queries/clients";
 import { backfillProjectSeq } from "@/app/actions/projects";
 import ProjectsTable from "@/app/components/ProjectsTable";
+import { can } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function ProjectsPage({
 }: {
   searchParams: Promise<{ create?: string }>;
 }) {
-  await requirePermission("projects.view");
+  const user = await requirePermission("projects.view");
   await backfillProjectSeq();
   const sp = await searchParams;
 
@@ -26,7 +27,7 @@ export default async function ProjectsPage({
   ]);
   return (
     <div className="w-full">
-      <ProjectsTable projects={result.items} users={users} teams={teams} clients={clients} openCreate={sp.create === "1"} />
+      <ProjectsTable projects={result.items} users={users} teams={teams} clients={clients} openCreate={sp.create === "1"} canEdit={can(user, "projects.edit")} />
     </div>
   );
 }

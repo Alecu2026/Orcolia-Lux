@@ -39,6 +39,20 @@
   --color-brand-soft: #134e4a;
 }
 
+/* Controalele native (liste <select>, date, scrollbar) își iau culorile din temă — altfel în dark lista de opțiuni
+   rămânea albă, cu text deschis (invizibil). `option` are nevoie de culori explicite pe Windows/Chrome. */
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+select option,
+select optgroup {
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+}
+
 html,
 body {
   height: 100%;

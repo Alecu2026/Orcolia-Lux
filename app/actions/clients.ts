@@ -159,3 +159,50 @@ export async function deleteClient(id: string): Promise<void> {
   revalidatePath("/clients");
   updateTag("clients");
 }
+
+
+export type ClientFieldPatch = { name?: string; phone?: string | null; email?: string | null; notes?: string | null };
+
+/** Editare rapidă dintr-un singur câmp (celulele editabile din tabelul de clienți). Validează cu aceeași schemă ca formularul. */
+export async function updateClientFieldAction(id: string, patch: ClientFieldPatch): Promise<ClientState> {
+  const user = await requireUser();
+  if (!can(user, "clients.edit")) return { error: "Fără permisiune." };
+  if (DEMO) return { error: DEMO_MSG };
+  if (!/^[0-9a-f]{24}$/i.test(id ?? "")) return { error: "Client invalid." };
+  const owned = await prisma.client.findFirst({
+    where: { id },
+    select: { id: true, name: true, phone: true, email: true, telegramChatId: true, notes: true },
+  });
+  if (!owned) return { error: "Client inexistent." };
+
+  const merged = {
+    name: "name" in patch ? String(patch.name ?? "") : owned.name,
+    phone: "phone" in patch ? String(patch.phone ?? "") : (owned.phone ?? ""),
+    email: "email" in patch ? String(patch.email ?? "") : (owned.email ?? ""),
+    telegramChatId: owned.telegramChatId ?? "",
+    notes: "notes" in patch ? String(patch.notes ?? "") : (owned.notes ?? ""),
+  };
+  const parsed = clientSchema.safeParse(merged);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Date invalide." };
+  const d = parsed.data;
+
+  const data: Record<string, unknown> = {};
+  if ("name" in patch) data.name = d.name;
+  if ("phone" in patch) data.phone = d.phone || null;
+  if ("email" in patch) data.email = d.email || null;
+  if ("notes" in patch) data.notes = d.notes || null;
+  if (Object.keys(data).length === 0) return { ok: true, id };
+
+  await prisma.client.update({ where: { id }, data });
+  await logAudit(actor(user), {
+    action: "client.update",
+    module: "Clients",
+    objectId: id,
+    objectName: d.name,
+    oldValue: JSON.stringify({ name: owned.name, phone: owned.phone, email: owned.email }),
+    newValue: JSON.stringify(data),
+  });
+  revalidatePath("/clients");
+  updateTag("clients");
+  return { ok: true, id };
+}
