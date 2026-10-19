@@ -112,6 +112,15 @@ export default function AppointmentsTable({
     },
     { key: "date", label: "Data", minW: 100, sticky: true, sort: (a) => `${a.dateKey} ${a.time}`, render: (a) => dateEditor(a, <span className={a.dateKey === today ? "font-semibold text-brand" : ""}>{dmy(a.dateKey)}</span>) },
     { key: "time", label: "Ora", minW: 95, sort: (a) => a.time, render: (a) => dateEditor(a, <span className="font-mono">{a.time}–{a.endTime}</span>) },
+    {
+      key: "day", label: "Ziua", minW: 80, defaultHidden: true, sort: (a) => a.dateKey,
+      render: (a) => <span className="capitalize">{new Date(`${a.dateKey}T12:00:00`).toLocaleDateString("ro-RO", { weekday: "long" })}</span>,
+    },
+    {
+      key: "dur", label: "Durată", minW: 70, right: true, defaultHidden: true,
+      sort: (a) => { const [h1, m1] = a.time.split(":").map(Number); const [h2, m2] = a.endTime.split(":").map(Number); return h2 * 60 + m2 - (h1 * 60 + m1); },
+      render: (a) => { const [h1, m1] = a.time.split(":").map(Number); const [h2, m2] = a.endTime.split(":").map(Number); return `${h2 * 60 + m2 - (h1 * 60 + m1)} min`; },
+    },
     { key: "client", label: "Client", minW: 180, maxW: 240, sort: (a) => a.clientName, render: (a) => <span title={a.clientName}>{a.clientName}</span> },
     {
       key: "title", label: "Descriere", minW: 200, maxW: 300,

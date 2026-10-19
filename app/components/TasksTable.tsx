@@ -308,6 +308,28 @@ export default function TasksTable({
         />
       ),
     },
+    {
+      key: "desc", label: "Descriere", minW: 240, maxW: 340, defaultHidden: true, sort: (t) => t.description,
+      render: (t) => <EditableText value={t.description ?? ""} allowEmpty disabled={!canEditRow(t)} onSave={(v) => patchTask(t, { description: v || null }, { description: v || null })} display={t.description ? <span title={t.description}>{t.description}</span> : undefined} />,
+    },
+    { key: "type", label: "Tip", minW: 70, defaultHidden: true, sort: (t) => t.type, render: (t) => (t.type === "TICKET" ? m.tasks.typeTicket : m.tasks.typeTask) },
+    {
+      key: "remind", label: "Reamintire", minW: 90, defaultHidden: true, sort: (t) => t.reminderIntervalMinutes,
+      render: (t) => {
+        const n = t.reminderIntervalMinutes;
+        if (!n) return dash;
+        return n >= 1440 ? `la ${Math.round(n / 1440)} zile` : n >= 60 ? `la ${Math.round(n / 60)} h` : `la ${n} min`;
+      },
+    },
+    {
+      key: "left", label: "Zile până la termen", minW: 90, right: true, defaultHidden: true,
+      sort: (t) => (t.dueAt ? Math.round((new Date(t.dueAt).getTime() - now.getTime()) / 86_400_000) : null),
+      render: (t) => {
+        if (!t.dueAt) return dash;
+        const d = Math.round((new Date(t.dueAt).getTime() - now.getTime()) / 86_400_000);
+        return <span className={d < 0 && t.status !== "DONE" && t.status !== "CANCELLED" ? "font-semibold text-st-cancelled" : ""}>{d}</span>;
+      },
+    },
     { key: "creator", label: "Creat de", minW: 100, maxW: 140, sort: (t) => t.creatorName, render: (t) => t.creatorName },
     { key: "created", label: "Creat la", minW: 80, sort: (t) => new Date(t.createdAt).getTime(), render: (t) => dmy(t.createdAt) },
     {

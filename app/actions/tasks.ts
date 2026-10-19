@@ -337,6 +337,7 @@ export async function updateTaskAction(
 
 export type TaskFieldPatch = {
   title?: string;
+  description?: string | null;
   priority?: string;
   projectId?: string | null;
   clientId?: string | null;
@@ -370,6 +371,7 @@ export async function updateTaskFieldAction(id: string, patch: TaskFieldPatch): 
 
     const input: Parameters<typeof updateTask>[2] = {};
     if ("title" in patch) input.title = String(patch.title ?? "");
+    if ("description" in patch) input.description = String(patch.description ?? "").slice(0, 5000);
     if (patch.priority !== undefined) {
       if (!PRIORITIES.includes(patch.priority as TaskPriority)) return { error: "Prioritate invalidă." };
       input.priority = patch.priority as TaskPriority;

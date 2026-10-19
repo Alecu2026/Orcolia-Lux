@@ -74,6 +74,7 @@ export default function ClientsTable({ items, openCreate, canEdit = true }: { it
       key: "email", label: "Email", minW: 170, maxW: 220, sort: (c) => c.email,
       render: (c) => <EditableText value={c.email ?? ""} type="email" allowEmpty disabled={!canEdit} onSave={(v) => patchClient(c, { email: v || null }, { email: v || null })} />,
     },
+    { key: "tgid", label: "ID Telegram", minW: 100, defaultHidden: true, sort: (c) => c.telegramChatId, render: (c) => c.telegramChatId ?? <span className="text-ink-soft/60">—</span> },
     { key: "tg", label: "Telegram", minW: 70, render: (c) => (c.telegramChatId ? <span className="text-st-done">✓ conectat</span> : <span className="text-ink-soft/60">—</span>) },
     { key: "abs", label: m.clients.absences, minW: 60, right: true, sort: (c) => c.noShowCount, render: (c) => (c.noShowCount > 0 ? <span className="font-semibold text-st-noshow">{c.noShowCount}</span> : <span className="text-ink-soft/60">0</span>) },
     {

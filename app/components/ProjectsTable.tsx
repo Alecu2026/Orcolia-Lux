@@ -113,6 +113,10 @@ export default function ProjectsTable({
       key: "team", label: "Echipă", minW: 100, maxW: 140, sort: (p) => nameOf(p.teamId, teams),
       render: (p) => <EditableSelect value={p.teamId ?? ""} disabled={!canEdit} options={opts(teams)} onChange={(v) => patchProject(p, { teamId: v || null }, { teamId: v || null })} display={nameOf(p.teamId, teams) ?? dash} />,
     },
+    {
+      key: "desc", label: "Descriere", minW: 240, maxW: 340, defaultHidden: true, sort: (p) => p.description,
+      render: (p) => <EditableText value={p.description ?? ""} allowEmpty disabled={!canEdit} onSave={(v) => patchProject(p, { description: v || null }, { description: v || null })} display={p.description ? <span title={p.description}>{p.description}</span> : undefined} />,
+    },
     { key: "tasks", label: "Task-uri", minW: 55, right: true, sort: (p) => p.taskCount, render: (p) => p.taskCount },
     {
       key: "loc", label: "Locație", minW: 150, maxW: 220,
