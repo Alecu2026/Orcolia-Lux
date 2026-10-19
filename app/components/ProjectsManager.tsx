@@ -19,8 +19,8 @@ import ProjectMapPickerDynamic from "./ProjectMapPickerDynamic";
 import CardActionsMenu from "./CardActionsMenu";
 import { useMessages } from "@/lib/i18n/context";
 
-type Opt = { id: string; name: string };
-type Project = {
+export type Opt = { id: string; name: string };
+export type Project = {
   id: string;
   seq: number | null;
   name: string;
@@ -399,7 +399,7 @@ export default function ProjectsManager({
   );
 }
 
-function ProjectDialog({
+export function ProjectDialog({
   project,
   users,
   teams,

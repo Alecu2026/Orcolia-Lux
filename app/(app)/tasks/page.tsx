@@ -10,33 +10,16 @@ import { crmClientOptions } from "@/lib/queries/clients";
 import { listCategories } from "@/lib/queries/categories";
 import { getQuietHoursSettings } from "@/lib/queries/company";
 import { env } from "@/lib/env";
-import TasksManager from "@/app/components/TasksManager";
-import type { TaskStatus, TaskType, TaskPriority } from "@prisma/client";
+import TasksTable from "@/app/components/TasksTable";
 
 export const dynamic = "force-dynamic";
 
 const SCOPE_KEYS = ["mine", "all", "created"] as const;
 
-const STATUS_SET = new Set(["NEW", "ASSIGNED", "READ", "IN_PROGRESS", "ON_HOLD", "REVIEW", "DONE", "CANCELLED"]);
-const TYPE_SET = new Set(["TASK", "TICKET"]);
-const PRIO_SET = new Set(["LOW", "MEDIUM", "HIGH", "URGENT"]);
-
-function pick<T extends string>(v: string | undefined, set: Set<string>): T | undefined {
-  return v && set.has(v) ? (v as T) : undefined;
-}
-
-const DUE_RANGES = new Set(["overdue", "today", "tomorrow", "week", "month"]);
-const SORTS = new Set(["dueAsc", "dueDesc"]);
-
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    scope?: string; page?: string; create?: string; project?: string;
-    q?: string; status?: string; type?: string; assignee?: string;
-    team?: string; proj?: string; client?: string; prio?: string;
-    due?: string; sort?: string; open?: string; category?: string; ps?: string;
-  }>;
+  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string }>;
 }) {
   const user = await requirePermission("tasks.view");
   const sp = await searchParams;
@@ -50,18 +33,11 @@ export default async function TasksPage({
       ? sp.scope
       : "mine"
   ) as "mine" | "all" | "created";
-  const page = Math.max(1, Number(sp.page) || 1);
-  const pageSize = sp.ps === "all" ? 9999 : Math.min(9999, Math.max(1, Number(sp.ps) || 20));
-  const initialCreate =
-    sp.create === "task" ? "TASK" : undefined;
+  const initialCreate = sp.create === "task" ? "TASK" : undefined;
   const initialProjectId = typeof sp.project === "string" ? sp.project : undefined;
   const initialOpenId = typeof sp.open === "string" && sp.open ? sp.open : undefined;
 
-  const dueRange = DUE_RANGES.has(sp.due ?? "")
-    ? (sp.due as "overdue" | "today" | "tomorrow" | "week" | "month")
-    : undefined;
-  const sort = SORTS.has(sp.sort ?? "") ? (sp.sort as "dueAsc" | "dueDesc") : "default";
-
+  // Toate task-urile din „scope" odată; filtrarea/sortarea/paginarea rulează în browser (vezi TasksTable / DataTable).
   const [result, users, teams, projects, clients, categories, quietHoursSettings] = await Promise.all([
     listTasks({
       scope,
@@ -69,18 +45,9 @@ export default async function TasksPage({
       teamIds: user.teamIds,
       ...taskViewFilter(user),
       types: ["TASK"],
-      status: pick<TaskStatus>(sp.status, STATUS_SET),
-      priority: pick<TaskPriority>(sp.prio, PRIO_SET),
-      assigneeId: sp.assignee || undefined,
-      teamId: sp.team || undefined,
-      projectId: sp.proj || undefined,
-      clientId: sp.client || undefined,
-      categoryId: sp.category || undefined,
-      dueRange,
-      sort,
-      search: sp.q || undefined,
-      page,
-      pageSize,
+      sort: "default",
+      page: 1,
+      pageSize: 9999,
     }),
     userOptions(),
     teamOptions(),
@@ -95,35 +62,18 @@ export default async function TasksPage({
     { key: "all", label: m.common.all },
     { key: "created", label: m.common.createdByMe },
   ] as const;
-  const scopeOptions = SCOPES.filter((s) => user.role === "STAFF" ? s.key !== "all" : true);
+  const scopeOptions = SCOPES.filter((s) => (user.role === "STAFF" ? s.key !== "all" : true));
 
   return (
     <div className="w-full">
-      <TasksManager
+      <TasksTable
         items={result.items}
-        hasMore={result.hasMore}
-        page={result.page}
-        totalPages={result.totalPages}
         scope={scope}
         users={users}
         teams={teams}
         projects={projects}
         clients={clients}
         categories={categories}
-        filters={{
-          q: sp.q ?? "",
-          status: sp.status ?? "",
-          type: sp.type ?? "",
-          assignee: sp.assignee ?? "",
-          team: sp.team ?? "",
-          proj: sp.proj ?? "",
-          client: sp.client ?? "",
-          prio: sp.prio ?? "",
-          due: sp.due ?? "",
-          sort: sp.sort ?? "",
-          category: sp.category ?? "",
-          ps: sp.ps ?? "",
-        }}
         canCreate={can(user, "tasks.create")}
         canDelete={can(user, "tasks.delete")}
         canEdit={can(user, "tasks.edit")}
@@ -134,11 +84,16 @@ export default async function TasksPage({
         initialCreate={can(user, "tasks.create") ? initialCreate : undefined}
         initialProjectId={can(user, "tasks.create") ? initialProjectId : undefined}
         initialOpenId={initialOpenId}
-        scopeOptions={scopeOptions}
+        scopeOptions={[...scopeOptions]}
         basePath="/tasks"
-        createButtons={can(user, "tasks.create") ? [
-          { label: m.tasks.newButton, type: "TASK" },
-        ] : []}
+        presetValues={{
+          q: sp.q,
+          proj: sp.proj,
+          status: sp.status,
+          assignee: sp.assignee,
+          prio: sp.prio,
+          due: sp.due,
+        }}
       />
     </div>
   );

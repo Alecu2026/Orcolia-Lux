@@ -80,6 +80,17 @@ export function listByDateKeys(userId: string, dateKeys: string[], filter: ApptF
   });
 }
 
+/** TOATE programările unui utilizator (cele mai noi primele) — pentru tabelul din /appointments, filtrat în browser. */
+export function listAllForUser(userId: string, limit = 20000) {
+  if (DEMO) return Promise.resolve(demoAppointments());
+  return prisma.appointment.findMany({
+    where: { userId },
+    select: LIST_SELECT,
+    orderBy: { startAt: "desc" },
+    take: limit,
+  });
+}
+
 /** Fereastră pentru Kanban (ex. ultimele zile + următoarele), grupare în UI. */
 export function listForKanban(userId: string, dateKeys: string[]) {
   if (DEMO) {

@@ -254,7 +254,11 @@ const PAYER_SELECT = {
   id: true, name: true, meterSeries: true, apaCanalContract: true, email: true, phone: true,
   portalPasswordHash: true, consumAddress: true, lastNotifiedAt: true,
 } as const;
-const INVOICE_SELECT = { clientId: true, number: true, status: true, grandTotal: true, currency: true, dueDate: true } as const;
+const INVOICE_SELECT = { clientId: true, number: true, status: true, grandTotal: true, currency: true, dueDate: true, issueDate: true } as const;
+
+// MongoDB sortează în memorie cel mult 32 MB (eroarea 292 QueryExceededMemoryLimitNoDiskUseAllowed) — cu zeci de mii de
+// facturi `orderBy: issueDate` pe tot setul cade. La citirile în bloc NU sortăm în bază, ci aici, în JS.
+const byIssueDesc = <T extends { issueDate: Date }>(rows: T[]): T[] => rows.sort((a, b) => b.issueDate.getTime() - a.issueDate.getTime());
 type PayerClient = Prisma.ClientGetPayload<{ select: typeof PAYER_SELECT }>;
 type PayerInvoice = { number: string; status: InvoiceStatus; grandTotal: number; currency: string; dueDate: Date | null };
 
@@ -299,8 +303,8 @@ async function invoicesByClientIds(ids: string[]) {
     return prisma.invoice.findMany({ where: { clientId: { in: ids } }, orderBy: { issueDate: "desc" }, select: INVOICE_SELECT });
   }
   const set = new Set(ids);
-  const all = await prisma.invoice.findMany({ where: { clientId: { not: null } }, orderBy: { issueDate: "desc" }, select: INVOICE_SELECT });
-  return all.filter((i) => i.clientId && set.has(i.clientId));
+  const all = await prisma.invoice.findMany({ where: { clientId: { not: null } }, select: INVOICE_SELECT });
+  return byIssueDesc(all.filter((i) => i.clientId && set.has(i.clientId)));
 }
 
 async function invoiceCountsByClientIds(ids: string[]) {
@@ -604,9 +608,10 @@ export async function getPayerSnapshot(): Promise<SnapTuple[]> {
   if (DEMO) return [];
   const [clients, invoices, installBy] = await Promise.all([
     prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true } }),
-    prisma.invoice.findMany({ where: { clientId: { not: null } }, orderBy: { issueDate: "desc" }, select: INVOICE_SELECT }),
+    prisma.invoice.findMany({ where: { clientId: { not: null } }, select: INVOICE_SELECT }),
     installDateMap(),
   ]);
+  byIssueDesc(invoices);
   const latest = new Map<string, (typeof invoices)[number]>();
   const count = new Map<string, number>();
   for (const inv of invoices) {
@@ -630,11 +635,12 @@ export async function getPayerMonthSlice(month: string): Promise<MonthTuple[]> {
   if (DEMO) return [];
   const parsed = parsePayerMonth(month);
   if (!parsed) return [];
-  const invoices = await prisma.invoice.findMany({
-    where: { kind: "APA_CANAL", issueDate: monthRange(parsed), clientId: { not: null } },
-    orderBy: { issueDate: "desc" },
-    select: INVOICE_SELECT,
-  });
+  const invoices = byIssueDesc(
+    await prisma.invoice.findMany({
+      where: { kind: "APA_CANAL", issueDate: monthRange(parsed), clientId: { not: null } },
+      select: INVOICE_SELECT,
+    }),
+  );
   const seen = new Set<string>();
   const out: MonthTuple[] = [];
   for (const inv of invoices) {

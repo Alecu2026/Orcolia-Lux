@@ -32,7 +32,7 @@ import { quickCreateProject } from "@/app/actions/projects";
 import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
 
-type HistoryRow = {
+export type HistoryRow = {
   id: string;
   fromStatus: Status | null;
   toStatus: Status | null;
@@ -41,7 +41,7 @@ type HistoryRow = {
   userName: string;
 };
 
-type CommentRow = {
+export type CommentRow = {
   id: string;
   body: string;
   source: "WEB" | "TELEGRAM" | "VOICE";
@@ -49,9 +49,9 @@ type CommentRow = {
   userName: string;
 };
 
-type Opt = { id: string; name: string };
-type Status = "NEW" | "ASSIGNED" | "READ" | "IN_PROGRESS" | "ON_HOLD" | "REVIEW" | "DONE" | "CANCELLED";
-type Task = {
+export type Opt = { id: string; name: string };
+export type Status = "NEW" | "ASSIGNED" | "READ" | "IN_PROGRESS" | "ON_HOLD" | "REVIEW" | "DONE" | "CANCELLED";
+export type Task = {
   id: string;
   seq: number | null;
   type: "TASK" | "TICKET" | "WORK_ORDER";
@@ -84,7 +84,7 @@ type Task = {
   description: string | null;
 };
 
-const ST: Record<Status, { label: string; dot: string; badge: string }> = {
+export const ST: Record<Status, { label: string; dot: string; badge: string }> = {
   NEW:         { label: "Nou",            dot: "bg-st-new",       badge: "bg-st-new/15 text-st-new" },
   ASSIGNED:    { label: "Asignat",        dot: "bg-st-new",       badge: "bg-st-new/15 text-st-new" },
   READ:        { label: "Citit",          dot: "bg-st-confirmed", badge: "bg-st-confirmed/15 text-st-confirmed" },
@@ -107,12 +107,12 @@ function groupByStatus(tasks: Task[]): [Status, Task[]][] {
 }
 const TYPE_RO: Record<string, string> = { TASK: "Task", TICKET: "Tichet", WORK_ORDER: "Task" };
 const PRIO_RO = { LOW: "Scăzută", MEDIUM: "Medie", HIGH: "Ridicată", URGENT: "Urgentă" };
-const STATUSES: Status[] = ["NEW", "ASSIGNED", "READ", "IN_PROGRESS", "ON_HOLD", "REVIEW", "DONE", "CANCELLED"];
+export const STATUSES: Status[] = ["NEW", "ASSIGNED", "READ", "IN_PROGRESS", "ON_HOLD", "REVIEW", "DONE", "CANCELLED"];
 const PROGRESS = [0, 25, 50, 75, 100];
-const TZ = "Europe/Bucharest";
+export const TZ = "Europe/Bucharest";
 
 /** Formatează dueAt cu ora dacă nu e miezul nopții (00:00) în fusul Romania. */
-function fmtDue(dueAt: string | Date): string {
+export function fmtDue(dueAt: string | Date): string {
   const d = new Date(dueAt);
   const parts = new Intl.DateTimeFormat("ro-RO", {
     timeZone: TZ,
@@ -134,7 +134,7 @@ type TaskFilters = {
 // Un server action poate fi anulat de router (net::ERR_ABORTED) când o revalidare/navigare pornește în
 // paralel — ex. imediat după crearea unui task. Fără reîncercare, o cerere anulată lăsa "Se încarcă…"
 // blocat până la următoarea navigare.
-async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
   for (let i = 0; ; i++) {
     try {
       return await fn();
@@ -847,7 +847,7 @@ export default function TasksManager({
   );
 }
 
-function StatusDropdown({
+export function StatusDropdown({
   status,
   pending,
   onChange,
@@ -941,7 +941,7 @@ function buildPageButtons(current: number, total: number): (number | "…")[] {
   return result;
 }
 
-function Timeline({
+export function Timeline({
   rows, loading, createdAt, creatorName,
 }: {
   rows: HistoryRow[] | undefined;
@@ -990,7 +990,7 @@ const SOURCE_LABEL: Record<CommentRow["source"], string> = {
   WEB: "", TELEGRAM: " · via Telegram", VOICE: " · din voce",
 };
 
-function Comments({
+export function Comments({
   rows, draft, posting, onDraftChange, onSubmit,
 }: {
   rows: CommentRow[] | undefined;
@@ -1086,7 +1086,7 @@ function CategoryChips({
   );
 }
 
-function EditDialog({
+export function EditDialog({
   task, users, teams, projects, clients, categories, quietHoursEnabled, onClose, onSaved,
 }: {
   task: Task;
@@ -1221,7 +1221,7 @@ function fmtFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function CreateDialog({
+export function CreateDialog({
   initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, onClose, onCreated,
 }: {
   initialType: "TASK" | "TICKET" | "WORK_ORDER";

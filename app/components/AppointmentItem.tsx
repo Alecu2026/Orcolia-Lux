@@ -10,11 +10,11 @@ import type { ApptStatus, ApptVM } from "./types";
 import { useMessages } from "@/lib/i18n/context";
 import type { Messages } from "@/lib/i18n/messages/ro";
 
-const APPT_STATUSES: ApptStatus[] = [
+export const APPT_STATUSES: ApptStatus[] = [
   "NEW", "CONFIRMED", "IN_PROGRESS", "DONE", "CANCELLED", "NO_SHOW",
 ];
 
-function apptLabel(s: ApptStatus, m: Messages): string {
+export function apptLabel(s: ApptStatus, m: Messages): string {
   switch (s) {
     case "NEW": return m.appts.statusNew;
     case "CONFIRMED": return m.appts.statusConfirmed;
@@ -123,7 +123,7 @@ export default function AppointmentItem({ appt }: { appt: ApptVM }) {
   );
 }
 
-function ApptStatusDropdown({
+export function ApptStatusDropdown({
   status,
   pending,
   onChange,

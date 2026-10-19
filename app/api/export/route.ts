@@ -236,7 +236,7 @@ export async function GET(req: Request) {
     const [invRows, oneC] = await Promise.all([
       prisma.invoice.findMany({
         where: { clientId: { not: null } },
-        orderBy: { issueDate: "desc" },
+        // fără orderBy: sortarea în MongoDB depășește limita de 32 MB de memorie (eroarea 292) — sortăm mai jos, în JS
         select: {
           clientId: true, number: true, issueDate: true, status: true, billingPeriodLabel: true, sectorNr: true,
           meterPrevReading: true, meterCurrReading: true, subtotal: true, datoriiAvans: true, recalculari: true,
@@ -248,6 +248,7 @@ export async function GET(req: Request) {
         select: { clientId: true, nrContract: true, inn: true, zonaPresiune: true, sigiliu: true, dataInstalare: true, uid: true },
       }),
     ]);
+    invRows.sort((a, b) => b.issueDate.getTime() - a.issueDate.getTime());
     const range = month ? monthRange(month) : null;
     const lastInvoice = new Map<string, (typeof invRows)[number]>();
     for (const inv of invRows) {
