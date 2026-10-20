@@ -30,6 +30,20 @@ export async function sendSms(to: string, message: string): Promise<void> {
   }
 
   const { httpUrl, httpToken, from } = env.sms;
+
+  // Gateway-ul ACC Cahul: corp { smsid, nr_tel, content, sms_token }, număr în format local (078608080), token în corp.
+  const accahul = env.sms.httpFormat === "accahul" || (!env.sms.httpFormat && /(^|\.)accahul\.md$/i.test(new URL(httpUrl).hostname));
+  if (accahul) {
+    const res = await fetch(httpUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ smsid: newSmsId(), nr_tel: toLocalMd(to), content: message, sms_token: httpToken }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(await errorDetail(res, "Gateway SMS"));
+    return;
+  }
+
   const res = await fetch(httpUrl, {
     method: "POST",
     headers: {
@@ -40,6 +54,20 @@ export async function sendSms(to: string, message: string): Promise<void> {
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(await errorDetail(res, "Gateway SMS"));
+}
+
+/** +37378608080 → 078608080 (formatul local moldovenesc cerut de gateway); alte țări rămân doar cifre. */
+function toLocalMd(e164: string): string {
+  const d = e164.replace(/\D/g, "");
+  return d.startsWith("373") && d.length === 11 ? `0${d.slice(3)}` : d;
+}
+
+/** Id unic al mesajului (16 caractere A–Z0–9), ca să-l putem găsi în jurnalul gateway-ului. */
+function newSmsId(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let id = "";
+  for (const b of crypto.getRandomValues(new Uint8Array(16))) id += chars[b % chars.length];
+  return id;
 }
 
 async function errorDetail(res: Response, who: string): Promise<string> {
