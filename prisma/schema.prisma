@@ -997,6 +997,8 @@ model NotifyCall {
   callId     String?
   operator   String?
   dialedAt   DateTime?
+  // Încercări automate de sunat din /api/cron/notify-calls (max 3, apoi rămâne în coadă pentru apel manual).
+  tries      Int?
   note       String?
   userId     String    @db.ObjectId
   userName   String

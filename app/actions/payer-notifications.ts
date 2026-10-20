@@ -9,6 +9,7 @@ import { isRateLimited } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/services/audit";
 import { sendPayerNotificationEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
+import { placePbxCall } from "@/lib/pbx-api";
 import { listMatchingPayerContacts } from "@/lib/queries/payers";
 import { filtersToListOpts } from "@/lib/queries/payer-notify";
 import {
@@ -27,6 +28,24 @@ import {
   usesTokens,
   type NotifyVars,
 } from "@/lib/payer-notify";
+
+/** Cel mult `max` apeluri către PBX în același timp (robotul/PBX-ul nu primesc 5 deodată). */
+function limiter(max: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (active >= max) await new Promise<void>((r) => waiting.push(r));
+    active++;
+    try {
+      return await fn();
+    } finally {
+      active--;
+      waiting.shift()?.();
+    }
+  };
+}
+const dialLimit = limiter(2);
+const CALLER_RE = /^[w.@-]{1,64}$/;
 
 /** Pagina e `maxDuration = 60` (vezi page.tsx) — un lot de 25 destinatari încape confortabil. */
 const CONCURRENCY = 5;
@@ -82,7 +101,8 @@ export type SendChunkInput = {
   ids: string[];
   email: { enabled: boolean; subject: string; body: string };
   sms: { enabled: boolean; body: string; ascii: boolean };
-  call: { enabled: boolean; body: string; voice: string };
+  /** `caller` = extensia PBX care face apelul (robotul), ex. "robot". */
+  call: { enabled: boolean; body: string; voice: string; caller?: string };
 };
 
 export type SendChunkResult = { ok: true; results: RecipientResult[] } | { ok: false; error: string };
@@ -252,18 +272,34 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
       } else if (!phone) {
         res.call = { status: "skipped", detail: "Fără telefon valid" };
       } else {
-        // Apelul prin PBX e cu operator: aici doar punem plătitorul în coadă (cu mesajul gata completat); „Sună" se apasă din
-        // /pbx → Notificări apel. „Ultima notificare" se marchează abia când apelul pornește.
+        // Se pune în coadă (jurnal + reîncercări din /pbx → Notificări apel) și apelul pornește IMEDIAT prin extensia PBX aleasă
+        // (robotul): PBX-ul o sună, iar robotul sună plătitorul, redă înregistrarea și închide. Dacă apelul nu pornește,
+        // rândul rămâne în coadă și se poate suna din nou de acolo.
+        const text = renderTemplate(call.body, vars);
+        const caller = CALLER_RE.test(call.caller ?? "") ? (call.caller as string) : env.pbx.callUser || "robot";
+        let rowId: string | null = null;
         try {
-          await prisma.notifyCall.create({
-            data: {
-              campaignId: input.campaignId, clientId: c.id, clientName: c.name, phone, text: renderTemplate(call.body, vars),
-              status: "queued", userId: user.id, userName: user.name,
-            },
+          const row = await prisma.notifyCall.create({
+            data: { campaignId: input.campaignId, clientId: c.id, clientName: c.name, phone, text, status: "queued", userId: user.id, userName: user.name },
+            select: { id: true },
           });
-          res.call = { status: "sent", detail: "în coadă" };
+          rowId = row.id;
         } catch (e) {
           res.call = { status: "failed", detail: errText(e) };
+        }
+        if (rowId) {
+          try {
+            const callId = await dialLimit(() => placePbxCall(phone, caller));
+            await prisma.notifyCall
+              .update({ where: { id: rowId }, data: { status: "dialing", callId, operator: caller, dialedAt: new Date() } })
+              .catch((e) => console.error("[notify] apel nesalvat:", e));
+            res.call = { status: "sent", detail: "apel pornit" };
+            notifiedIds.add(c.id);
+            logs.push({ ...base, channel: "CALL", to: phone, status: "SENT", error: null, subject: `apelant ${caller}`, body: text });
+          } catch (e) {
+            res.call = { status: "failed", detail: `${errText(e)} (rămâne în coadă)` };
+            logs.push({ ...base, channel: "CALL", to: phone, status: "FAILED", error: errText(e), subject: `apelant ${caller}`, body: text });
+          }
         }
       }
     }
