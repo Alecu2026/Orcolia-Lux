@@ -199,14 +199,16 @@ export const NOTIFY_PRESETS: NotifyPreset[] = [
 // ── Notificări prin apel (robot vocal) ─────────────────────────────────────────────────────────
 
 /**
- * Vocile pentru citirea mesajului de apel (limbă + gen). Apelul prin PBX Moldcell e cu operator — vocea e pentru ascultarea
- * mesajului în pagină („▶ Ascultă"), cu vocile instalate în dispozitiv; nu intră în convorbire.
+ * Vocile pentru citirea mesajului de apel. `id` = vocea Piper (open-source, MIT) care rulează direct în browser — fără cont și
+ * fără instalare în Windows; se descarcă o dată (~60 MB) și rămâne în browser. Apelul prin PBX Moldcell e cu operator: vocea e
+ * pentru ascultarea mesajului în pagină („▶ Ascultă"), nu intră în convorbire. Piper are o singură voce românească (masculină).
  */
 export const NOTIFY_VOICES = [
-  { id: "ro-RO-f", lang: "ro-RO", gender: "f", label: "Română · feminin" },
-  { id: "ro-RO-m", lang: "ro-RO", gender: "m", label: "Română · masculin" },
-  { id: "ru-RU-f", lang: "ru-RU", gender: "f", label: "Русский · женский" },
-  { id: "ru-RU-m", lang: "ru-RU", gender: "m", label: "Русский · мужской" },
+  { id: "ro_RO-mihai-medium", lang: "ro-RO", gender: "m", label: "Română · masculin (Mihai)" },
+  { id: "ru_RU-irina-medium", lang: "ru-RU", gender: "f", label: "Русский · женский (Ирина)" },
+  { id: "ru_RU-dmitri-medium", lang: "ru-RU", gender: "m", label: "Русский · мужской (Дмитрий)" },
+  { id: "ru_RU-denis-medium", lang: "ru-RU", gender: "m", label: "Русский · мужской (Денис)" },
+  { id: "ru_RU-ruslan-medium", lang: "ru-RU", gender: "m", label: "Русский · мужской (Руслан)" },
 ] as const;
 export const DEFAULT_VOICE: string = NOTIFY_VOICES[0].id;
 export const NOTIFY_MAX_CALL_BODY = 600;
