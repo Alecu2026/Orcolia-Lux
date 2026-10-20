@@ -10,7 +10,7 @@ const TIMEOUT_MS = 15_000;
  *  - Gateway propriu: POST JSON { to, message, from } la SMS_HTTP_URL, cu `Authorization: Bearer SMS_HTTP_TOKEN`
  *    dacă e setat; orice răspuns 2xx = trimis.
  */
-export async function sendSms(to: string, message: string): Promise<void> {
+export async function sendSms(to: string, message: string): Promise<string | void> {
   const provider = env.sms.provider;
   if (!provider) throw new Error("SMS neconfigurat.");
 
@@ -34,14 +34,22 @@ export async function sendSms(to: string, message: string): Promise<void> {
   // Gateway-ul ACC Cahul: corp { smsid, nr_tel, content, sms_token }, număr în format local (078608080), token în corp.
   const accahul = env.sms.httpFormat === "accahul" || (!env.sms.httpFormat && /(^|\.)accahul\.md$/i.test(new URL(httpUrl).hostname));
   if (accahul) {
+    if (!httpToken) throw new Error("Lipsește tokenul SMS (variabila sms_token / SMS_TOKEN din Vercel) — redeploy după ce o adaugi.");
+    const smsid = newSmsId();
     const res = await fetch(httpUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ smsid: newSmsId(), nr_tel: toLocalMd(to), content: message, sms_token: httpToken }),
+      body: JSON.stringify({ smsid, nr_tel: toLocalMd(to), content: message, sms_token: httpToken }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+    const text = await res.clone().text().catch(() => "");
     if (!res.ok) throw new Error(await errorDetail(res, "Gateway SMS"));
-    return;
+    // Un 200 nu înseamnă „trimis": multe gateway-uri răspund 200 și raportează eroarea în corp (token greșit, număr respins).
+    const bad = gatewayFailure(text);
+    if (bad) throw new Error(`Gateway SMS a respins mesajul: ${bad}`);
+    const reply = text.replace(/\s+/g, " ").trim().slice(0, 200);
+    console.log(`[sms] ${smsid} → ${toLocalMd(to)}: HTTP ${res.status} ${reply}`);
+    return reply;
   }
 
   const res = await fetch(httpUrl, {
@@ -54,6 +62,26 @@ export async function sendSms(to: string, message: string): Promise<void> {
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(await errorDetail(res, "Gateway SMS"));
+}
+
+/** Eroarea raportată de gateway într-un răspuns 2xx (JSON cu error/success:false/status:"error…" sau text cu „eroare/invalid/token…"), altfel null. */
+function gatewayFailure(text: string): string | null {
+  const t = text.trim();
+  if (!t) return null;
+  const badWord = /err|fail|reject|invalid|denied|unauthori|forbidden|eroare|gresit|greșit|nu a fost/i;
+  try {
+    const j = JSON.parse(t) as Record<string, unknown>;
+    if (j && typeof j === "object") {
+      const msg = String(j.message ?? j.error ?? j.status ?? j.result ?? "").slice(0, 160);
+      if (j.success === false || j.ok === false) return msg || t.slice(0, 160);
+      if (j.error) return msg || t.slice(0, 160);
+      if (typeof j.status === "string" && badWord.test(j.status)) return msg;
+      return null;
+    }
+  } catch {
+    // nu e JSON — verificăm textul simplu
+  }
+  return badWord.test(t) ? t.replace(/\s+/g, " ").slice(0, 160) : null;
 }
 
 /** +37378608080 → 078608080 (formatul local moldovenesc cerut de gateway); alte țări rămân doar cifre. */

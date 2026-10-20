@@ -307,8 +307,8 @@ export async function sendTestNotificationAction(input: {
       const phone = normalizePhone(input.testPhone);
       if (!phone) return { ok: false, error: "Introdu un număr de telefon valid pentru testul SMS (ex. 069123456)." };
       const rendered = renderTemplate(input.sms.body, sample);
-      await sendSms(phone, input.sms.ascii ? stripLatinDiacritics(rendered) : rendered);
-      done.push(`SMS la ${phone}`);
+      const reply = await sendSms(phone, input.sms.ascii ? stripLatinDiacritics(rendered) : rendered);
+      done.push(`SMS la ${phone}${reply ? ` (răspuns gateway: ${reply})` : ""}`);
     }
   } catch (e) {
     return { ok: false, error: `Testul a eșuat${done.length ? ` (trimis deja: ${done.join(", ")})` : ""}: ${errText(e)}` };
