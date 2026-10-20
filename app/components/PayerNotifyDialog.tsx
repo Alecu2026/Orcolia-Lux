@@ -23,6 +23,7 @@ import {
   stripLatinDiacritics,
   type NotifyVars,
 } from "@/lib/payer-notify";
+import Link from "next/link";
 import { useToast } from "./toast";
 import { IconX } from "./icons";
 import VoicePicker from "./VoicePicker";
@@ -579,8 +580,16 @@ export default function PayerNotifyDialog({
             <div className="grid gap-2 sm:grid-cols-2">
               {useEmail && <StatCard title="✉ Email" s={emailStats} />}
               {useSms && <StatCard title="💬 SMS" s={smsStats} />}
-              {useCall && <StatCard title="📞 Apel (puși în coadă)" s={callStats} />}
+              {useCall && <StatCard title="📞 Apel — NESUNAT încă" s={callStats} sentLabel="În coadă" />}
             </div>
+
+            {useCall && callStats.sent > 0 && !sending && (
+              <div className="rounded-xl border border-st-progress/40 bg-st-progress/10 p-3 text-sm">
+                <p className="font-semibold">📞 Apelurile NU au pornit încă — {nf(callStats.sent)} {callStats.sent === 1 ? "plătitor e" : "plătitori sunt"} în coadă.</p>
+                <p className="mt-1 text-xs text-ink-soft">Deschide coada, alege operatorul și apasă „Sună”: PBX-ul sună întâi operatorul, apoi îl leagă cu plătitorul.</p>
+                <Link href="/pbx?tab=notificari" className="tap mt-2 inline-flex h-9 cursor-pointer items-center rounded-lg bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-strong">Deschide coada de apeluri →</Link>
+              </div>
+            )}
 
             {runError && <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{runError}</p>}
 
@@ -658,12 +667,12 @@ function ChannelToggle({
   );
 }
 
-function StatCard({ title, s }: { title: string; s: Channel }) {
+function StatCard({ title, s, sentLabel = "Trimise" }: { title: string; s: Channel; sentLabel?: string }) {
   return (
     <div className="rounded-xl border border-[var(--color-line)] p-3 text-sm">
       <p className="mb-1 font-semibold">{title}</p>
       <p className="flex flex-wrap gap-x-4 text-xs">
-        <span className="text-st-done">Trimise: <b>{nf(s.sent)}</b></span>
+        <span className="text-st-done">{sentLabel}: <b>{nf(s.sent)}</b></span>
         <span className={s.failed ? "text-st-cancelled" : "text-ink-soft"}>Eșuate: <b>{nf(s.failed)}</b></span>
         <span className="text-ink-soft">Omise: <b>{nf(s.skipped)}</b></span>
       </p>

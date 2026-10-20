@@ -434,7 +434,7 @@ export default function PayerNotifyManager({
   );
   // Actualizare optimistă: imediat ce un lot a plecat, „Ultima notificare" se vede în tabel, fără reîncărcare.
   const onSent = useCallback((results: RecipientResult[]) => {
-    const sent = new Set(results.filter((r) => r.email.status === "sent" || r.sms.status === "sent" || r.call.status === "sent").map((r) => r.id));
+    const sent = new Set(results.filter((r) => r.email.status === "sent" || r.sms.status === "sent").map((r) => r.id)); // apelul nu intră aici: abia pus în coadă, „Ultima notificare" se marchează când se sună
     if (sent.size === 0) return;
     sentSomething.current = true;
     const now = new Date().toISOString();
