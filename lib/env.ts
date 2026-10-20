@@ -18,6 +18,22 @@ function optional(name: string, fallback = ""): string {
   return process.env[name]?.trim() || fallback;
 }
 
+/**
+ * Prima variabilă găsită dintre `names`, indiferent de litere mari/mici (SMS_HTTP_TOKEN, sms_token, Sms_Token…):
+ * întâi potrivire exactă, apoi fără să țină cont de majuscule. Pe Vercel numele sunt sensibile la litere, iar unii le scriu cu mici.
+ */
+function anyEnv(...names: string[]): string {
+  for (const n of names) {
+    const v = process.env[n]?.trim();
+    if (v) return v;
+  }
+  const wanted = new Set(names.map((n) => n.toLowerCase()));
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v?.trim() && wanted.has(k.toLowerCase())) return v.trim();
+  }
+  return "";
+}
+
 function int(name: string, fallback: number): number {
   const raw = process.env[name];
   const n = raw ? Number.parseInt(raw, 10) : NaN;
@@ -67,13 +83,14 @@ export const env = {
     from: optional("SMS_FROM"),
     twilioSid: optional("TWILIO_ACCOUNT_SID"),
     twilioToken: optional("TWILIO_AUTH_TOKEN"),
-    httpUrl: optional("SMS_HTTP_URL"),
-    httpToken: optional("SMS_HTTP_TOKEN"),
+    // Numele acceptate (mari sau mici): SMS_HTTP_URL / SMS_URL și SMS_HTTP_TOKEN / SMS_TOKEN (adică și `sms_token`).
+    httpUrl: anyEnv("SMS_HTTP_URL", "SMS_URL"),
+    httpToken: anyEnv("SMS_HTTP_TOKEN", "SMS_TOKEN"),
     /** "accahul" = gateway-ul ACC Cahul (POST { smsid, nr_tel, content, sms_token }); gol = detectat după domeniu, altfel formatul generic. */
     httpFormat: optional("SMS_HTTP_FORMAT"),
     get provider(): "twilio" | "http" | null {
       if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.SMS_FROM) return "twilio";
-      if (process.env.SMS_HTTP_URL) return "http";
+      if (anyEnv("SMS_HTTP_URL", "SMS_URL")) return "http";
       return null;
     },
     get enabled() {
@@ -85,8 +102,8 @@ export const env = {
   pbx: {
     // Numele variabilei: CRM_TOKEN (sau crm_token, ca în mesajele Moldcell); PBX_CRM_TOKEN rămâne acceptat pentru compatibilitate.
     // Cheia de autorizare spre PBX („Key for authorization in the PBX"), pentru redarea înregistrărilor dacă PBX-ul o cere.
-    apiKey: optional("PBX_API_KEY"),
-    crmToken: optional("CRM_TOKEN") || optional("crm_token") || optional("PBX_CRM_TOKEN"),
+    apiKey: anyEnv("PBX_API_KEY"),
+    crmToken: anyEnv("CRM_TOKEN", "PBX_CRM_TOKEN"),
   },
 
   imap: {
