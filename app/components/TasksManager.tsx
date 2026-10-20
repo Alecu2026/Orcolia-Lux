@@ -1222,7 +1222,7 @@ function fmtFileSize(bytes: number): string {
 }
 
 export function CreateDialog({
-  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, onClose, onCreated,
+  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialDescription, onClose, onCreated,
 }: {
   initialType: "TASK" | "TICKET" | "WORK_ORDER";
   users: Opt[];
@@ -1234,6 +1234,10 @@ export function CreateDialog({
   quietHoursEnabled?: boolean;
   blobEnabled?: boolean;
   initialProjectId?: string;
+  /** Preîncărcări (ex. din popup-ul de apel): client, titlu, descriere. */
+  initialClientId?: string;
+  initialTitle?: string;
+  initialDescription?: string;
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
@@ -1300,8 +1304,8 @@ export function CreateDialog({
           </button>
         </div>
         <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <input name="title" placeholder="Titlu *" required autoFocus className={dlgInput} />
-          <textarea name="description" placeholder="Descriere" rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm outline-none focus:border-brand" />
+          <input name="title" defaultValue={initialTitle ?? ""} placeholder="Titlu *" required autoFocus className={dlgInput} />
+          <textarea name="description" defaultValue={initialDescription ?? ""} placeholder="Descriere" rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm outline-none focus:border-brand" />
           <div className="grid gap-2 sm:grid-cols-2">
             <select name="type" defaultValue={initialType} className={dlgInput}>
               <option value="TASK">{m.tasks.typeTask}</option>
@@ -1325,7 +1329,7 @@ export function CreateDialog({
             defaultValue={initialProjectId ?? ""}
           />
           {clients.length > 0 && (
-            <select name="clientId" defaultValue="" className={dlgInput}>
+            <select name="clientId" defaultValue={initialClientId ?? ""} className={dlgInput}>
               <option value="">{m.tasks.noClient}</option>
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>

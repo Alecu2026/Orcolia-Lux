@@ -8,6 +8,7 @@ import { ToastProvider } from "./toast";
 import CreateMenu from "./CreateMenu";
 import VoiceTaskButton from "./VoiceTaskButton";
 import LanguageSwitcher from "./LanguageSwitcher";
+import IncomingCallPopup from "./IncomingCallPopup";
 import { I18nProvider, useMessages } from "@/lib/i18n/context";
 import type { Messages, Locale } from "@/lib/i18n";
 
@@ -237,6 +238,9 @@ function AppShellInner({
       </div>
 
       <CreateMenu />
+
+      {/* Popup „Apel primit" (PBX) — doar pentru cine poate vedea clienții */}
+      {perms?.["clients.view"] !== false && <IncomingCallPopup canEdit={perms?.["clients.edit"] !== false} />}
 
       {/* Bottom nav mobil */}
       <BottomNav perms={perms} appointmentsLabel={appointmentsLabel} />

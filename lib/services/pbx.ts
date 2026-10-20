@@ -85,3 +85,52 @@ export async function ingestPbxPayload(payload: PbxPayload): Promise<{ callId: s
   });
   return { callId };
 }
+
+export type CallerContext = {
+  clientId: string;
+  name: string;
+  /** Plătitor Apă-Canal (are cont personal sau nr. de contract 1C) — are fișă la /platitori/<id>. */
+  isPayer: boolean;
+  account: string | null;
+  address: string | null;
+  email: string | null;
+  phone: string | null;
+  /** „De achitat" pe ultima factură + statusul ei (din rezumatul Client.lastInvoice*). */
+  debt: number | null;
+  invoiceStatus: string | null;
+  openTickets: { id: string; seq: number | null; title: string; status: string }[];
+  openTicketCount: number;
+  lastNote: { body: string; userName: string; createdAt: string } | null;
+};
+
+/** Ce știm acum despre cel care sună: date de bază, datoria curentă, tichetele deschise, ultima notiță. */
+export async function getCallerContext(clientId: string): Promise<CallerContext | null> {
+  const c = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      id: true, name: true, phone: true, email: true, meterSeries: true, apaCanalContract: true, consumAddress: true,
+      lastInvoiceGrandTotal: true, lastInvoiceStatus: true,
+    },
+  });
+  if (!c) return null;
+  const openWhere = { clientId, type: "TICKET" as const, status: { notIn: ["DONE", "CANCELLED"] as ("DONE" | "CANCELLED")[] } };
+  const [tickets, openTicketCount, note] = await Promise.all([
+    prisma.task.findMany({ where: openWhere, orderBy: { createdAt: "desc" }, take: 3, select: { id: true, seq: true, title: true, status: true } }),
+    prisma.task.count({ where: openWhere }),
+    prisma.payerNote.findFirst({ where: { clientId }, orderBy: { createdAt: "desc" }, select: { body: true, userName: true, createdAt: true } }),
+  ]);
+  return {
+    clientId: c.id,
+    name: c.name,
+    isPayer: !!(c.meterSeries || c.apaCanalContract),
+    account: c.meterSeries ?? c.apaCanalContract,
+    address: c.consumAddress,
+    email: c.email,
+    phone: c.phone,
+    debt: c.lastInvoiceGrandTotal,
+    invoiceStatus: c.lastInvoiceStatus,
+    openTickets: tickets,
+    openTicketCount,
+    lastNote: note ? { body: note.body, userName: note.userName, createdAt: note.createdAt.toISOString() } : null,
+  };
+}

@@ -1015,6 +1015,7 @@ model PbxCall {
   groupName   String? // departamentul prin care a trecut apelul (groupRealName)
   lineName    String? // numele numărului companiei (telnum_name)
   transferredTo String? // second_callid, la evenimentul TRANSFERRED
+  note        String? // notă despre apel, scrisă de operator (cine a sunat, ce a cerut)
   startAt     DateTime?
   lastCmd     String?
   eventCount  Int       @default(0)
@@ -1026,6 +1027,7 @@ model PbxCall {
 
   @@index([startAt])
   @@index([phoneE164])
+  @@index([updatedAt])
 }
 
 model PbxEvent {

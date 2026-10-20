@@ -6,7 +6,7 @@ import { getMessages } from "@/lib/i18n";
 import { userOptions } from "@/lib/queries/users";
 import { teamOptions } from "@/lib/queries/teams";
 import { projectOptions } from "@/lib/queries/projects";
-import { crmClientOptions } from "@/lib/queries/clients";
+import { crmClientOptionsPlus } from "@/lib/queries/clients";
 import { listCategories } from "@/lib/queries/categories";
 import { getQuietHoursSettings } from "@/lib/queries/company";
 import { env } from "@/lib/env";
@@ -19,7 +19,7 @@ const SCOPE_KEYS = ["mine", "all", "created"] as const;
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string }>;
+  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; client?: string; title?: string; desc?: string }>;
 }) {
   const user = await requirePermission("tasks.view");
   const sp = await searchParams;
@@ -52,7 +52,7 @@ export default async function TasksPage({
     userOptions(),
     teamOptions(),
     projectOptions(),
-    crmClientOptions(),
+    crmClientOptionsPlus(sp.client && /^[0-9a-f]{24}$/i.test(sp.client) ? sp.client : null), // + clientul din apel (plătitorii nu sunt în lista CRM)
     listCategories(),
     getQuietHoursSettings(),
   ]);
@@ -83,6 +83,9 @@ export default async function TasksPage({
         canCreateProject={can(user, "projects.create")}
         initialCreate={can(user, "tasks.create") ? initialCreate : undefined}
         initialProjectId={can(user, "tasks.create") ? initialProjectId : undefined}
+        initialClientId={sp.client && /^[0-9a-f]{24}$/i.test(sp.client) ? sp.client : undefined}
+        initialTitle={sp.title?.slice(0, 200)}
+        initialDescription={sp.desc?.slice(0, 1000)}
         initialOpenId={initialOpenId}
         scopeOptions={[...scopeOptions]}
         basePath="/tasks"

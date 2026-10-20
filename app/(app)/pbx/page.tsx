@@ -35,6 +35,7 @@ export default async function PbxPage() {
       rating: c.rating,
       groupName: c.groupName,
       lineName: c.lineName,
+      note: c.note,
     }))
     .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 

@@ -82,6 +82,9 @@ export default function TasksTable({
   blobEnabled = false,
   initialCreate,
   initialProjectId,
+  initialClientId,
+  initialTitle,
+  initialDescription,
   initialOpenId,
   scopeOptions,
   basePath = "/tasks",
@@ -105,6 +108,9 @@ export default function TasksTable({
   blobEnabled?: boolean;
   initialCreate?: "TASK" | "TICKET" | "WORK_ORDER";
   initialProjectId?: string;
+  initialClientId?: string;
+  initialTitle?: string;
+  initialDescription?: string;
   initialOpenId?: string;
   scopeOptions?: { key: string; label: string }[];
   basePath?: "/tasks" | "/tickets";
@@ -472,6 +478,9 @@ export default function TasksTable({
           quietHoursEnabled={quietHoursEnabled}
           blobEnabled={blobEnabled}
           initialProjectId={initialProjectId}
+          initialClientId={initialClientId}
+          initialTitle={initialTitle}
+          initialDescription={initialDescription}
           onClose={() => setCreateType(null)}
           onCreated={(id) => {
             router.refresh(); // noul task apare în tabel

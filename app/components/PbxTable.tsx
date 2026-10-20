@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import DataTable, { type Col, type Filter } from "./DataTable";
-import { getPbxEventsAction, type PbxEventRow } from "@/app/actions/pbx";
+import Link from "next/link";
+import { getCallerContextAction, getPbxEventsAction, savePbxCallNoteAction, type PbxEventRow } from "@/app/actions/pbx";
+import type { CallerContext } from "@/lib/services/pbx";
+import { phoneQuery } from "./IncomingCallPopup";
+import { useToast } from "./toast";
 import { IconX } from "./icons";
 
 export type PbxCallRow = {
@@ -28,6 +32,7 @@ export type PbxCallRow = {
   rating: number | null;
   groupName: string | null;
   lineName: string | null;
+  note: string | null;
 };
 
 const TZ = "Europe/Chisinau";
@@ -78,6 +83,7 @@ const topBtn =
 export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: PbxCallRow[]; webhookUrl: string; tokenConfigured: boolean }) {
   const router = useRouter();
   const [detail, setDetail] = useState<PbxCallRow | null>(null);
+  const [playing, setPlaying] = useState<PbxCallRow | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Apelurile noi apar singure (reîmprospătare discretă la 20 s cât timp fila e vizibilă).
@@ -106,8 +112,19 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
     { key: "line", label: "Număr companie", minW: 120, sort: (c) => c.diversion, render: (c) => (c.diversion ? <span title={c.lineName ?? undefined}>{pretty(c.diversion)}</span> : dash) },
     {
       key: "rec", label: "Înregistrare", minW: 90,
-      render: (c) => (c.recordingUrl ? <a href={c.recordingUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="cursor-pointer text-brand hover:underline">▶ Ascultă</a> : dash),
+      render: (c) =>
+        c.recordingUrl ? (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setPlaying(c); }}
+            className={`cursor-pointer rounded px-1 font-semibold hover:bg-brand-soft ${playing?.id === c.id ? "bg-brand/15 text-brand" : "text-brand"}`}
+            title="Ascultă aici, în pagină"
+          >
+            {playing?.id === c.id ? "♪ se ascultă" : "▶ Ascultă"}
+          </button>
+        ) : dash,
     },
+    { key: "note", label: "Notă", minW: 160, maxW: 260, sort: (c) => c.note, render: (c) => (c.note ? <span title={c.note}>{c.note}</span> : dash) },
     { key: "ev", label: "Mesaje", minW: 60, right: true, sort: (c) => c.eventCount, render: (c) => c.eventCount },
     { key: "group", label: "Departament", minW: 110, defaultHidden: true, sort: (c) => c.groupName, render: (c) => c.groupName ?? dash },
     { key: "rating", label: "Notă client", minW: 70, right: true, defaultHidden: true, sort: (c) => c.rating, render: (c) => (c.rating != null ? `${c.rating}/5` : dash) },
@@ -186,13 +203,82 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
         toolbar={<button type="button" onClick={() => router.refresh()} className={topBtn}>↻ Reîncarcă</button>}
       />
 
-      {detail && <CallDialog call={rows.find((r) => r.id === detail.id) ?? detail} onClose={() => setDetail(null)} />}
+      {detail && <CallDialog call={rows.find((r) => r.id === detail.id) ?? detail} onClose={() => setDetail(null)} onPlay={(c) => setPlaying(c)} />}
+
+      {playing && (
+        <div className="fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 mx-auto w-[calc(100%-1.5rem)] max-w-2xl rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-2.5 shadow-2xl lg:bottom-4">
+          <div className="mb-1.5 flex items-center justify-between gap-2 text-xs">
+            <span className="min-w-0 truncate font-semibold">
+              ▶ {playing.clientName ?? pretty(playing.phone)} <span className="font-normal text-ink-soft">· {fmtDateTime(playing.at)} · {mmss(playing.durationSec)}</span>
+            </span>
+            <button type="button" onClick={() => setPlaying(null)} className="tap grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide player-ul">
+              <IconX className="size-4" />
+            </button>
+          </div>
+          <RecordingAudio key={playing.callId} callId={playing.callId} autoPlay />
+        </div>
+      )}
     </>
   );
 }
 
-function CallDialog({ call: c, onClose }: { call: PbxCallRow; onClose: () => void }) {
+/** Player în pagină. Fișierul vine prin /api/pbx/recording (proxy), nu direct de la PBX. */
+function RecordingAudio({ callId, autoPlay = false }: { callId: string; autoPlay?: boolean }) {
+  const [error, setError] = useState<string | null>(null);
+  const src = `/api/pbx/recording?callId=${encodeURIComponent(callId)}`;
+  return (
+    <div>
+      <audio
+        controls
+        autoPlay={autoPlay}
+        preload={autoPlay ? "auto" : "none"}
+        src={src}
+        className="h-10 w-full"
+        onError={() => {
+          // aflăm motivul de la ruta proxy (mesaj JSON), nu doar „eroare de redare"
+          fetch(src, { headers: { Range: "bytes=0-0" } })
+            .then(async (r) => setError(r.ok || r.status === 206 ? "Formatul nu a putut fi redat în browser." : ((await r.json().catch(() => null))?.error ?? `Eroare ${r.status}`)))
+            .catch(() => setError("Nu am putut încărca înregistrarea."));
+        }}
+      />
+      {error && <p className="mt-1 text-[11px] text-st-cancelled">{error}</p>}
+    </div>
+  );
+}
+
+function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: () => void; onPlay: (c: PbxCallRow) => void }) {
+  const toast = useToast();
+  const router = useRouter();
   const [events, setEvents] = useState<PbxEventRow[] | null>(null);
+  const [ctx, setCtx] = useState<CallerContext | null>(null);
+  const [note, setNote] = useState("");
+  const [savedNote, setSavedNote] = useState<string | null>(c.note);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (c.clientId) getCallerContextAction(c.clientId).then((x) => alive && setCtx(x)).catch(() => {});
+    return () => { alive = false; };
+  }, [c.clientId]);
+  const q = phoneQuery(c.phone);
+  const prefill = (kind: "ticket" | "task") => {
+    const sp = new URLSearchParams({
+      create: kind,
+      ...(c.clientId ? { client: c.clientId } : {}),
+      title: `Apel de la ${c.clientName ?? pretty(c.phone)}`,
+      desc: `Apel ${c.direction === "out" ? "efectuat către" : "primit de la"} ${pretty(c.phone)} (${fmtDateTime(c.at)}).`,
+    });
+    return `/${kind === "ticket" ? "tickets" : "tasks"}?${sp.toString()}`;
+  };
+  async function saveNote() {
+    const text = note.trim();
+    if (!text) return;
+    setSaving(true);
+    const res = await savePbxCallNoteAction(c.callId, text).catch(() => null);
+    setSaving(false);
+    if (res?.ok) { setSavedNote((s) => (s ? `${s}\n${res.note}` : res.note)); setNote(""); toast.success(c.clientId ? "Notă salvată (și pe fișa clientului)." : "Notă salvată."); router.refresh(); }
+    else toast.error(res && !res.ok ? res.error : "Nu am putut salva nota.");
+  }
+  const actBtn = "tap inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-brand-soft";
   useEffect(() => {
     let alive = true;
     getPbxEventsAction(c.callId).then((r) => alive && setEvents(r)).catch(() => alive && setEvents([]));
@@ -220,6 +306,49 @@ function CallDialog({ call: c, onClose }: { call: PbxCallRow; onClose: () => voi
           </button>
         </div>
 
+        <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
+          {ctx?.isPayer && <Link href={`/platitori/${ctx.clientId}`} className={`${actBtn} border-brand bg-brand text-white hover:bg-brand-strong`}>Fișa plătitorului →</Link>}
+          {q && <Link href={`/platitori?q=${q}`} className={actBtn}>🔎 Filtrează în Plătitori</Link>}
+          {!c.clientId && <Link href="/clients?create=1" className={actBtn}>+ Client nou</Link>}
+          <Link href={prefill("ticket")} className={actBtn}>🎫 Tichet</Link>
+          <Link href={prefill("task")} className={actBtn}>✔ Task</Link>
+        </div>
+
+        {ctx && (
+          <section className="mb-2.5 overflow-hidden rounded-lg border border-[var(--color-line)]">
+            <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Datele clientului acum</h3>
+            <div className="divide-y divide-[var(--color-line)] text-[13px]">
+              <Item label={ctx.isPayer ? "Plătitor" : "Client CRM"}>{ctx.account ? `cont ${ctx.account}` : "—"}</Item>
+              {ctx.address && <Item label="Adresă">{ctx.address}</Item>}
+              {ctx.debt != null && <Item label="De achitat"><b className={ctx.debt > 0 ? "text-st-cancelled" : "text-st-done"}>{ctx.debt.toLocaleString("ro-RO", { minimumFractionDigits: 2 })} MDL</b></Item>}
+              <Item label="Tichete deschise">
+                {ctx.openTicketCount === 0 ? "niciunul" : ctx.openTickets.map((t) => (
+                  <Link key={t.id} href={`/tickets/${t.id}`} className="block cursor-pointer text-brand hover:underline">{t.seq != null ? `#${t.seq} ` : ""}{t.title}</Link>
+                ))}
+              </Item>
+              {ctx.lastNote && <Item label="Ultima notiță">{ctx.lastNote.body}</Item>}
+            </div>
+          </section>
+        )}
+
+        <section className="mb-2.5 overflow-hidden rounded-lg border border-[var(--color-line)]">
+          <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Notă despre apel</h3>
+          <div className="p-2.5">
+            {savedNote && <p className="mb-1.5 whitespace-pre-wrap rounded bg-[var(--color-surface-2)] px-2 py-1 text-[12px]">{savedNote}</p>}
+            <div className="flex gap-1.5">
+              <input
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveNote(); } }}
+                placeholder="Cine a sunat, ce a cerut… Enter = salvează"
+                className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-[12px] outline-none focus:border-brand"
+              />
+              <button type="button" onClick={saveNote} disabled={saving || !note.trim()} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">{saving ? "…" : "Salvează"}</button>
+            </div>
+            {c.clientId && <p className="mt-1 text-[10px] text-ink-soft">Nota se adaugă și pe fișa clientului.</p>}
+          </div>
+        </section>
+
         <section className="mb-2.5 overflow-hidden rounded-lg border border-[var(--color-line)]">
           <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Apel</h3>
           <div className="divide-y divide-[var(--color-line)] text-[13px]">
@@ -231,7 +360,13 @@ function CallDialog({ call: c, onClose }: { call: PbxCallRow; onClose: () => voi
             <Item label="Număr companie">{c.diversion ? pretty(c.diversion) : "—"}{c.lineName ? ` (${c.lineName})` : ""}</Item>
             {c.groupName && <Item label="Departament">{c.groupName}</Item>}
             {c.rating != null && <Item label="Nota clientului">{c.rating}/5</Item>}
-            {c.recordingUrl && <Item label="Înregistrare"><a href={c.recordingUrl} target="_blank" rel="noreferrer" className="cursor-pointer text-brand hover:underline">▶ Ascultă</a></Item>}
+            {c.recordingUrl && (
+              <div className="px-2.5 py-1.5">
+                <p className="mb-1 text-[11px] text-ink-soft">Înregistrare</p>
+                <RecordingAudio callId={c.callId} />
+                <button type="button" onClick={() => onPlay(c)} className="mt-1 cursor-pointer text-[11px] text-brand hover:underline">Fixează player-ul în pagină (continuă să asculți după ce închizi fereastra)</button>
+              </div>
+            )}
             <Item label="ID apel"><span className="font-mono text-[11px]">{c.callId}</span></Item>
           </div>
         </section>

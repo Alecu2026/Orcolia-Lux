@@ -30,6 +30,7 @@ export default async function AppLayout({
     "teams.view": can(user, "teams.view"),
     "invoices.view": can(user, "invoices.view"),
     "clients.view": can(user, "clients.view"),
+    "clients.edit": can(user, "clients.edit"),
     "appointments.view": can(user, "appointments.view"),
     "users.manage": can(user, "users.manage"),
     "audit.view": isSuper(user),
