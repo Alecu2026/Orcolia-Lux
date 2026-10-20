@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import DataTable, { type Col, type Filter } from "./DataTable";
@@ -87,6 +87,9 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
   const [operator, setOperator] = useState(() => readOperator(defaultOperator));
   const [users, setUsers] = useState<PbxUser[] | null>(null);
   const [usersError, setUsersError] = useState<string | null>(null);
+  // „Sună toți": apelurile pornesc pe rând (PBX-ul și limita aplicației nu permit sute deodată).
+  const [bulk, setBulk] = useState<{ phase: "idle" | "confirm" | "running" | "done"; done: number; total: number; failed: number; lastError: string | null }>({ phase: "idle", done: 0, total: 0, failed: 0, lastError: null });
+  const stopBulk = useRef(false);
 
   const rows = useMemo(
     () => serverRows.filter((r) => !removed.has(r.id)).map((r) => (local[r.id] ? { ...r, ...local[r.id] } : r)),
@@ -99,8 +102,15 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
     listPbxOperatorsAction()
       .then((r) => {
         if (!alive) return;
-        if (r.ok) setUsers(r.users);
-        else setUsersError(r.error);
+        if (r.ok) {
+          setUsers(r.users);
+          const robot = r.users.find((u) => /robot/i.test(u.login) || /robot/i.test(u.name));
+          setOperator((cur) => {
+            if (cur || !robot) return cur;
+            try { localStorage.setItem(OPERATOR_KEY, robot.login); } catch {}
+            return robot.login;
+          });
+        } else setUsersError(r.error);
       })
       .catch(() => alive && setUsersError("Nu am putut încărca operatorii."));
     return () => { alive = false; };
@@ -129,6 +139,32 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
     } else {
       toast.error(res && !res.ok ? res.error : "Nu am putut porni apelul.");
     }
+  }
+
+  const queued = rows.filter((r) => !r.callId);
+
+  async function dialAll() {
+    const todo = queued.slice();
+    if (!operator.trim() || todo.length === 0) return;
+    stopBulk.current = false;
+    setBulk({ phase: "running", done: 0, total: todo.length, failed: 0, lastError: null });
+    let done = 0, failed = 0, streak = 0, lastError: string | null = null;
+    for (const c of todo) {
+      if (stopBulk.current) break;
+      const res = await dialNotifyCallAction(c.id, operator.trim()).catch(() => null);
+      if (res?.ok) {
+        done++; streak = 0;
+        setLocal((m) => ({ ...m, [c.id]: { ...m[c.id], callId: res.callId, dialedAt: res.dialedAt, operator: res.operator, pbxStatus: null, pbxState: null } }));
+      } else {
+        failed++; streak++;
+        lastError = res && !res.ok ? res.error : "Nu am putut porni apelul.";
+        if (streak >= 3) break; // 3 eșecuri la rând = problemă de configurare/PBX, nu insistăm
+      }
+      setBulk({ phase: "running", done, total: todo.length, failed, lastError });
+      await new Promise((r) => setTimeout(r, 1700));
+    }
+    setBulk({ phase: "done", done, total: todo.length, failed, lastError });
+    router.refresh();
   }
 
   async function remove(c: NotifyCallRow) {
@@ -264,10 +300,30 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
                 />
               )}
             </label>
+            {bulk.phase === "idle" || bulk.phase === "done" ? (
+              <button type="button" disabled={queued.length === 0 || !operator.trim()} onClick={() => setBulk((b) => ({ ...b, phase: "confirm" }))} className={`${topBtn} disabled:cursor-default disabled:opacity-40`} title={operator.trim() ? "Pornește apelurile pe rând, prin operatorul ales" : "Alege întâi operatorul (robotul)"}>
+                📞 Sună toți din coadă ({queued.length})
+              </button>
+            ) : bulk.phase === "confirm" ? (
+              <>
+                <button type="button" onClick={() => void dialAll()} className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-2 text-[11px] font-semibold text-white hover:bg-brand-strong">Confirmă: sună {queued.length} prin „{operator}”</button>
+                <button type="button" onClick={() => setBulk((b) => ({ ...b, phase: "idle" }))} className={topBtn}>Anulează</button>
+              </>
+            ) : (
+              <>
+                <span className="text-[11px] text-ink-soft">Se sună… {bulk.done + bulk.failed}/{bulk.total}</span>
+                <button type="button" onClick={() => { stopBulk.current = true; }} className={topBtn}>■ Oprește</button>
+              </>
+            )}
             <button type="button" onClick={() => router.refresh()} className={topBtn}>↻ Reîncarcă</button>
           </>
         }
       />
+      {bulk.phase === "done" && (
+        <p className={`mt-1.5 text-[11px] ${bulk.failed ? "text-st-progress" : "text-st-done"}`}>
+          Apeluri pornite: {bulk.done} din {bulk.total}{bulk.failed ? ` · eșuate: ${bulk.failed}${bulk.lastError ? ` (${bulk.lastError})` : ""}` : ""}.
+        </p>
+      )}
       {usersError && <p className="mt-1.5 text-[11px] text-st-progress">Lista de operatori nu s-a încărcat ({usersError}) — scrie loginul sau numărul scurt al operatorului în câmpul „Operator”.</p>}
       {detail && (
         <Detail
