@@ -9,6 +9,7 @@ import { isRateLimited } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/services/audit";
 import { sendPayerNotificationEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
+import { sendCall } from "@/lib/call-gateway";
 import { listMatchingPayerContacts } from "@/lib/queries/payers";
 import { filtersToListOpts } from "@/lib/queries/payer-notify";
 import {
@@ -107,7 +108,7 @@ function validateMessage(input: Pick<SendChunkInput, "email" | "sms" | "call">):
   if (call?.enabled) {
     if (!call.body.trim()) return "Mesajul apelului este gol.";
     if (call.body.length > NOTIFY_MAX_CALL_BODY) return `Mesajul apelului depășește ${NOTIFY_MAX_CALL_BODY} de caractere.`;
-    if (!env.voice.enabled) return "Apelurile prin PBX nu sunt configurate (PBX_API_KEY).";
+    if (!env.voice.enabled) return "Apelurile nu sunt configurate (CALL_HTTP_URL / SMS_HTTP_URL pe accahul.md și tokenul).";
   }
   if (email.enabled) {
     if (!oneLine(email.subject)) return "Subiectul emailului este obligatoriu.";
@@ -252,19 +253,32 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
       } else if (!phone) {
         res.call = { status: "skipped", detail: "Fără telefon valid" };
       } else {
-        // Apelurile se fac prin autoinformarea PBX-ului Moldcell (nu are API): aici doar punem plătitorul în coadă, cu mesajul
-        // gata completat. Din /pbx → Notificări apel se exportă ZIP-ul (numere + audio per plătitor) pentru PBX.
-        // „Ultima notificare" se marchează abia la export.
+        // Apelul pleacă acum la gateway-ul de apeluri (ca SMS-ul). Rândul rămâne în registrul din /pbx → Notificări apel;
+        // dacă gateway-ul respinge cererea, rândul rămâne „în coadă" (poate fi exportat pentru autoinformarea PBX).
+        const text = renderTemplate(call.body, vars);
+        let rowId: string | null = null;
         try {
-          await prisma.notifyCall.create({
-            data: {
-              campaignId: input.campaignId, clientId: c.id, clientName: c.name, phone, text: renderTemplate(call.body, vars),
-              status: "queued", userId: user.id, userName: user.name,
-            },
+          const row = await prisma.notifyCall.create({
+            data: { campaignId: input.campaignId, clientId: c.id, clientName: c.name, phone, text, status: "queued", userId: user.id, userName: user.name },
+            select: { id: true },
           });
-          res.call = { status: "sent", detail: "în coadă" };
+          rowId = row.id;
         } catch (e) {
           res.call = { status: "failed", detail: errText(e) };
+        }
+        if (rowId) {
+          try {
+            const sent = await sendCall(phone, text);
+            await prisma.notifyCall
+              .update({ where: { id: rowId }, data: { status: "sent", callId: sent.id, operator: "gateway", dialedAt: new Date() } })
+              .catch((e) => console.error("[notify] apel nesalvat:", e));
+            res.call = { status: "sent", detail: "trimis la gateway" };
+            notifiedIds.add(c.id);
+            logs.push({ ...base, channel: "CALL", to: phone, status: "SENT", error: null, subject: null, body: text });
+          } catch (e) {
+            res.call = { status: "failed", detail: `${errText(e)} (rămâne în coadă)` };
+            logs.push({ ...base, channel: "CALL", to: phone, status: "FAILED", error: errText(e), subject: null, body: text });
+          }
         }
       }
     }
@@ -316,8 +330,8 @@ export async function sendTestNotificationAction(input: {
   if (isRateLimited(`payer-notify-test:${user.id}`, 10, 10 * 60_000)) {
     return { ok: false, error: "Prea multe teste — încearcă din nou peste câteva minute." };
   }
-  // Apelul nu se testează de aici (e cu operator) — se pornește din /pbx → Notificări apel.
-  const msgError = validateMessage({ email: input.email, sms: input.sms, call: { enabled: false, body: "", voice: "" } });
+  const callIn = input.call ?? { enabled: false, body: "", voice: "" };
+  const msgError = validateMessage({ email: input.email, sms: input.sms, call: callIn });
   if (msgError) return { ok: false, error: msgError };
 
   const sample = buildVars({
@@ -348,6 +362,12 @@ export async function sendTestNotificationAction(input: {
       const rendered = renderTemplate(input.sms.body, sample);
       const reply = await sendSms(phone, input.sms.ascii ? stripLatinDiacritics(rendered) : rendered);
       done.push(`SMS la ${phone}${reply ? ` (răspuns gateway: ${reply})` : ""}`);
+    }
+    if (callIn.enabled) {
+      const phone = normalizePhone(input.testPhone);
+      if (!phone) return { ok: false, error: "Introdu un număr de telefon valid pentru testul de apel (ex. 069123456)." };
+      const sent = await sendCall(phone, renderTemplate(callIn.body, sample));
+      done.push(`apel către ${phone} (trimis la gateway, id ${sent.id}; răspuns: ${sent.reply || "—"})`);
     }
   } catch (e) {
     return { ok: false, error: `Testul a eșuat${done.length ? ` (trimis deja: ${done.join(", ")})` : ""}: ${errText(e)}` };

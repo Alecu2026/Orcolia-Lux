@@ -98,11 +98,25 @@ export const env = {
     },
   },
 
-  // Apeluri de notificare prin PBX Moldcell (makecall: PBX-ul sună întâi operatorul, apoi îl leagă cu plătitorul). Merg când
-  // PBX_API_KEY e setat. Vezi lib/pbx-api.ts.
+  // Apeluri de notificare (robot) prin gateway-ul propriu, pe același server ca SMS-urile (ex. https://node.dns.accahul.md/call):
+  // POST JSON { smsid, nr_tel, content, sms_token } — vezi lib/call-gateway.ts. Adresa: CALL_HTTP_URL (sau CALL_URL); dacă lipsește și
+  // SMS_HTTP_URL e pe accahul.md, se folosește același server cu /call. Tokenul: CALL_HTTP_TOKEN / CALL_TOKEN, altfel cel de SMS.
   voice: {
-    get enabled() {
-      return Boolean(anyEnv("PBX_API_KEY"));
+    get url(): string {
+      const own = anyEnv("CALL_HTTP_URL", "CALL_URL");
+      if (own) return own;
+      try {
+        const sms = new URL(anyEnv("SMS_HTTP_URL", "SMS_URL"));
+        return /(^|\.)accahul\.md$/i.test(sms.hostname) ? `${sms.origin}/call` : "";
+      } catch {
+        return "";
+      }
+    },
+    get token(): string {
+      return anyEnv("CALL_HTTP_TOKEN", "CALL_TOKEN") || anyEnv("SMS_HTTP_TOKEN", "SMS_TOKEN");
+    },
+    get enabled(): boolean {
+      return Boolean(this.url && this.token);
     },
   },
 

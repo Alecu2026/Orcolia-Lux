@@ -47,7 +47,8 @@ export async function sendSms(to: string, message: string): Promise<string | voi
     // Un 200 nu înseamnă „trimis": multe gateway-uri răspund 200 și raportează eroarea în corp (token greșit, număr respins).
     const bad = gatewayFailure(text);
     if (bad) throw new Error(`Gateway SMS a respins mesajul: ${bad}`);
-    const reply = text.replace(/\s+/g, " ").trim().slice(0, 200);
+    // Gateway-ul întoarce înapoi corpul cererii (inclusiv tokenul): îl ascundem înainte de loguri / mesaje către utilizator.
+    const reply = redactSecret(text.replace(/\s+/g, " ").trim(), httpToken).slice(0, 200);
     console.log(`[sms] ${smsid} → ${toLocalMd(to)}: HTTP ${res.status} ${reply}`);
     return reply;
   }
@@ -65,7 +66,7 @@ export async function sendSms(to: string, message: string): Promise<string | voi
 }
 
 /** Eroarea raportată de gateway într-un răspuns 2xx (JSON cu error/success:false/status:"error…" sau text cu „eroare/invalid/token…"), altfel null. */
-function gatewayFailure(text: string): string | null {
+export function gatewayFailure(text: string): string | null {
   const t = text.trim();
   if (!t) return null;
   const badWord = /err|fail|reject|invalid|denied|unauthori|forbidden|eroare|gresit|greșit|nu a fost/i;
@@ -85,13 +86,18 @@ function gatewayFailure(text: string): string | null {
 }
 
 /** +37378608080 → 078608080 (formatul local moldovenesc cerut de gateway); alte țări rămân doar cifre. */
-function toLocalMd(e164: string): string {
+export function toLocalMd(e164: string): string {
   const d = e164.replace(/\D/g, "");
   return d.startsWith("373") && d.length === 11 ? `0${d.slice(3)}` : d;
 }
 
+/** Înlocuiește valoarea secretă cu *** — pentru texte care ajung în loguri sau pe ecran. */
+export function redactSecret(text: string, secret: string): string {
+  return secret ? text.split(secret).join("***") : text;
+}
+
 /** Id unic al mesajului (16 caractere A–Z0–9), ca să-l putem găsi în jurnalul gateway-ului. */
-function newSmsId(): string {
+export function newSmsId(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let id = "";
   for (const b of crypto.getRandomValues(new Uint8Array(16))) id += chars[b % chars.length];

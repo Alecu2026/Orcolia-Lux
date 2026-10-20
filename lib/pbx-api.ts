@@ -17,12 +17,13 @@ async function pbxFetch(path: string, init: RequestInit = {}, opts: { idempotent
   // La citiri reîncercăm orice eșec; la comenzi (makecall) doar un 503 explicit sau o conexiune care nici nu s-a stabilit —
   // altfel riscăm să sunăm de două ori.
   let lastError: unknown;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 700));
+  // 3 încercări, cu pauză crescătoare: DNS-ul Moldcell e uneori instabil (același host dă ENOTFOUND, apoi răspunde).
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 800 * attempt));
     try {
       const res = await fetch(url, { ...init, headers: headers(), signal: AbortSignal.timeout(TIMEOUT_MS) });
-      if (res.status === 503 && attempt === 0) { lastError = new Error("PBX 503"); continue; }
-      if (opts.idempotent && res.status >= 500 && res.status !== 501 && attempt === 0) { lastError = new Error(`PBX ${res.status}`); continue; }
+      if (res.status === 503 && attempt < 2) { lastError = new Error("PBX 503"); continue; }
+      if (opts.idempotent && res.status >= 500 && res.status !== 501 && attempt < 2) { lastError = new Error(`PBX ${res.status}`); continue; }
       return res;
     } catch (e) {
       lastError = e;
@@ -36,7 +37,7 @@ async function pbxFetch(path: string, init: RequestInit = {}, opts: { idempotent
   const code = e?.cause?.code ?? (e instanceof DOMException && e.name === "TimeoutError" ? "ETIMEDOUT" : "");
   const host = new URL(url).host;
   const why =
-    code === "ENOTFOUND" ? "adresa nu există (verifică PBX_API_URL)"
+    code === "ENOTFOUND" || code === "EAI_AGAIN" ? "adresa nu s-a putut găsi (DNS) — de obicei trecător, încearcă din nou; dacă persistă, verifică PBX_API_URL"
     : code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT" ? "nu a răspuns la timp — încearcă din nou în câteva secunde (serverul PBX e uneori lent)"
     : code === "ECONNREFUSED" ? "conexiune refuzată (port/adresă greșită)"
     : e?.cause?.message || code || "eroare de rețea";
@@ -46,9 +47,10 @@ async function pbxFetch(path: string, init: RequestInit = {}, opts: { idempotent
 async function detail(res: Response): Promise<string> {
   const text = await res.text().catch(() => "");
   try {
-    const j = JSON.parse(text) as { message?: string; error?: string | { message?: string }; description?: string };
+    const j = JSON.parse(text) as { message?: string | { msg?: string }; error?: string | { message?: string }; description?: string };
+    const m = typeof j.message === "string" ? j.message : j.message?.msg;
     const e = typeof j.error === "string" ? j.error : j.error?.message;
-    return (j.message ?? e ?? j.description ?? text).replace(/\s+/g, " ").slice(0, 160);
+    return String(m ?? e ?? j.description ?? text).replace(/\s+/g, " ").slice(0, 160);
   } catch {
     return text.replace(/\s+/g, " ").slice(0, 160);
   }
@@ -68,6 +70,9 @@ export async function placePbxCall(phoneE164: string, user: string): Promise<str
   });
   if (!res.ok) {
     const d = await detail(res);
+    if (res.status === 400 && /parameters?:?.*user/i.test(d)) {
+      throw new Error(`Apelantul „${user}” nu există în PBX. Scrie loginul sau numărul scurt EXACT al unui angajat din PBX (lista din câmpul „Apelant” sau Moldcell → Angajați).`);
+    }
     const hint = res.status === 401 || res.status === 403 ? " (verifică PBX_API_KEY și drepturile cheii)" : "";
     throw new Error(`PBX ${res.status}${d ? `: ${d}` : ""}${hint}`);
   }

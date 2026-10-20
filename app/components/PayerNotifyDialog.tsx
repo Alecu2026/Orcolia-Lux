@@ -357,7 +357,7 @@ export default function PayerNotifyDialog({
                 icon="📞"
                 checked={useCall}
                 disabled={!canCall}
-                hint={!callEnabled ? "PBX_API_KEY nesetat" : smsCount === 0 ? "nimeni nu are telefon" : `${nf(smsCount)} destinatari`}
+                hint={!callEnabled ? "Apel neconfigurat" : smsCount === 0 ? "nimeni nu are telefon" : `${nf(smsCount)} destinatari`}
                 onChange={setUseCall}
               />
             </div>
@@ -458,7 +458,7 @@ export default function PayerNotifyDialog({
 
             {useCall && (
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-ink-soft">Apel — mesajul pe care îl spune robotul (autoinformare PBX)</label>
+                <label className="text-xs font-semibold text-ink-soft">Apel — mesajul pe care îl spune robotul</label>
                 <textarea
                   ref={callRef}
                   value={callBody}
@@ -496,7 +496,7 @@ export default function PayerNotifyDialog({
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-[var(--color-surface-2)] p-3 text-xs">
               <span className="font-semibold">Test înainte de trimitere:</span>
               {useEmail && <span className="text-ink-soft">email la {userEmail}</span>}
-              {useSms && (
+              {(useSms || useCall) && (
                 <input
                   value={testPhone}
                   onChange={(e) => setTestPhone(e.target.value)}
@@ -508,7 +508,7 @@ export default function PayerNotifyDialog({
               <button
                 type="button"
                 onClick={sendTest}
-                disabled={testing || (!useEmail && !useSms)}
+                disabled={testing || (!useEmail && !useSms && !useCall)}
                 className="tap ml-auto h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 font-medium hover:bg-brand-soft disabled:opacity-50"
               >
                 {testing ? "Se trimite…" : "Trimite test"}
@@ -546,7 +546,7 @@ export default function PayerNotifyDialog({
                 )}
                 {useCall && (
                   <li>
-                    <b>{nf(smsCount)}</b> {smsCount === 1 ? "plătitor" : "plătitori"} puși în coada de apeluri · <b>nu sună încă</b>. Din <b>PBX → Notificări apel</b> exporți un ZIP (numere + audio cu mesajul fiecăruia) și îl încarci în PBX → Autoinformare: robotul sună, spune mesajul și închide.
+                    <b>{nf(smsCount)}</b> {smsCount === 1 ? "apel" : "apeluri"} trimise <b>acum</b> la gateway-ul de apeluri (robotul sună plătitorul și spune mesajul). Gateway-ul confirmă doar primirea cererii, nu și că apelul a avut loc.
                     {total - smsCount > 0 && <span className="text-ink-soft"> ({nf(total - smsCount)} fără telefon valid vor fi omiși)</span>}
                   </li>
                 )}
@@ -581,14 +581,17 @@ export default function PayerNotifyDialog({
             <div className="grid gap-2 sm:grid-cols-2">
               {useEmail && <StatCard title="✉ Email" s={emailStats} />}
               {useSms && <StatCard title="💬 SMS" s={smsStats} />}
-              {useCall && <StatCard title="📞 Apel — în coadă (nesunat încă)" s={callStats} sentLabel="În coadă" />}
+              {useCall && <StatCard title="📞 Apel" s={callStats} sentLabel="Trimise la gateway" />}
             </div>
 
-            {useCall && !sending && callStats.sent > 0 && (
-              <div className="rounded-xl border border-st-progress/40 bg-st-progress/10 p-3 text-sm">
-                <p className="font-semibold">📞 Apelurile NU au pornit încă — {nf(callStats.sent)} {callStats.sent === 1 ? "plătitor e" : "plătitori sunt"} în coadă.</p>
-                <p className="mt-1 text-xs text-ink-soft">Deschide coada și apasă „⬇ Export autoinformare”: primești ZIP-ul cu numerele și audio-ul fiecăruia, pe care îl încarci în PBX → Autoinformare.</p>
-                <Link href="/pbx?tab=notificari" className="tap mt-2 inline-flex h-9 cursor-pointer items-center rounded-lg bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-strong">Deschide coada de apeluri →</Link>
+            {useCall && !sending && (callStats.sent > 0 || callStats.failed > 0) && (
+              <div className="rounded-xl border border-[var(--color-line)] p-3 text-sm">
+                <p className="font-semibold">📞 {nf(callStats.sent)} {callStats.sent === 1 ? "apel trimis" : "apeluri trimise"} la gateway{callStats.failed > 0 ? ` · ${nf(callStats.failed)} respinse` : ""}</p>
+                <p className="mt-1 text-xs text-ink-soft">
+                  Gateway-ul confirmă doar că a primit cererea. Dacă nu sună nimeni, verifică la cei care îl administrează dacă tokenul și formatul cererii sunt corecte.
+                  {callStats.failed > 0 ? " Cele respinse rămân în registru și pot fi exportate pentru autoinformarea PBX." : ""}
+                </p>
+                <Link href="/pbx?tab=notificari" className="tap mt-2 inline-flex h-9 cursor-pointer items-center rounded-lg border border-[var(--color-line)] px-4 text-xs font-semibold hover:bg-brand-soft">Deschide registrul de apeluri →</Link>
               </div>
             )}
 

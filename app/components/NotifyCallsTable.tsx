@@ -51,6 +51,7 @@ const mmss = (s: number | null) => (s == null ? "—" : `${Math.floor(s / 60)}:$
 
 type Result = { key: string; label: string; cls: string };
 function resultOf(c: NotifyCallRow): Result {
+  if (c.status === "sent") return { key: "sent", label: "Trimis la gateway", cls: "bg-st-progress/15 text-st-progress" };
   if (c.status === "exported") return { key: "exported", label: "Exportat în PBX", cls: "bg-st-confirmed/15 text-st-confirmed" };
   if (!c.callId) return { key: "queued", label: "În coadă", cls: "bg-st-new/15 text-st-new" };
   switch ((c.pbxStatus ?? "").toLowerCase()) {
@@ -243,6 +244,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
         kind: "select", key: "result", label: "Stare: toate",
         options: [
           { value: "queued", label: "În coadă (neexportate)" },
+          { value: "sent", label: "Trimis la gateway" },
           { value: "exported", label: "Exportat în PBX" },
           { value: "dialing", label: "Se sună / în convorbire" },
           { value: "answered", label: "Convorbire încheiată" },
