@@ -34,9 +34,9 @@ export async function listPayerTemplates(): Promise<PayerTemplate[]> {
   const rows = await prisma.payerNotifyTemplate.findMany({
     orderBy: { createdAt: "desc" },
     take: 200,
-    select: { id: true, name: true, subject: true, email: true, sms: true },
+    select: { id: true, name: true, subject: true, email: true, sms: true, call: true, voice: true },
   });
-  return rows;
+  return rows.map((r) => ({ ...r, call: r.call ?? "", voice: r.voice ?? "" }));
 }
 
 import type { PayerNoteItem } from "../payer-notify";

@@ -165,7 +165,7 @@ export function buildVars(p: {
   };
 }
 
-export type NotifyPreset = { key: string; label: string; subject: string; email: string; sms: string };
+export type NotifyPreset = { key: string; label: string; subject: string; email: string; sms: string; call: string };
 
 export const NOTIFY_PRESETS: NotifyPreset[] = [
   {
@@ -175,6 +175,7 @@ export const NOTIFY_PRESETS: NotifyPreset[] = [
     email:
       "Stimate(ă) {nume},\n\nVă reamintim că aveți de achitat {suma} pentru factura {factura} (cont {cont}). Termen de plată: {scadenta}.\n\nVă mulțumim!",
     sms: "Apa-Canal: {nume}, aveti de achitat {suma} (factura {factura}, cont {cont}). Multumim!",
+    call: "Bună ziua, {nume}. Vă sunăm de la Apă-Canal. Aveți de achitat suma de {suma} pentru factura {factura}, cu termen de plată {scadenta}. Vă mulțumim și vă dorim o zi bună!",
   },
   {
     key: "invoice",
@@ -183,6 +184,7 @@ export const NOTIFY_PRESETS: NotifyPreset[] = [
     email:
       "Stimate(ă) {nume},\n\nFactura {factura} în valoare de {suma} (cont {cont}) a fost emisă. Scadență: {scadenta}.\n\nVă mulțumim!",
     sms: "Apa-Canal: factura {factura} de {suma} a fost emisa. Scadenta: {scadenta}.",
+    call: "Bună ziua, {nume}. Vă informăm că a fost emisă factura {factura} în valoare de {suma}. Termenul de plată este {scadenta}. Vă mulțumim!",
   },
   {
     key: "announce",
@@ -190,8 +192,32 @@ export const NOTIFY_PRESETS: NotifyPreset[] = [
     subject: "Anunț important",
     email: "Stimate(ă) {nume},\n\nVă informăm că …\n\nCu stimă.",
     sms: "Apa-Canal: {nume}, va informam ca …",
+    call: "Bună ziua, {nume}. Vă informăm că …",
   },
 ];
+
+// ── Notificări prin apel (robot vocal) ─────────────────────────────────────────────────────────
+
+/**
+ * Vocile disponibile pentru apel. `id` = numele vocii Twilio (Google TTS) folosit la redare; `lang` = limba, folosită și la
+ * ascultarea de probă în browser (vocea de probă vine din dispozitivul tău și sună altfel decât cea din apel).
+ */
+export const NOTIFY_VOICES = [
+  { id: "Google.ro-RO-Standard-A", lang: "ro-RO", label: "Română · feminin" },
+  { id: "Google.ro-RO-Wavenet-A", lang: "ro-RO", label: "Română · feminin (mai natural)" },
+  { id: "Google.ru-RU-Standard-A", lang: "ru-RU", label: "Русский · женский" },
+  { id: "Google.ru-RU-Standard-B", lang: "ru-RU", label: "Русский · мужской" },
+  { id: "Google.ru-RU-Wavenet-A", lang: "ru-RU", label: "Русский · женский (естественный)" },
+  { id: "Google.ru-RU-Wavenet-B", lang: "ru-RU", label: "Русский · мужской (естественный)" },
+] as const;
+export const DEFAULT_VOICE: string = NOTIFY_VOICES[0].id;
+export const NOTIFY_MAX_CALL_BODY = 600;
+export const voiceById = (id: string | null | undefined) => NOTIFY_VOICES.find((v) => v.id === id) ?? NOTIFY_VOICES[0];
+
+/** Durata aproximativă a mesajului vorbit (~13 caractere/secundă), ca operatorul să știe cât durează apelul. */
+export function callSeconds(text: string): number {
+  return Math.max(1, Math.round(text.replace(/\s+/g, " ").trim().length / 13));
+}
 
 // ── Telefon & SMS ──────────────────────────────────────────────────────────────────────────────
 
@@ -270,7 +296,7 @@ export function notifiedRecently(d: string | Date | null): boolean {
 
 // ── Șabloane salvate ───────────────────────────────────────────────────────────────────────────
 
-export type PayerTemplate = { id: string; name: string; subject: string; email: string; sms: string };
+export type PayerTemplate = { id: string; name: string; subject: string; email: string; sms: string; call: string; voice: string };
 export type PayerTemplateDraft = Omit<PayerTemplate, "id">;
 export const NOTIFY_MAX_TEMPLATE_NAME = 60;
 export const NOTIFY_MAX_TEMPLATES = 100;

@@ -7,12 +7,15 @@ import {
   type RecipientResult,
 } from "@/app/actions/payer-notifications";
 import {
+  DEFAULT_VOICE,
   NOTIFY_CHUNK_SIZE,
+  NOTIFY_MAX_CALL_BODY,
   NOTIFY_MAX_EMAIL_BODY,
   NOTIFY_MAX_SMS_BODY,
   NOTIFY_MAX_SUBJECT,
   NOTIFY_PRESETS,
   NOTIFY_TOKENS,
+  callSeconds,
   renderTemplate,
   type PayerTemplate,
   type PayerTemplateDraft,
@@ -22,13 +25,15 @@ import {
 } from "@/lib/payer-notify";
 import { useToast } from "./toast";
 import { IconX } from "./icons";
+import VoicePicker from "./VoicePicker";
 
 export type Recipient = { id: string; flags: number };
 
 type Phase = "compose" | "confirm" | "sending" | "done";
 type Channel = { sent: number; failed: number; skipped: number };
-type Failure = { id: string; name: string; channel: "Email" | "SMS"; detail: string };
-type Field = "subject" | "email" | "sms";
+type Failure = { id: string; name: string; channel: "Email" | "SMS" | "Apel"; detail: string };
+type Field = "subject" | "email" | "sms" | "call";
+type Draft = { subject: string; email: string; sms: string; ascii: boolean; call?: string; voice?: string };
 
 const DRAFT_KEY = "payer-notify-draft";
 const TEST_PHONE_KEY = "payer-notify-test-phone";
@@ -46,7 +51,7 @@ function readTestPhone(): string {
   }
 }
 
-function readDraft(): { subject: string; email: string; sms: string; ascii: boolean } | null {
+function readDraft(): Draft | null {
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -61,6 +66,7 @@ export default function PayerNotifyDialog({
   previewVars,
   emailEnabled,
   smsEnabled,
+  callEnabled,
   userEmail,
   templates,
   onSaveTemplate,
@@ -73,6 +79,7 @@ export default function PayerNotifyDialog({
   previewVars: NotifyVars;
   emailEnabled: boolean;
   smsEnabled: boolean;
+  callEnabled: boolean;
   userEmail: string;
   templates: PayerTemplate[];
   /** Salvează textul curent ca șablon nou (optimist, în pagină). */
@@ -88,16 +95,21 @@ export default function PayerNotifyDialog({
   const smsCount = useMemo(() => recipients.filter((r) => r.flags & 2).length, [recipients]);
   const canEmail = emailEnabled && emailCount > 0;
   const canSms = smsEnabled && smsCount > 0;
+  // Apelul are nevoie de un telefon valid, la fel ca SMS-ul.
+  const canCall = callEnabled && smsCount > 0;
 
   const [phase, setPhase] = useState<Phase>("compose");
   const [useEmail, setUseEmail] = useState(canEmail);
   const [useSms, setUseSms] = useState(canSms && !canEmail);
+  const [useCall, setUseCall] = useState(false);
   // Fereastra se montează doar după un click (nu la SSR), deci putem citi ciorna direct la inițializare.
   const [saved] = useState(readDraft);
   const [subject, setSubject] = useState(saved?.subject ?? "");
   const [emailBody, setEmailBody] = useState(saved?.email ?? "");
   const [smsBody, setSmsBody] = useState(saved?.sms ?? "");
   const [ascii, setAscii] = useState(saved?.ascii !== false);
+  const [callBody, setCallBody] = useState(saved?.call ?? "");
+  const [voice, setVoice] = useState(saved?.voice || DEFAULT_VOICE);
   const [testPhone, setTestPhone] = useState(readTestPhone);
   const [testing, setTesting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -107,6 +119,7 @@ export default function PayerNotifyDialog({
   const [processed, setProcessed] = useState(0);
   const [emailStats, setEmailStats] = useState<Channel>({ sent: 0, failed: 0, skipped: 0 });
   const [smsStats, setSmsStats] = useState<Channel>({ sent: 0, failed: 0, skipped: 0 });
+  const [callStats, setCallStats] = useState<Channel>({ sent: 0, failed: 0, skipped: 0 });
   const [failures, setFailures] = useState<Failure[]>([]);
   const [runError, setRunError] = useState<string | null>(null);
   const [resumeAt, setResumeAt] = useState<number | null>(null);
@@ -118,13 +131,14 @@ export default function PayerNotifyDialog({
   const subjectRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLTextAreaElement>(null);
   const smsRef = useRef<HTMLTextAreaElement>(null);
+  const callRef = useRef<HTMLTextAreaElement>(null);
 
   // Ciorna (subiect/mesaje) și numărul de test se păstrează între sesiuni — operatorul retrimite des același text.
   useEffect(() => {
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ subject, email: emailBody, sms: smsBody, ascii }));
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ subject, email: emailBody, sms: smsBody, ascii, call: callBody, voice }));
     } catch {}
-  }, [subject, emailBody, smsBody, ascii]);
+  }, [subject, emailBody, smsBody, ascii, callBody, voice]);
 
   const sending = phase === "sending";
   useEffect(() => {
@@ -139,18 +153,24 @@ export default function PayerNotifyDialog({
     return ascii ? stripLatinDiacritics(r) : r;
   }, [smsBody, previewVars, ascii]);
   const sms = smsInfo(renderedSms);
+  // Textul apelului cu datele plătitorului de exemplu — acesta se ascultă la „Ascultă".
+  const renderedCall = useMemo(() => renderTemplate(callBody, previewVars), [callBody, previewVars]);
 
-  function applyPreset(p: { subject: string; email: string; sms: string }) {
+  function applyPreset(p: { subject: string; email: string; sms: string; call: string; voice?: string }) {
     setSubject(p.subject);
     setEmailBody(p.email);
     setSmsBody(p.sms);
+    setCallBody(p.call);
+    if (p.voice) setVoice(p.voice);
+    // șablonul are mesaj de apel → pornește canalul (dacă e disponibil), ca operatorul să-l vadă imediat
+    if (p.call.trim() && canCall) setUseCall(true);
   }
 
   function saveAsTemplate() {
     const name = tplName.trim();
     if (!name) return;
-    if (!emailBody.trim() && !smsBody.trim()) { setFormError("Scrie întâi un mesaj pe care să-l salvezi."); return; }
-    onSaveTemplate({ name, subject, email: emailBody, sms: smsBody });
+    if (!emailBody.trim() && !smsBody.trim() && !callBody.trim()) { setFormError("Scrie întâi un mesaj pe care să-l salvezi."); return; }
+    onSaveTemplate({ name, subject, email: emailBody, sms: smsBody, call: callBody, voice });
     setSavingTpl(false);
     setTplName("");
     setFormError(null);
@@ -160,8 +180,8 @@ export default function PayerNotifyDialog({
   function insertToken(token: string) {
     const text = `{${token}}`;
     const field = lastField.current;
-    const el = field === "subject" ? subjectRef.current : field === "sms" ? smsRef.current : emailRef.current;
-    const set = field === "subject" ? setSubject : field === "sms" ? setSmsBody : setEmailBody;
+    const el = field === "subject" ? subjectRef.current : field === "sms" ? smsRef.current : field === "call" ? callRef.current : emailRef.current;
+    const set = field === "subject" ? setSubject : field === "sms" ? setSmsBody : field === "call" ? setCallBody : setEmailBody;
     if (!el) return;
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? start;
@@ -173,7 +193,8 @@ export default function PayerNotifyDialog({
   }
 
   function validate(): string | null {
-    if (!useEmail && !useSms) return "Alege cel puțin un canal (email sau SMS).";
+    if (!useEmail && !useSms && !useCall) return "Alege cel puțin un canal (email, SMS sau apel).";
+    if (useCall && !callBody.trim()) return "Scrie mesajul apelului.";
     if (useEmail) {
       if (!subject.trim()) return "Scrie subiectul emailului.";
       if (!emailBody.trim()) return "Scrie mesajul emailului.";
@@ -185,6 +206,7 @@ export default function PayerNotifyDialog({
   const payload = () => ({
     email: { enabled: useEmail, subject, body: emailBody },
     sms: { enabled: useSms, body: smsBody, ascii },
+    call: { enabled: useCall, body: callBody, voice },
   });
 
   async function sendTest() {
@@ -213,17 +235,19 @@ export default function PayerNotifyDialog({
   }
 
   function tally(results: RecipientResult[]) {
-    const add = (prev: Channel, key: "email" | "sms") => {
+    const add = (prev: Channel, key: "email" | "sms" | "call") => {
       const next = { ...prev };
       for (const r of results) next[r[key].status]++;
       return next;
     };
     setEmailStats((p) => add(p, "email"));
     setSmsStats((p) => add(p, "sms"));
+    setCallStats((p) => add(p, "call"));
     const bad: Failure[] = [];
     for (const r of results) {
       if (r.email.status === "failed") bad.push({ id: r.id, name: r.name, channel: "Email", detail: r.email.detail ?? "" });
       if (r.sms.status === "failed") bad.push({ id: r.id, name: r.name, channel: "SMS", detail: r.sms.detail ?? "" });
+      if (r.call.status === "failed") bad.push({ id: r.id, name: r.name, channel: "Apel", detail: r.call.detail ?? "" });
     }
     if (bad.length) setFailures((p) => [...p, ...bad].slice(0, 500));
   }
@@ -327,6 +351,14 @@ export default function PayerNotifyDialog({
                 hint={!smsEnabled ? "SMS neconfigurat" : smsCount === 0 ? "nimeni nu are telefon" : `${nf(smsCount)} destinatari`}
                 onChange={setUseSms}
               />
+              <ChannelToggle
+                label="Apel"
+                icon="📞"
+                checked={useCall}
+                disabled={!canCall}
+                hint={!callEnabled ? "Apel neconfigurat" : smsCount === 0 ? "nimeni nu are telefon" : `${nf(smsCount)} destinatari`}
+                onChange={setUseCall}
+              />
             </div>
 
             {/* Șabloane */}
@@ -423,6 +455,23 @@ export default function PayerNotifyDialog({
               </div>
             )}
 
+            {useCall && (
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-semibold text-ink-soft">Apel — mesaj vorbit (robot)</label>
+                <textarea
+                  ref={callRef}
+                  value={callBody}
+                  maxLength={NOTIFY_MAX_CALL_BODY}
+                  onFocus={() => (lastField.current = "call")}
+                  onChange={(e) => setCallBody(e.target.value)}
+                  rows={4}
+                  placeholder="Ce spune vocea… ex. Bună ziua, {nume}. Aveți de achitat {suma}…"
+                  className={`${inputCls} py-2.5`}
+                />
+                <VoicePicker voice={voice} text={renderedCall} onChange={setVoice} />
+              </div>
+            )}
+
             {/* Previzualizare */}
             {(useEmail || useSms) && (
               <div className="rounded-xl border border-dashed border-[var(--color-line)] p-3">
@@ -445,7 +494,8 @@ export default function PayerNotifyDialog({
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-[var(--color-surface-2)] p-3 text-xs">
               <span className="font-semibold">Test înainte de trimitere:</span>
               {useEmail && <span className="text-ink-soft">email la {userEmail}</span>}
-              {useSms && (
+              {useCall && <span className="text-ink-soft">apel pe telefonul de mai jos</span>}
+              {(useSms || useCall) && (
                 <input
                   value={testPhone}
                   onChange={(e) => setTestPhone(e.target.value)}
@@ -457,7 +507,7 @@ export default function PayerNotifyDialog({
               <button
                 type="button"
                 onClick={sendTest}
-                disabled={testing || (!useEmail && !useSms)}
+                disabled={testing || (!useEmail && !useSms && !useCall)}
                 className="tap ml-auto h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 font-medium hover:bg-brand-soft disabled:opacity-50"
               >
                 {testing ? "Se trimite…" : "Trimite test"}
@@ -493,8 +543,14 @@ export default function PayerNotifyDialog({
                     {total - smsCount > 0 && <span className="text-ink-soft"> ({nf(total - smsCount)} fără telefon valid vor fi omiși)</span>}
                   </li>
                 )}
+                {useCall && (
+                  <li>
+                    <b>{nf(smsCount)}</b> apeluri telefonice automate · ≈ {callSeconds(renderedCall)} s fiecare · rezultatele apar în PBX → Notificări apel
+                    {total - smsCount > 0 && <span className="text-ink-soft"> ({nf(total - smsCount)} fără telefon valid vor fi omiși)</span>}
+                  </li>
+                )}
               </ul>
-              <p className="mt-2 text-xs text-ink-soft">Mesajele trimise nu pot fi retrase. SMS-urile se taxează de furnizor.</p>
+              <p className="mt-2 text-xs text-ink-soft">Mesajele trimise nu pot fi retrase. SMS-urile și apelurile se taxează de furnizor.</p>
             </div>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setPhase("compose")} className="tap h-11 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]">
@@ -524,6 +580,7 @@ export default function PayerNotifyDialog({
             <div className="grid gap-2 sm:grid-cols-2">
               {useEmail && <StatCard title="✉ Email" s={emailStats} />}
               {useSms && <StatCard title="💬 SMS" s={smsStats} />}
+              {useCall && <StatCard title="📞 Apel" s={callStats} />}
             </div>
 
             {runError && <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{runError}</p>}

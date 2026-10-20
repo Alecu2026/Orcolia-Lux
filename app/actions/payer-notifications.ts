@@ -9,10 +9,12 @@ import { isRateLimited } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/services/audit";
 import { sendPayerNotificationEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
+import { placeVoiceCall } from "@/lib/voice-call";
 import { listMatchingPayerContacts } from "@/lib/queries/payers";
 import { filtersToListOpts } from "@/lib/queries/payer-notify";
 import {
   NOTIFY_CHUNK_SIZE,
+  NOTIFY_MAX_CALL_BODY,
   NOTIFY_MAX_EMAIL_BODY,
   NOTIFY_MAX_RECIPIENTS,
   NOTIFY_MAX_SMS_BODY,
@@ -69,7 +71,7 @@ export async function resolveNotifyFilterAction(rawFilters: unknown): Promise<Re
 // ── Trimitere (în loturi, apelată în buclă de client) ─────────────────────────────────────────
 
 export type ChannelOutcome = { status: "sent" | "failed" | "skipped"; detail?: string };
-export type RecipientResult = { id: string; name: string; email: ChannelOutcome; sms: ChannelOutcome };
+export type RecipientResult = { id: string; name: string; email: ChannelOutcome; sms: ChannelOutcome; call: ChannelOutcome };
 
 export type SendChunkInput = {
   /** Generat pe client, identic pentru toate loturile unei trimiteri — face retrimiterea unui lot idempotentă. */
@@ -81,6 +83,7 @@ export type SendChunkInput = {
   ids: string[];
   email: { enabled: boolean; subject: string; body: string };
   sms: { enabled: boolean; body: string; ascii: boolean };
+  call: { enabled: boolean; body: string; voice: string };
 };
 
 export type SendChunkResult = { ok: true; results: RecipientResult[] } | { ok: false; error: string };
@@ -99,9 +102,14 @@ async function pool<T>(items: T[], size: number, fn: (item: T) => Promise<void>)
   );
 }
 
-function validateMessage(input: Pick<SendChunkInput, "email" | "sms">): string | null {
-  const { email, sms } = input;
-  if (!email.enabled && !sms.enabled) return "Alege cel puțin un canal (email sau SMS).";
+function validateMessage(input: Pick<SendChunkInput, "email" | "sms" | "call">): string | null {
+  const { email, sms, call } = input;
+  if (!email.enabled && !sms.enabled && !call?.enabled) return "Alege cel puțin un canal (email, SMS sau apel).";
+  if (call?.enabled) {
+    if (!call.body.trim()) return "Mesajul apelului este gol.";
+    if (call.body.length > NOTIFY_MAX_CALL_BODY) return `Mesajul apelului depășește ${NOTIFY_MAX_CALL_BODY} de caractere.`;
+    if (!env.voice.enabled) return "Apelurile nu sunt configurate (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN și VOICE_FROM).";
+  }
   if (email.enabled) {
     if (!oneLine(email.subject)) return "Subiectul emailului este obligatoriu.";
     if (!email.body.trim()) return "Mesajul emailului este gol.";
@@ -132,7 +140,8 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
   if (msgError) return { ok: false, error: msgError };
 
   const { email, sms } = input;
-  const needsInvoice = usesTokens(email.subject, email.body, sms.body);
+  const call = input.call ?? { enabled: false, body: "", voice: "" };
+  const needsInvoice = usesTokens(email.subject, email.body, sms.body, call.body);
 
   const [clients, invoices, already, company] = await Promise.all([
     prisma.client.findMany({
@@ -175,6 +184,7 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
       name: c?.name ?? "—",
       email: { status: "skipped", detail: c ? undefined : "Plătitor inexistent" },
       sms: { status: "skipped", detail: c ? undefined : "Plătitor inexistent" },
+      call: { status: "skipped", detail: c ? undefined : "Plătitor inexistent" },
     };
     results.set(id, res);
     if (!c) return;
@@ -231,6 +241,35 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
         }
       }
     }
+
+    if (call.enabled) {
+      const phone = normalizePhone(c.phone);
+      if (alreadySent.has(`${c.id}:CALL`)) {
+        res.call = { status: "skipped", detail: "Deja sunat în această campanie" };
+      } else if (!phone) {
+        res.call = { status: "skipped", detail: "Fără telefon valid" };
+      } else {
+        const body = renderTemplate(call.body, vars);
+        try {
+          const callSid = await placeVoiceCall(phone, body, call.voice);
+          // Se salvează imediat: starea, durata și răspunsul vin apoi din webhook-uri (/api/voice/*).
+          await prisma.notifyCall
+            .create({
+              data: {
+                callSid, campaignId: input.campaignId, clientId: c.id, clientName: c.name, phone, voice: call.voice || null,
+                text: body, status: "queued", userId: user.id, userName: user.name,
+              },
+            })
+            .catch((e) => console.error("[notify] apel nesalvat:", e));
+          res.call = { status: "sent" };
+          notifiedIds.add(c.id);
+          logs.push({ ...base, channel: "CALL", to: phone, status: "SENT", error: null, subject: call.voice || null, body });
+        } catch (e) {
+          res.call = { status: "failed", detail: errText(e) };
+          logs.push({ ...base, channel: "CALL", to: phone, status: "FAILED", error: errText(e), subject: call.voice || null, body });
+        }
+      }
+    }
   });
 
   // Jurnalul și „ultima notificare" se scriu DUPĂ trimitere; dacă scrierea eșuează, mesajele au plecat deja —
@@ -246,7 +285,7 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
   ]);
 
   if (input.index === 0) {
-    const channels = [email.enabled ? "email" : null, sms.enabled ? "SMS" : null].filter(Boolean).join(" + ");
+    const channels = [email.enabled ? "email" : null, sms.enabled ? "SMS" : null, call.enabled ? "apel" : null].filter(Boolean).join(" + ");
     await logAudit(
       { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
       {
@@ -254,7 +293,7 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
         module: "Notifications",
         objectId: input.campaignId,
         objectName: `Notificare plătitori (${channels}) către ${Math.max(0, Math.floor(input.totalPlanned) || ids.length)} destinatari`,
-        newValue: email.enabled ? oneLine(email.subject).slice(0, 120) : sms.body.slice(0, 120),
+        newValue: email.enabled ? oneLine(email.subject).slice(0, 120) : (sms.enabled ? sms.body : call.body).slice(0, 120),
       },
     );
   }
@@ -270,6 +309,7 @@ export type TestResult = { ok: true; message: string } | { ok: false; error: str
 export async function sendTestNotificationAction(input: {
   email: { enabled: boolean; subject: string; body: string };
   sms: { enabled: boolean; body: string; ascii: boolean };
+  call?: { enabled: boolean; body: string; voice: string };
   testPhone: string;
 }): Promise<TestResult> {
   const auth = await requireSender();
@@ -278,7 +318,8 @@ export async function sendTestNotificationAction(input: {
   if (isRateLimited(`payer-notify-test:${user.id}`, 10, 10 * 60_000)) {
     return { ok: false, error: "Prea multe teste — încearcă din nou peste câteva minute." };
   }
-  const msgError = validateMessage(input);
+  const callIn = input.call ?? { enabled: false, body: "", voice: "" };
+  const msgError = validateMessage({ email: input.email, sms: input.sms, call: callIn });
   if (msgError) return { ok: false, error: msgError };
 
   const sample = buildVars({
@@ -309,6 +350,12 @@ export async function sendTestNotificationAction(input: {
       const rendered = renderTemplate(input.sms.body, sample);
       const reply = await sendSms(phone, input.sms.ascii ? stripLatinDiacritics(rendered) : rendered);
       done.push(`SMS la ${phone}${reply ? ` (răspuns gateway: ${reply})` : ""}`);
+    }
+    if (callIn.enabled) {
+      const phone = normalizePhone(input.testPhone);
+      if (!phone) return { ok: false, error: "Introdu un număr de telefon valid pentru testul de apel (ex. 069123456)." };
+      await placeVoiceCall(phone, renderTemplate(callIn.body, sample), callIn.voice);
+      done.push(`apel către ${phone}`);
     }
   } catch (e) {
     return { ok: false, error: `Testul a eșuat${done.length ? ` (trimis deja: ${done.join(", ")})` : ""}: ${errText(e)}` };

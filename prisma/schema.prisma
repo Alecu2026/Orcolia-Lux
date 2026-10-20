@@ -973,11 +973,41 @@ model PayerNotifyTemplate {
   subject   String   @default("")
   email     String   @default("")
   sms       String   @default("")
+  // Mesajul vorbit al notificării prin apel + vocea (vezi NOTIFY_VOICES în lib/payer-notify.ts).
+  call      String?
+  voice     String?
   createdBy String   @db.ObjectId
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([createdAt])
+}
+
+// Apeluri vocale automate către plătitori (canalul „Apel" din /notificari-platitori): un rând per apel plasat. Starea,
+// durata (= cât timp a ascultat) și răspunsul (ce a spus / ce a tastat) se completează din webhook-urile furnizorului
+// (/api/voice/status și /api/voice/reply).
+model NotifyCall {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  callSid     String    @unique
+  campaignId  String
+  clientId    String    @db.ObjectId
+  clientName  String
+  phone       String
+  voice       String?
+  text        String
+  status      String // queued | ringing | in-progress | completed | busy | no-answer | failed | canceled
+  answeredAt  DateTime?
+  durationSec Int?
+  reply       String?
+  replyDigits String?
+  userId      String    @db.ObjectId
+  userName    String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([createdAt])
+  @@index([clientId, createdAt])
+  @@index([campaignId])
 }
 
 // Notițe interne pe un plătitor (cine a scris, când) — mai multe pe plătitor, ca un jurnal. Fără relație la

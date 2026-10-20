@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import {
+  DEFAULT_VOICE,
+  NOTIFY_MAX_CALL_BODY,
   NOTIFY_MAX_EMAIL_BODY,
   NOTIFY_MAX_SMS_BODY,
   NOTIFY_MAX_SUBJECT,
@@ -12,8 +14,10 @@ import {
   type PayerTemplateDraft,
 } from "@/lib/payer-notify";
 import { IconX } from "./icons";
+import VoicePicker from "./VoicePicker";
 
-type Field = "subject" | "email" | "sms";
+type Field = "subject" | "email" | "sms" | "call";
+const EMPTY_DRAFT: PayerTemplateDraft = { name: "", subject: "", email: "", sms: "", call: "", voice: DEFAULT_VOICE };
 const inputCls =
   "w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
 
@@ -41,11 +45,11 @@ export default function PayerTemplatesDialog({
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   function openNew(from?: PayerTemplateDraft) {
-    setSeed(from ?? { name: "", subject: "", email: "", sms: "" });
+    setSeed(from ?? EMPTY_DRAFT);
     setEditing("new");
   }
   function openEdit(t: PayerTemplate) {
-    setSeed({ name: t.name, subject: t.subject, email: t.email, sms: t.sms });
+    setSeed({ name: t.name, subject: t.subject, email: t.email, sms: t.sms, call: t.call, voice: t.voice || DEFAULT_VOICE });
     setEditing(t);
   }
 
@@ -96,7 +100,8 @@ export default function PayerTemplatesDialog({
                           <p className="truncate text-[11px] text-ink-soft">
                             {t.email && "✉ "}
                             {t.sms && "💬 "}
-                            {t.subject || t.email.split("\n")[0] || t.sms}
+                            {t.call && "📞 "}
+                            {t.subject || t.email.split("\n")[0] || t.sms || t.call}
                           </p>
                         </div>
                         {confirmId === t.id ? (
@@ -132,7 +137,7 @@ export default function PayerTemplatesDialog({
                   <button
                     key={p.key}
                     type="button"
-                    onClick={() => openNew({ name: p.label, subject: p.subject, email: p.email, sms: p.sms })}
+                    onClick={() => openNew({ name: p.label, subject: p.subject, email: p.email, sms: p.sms, call: p.call, voice: DEFAULT_VOICE })}
                     className="tap h-7 rounded-full border border-[var(--color-line)] px-3 text-xs hover:border-brand hover:bg-brand-soft"
                   >
                     {p.label}
@@ -162,10 +167,11 @@ function TemplateForm({
   const subjectRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLTextAreaElement>(null);
   const smsRef = useRef<HTMLTextAreaElement>(null);
+  const callRef = useRef<HTMLTextAreaElement>(null);
 
   function insert(token: string) {
     const f = last.current;
-    const el = f === "subject" ? subjectRef.current : f === "email" ? emailRef.current : smsRef.current;
+    const el = f === "subject" ? subjectRef.current : f === "email" ? emailRef.current : f === "call" ? callRef.current : smsRef.current;
     if (!el) return;
     const text = `{${token}}`;
     const s = el.selectionStart ?? el.value.length;
@@ -180,7 +186,7 @@ function TemplateForm({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!d.name.trim()) return setErr("Dă un nume șablonului.");
-    if (!d.email.trim() && !d.sms.trim()) return setErr("Scrie măcar mesajul de email sau de SMS.");
+    if (!d.email.trim() && !d.sms.trim() && !d.call.trim()) return setErr("Scrie măcar un mesaj: email, SMS sau apel.");
     onSave({ ...d, name: d.name.trim(), subject: d.subject.trim() });
   }
 
@@ -231,6 +237,20 @@ function TemplateForm({
         placeholder="SMS — mesaj (scurt)"
         className={`${inputCls} py-2`}
       />
+      <div className="rounded-lg border border-[var(--color-line)] p-2.5">
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">📞 Apel — mesaj vorbit</p>
+        <textarea
+          ref={callRef}
+          value={d.call}
+          maxLength={NOTIFY_MAX_CALL_BODY}
+          onFocus={() => (last.current = "call")}
+          onChange={(e) => setD({ ...d, call: e.target.value })}
+          rows={4}
+          placeholder="Textul pe care îl citește vocea… ex. Bună ziua, {nume}. Aveți de achitat {suma}…"
+          className={`${inputCls} mb-2 py-2`}
+        />
+        <VoicePicker voice={d.voice} text={d.call} onChange={(voice) => setD({ ...d, voice })} compact />
+      </div>
       {err && <p className="text-sm text-st-cancelled">{err}</p>}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancel} className="tap h-10 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]">

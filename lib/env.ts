@@ -98,6 +98,15 @@ export const env = {
     },
   },
 
+  // Apeluri vocale automate (robot): Twilio Voice — același cont ca la SMS (TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN) + un număr
+  // verificat/cumpărat din care se sună (VOICE_FROM, format +… E.164). Vezi lib/voice-call.ts.
+  voice: {
+    from: anyEnv("VOICE_FROM", "CALL_FROM"),
+    get enabled() {
+      return Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && anyEnv("VOICE_FROM", "CALL_FROM"));
+    },
+  },
+
   // PBX Moldcell: webhook-ul /api/pbx acceptă doar mesaje cu acest token (câmpul crm_token din integrarea CRM a PBX-ului).
   pbx: {
     // Numele variabilei: CRM_TOKEN (sau crm_token, ca în mesajele Moldcell); PBX_CRM_TOKEN rămâne acceptat pentru compatibilitate.

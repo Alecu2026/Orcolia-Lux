@@ -49,6 +49,7 @@ export default async function PayerNotificationsPage({
         canSend={can(user, "clients.edit")}
         emailEnabled={env.smtp.enabled}
         smsEnabled={env.sms.enabled}
+        callEnabled={env.voice.enabled}
         userEmail={user.email}
         userId={user.id}
         isAdmin={can(user, "admin")}
