@@ -91,6 +91,10 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
   const [bulk, setBulk] = useState<{ phase: "idle" | "confirm" | "running" | "done"; done: number; total: number; failed: number; lastError: string | null }>({ phase: "idle", done: 0, total: 0, failed: 0, lastError: null });
   const stopBulk = useRef(false);
 
+  // Operatorul folosit la „Sună": cel ales; dacă nu e ales nimic, „robot" din lista PBX (ce vezi în câmp = ce se folosește).
+  const robotLogin = users?.find((u) => /robot/i.test(u.login) || /robot/i.test(u.name))?.login ?? "";
+  const activeOperator = operator.trim() || robotLogin;
+
   const rows = useMemo(
     () => serverRows.filter((r) => !removed.has(r.id)).map((r) => (local[r.id] ? { ...r, ...local[r.id] } : r)),
     [serverRows, local, removed],
@@ -128,13 +132,13 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
   }
 
   async function dial(c: NotifyCallRow) {
-    if (!operator.trim()) { toast.error("Alege mai întâi operatorul care primește apelul."); return; }
+    if (!activeOperator) { toast.error("Alege apelantul (robotul) din câmpul „Apelant” de sus (acum e gol) — apoi apasă din nou „Sună”."); return; }
     setBusy(c.id);
-    const res = await dialNotifyCallAction(c.id, operator.trim()).catch(() => null);
+    const res = await dialNotifyCallAction(c.id, activeOperator).catch(() => null);
     setBusy(null);
     if (res?.ok) {
       setLocal((m) => ({ ...m, [c.id]: { ...m[c.id], callId: res.callId, dialedAt: res.dialedAt, operator: res.operator, pbxStatus: null, pbxState: null } }));
-      toast.success(`Se sună… răspunde pe telefonul operatorului „${res.operator}”, apoi PBX-ul te leagă cu ${c.clientName}.`);
+      toast.success(`Apel pornit prin „${res.operator}” către ${c.clientName}. Starea apare în tabel în câteva secunde.`);
       router.refresh();
     } else {
       toast.error(res && !res.ok ? res.error : "Nu am putut porni apelul.");
@@ -145,13 +149,13 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
 
   async function dialAll() {
     const todo = queued.slice();
-    if (!operator.trim() || todo.length === 0) return;
+    if (!activeOperator || todo.length === 0) return;
     stopBulk.current = false;
     setBulk({ phase: "running", done: 0, total: todo.length, failed: 0, lastError: null });
     let done = 0, failed = 0, streak = 0, lastError: string | null = null;
     for (const c of todo) {
       if (stopBulk.current) break;
-      const res = await dialNotifyCallAction(c.id, operator.trim()).catch(() => null);
+      const res = await dialNotifyCallAction(c.id, activeOperator).catch(() => null);
       if (res?.ok) {
         done++; streak = 0;
         setLocal((m) => ({ ...m, [c.id]: { ...m[c.id], callId: res.callId, dialedAt: res.dialedAt, operator: res.operator, pbxStatus: null, pbxState: null } }));
@@ -203,7 +207,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
       render: (c) => { const r = resultOf(c); return <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium leading-[14px] ${r.cls}`}>{r.label}</span>; },
     },
     { key: "dur", label: "Durată", minW: 60, right: true, sort: (c) => c.durationSec, render: (c) => (c.durationSec != null ? mmss(c.durationSec) : dash) },
-    { key: "op", label: "Operator", minW: 90, maxW: 130, sort: (c) => c.operator, render: (c) => c.operator ?? dash },
+    { key: "op", label: "Apelant", minW: 90, maxW: 130, sort: (c) => c.operator, render: (c) => c.operator ?? dash },
     { key: "dialed", label: "Sunat la", minW: 130, defaultHidden: true, sort: (c) => c.dialedAt, render: (c) => (c.dialedAt ? fmtDateTime(c.dialedAt) : dash) },
     { key: "note", label: "Notă", minW: 160, maxW: 260, sort: (c) => c.note, render: (c) => (c.note ? <span title={c.note}>{c.note}</span> : dash) },
     { key: "text", label: "Mesaj de transmis", minW: 240, maxW: 380, sort: (c) => c.text, render: (c) => <span title={c.text}>{c.text}</span> },
@@ -282,31 +286,32 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
         toolbar={
           <>
             <label className="flex items-center gap-1 text-[11px] text-ink-soft">
-              Operator:
+              Apelant:
               {users && users.length > 0 ? (
-                <select value={operator} onChange={(e) => pickOperator(e.target.value)} className={selectCls} aria-label="Operatorul care primește apelul">
+                <select value={activeOperator} onChange={(e) => pickOperator(e.target.value)} className={selectCls} aria-label="Extensia PBX care face apelul (robotul)">
                   <option value="">— alege —</option>
+                  {activeOperator && !users.some((u) => u.login === activeOperator) && <option value={activeOperator}>{activeOperator}</option>}
                   {users.map((u) => (
                     <option key={u.login} value={u.login}>{u.name}{u.ext ? ` (${u.ext})` : ""}</option>
                   ))}
                 </select>
               ) : (
                 <input
-                  value={operator}
+                  value={activeOperator}
                   onChange={(e) => pickOperator(e.target.value)}
                   placeholder="login / nr. scurt"
-                  title={usersError ?? "Operatorul din PBX care primește apelul"}
+                  title={usersError ?? "Extensia din PBX care face apelul (robotul)"}
                   className={`${selectCls} w-28`}
                 />
               )}
             </label>
             {bulk.phase === "idle" || bulk.phase === "done" ? (
-              <button type="button" disabled={queued.length === 0 || !operator.trim()} onClick={() => setBulk((b) => ({ ...b, phase: "confirm" }))} className={`${topBtn} disabled:cursor-default disabled:opacity-40`} title={operator.trim() ? "Pornește apelurile pe rând, prin operatorul ales" : "Alege întâi operatorul (robotul)"}>
+              <button type="button" disabled={queued.length === 0 || !activeOperator} onClick={() => setBulk((b) => ({ ...b, phase: "confirm" }))} className={`${topBtn} disabled:cursor-default disabled:opacity-40`} title={activeOperator ? "Pornește apelurile pe rând, prin operatorul ales" : "Alege întâi apelantul (robotul)"}>
                 📞 Sună toți din coadă ({queued.length})
               </button>
             ) : bulk.phase === "confirm" ? (
               <>
-                <button type="button" onClick={() => void dialAll()} className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-2 text-[11px] font-semibold text-white hover:bg-brand-strong">Confirmă: sună {queued.length} prin „{operator}”</button>
+                <button type="button" onClick={() => void dialAll()} className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-2 text-[11px] font-semibold text-white hover:bg-brand-strong">Confirmă: sună {queued.length} prin „{activeOperator}”</button>
                 <button type="button" onClick={() => setBulk((b) => ({ ...b, phase: "idle" }))} className={topBtn}>Anulează</button>
               </>
             ) : (
@@ -324,7 +329,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
           Apeluri pornite: {bulk.done} din {bulk.total}{bulk.failed ? ` · eșuate: ${bulk.failed}${bulk.lastError ? ` (${bulk.lastError})` : ""}` : ""}.
         </p>
       )}
-      {usersError && <p className="mt-1.5 text-[11px] text-st-progress">Lista de operatori nu s-a încărcat ({usersError}) — scrie loginul sau numărul scurt al operatorului în câmpul „Operator”.</p>}
+      {usersError && <p className="mt-1.5 text-[11px] text-st-progress">Lista de operatori nu s-a încărcat ({usersError}) — scrie loginul sau numărul scurt al robotului în câmpul „Apelant”.</p>}
       {detail && (
         <Detail
           call={detail}
@@ -379,7 +384,7 @@ function Detail({
         <div className="divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)]">
           {item("Stare", <span className={`inline-block rounded-full px-1.5 text-[11px] font-medium ${r.cls}`}>{r.label}</span>)}
           {item("Durată convorbire", c.durationSec != null ? mmss(c.durationSec) : "—")}
-          {item("Operator", c.operator ?? "—")}
+          {item("Apelant", c.operator ?? "—")}
           {item("Sunat la", c.dialedAt ? fmtDateTime(c.dialedAt) : "—")}
           {c.rating != null && item("Notă client", `${c.rating}/5`)}
           {item("Pus în coadă de", c.userName)}
