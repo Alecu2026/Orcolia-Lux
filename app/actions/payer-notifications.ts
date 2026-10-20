@@ -9,7 +9,6 @@ import { isRateLimited } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/services/audit";
 import { sendPayerNotificationEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
-import { placeVoiceCall } from "@/lib/voice-call";
 import { listMatchingPayerContacts } from "@/lib/queries/payers";
 import { filtersToListOpts } from "@/lib/queries/payer-notify";
 import {
@@ -108,7 +107,7 @@ function validateMessage(input: Pick<SendChunkInput, "email" | "sms" | "call">):
   if (call?.enabled) {
     if (!call.body.trim()) return "Mesajul apelului este gol.";
     if (call.body.length > NOTIFY_MAX_CALL_BODY) return `Mesajul apelului depășește ${NOTIFY_MAX_CALL_BODY} de caractere.`;
-    if (!env.voice.enabled) return "Apelurile nu sunt configurate (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN și VOICE_FROM).";
+    if (!env.voice.enabled) return "Apelurile prin PBX nu sunt configurate (PBX_API_KEY).";
   }
   if (email.enabled) {
     if (!oneLine(email.subject)) return "Subiectul emailului este obligatoriu.";
@@ -143,7 +142,7 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
   const call = input.call ?? { enabled: false, body: "", voice: "" };
   const needsInvoice = usesTokens(email.subject, email.body, sms.body, call.body);
 
-  const [clients, invoices, already, company] = await Promise.all([
+  const [clients, invoices, already, company, queuedAlready] = await Promise.all([
     prisma.client.findMany({
       where: {
         id: { in: ids },
@@ -163,7 +162,11 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
       select: { clientId: true, channel: true },
     }),
     prisma.companySettings.findUnique({ where: { singleton: "main" }, select: { companyName: true } }),
+    call.enabled
+      ? prisma.notifyCall.findMany({ where: { campaignId: input.campaignId, clientId: { in: ids } }, select: { clientId: true } })
+      : Promise.resolve([]),
   ]);
+  const callQueued = new Set(queuedAlready.map((q) => q.clientId));
 
   const latestInvoice = new Map<string, (typeof invoices)[number]>();
   for (const inv of invoices) if (inv.clientId && !latestInvoice.has(inv.clientId)) latestInvoice.set(inv.clientId, inv);
@@ -244,29 +247,23 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
 
     if (call.enabled) {
       const phone = normalizePhone(c.phone);
-      if (alreadySent.has(`${c.id}:CALL`)) {
-        res.call = { status: "skipped", detail: "Deja sunat în această campanie" };
+      if (callQueued.has(c.id)) {
+        res.call = { status: "skipped", detail: "Deja în coada de apeluri a acestei campanii" };
       } else if (!phone) {
         res.call = { status: "skipped", detail: "Fără telefon valid" };
       } else {
-        const body = renderTemplate(call.body, vars);
+        // Apelul prin PBX e cu operator: aici doar punem plătitorul în coadă (cu mesajul gata completat); „Sună" se apasă din
+        // /pbx → Notificări apel. „Ultima notificare" se marchează abia când apelul pornește.
         try {
-          const callSid = await placeVoiceCall(phone, body, call.voice);
-          // Se salvează imediat: starea, durata și răspunsul vin apoi din webhook-uri (/api/voice/*).
-          await prisma.notifyCall
-            .create({
-              data: {
-                callSid, campaignId: input.campaignId, clientId: c.id, clientName: c.name, phone, voice: call.voice || null,
-                text: body, status: "queued", userId: user.id, userName: user.name,
-              },
-            })
-            .catch((e) => console.error("[notify] apel nesalvat:", e));
-          res.call = { status: "sent" };
-          notifiedIds.add(c.id);
-          logs.push({ ...base, channel: "CALL", to: phone, status: "SENT", error: null, subject: call.voice || null, body });
+          await prisma.notifyCall.create({
+            data: {
+              campaignId: input.campaignId, clientId: c.id, clientName: c.name, phone, text: renderTemplate(call.body, vars),
+              status: "queued", userId: user.id, userName: user.name,
+            },
+          });
+          res.call = { status: "sent", detail: "în coadă" };
         } catch (e) {
           res.call = { status: "failed", detail: errText(e) };
-          logs.push({ ...base, channel: "CALL", to: phone, status: "FAILED", error: errText(e), subject: call.voice || null, body });
         }
       }
     }
@@ -318,8 +315,8 @@ export async function sendTestNotificationAction(input: {
   if (isRateLimited(`payer-notify-test:${user.id}`, 10, 10 * 60_000)) {
     return { ok: false, error: "Prea multe teste — încearcă din nou peste câteva minute." };
   }
-  const callIn = input.call ?? { enabled: false, body: "", voice: "" };
-  const msgError = validateMessage({ email: input.email, sms: input.sms, call: callIn });
+  // Apelul nu se testează de aici (e cu operator) — se pornește din /pbx → Notificări apel.
+  const msgError = validateMessage({ email: input.email, sms: input.sms, call: { enabled: false, body: "", voice: "" } });
   if (msgError) return { ok: false, error: msgError };
 
   const sample = buildVars({
@@ -350,12 +347,6 @@ export async function sendTestNotificationAction(input: {
       const rendered = renderTemplate(input.sms.body, sample);
       const reply = await sendSms(phone, input.sms.ascii ? stripLatinDiacritics(rendered) : rendered);
       done.push(`SMS la ${phone}${reply ? ` (răspuns gateway: ${reply})` : ""}`);
-    }
-    if (callIn.enabled) {
-      const phone = normalizePhone(input.testPhone);
-      if (!phone) return { ok: false, error: "Introdu un număr de telefon valid pentru testul de apel (ex. 069123456)." };
-      await placeVoiceCall(phone, renderTemplate(callIn.body, sample), callIn.voice);
-      done.push(`apel către ${phone}`);
     }
   } catch (e) {
     return { ok: false, error: `Testul a eșuat${done.length ? ` (trimis deja: ${done.join(", ")})` : ""}: ${errText(e)}` };

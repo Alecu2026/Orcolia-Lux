@@ -31,27 +31,43 @@ export default async function PbxPage({ searchParams }: { searchParams: Promise<
   );
 
   if (tab === "notificari") {
-    const calls = DEMO ? [] : await prisma.notifyCall.findMany({ take: 20000, orderBy: { createdAt: "desc" } });
-    const rows: NotifyCallRow[] = calls.map((c) => ({
-      id: c.id,
-      callSid: c.callSid,
-      campaignId: c.campaignId,
-      clientId: c.clientId,
-      clientName: c.clientName,
-      phone: c.phone,
-      voice: c.voice,
-      text: c.text,
-      status: c.status,
-      at: c.createdAt.toISOString(),
-      durationSec: c.durationSec,
-      reply: c.reply,
-      replyDigits: c.replyDigits,
-      userName: c.userName,
-    }));
+    const queue = DEMO ? [] : await prisma.notifyCall.findMany({ take: 20000, orderBy: { createdAt: "desc" } });
+    // Starea/durata/înregistrarea vin din apelul PBX cu același callId (potrivire în memorie — mai rapid decât `in` pe mii de id-uri).
+    const dialedIds = new Set(queue.map((q) => q.callId).filter((x): x is string => !!x));
+    const pbx = dialedIds.size
+      ? await prisma.pbxCall.findMany({
+          take: 20000,
+          orderBy: { updatedAt: "desc" },
+          select: { callId: true, status: true, state: true, durationSec: true, recordingUrl: true, rating: true },
+        })
+      : [];
+    const byCall = new Map(pbx.filter((c) => dialedIds.has(c.callId)).map((c) => [c.callId, c]));
+    const rows: NotifyCallRow[] = queue.map((q) => {
+      const c = q.callId ? byCall.get(q.callId) : undefined;
+      return {
+        id: q.id,
+        campaignId: q.campaignId,
+        clientId: q.clientId,
+        clientName: q.clientName,
+        phone: q.phone,
+        text: q.text,
+        at: q.createdAt.toISOString(),
+        dialedAt: q.dialedAt?.toISOString() ?? null,
+        operator: q.operator,
+        callId: q.callId,
+        note: q.note,
+        userName: q.userName,
+        pbxStatus: c?.status ?? null,
+        pbxState: c?.state ?? null,
+        durationSec: c?.durationSec ?? null,
+        hasRecording: !!c?.recordingUrl,
+        rating: c?.rating ?? null,
+      };
+    });
     return (
       <div className="w-full">
         {tabs}
-        <NotifyCallsTable rows={rows} />
+        <NotifyCallsTable rows={rows} defaultOperator={env.pbx.callUser} />
       </div>
     );
   }

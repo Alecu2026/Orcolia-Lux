@@ -199,16 +199,14 @@ export const NOTIFY_PRESETS: NotifyPreset[] = [
 // ── Notificări prin apel (robot vocal) ─────────────────────────────────────────────────────────
 
 /**
- * Vocile disponibile pentru apel. `id` = numele vocii Twilio (Google TTS) folosit la redare; `lang` = limba, folosită și la
- * ascultarea de probă în browser (vocea de probă vine din dispozitivul tău și sună altfel decât cea din apel).
+ * Vocile pentru citirea mesajului de apel (limbă + gen). Apelul prin PBX Moldcell e cu operator — vocea e pentru ascultarea
+ * mesajului în pagină („▶ Ascultă"), cu vocile instalate în dispozitiv; nu intră în convorbire.
  */
 export const NOTIFY_VOICES = [
-  { id: "Google.ro-RO-Standard-A", lang: "ro-RO", label: "Română · feminin" },
-  { id: "Google.ro-RO-Wavenet-A", lang: "ro-RO", label: "Română · feminin (mai natural)" },
-  { id: "Google.ru-RU-Standard-A", lang: "ru-RU", label: "Русский · женский" },
-  { id: "Google.ru-RU-Standard-B", lang: "ru-RU", label: "Русский · мужской" },
-  { id: "Google.ru-RU-Wavenet-A", lang: "ru-RU", label: "Русский · женский (естественный)" },
-  { id: "Google.ru-RU-Wavenet-B", lang: "ru-RU", label: "Русский · мужской (естественный)" },
+  { id: "ro-RO-f", lang: "ro-RO", gender: "f", label: "Română · feminin" },
+  { id: "ro-RO-m", lang: "ro-RO", gender: "m", label: "Română · masculin" },
+  { id: "ru-RU-f", lang: "ru-RU", gender: "f", label: "Русский · женский" },
+  { id: "ru-RU-m", lang: "ru-RU", gender: "m", label: "Русский · мужской" },
 ] as const;
 export const DEFAULT_VOICE: string = NOTIFY_VOICES[0].id;
 export const NOTIFY_MAX_CALL_BODY = 600;

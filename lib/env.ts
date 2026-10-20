@@ -98,12 +98,11 @@ export const env = {
     },
   },
 
-  // Apeluri vocale automate (robot): Twilio Voice — același cont ca la SMS (TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN) + un număr
-  // verificat/cumpărat din care se sună (VOICE_FROM, format +… E.164). Vezi lib/voice-call.ts.
+  // Apeluri de notificare prin PBX Moldcell (makecall: PBX-ul sună întâi operatorul, apoi îl leagă cu plătitorul). Merg când
+  // PBX_API_KEY e setat. Vezi lib/pbx-api.ts.
   voice: {
-    from: anyEnv("VOICE_FROM", "CALL_FROM"),
     get enabled() {
-      return Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && anyEnv("VOICE_FROM", "CALL_FROM"));
+      return Boolean(anyEnv("PBX_API_KEY"));
     },
   },
 
@@ -112,6 +111,10 @@ export const env = {
     // Numele variabilei: CRM_TOKEN (sau crm_token, ca în mesajele Moldcell); PBX_CRM_TOKEN rămâne acceptat pentru compatibilitate.
     // Cheia de autorizare spre PBX („Key for authorization in the PBX"), pentru redarea înregistrărilor dacă PBX-ul o cere.
     apiKey: anyEnv("PBX_API_KEY"),
+    // Adresa API-ului CRM al PBX-ului tău (PBX_API_URL); implicit PBX-ul Orcolia-Lux.
+    apiUrl: anyEnv("PBX_API_URL") || "https://orcolialux.pbx.moldcell.md/crmapi/v1",
+    // Operatorul (login sau număr scurt) care primește apelul implicit la „Sună" — se poate schimba din pagină.
+    callUser: anyEnv("PBX_CALL_USER"),
     crmToken: anyEnv("CRM_TOKEN", "PBX_CRM_TOKEN"),
   },
 

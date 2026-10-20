@@ -356,7 +356,7 @@ export default function PayerNotifyDialog({
                 icon="📞"
                 checked={useCall}
                 disabled={!canCall}
-                hint={!callEnabled ? "Apel neconfigurat" : smsCount === 0 ? "nimeni nu are telefon" : `${nf(smsCount)} destinatari`}
+                hint={!callEnabled ? "PBX_API_KEY nesetat" : smsCount === 0 ? "nimeni nu are telefon" : `${nf(smsCount)} destinatari`}
                 onChange={setUseCall}
               />
             </div>
@@ -457,7 +457,7 @@ export default function PayerNotifyDialog({
 
             {useCall && (
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-ink-soft">Apel — mesaj vorbit (robot)</label>
+                <label className="text-xs font-semibold text-ink-soft">Apel — mesaj de transmis plătitorului (îl sună un operator prin PBX)</label>
                 <textarea
                   ref={callRef}
                   value={callBody}
@@ -494,8 +494,7 @@ export default function PayerNotifyDialog({
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-[var(--color-surface-2)] p-3 text-xs">
               <span className="font-semibold">Test înainte de trimitere:</span>
               {useEmail && <span className="text-ink-soft">email la {userEmail}</span>}
-              {useCall && <span className="text-ink-soft">apel pe telefonul de mai jos</span>}
-              {(useSms || useCall) && (
+              {useSms && (
                 <input
                   value={testPhone}
                   onChange={(e) => setTestPhone(e.target.value)}
@@ -507,7 +506,7 @@ export default function PayerNotifyDialog({
               <button
                 type="button"
                 onClick={sendTest}
-                disabled={testing || (!useEmail && !useSms && !useCall)}
+                disabled={testing || (!useEmail && !useSms)}
                 className="tap ml-auto h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 font-medium hover:bg-brand-soft disabled:opacity-50"
               >
                 {testing ? "Se trimite…" : "Trimite test"}
@@ -545,12 +544,12 @@ export default function PayerNotifyDialog({
                 )}
                 {useCall && (
                   <li>
-                    <b>{nf(smsCount)}</b> apeluri telefonice automate · ≈ {callSeconds(renderedCall)} s fiecare · rezultatele apar în PBX → Notificări apel
+                    <b>{nf(smsCount)}</b> plătitori puși în coada de apeluri · apelurile le pornești din <b>PBX → Notificări apel</b> (PBX-ul sună întâi operatorul, apoi îl leagă cu plătitorul)
                     {total - smsCount > 0 && <span className="text-ink-soft"> ({nf(total - smsCount)} fără telefon valid vor fi omiși)</span>}
                   </li>
                 )}
               </ul>
-              <p className="mt-2 text-xs text-ink-soft">Mesajele trimise nu pot fi retrase. SMS-urile și apelurile se taxează de furnizor.</p>
+              <p className="mt-2 text-xs text-ink-soft">Mesajele trimise nu pot fi retrase. SMS-urile se taxează de furnizor.</p>
             </div>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setPhase("compose")} className="tap h-11 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]">
@@ -580,7 +579,7 @@ export default function PayerNotifyDialog({
             <div className="grid gap-2 sm:grid-cols-2">
               {useEmail && <StatCard title="✉ Email" s={emailStats} />}
               {useSms && <StatCard title="💬 SMS" s={smsStats} />}
-              {useCall && <StatCard title="📞 Apel" s={callStats} />}
+              {useCall && <StatCard title="📞 Apel (puși în coadă)" s={callStats} />}
             </div>
 
             {runError && <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{runError}</p>}

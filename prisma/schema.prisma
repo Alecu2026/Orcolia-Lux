@@ -983,31 +983,30 @@ model PayerNotifyTemplate {
   @@index([createdAt])
 }
 
-// Apeluri vocale automate către plătitori (canalul „Apel" din /notificari-platitori): un rând per apel plasat. Starea,
-// durata (= cât timp a ascultat) și răspunsul (ce a spus / ce a tastat) se completează din webhook-urile furnizorului
-// (/api/voice/status și /api/voice/reply).
+// Coada de apeluri de notificare către plătitori (canalul „Apel" din /notificari-platitori): un rând per plătitor de sunat.
+// Trimiterea creează rândurile „queued"; din /pbx (fila „Notificări apel") operatorul apasă „Sună" → makecall la PBX Moldcell
+// (sună întâi operatorul, apoi îl leagă cu plătitorul) și `callId` leagă rândul de apelul din PbxCall (stare, durată, înregistrare).
 model NotifyCall {
-  id          String    @id @default(auto()) @map("_id") @db.ObjectId
-  callSid     String    @unique
-  campaignId  String
-  clientId    String    @db.ObjectId
-  clientName  String
-  phone       String
-  voice       String?
-  text        String
-  status      String // queued | ringing | in-progress | completed | busy | no-answer | failed | canceled
-  answeredAt  DateTime?
-  durationSec Int?
-  reply       String?
-  replyDigits String?
-  userId      String    @db.ObjectId
-  userName    String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String
+  clientId   String    @db.ObjectId
+  clientName String
+  phone      String
+  text       String // mesajul de transmis (șablonul cu datele plătitorului)
+  status     String // queued | dialing
+  callId     String?
+  operator   String?
+  dialedAt   DateTime?
+  note       String?
+  userId     String    @db.ObjectId
+  userName   String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@index([createdAt])
   @@index([clientId, createdAt])
   @@index([campaignId])
+  @@index([callId])
 }
 
 // Notițe interne pe un plătitor (cine a scris, când) — mai multe pe plătitor, ca un jurnal. Fără relație la

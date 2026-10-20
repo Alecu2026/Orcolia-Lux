@@ -4,125 +4,215 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import DataTable, { type Col, type Filter } from "./DataTable";
+import VoicePicker from "./VoicePicker";
+import { useToast } from "./toast";
 import { IconX } from "./icons";
-import { callSeconds, voiceById } from "@/lib/payer-notify";
+import { DEFAULT_VOICE } from "@/lib/payer-notify";
+import {
+  deleteNotifyCallAction,
+  dialNotifyCallAction,
+  listPbxOperatorsAction,
+  saveNotifyCallNoteAction,
+} from "@/app/actions/notify-calls";
+import type { PbxUser } from "@/lib/pbx-api";
 
 export type NotifyCallRow = {
   id: string;
-  callSid: string;
   campaignId: string;
   clientId: string;
   clientName: string;
   phone: string;
-  voice: string | null;
+  /** Mesajul de transmis, cu datele plătitorului. */
   text: string;
-  status: string;
+  /** Când a fost pus în coadă. */
   at: string;
-  durationSec: number | null;
-  reply: string | null;
-  replyDigits: string | null;
+  dialedAt: string | null;
+  operator: string | null;
+  callId: string | null;
+  note: string | null;
   userName: string;
+  // din apelul PBX cu același callId (webhook-ul /api/pbx)
+  pbxStatus: string | null;
+  pbxState: string | null;
+  durationSec: number | null;
+  hasRecording: boolean;
+  rating: number | null;
 };
 
 const TZ = "Europe/Chisinau";
+const OPERATOR_KEY = "notify-call-operator";
 const fmtDateTime = (iso: string) =>
-  new Date(iso).toLocaleString("ro-RO", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  new Date(iso).toLocaleString("ro-RO", { timeZone: TZ, day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const dayKey = (iso: string) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: TZ });
 const mmss = (s: number | null) => (s == null ? "—" : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`);
 
 type Result = { key: string; label: string; cls: string };
 function resultOf(c: NotifyCallRow): Result {
-  switch (c.status) {
-    case "completed": return { key: "answered", label: "A răspuns", cls: "bg-st-done/15 text-st-done" };
-    case "in-progress": return { key: "live", label: "Ascultă acum", cls: "bg-st-progress/15 text-st-progress" };
-    case "ringing": return { key: "live", label: "Sună…", cls: "bg-st-new/15 text-st-new" };
-    case "queued": case "initiated": return { key: "live", label: "În coadă", cls: "bg-st-new/15 text-st-new" };
-    case "no-answer": return { key: "no-answer", label: "Fără răspuns", cls: "bg-st-noshow/15 text-st-noshow" };
-    case "busy": return { key: "busy", label: "Ocupat", cls: "bg-st-noshow/15 text-st-noshow" };
-    case "canceled": return { key: "failed", label: "Anulat", cls: "bg-st-noshow/15 text-st-noshow" };
-    case "failed": return { key: "failed", label: "Eșuat", cls: "bg-st-cancelled/15 text-st-cancelled" };
+  if (!c.callId) return { key: "queued", label: "În coadă", cls: "bg-st-new/15 text-st-new" };
+  switch ((c.pbxStatus ?? "").toLowerCase()) {
+    case "success": return { key: "answered", label: "Convorbire", cls: "bg-st-done/15 text-st-done" };
+    case "missed": return { key: "noanswer", label: "Nu a răspuns", cls: "bg-st-cancelled/15 text-st-cancelled" };
+    case "busy": return { key: "noanswer", label: "Ocupat", cls: "bg-st-noshow/15 text-st-noshow" };
+    case "cancel": return { key: "noanswer", label: "Anulat", cls: "bg-st-noshow/15 text-st-noshow" };
+    case "notavailable": case "notallowed": case "notfound":
+      return { key: "noanswer", label: "Indisponibil", cls: "bg-st-cancelled/15 text-st-cancelled" };
   }
-  return { key: "unknown", label: c.status, cls: "bg-[var(--color-surface-2)] text-ink-soft" };
+  if (c.pbxState === "ACCEPTED") return { key: "dialing", label: "În convorbire", cls: "bg-st-progress/15 text-st-progress" };
+  return { key: "dialing", label: "Se sună…", cls: "bg-st-progress/15 text-st-progress" };
 }
-
-const replyOf = (c: NotifyCallRow) => [c.reply, c.replyDigits ? `tasta ${c.replyDigits}` : ""].filter(Boolean).join(" · ");
-/** Cât din mesaj a fost ascultat, în procente (durata convorbirii față de durata estimată a mesajului, plafonat la 100%). */
-const heardPct = (c: NotifyCallRow) => (c.durationSec == null ? null : Math.min(100, Math.round((c.durationSec / (callSeconds(c.text) + 1)) * 100)));
 
 const topBtn =
   "tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]";
+const selectCls = "h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 text-[11px] outline-none focus:border-brand";
 
-/** Apelurile de notificare către plătitori (robot): rezultat, cât a ascultat destinatarul, ce a răspuns. Același tabel dens ca la PBX. */
-export default function NotifyCallsTable({ rows }: { rows: NotifyCallRow[] }) {
+function readOperator(fallback: string): string {
+  try {
+    return localStorage.getItem(OPERATOR_KEY) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Coada de apeluri către plătitori (canalul „Apel"). „Sună" → PBX-ul sună întâi operatorul ales, apoi îl leagă cu plătitorul.
+ * Starea, durata și înregistrarea vin din apelul PBX (același callId). Aici operatorul vede și mesajul de transmis.
+ */
+export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: { rows: NotifyCallRow[]; defaultOperator: string }) {
   const router = useRouter();
-  const [detail, setDetail] = useState<NotifyCallRow | null>(null);
+  const toast = useToast();
+  const [local, setLocal] = useState<Record<string, Partial<NotifyCallRow>>>({});
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [operator, setOperator] = useState(() => readOperator(defaultOperator));
+  const [users, setUsers] = useState<PbxUser[] | null>(null);
+  const [usersError, setUsersError] = useState<string | null>(null);
 
-  // Rezultatele vin din webhook — reîmprospătăm discret cât fila e vizibilă.
+  const rows = useMemo(
+    () => serverRows.filter((r) => !removed.has(r.id)).map((r) => (local[r.id] ? { ...r, ...local[r.id] } : r)),
+    [serverRows, local, removed],
+  );
+
+  // Operatorii din PBX (pentru alegere); dacă lista nu se poate încărca, operatorul se poate scrie de mână.
+  useEffect(() => {
+    let alive = true;
+    listPbxOperatorsAction()
+      .then((r) => {
+        if (!alive) return;
+        if (r.ok) setUsers(r.users);
+        else setUsersError(r.error);
+      })
+      .catch(() => alive && setUsersError("Nu am putut încărca operatorii."));
+    return () => { alive = false; };
+  }, []);
+
+  // Starea apelurilor vine din webhook-ul PBX — reîmprospătăm discret cât fila e vizibilă.
   useEffect(() => {
     const t = setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, 15_000);
     return () => clearInterval(t);
   }, [router]);
 
+  function pickOperator(v: string) {
+    setOperator(v);
+    try { localStorage.setItem(OPERATOR_KEY, v); } catch {}
+  }
+
+  async function dial(c: NotifyCallRow) {
+    if (!operator.trim()) { toast.error("Alege mai întâi operatorul care primește apelul."); return; }
+    setBusy(c.id);
+    const res = await dialNotifyCallAction(c.id, operator.trim()).catch(() => null);
+    setBusy(null);
+    if (res?.ok) {
+      setLocal((m) => ({ ...m, [c.id]: { ...m[c.id], callId: res.callId, dialedAt: res.dialedAt, operator: res.operator, pbxStatus: null, pbxState: null } }));
+      toast.success(`Se sună… răspunde pe telefonul operatorului „${res.operator}”, apoi PBX-ul te leagă cu ${c.clientName}.`);
+      router.refresh();
+    } else {
+      toast.error(res && !res.ok ? res.error : "Nu am putut porni apelul.");
+    }
+  }
+
+  async function remove(c: NotifyCallRow) {
+    setRemoved((s) => new Set(s).add(c.id));
+    setDetailId(null);
+    const res = await deleteNotifyCallAction(c.id).catch(() => null);
+    if (!res?.ok) {
+      setRemoved((s) => { const n = new Set(s); n.delete(c.id); return n; });
+      toast.error(res && !res.ok ? res.error : "Nu am putut șterge rândul.");
+    }
+  }
+
+  async function saveNote(c: NotifyCallRow, note: string) {
+    const before = c.note;
+    setLocal((m) => ({ ...m, [c.id]: { ...m[c.id], note: note.trim() || null } }));
+    const res = await saveNotifyCallNoteAction(c.id, note).catch(() => null);
+    if (res?.ok) toast.success("Notă salvată.");
+    else {
+      setLocal((m) => ({ ...m, [c.id]: { ...m[c.id], note: before } }));
+      toast.error(res && !res.ok ? res.error : "Nu am putut salva nota.");
+    }
+  }
+
   const dash = <span className="text-ink-soft/60">—</span>;
   const columns: Col<NotifyCallRow>[] = [
-    { key: "at", label: "Data și ora", minW: 150, sticky: true, sort: (c) => c.at, render: (c) => <span className="whitespace-nowrap">{fmtDateTime(c.at)}</span> },
+    { key: "at", label: "În coadă din", minW: 130, sticky: true, sort: (c) => c.at, render: (c) => <span className="whitespace-nowrap">{fmtDateTime(c.at)}</span> },
     {
       key: "client", label: "Plătitor", minW: 170, maxW: 240, sort: (c) => c.clientName,
       render: (c) => (
         <Link href={`/platitori/${c.clientId}`} onClick={(e) => e.stopPropagation()} className="cursor-pointer text-brand hover:underline" title={c.clientName}>{c.clientName}</Link>
       ),
     },
-    { key: "phone", label: "Telefon", minW: 120, sort: (c) => c.phone, render: (c) => <span className="font-mono">{c.phone}</span> },
+    { key: "phone", label: "Telefon", minW: 110, sort: (c) => c.phone, render: (c) => <span className="font-mono">{c.phone}</span> },
     {
-      key: "result", label: "Rezultat", minW: 100, sort: (c) => resultOf(c).label,
+      key: "result", label: "Stare", minW: 100, sort: (c) => resultOf(c).label,
       render: (c) => { const r = resultOf(c); return <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium leading-[14px] ${r.cls}`}>{r.label}</span>; },
     },
+    { key: "dur", label: "Durată", minW: 60, right: true, sort: (c) => c.durationSec, render: (c) => (c.durationSec != null ? mmss(c.durationSec) : dash) },
+    { key: "op", label: "Operator", minW: 90, maxW: 130, sort: (c) => c.operator, render: (c) => c.operator ?? dash },
+    { key: "dialed", label: "Sunat la", minW: 130, defaultHidden: true, sort: (c) => c.dialedAt, render: (c) => (c.dialedAt ? fmtDateTime(c.dialedAt) : dash) },
+    { key: "note", label: "Notă", minW: 160, maxW: 260, sort: (c) => c.note, render: (c) => (c.note ? <span title={c.note}>{c.note}</span> : dash) },
+    { key: "text", label: "Mesaj de transmis", minW: 240, maxW: 380, sort: (c) => c.text, render: (c) => <span title={c.text}>{c.text}</span> },
+    { key: "by", label: "Pus în coadă de", minW: 100, maxW: 140, defaultHidden: true, sort: (c) => c.userName, render: (c) => c.userName },
+    { key: "camp", label: "Campanie", minW: 90, defaultHidden: true, sort: (c) => c.campaignId, render: (c) => <span className="font-mono text-[10px]">{c.campaignId.slice(0, 8)}</span> },
     {
-      key: "heard", label: "Ascultat", minW: 110, right: true, sort: (c) => c.durationSec,
-      render: (c) => {
-        if (c.durationSec == null) return dash;
-        const p = heardPct(c);
-        return <span title={`Mesajul durează ≈ ${callSeconds(c.text)} s`}>{mmss(c.durationSec)}{p != null && <span className="text-ink-soft"> · {p}%</span>}</span>;
-      },
+      key: "act", label: "", minW: 96,
+      render: (c) => (
+        <button
+          type="button"
+          disabled={busy === c.id}
+          onClick={(e) => { e.stopPropagation(); void dial(c); }}
+          className="tap h-6 cursor-pointer rounded-md bg-brand px-2 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-50"
+        >
+          {busy === c.id ? "…" : c.callId ? "📞 Din nou" : "📞 Sună"}
+        </button>
+      ),
     },
-    { key: "reply", label: "A răspuns", minW: 160, maxW: 280, sort: (c) => replyOf(c), render: (c) => (replyOf(c) ? <span title={replyOf(c)}>{replyOf(c)}</span> : dash) },
-    { key: "voice", label: "Voce", minW: 150, maxW: 200, sort: (c) => c.voice, render: (c) => (c.voice ? voiceById(c.voice).label : dash) },
-    { key: "text", label: "Mesaj", minW: 220, maxW: 360, sort: (c) => c.text, render: (c) => <span title={c.text}>{c.text}</span> },
-    { key: "by", label: "Trimis de", minW: 100, maxW: 140, sort: (c) => c.userName, render: (c) => c.userName },
-    { key: "camp", label: "Campanie", minW: 120, defaultHidden: true, sort: (c) => c.campaignId, render: (c) => <span className="font-mono text-[10px]">{c.campaignId.slice(0, 8)}</span> },
   ];
 
   const filters = useMemo<Filter<NotifyCallRow>[]>(
     () => [
       {
-        kind: "text", key: "q", label: "Caută", grow: true, placeholder: "Caută plătitor, telefon, răspuns, mesaj…",
-        test: (c, v) => [c.clientName, c.phone, c.reply, c.text, c.userName].some((x) => (x ?? "").toLowerCase().includes(v.replace(/^\+/, ""))),
+        kind: "text", key: "q", label: "Caută", grow: true, placeholder: "Caută plătitor, telefon, notă, mesaj…",
+        test: (c, v) => [c.clientName, c.phone, c.note, c.text, c.operator].some((x) => (x ?? "").toLowerCase().includes(v.replace(/^\+/, ""))),
       },
       {
-        kind: "select", key: "result", label: "Rezultat: toate",
+        kind: "select", key: "result", label: "Stare: toate",
         options: [
-          { value: "answered", label: "A răspuns" },
-          { value: "no-answer", label: "Fără răspuns" },
-          { value: "busy", label: "Ocupat" },
-          { value: "failed", label: "Eșuat / anulat" },
-          { value: "live", label: "În curs" },
+          { value: "queued", label: "În coadă (nesunate)" },
+          { value: "dialing", label: "Se sună / în convorbire" },
+          { value: "answered", label: "Convorbire încheiată" },
+          { value: "noanswer", label: "Nu a răspuns / ocupat" },
         ],
         test: (c, v) => resultOf(c).key === v,
       },
       {
-        kind: "select", key: "heard", label: "Ascultat: toate",
-        options: [{ value: "full", label: "Până la capăt (≥ 90%)" }, { value: "part", label: "Parțial (< 90%)" }, { value: "none", label: "Deloc" }],
-        test: (c, v) => {
-          const p = heardPct(c);
-          if (v === "none") return p == null || c.durationSec === 0;
-          if (p == null) return false;
-          return v === "full" ? p >= 90 : p < 90 && (c.durationSec ?? 0) > 0;
-        },
+        kind: "select", key: "note", label: "Notă: toate",
+        options: [{ value: "yes", label: "Cu notă" }, { value: "no", label: "Fără notă" }],
+        test: (c, v) => (v === "yes" ? !!c.note : !c.note),
       },
       {
-        kind: "select", key: "replied", label: "A spus ceva: toți",
-        options: [{ value: "yes", label: "A răspuns / a tastat" }, { value: "no", label: "Fără răspuns" }],
-        test: (c, v) => (v === "yes" ? !!replyOf(c) : !replyOf(c)),
+        kind: "select", key: "rec", label: "Înregistrare: toate",
+        options: [{ value: "yes", label: "Cu înregistrare" }, { value: "no", label: "Fără" }],
+        test: (c, v) => (v === "yes" ? c.hasRecording : !c.hasRecording),
       },
       {
         kind: "select", key: "period", label: "Perioadă: toate",
@@ -140,6 +230,8 @@ export default function NotifyCallsTable({ rows }: { rows: NotifyCallRow[] }) {
     [],
   );
 
+  const detail = detailId ? rows.find((r) => r.id === detailId) ?? null : null;
+
   return (
     <>
       <DataTable
@@ -149,18 +241,62 @@ export default function NotifyCallsTable({ rows }: { rows: NotifyCallRow[] }) {
         filters={filters}
         defaultSort={{ key: "at", dir: "desc" }}
         noun="apeluri de notificare"
-        emptyText="Niciun apel de notificare încă. Trimite un apel din Notificări plătitori (canalul „Apel”)."
-        onRowClick={(c) => setDetail(c)}
-        toolbar={<button type="button" onClick={() => router.refresh()} className={topBtn}>↻ Reîncarcă</button>}
+        emptyText="Coada e goală. Din Notificări plătitori alege canalul „Apel” și trimite — plătitorii ajung aici, gata de sunat."
+        onRowClick={(c) => setDetailId(c.id)}
+        toolbar={
+          <>
+            <label className="flex items-center gap-1 text-[11px] text-ink-soft">
+              Operator:
+              {users && users.length > 0 ? (
+                <select value={operator} onChange={(e) => pickOperator(e.target.value)} className={selectCls} aria-label="Operatorul care primește apelul">
+                  <option value="">— alege —</option>
+                  {users.map((u) => (
+                    <option key={u.login} value={u.login}>{u.name}{u.ext ? ` (${u.ext})` : ""}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={operator}
+                  onChange={(e) => pickOperator(e.target.value)}
+                  placeholder="login / nr. scurt"
+                  title={usersError ?? "Operatorul din PBX care primește apelul"}
+                  className={`${selectCls} w-28`}
+                />
+              )}
+            </label>
+            <button type="button" onClick={() => router.refresh()} className={topBtn}>↻ Reîncarcă</button>
+          </>
+        }
       />
-      {detail && <Detail call={rows.find((r) => r.id === detail.id) ?? detail} onClose={() => setDetail(null)} />}
+      {usersError && <p className="mt-1.5 text-[11px] text-st-progress">Lista de operatori nu s-a încărcat ({usersError}) — scrie loginul sau numărul scurt al operatorului în câmpul „Operator”.</p>}
+      {detail && (
+        <Detail
+          call={detail}
+          busy={busy === detail.id}
+          onClose={() => setDetailId(null)}
+          onDial={() => void dial(detail)}
+          onRemove={() => void remove(detail)}
+          onSaveNote={(n) => void saveNote(detail, n)}
+        />
+      )}
     </>
   );
 }
 
-function Detail({ call: c, onClose }: { call: NotifyCallRow; onClose: () => void }) {
+function Detail({
+  call: c, busy, onClose, onDial, onRemove, onSaveNote,
+}: {
+  call: NotifyCallRow;
+  busy: boolean;
+  onClose: () => void;
+  onDial: () => void;
+  onRemove: () => void;
+  onSaveNote: (note: string) => void;
+}) {
   const r = resultOf(c);
-  const p = heardPct(c);
+  const [note, setNote] = useState(c.note ?? "");
+  const [voice, setVoice] = useState<string>(DEFAULT_VOICE);
+  const [confirmDel, setConfirmDel] = useState(false);
   const item = (label: string, value: React.ReactNode) => (
     <div className="grid grid-cols-[7.5rem_1fr] gap-2 px-2.5 py-1.5 text-[13px]">
       <span className="text-ink-soft">{label}</span>
@@ -173,20 +309,62 @@ function Detail({ call: c, onClose }: { call: NotifyCallRow; onClose: () => void
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-bold">{c.clientName}</h2>
-            <p className="text-xs text-ink-soft">{fmtDateTime(c.at)} · {c.phone}</p>
+            <p className="text-xs text-ink-soft">{c.phone} · în coadă din {fmtDateTime(c.at)}</p>
           </div>
           <button onClick={onClose} className="tap grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide"><IconX className="size-4" /></button>
         </div>
-        <div className="divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)]">
-          {item("Rezultat", <span className={`inline-block rounded-full px-1.5 text-[11px] font-medium ${r.cls}`}>{r.label}</span>)}
-          {item("Ascultat", c.durationSec == null ? "—" : `${mmss(c.durationSec)}${p != null ? ` (${p}% din mesaj, ≈ ${callSeconds(c.text)} s)` : ""}`)}
-          {item("A răspuns", replyOf(c) || <span className="text-ink-soft">nimic</span>)}
-          {item("Voce", c.voice ? voiceById(c.voice).label : "—")}
-          {item("Trimis de", c.userName)}
-          {item("Mesaj", <span className="whitespace-pre-wrap">{c.text}</span>)}
+
+        <div className="mb-3 rounded-lg border border-brand/30 bg-brand/5 p-2.5">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Mesaj de transmis</p>
+          <p className="mb-2 whitespace-pre-wrap text-[13px]">{c.text}</p>
+          <VoicePicker voice={voice} text={c.text} onChange={setVoice} compact />
         </div>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <Link href={`/platitori/${c.clientId}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">Fișa plătitorului →</Link>
+
+        <div className="divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)]">
+          {item("Stare", <span className={`inline-block rounded-full px-1.5 text-[11px] font-medium ${r.cls}`}>{r.label}</span>)}
+          {item("Durată convorbire", c.durationSec != null ? mmss(c.durationSec) : "—")}
+          {item("Operator", c.operator ?? "—")}
+          {item("Sunat la", c.dialedAt ? fmtDateTime(c.dialedAt) : "—")}
+          {c.rating != null && item("Notă client", `${c.rating}/5`)}
+          {item("Pus în coadă de", c.userName)}
+        </div>
+
+        {c.hasRecording && c.callId && (
+          <div className="mt-3">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Înregistrare</p>
+            <audio controls preload="none" src={`/api/pbx/recording?callId=${encodeURIComponent(c.callId)}`} className="h-10 w-full" />
+          </div>
+        )}
+
+        <div className="mt-3">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Notă (ce a spus plătitorul)</p>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={3}
+            maxLength={1000}
+            placeholder="ex. Promite că plătește vineri / nu mai locuiește la adresă…"
+            className="w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-2 text-sm outline-none focus:border-brand"
+          />
+          <button type="button" onClick={() => onSaveNote(note)} disabled={note.trim() === (c.note ?? "")} className="tap mt-1.5 h-8 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">
+            Salvează nota
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-[var(--color-line)] pt-3">
+          <button type="button" onClick={onDial} disabled={busy} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-50">
+            {busy ? "Se sună…" : c.callId ? "📞 Sună din nou" : "📞 Sună"}
+          </button>
+          <Link href={`/platitori/${c.clientId}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-brand-soft">Fișa plătitorului →</Link>
+          <span className="ml-auto" />
+          {confirmDel ? (
+            <>
+              <button type="button" onClick={onRemove} className="tap h-8 cursor-pointer rounded-lg bg-st-cancelled px-3 text-xs font-semibold text-white">Șterge din coadă</button>
+              <button type="button" onClick={() => setConfirmDel(false)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs">Nu</button>
+            </>
+          ) : (
+            <button type="button" onClick={() => setConfirmDel(true)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs text-st-cancelled hover:bg-[var(--color-surface-2)]">🗑 Șterge</button>
+          )}
         </div>
       </div>
     </div>
