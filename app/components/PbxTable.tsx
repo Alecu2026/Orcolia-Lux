@@ -169,7 +169,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
           {copied ? "Copiat!" : "Copiază"}
         </button>
         <span className={tokenConfigured ? "text-st-done" : "font-semibold text-st-cancelled"}>
-          {tokenConfigured ? "● token configurat" : "● PBX_CRM_TOKEN nesetat — apelurile sunt respinse"}
+          {tokenConfigured ? "● token configurat" : "● CRM_TOKEN nesetat — apelurile sunt respinse"}
         </span>
       </div>
 

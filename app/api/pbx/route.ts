@@ -30,12 +30,12 @@ async function readPayloads(req: Request): Promise<PbxPayload[]> {
 /**
  * Webhook PBX Moldcell: primește mesajele despre apeluri (mai multe pe apel, același `callid`) și le salvează.
  * Autentificare: câmpul `crm_token` din mesaj (sau antetul `x-crm-token` / `?token=`) trebuie să fie egal cu
- * variabila de mediu PBX_CRM_TOKEN. Fără token configurat, ruta refuză tot (altfel oricine ar putea scrie apeluri false).
+ * variabila de mediu CRM_TOKEN. Fără token configurat, ruta refuză tot (altfel oricine ar putea scrie apeluri false).
  */
 export async function POST(req: Request) {
   const expected = env.pbx.crmToken;
   if (!expected) {
-    console.error("[pbx] PBX_CRM_TOKEN nu este setat — webhook-ul refuză mesajele.");
+    console.error("[pbx] CRM_TOKEN nu este setat — webhook-ul refuză mesajele.");
     return Response.json({ ok: false, error: "PBX neconfigurat." }, { status: 503 });
   }
 
