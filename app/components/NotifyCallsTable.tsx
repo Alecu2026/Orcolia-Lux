@@ -84,7 +84,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [operator, setOperator] = useState(() => readOperator(defaultOperator));
+  const [operator, setOperator] = useState(() => readOperator(defaultOperator || "robot"));
   const [users, setUsers] = useState<PbxUser[] | null>(null);
   const [usersError, setUsersError] = useState<string | null>(null);
   // „Sună toți": apelurile pornesc pe rând (PBX-ul și limita aplicației nu permit sute deodată).
@@ -93,7 +93,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
 
   // Operatorul folosit la „Sună": cel ales; dacă nu e ales nimic, „robot" din lista PBX (ce vezi în câmp = ce se folosește).
   const robotLogin = users?.find((u) => /robot/i.test(u.login) || /robot/i.test(u.name))?.login ?? "";
-  const activeOperator = operator.trim() || robotLogin;
+  const activeOperator = operator.trim() || robotLogin || "robot";
 
   const rows = useMemo(
     () => serverRows.filter((r) => !removed.has(r.id)).map((r) => (local[r.id] ? { ...r, ...local[r.id] } : r)),
@@ -287,23 +287,19 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
           <>
             <label className="flex items-center gap-1 text-[11px] text-ink-soft">
               Apelant:
-              {users && users.length > 0 ? (
-                <select value={activeOperator} onChange={(e) => pickOperator(e.target.value)} className={selectCls} aria-label="Extensia PBX care face apelul (robotul)">
-                  <option value="">— alege —</option>
-                  {activeOperator && !users.some((u) => u.login === activeOperator) && <option value={activeOperator}>{activeOperator}</option>}
-                  {users.map((u) => (
-                    <option key={u.login} value={u.login}>{u.name}{u.ext ? ` (${u.ext})` : ""}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={activeOperator}
-                  onChange={(e) => pickOperator(e.target.value)}
-                  placeholder="login / nr. scurt"
-                  title={usersError ?? "Extensia din PBX care face apelul (robotul)"}
-                  className={`${selectCls} w-28`}
-                />
-              )}
+              <input
+                list="notify-callers"
+                value={operator}
+                onChange={(e) => pickOperator(e.target.value)}
+                placeholder="robot"
+                title={usersError ?? "Extensia din PBX care face apelul (robotul) — scrie loginul sau alege din listă"}
+                className={`${selectCls} w-28`}
+              />
+              <datalist id="notify-callers">
+                {(users ?? []).map((u) => (
+                  <option key={u.login} value={u.login}>{u.name}{u.ext ? ` (${u.ext})` : ""}</option>
+                ))}
+              </datalist>
             </label>
             {bulk.phase === "idle" || bulk.phase === "done" ? (
               <button type="button" disabled={queued.length === 0 || !activeOperator} onClick={() => setBulk((b) => ({ ...b, phase: "confirm" }))} className={`${topBtn} disabled:cursor-default disabled:opacity-40`} title={activeOperator ? "Pornește apelurile pe rând, prin operatorul ales" : "Alege întâi apelantul (robotul)"}>
@@ -335,6 +331,8 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
           call={detail}
           busy={busy === detail.id}
           onClose={() => setDetailId(null)}
+          caller={operator}
+          onCaller={pickOperator}
           onDial={() => void dial(detail)}
           onRemove={() => void remove(detail)}
           onSaveNote={(n) => void saveNote(detail, n)}
@@ -345,10 +343,12 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
 }
 
 function Detail({
-  call: c, busy, onClose, onDial, onRemove, onSaveNote,
+  call: c, busy, caller, onCaller, onClose, onDial, onRemove, onSaveNote,
 }: {
   call: NotifyCallRow;
   busy: boolean;
+  caller: string;
+  onCaller: (v: string) => void;
   onClose: () => void;
   onDial: () => void;
   onRemove: () => void;
@@ -413,6 +413,16 @@ function Detail({
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-[var(--color-line)] pt-3">
+          <label className="flex items-center gap-1 text-xs text-ink-soft">
+            Apelant:
+            <input
+              list="notify-callers"
+              value={caller}
+              onChange={(e) => onCaller(e.target.value)}
+              placeholder="robot"
+              className="h-8 w-28 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-xs outline-none focus:border-brand"
+            />
+          </label>
           <button type="button" onClick={onDial} disabled={busy} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-50">
             {busy ? "Se sună…" : c.callId ? "📞 Sună din nou" : "📞 Sună"}
           </button>
