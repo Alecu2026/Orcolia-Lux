@@ -95,3 +95,24 @@ export async function listPbxOperatorsAction(): Promise<OperatorsResult> {
     return { ok: false, error: errText(e) };
   }
 }
+
+/**
+ * Marchează rândurile ca „exportate" în PBX (autoinformare): ies din coadă, ca să nu fie exportate sau sunate a doua oară.
+ * Se schimbă doar rândurile încă „queued".
+ */
+export async function markNotifyCallsExportedAction(ids: string[]): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const user = await requireUser();
+  if (!can(user, "clients.edit")) return { ok: false, error: "Fără permisiune." };
+  if (DEMO) return { ok: false, error: "Mod demo: conectează o bază de date." };
+  const clean = [...new Set((Array.isArray(ids) ? ids : []).filter((x) => typeof x === "string" && ID_RE.test(x)))].slice(0, 5000);
+  if (clean.length === 0) return { ok: true, count: 0 };
+  let count = 0;
+  for (let i = 0; i < clean.length; i += 200) {
+    const res = await prisma.notifyCall.updateMany({
+      where: { id: { in: clean.slice(i, i + 200) }, status: "queued" },
+      data: { status: "exported", operator: "autoinformare", dialedAt: new Date() },
+    });
+    count += res.count;
+  }
+  return { ok: true, count };
+}

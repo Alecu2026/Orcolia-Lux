@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import DataTable, { type Col, type Filter } from "./DataTable";
 import VoicePicker from "./VoicePicker";
+import AutoinformDialog from "./AutoinformDialog";
 import { useToast } from "./toast";
 import { IconX } from "./icons";
 import { DEFAULT_VOICE } from "@/lib/payer-notify";
@@ -29,6 +30,8 @@ export type NotifyCallRow = {
   dialedAt: string | null;
   operator: string | null;
   callId: string | null;
+  /** queued (în coadă) | dialing (apel pornit) | exported (în ZIP-ul pentru autoinformare) */
+  status: string;
   note: string | null;
   userName: string;
   // din apelul PBX cu același callId (webhook-ul /api/pbx)
@@ -48,6 +51,7 @@ const mmss = (s: number | null) => (s == null ? "—" : `${Math.floor(s / 60)}:$
 
 type Result = { key: string; label: string; cls: string };
 function resultOf(c: NotifyCallRow): Result {
+  if (c.status === "exported") return { key: "exported", label: "Exportat în PBX", cls: "bg-st-confirmed/15 text-st-confirmed" };
   if (!c.callId) return { key: "queued", label: "În coadă", cls: "bg-st-new/15 text-st-new" };
   switch ((c.pbxStatus ?? "").toLowerCase()) {
     case "success": return { key: "answered", label: "Convorbire", cls: "bg-st-done/15 text-st-done" };
@@ -145,7 +149,8 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
     }
   }
 
-  const queued = rows.filter((r) => !r.callId);
+  const queued = rows.filter((r) => !r.callId && r.status === "queued");
+  const [exportOpen, setExportOpen] = useState(false);
 
   async function dialAll() {
     const todo = queued.slice();
@@ -237,7 +242,8 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
       {
         kind: "select", key: "result", label: "Stare: toate",
         options: [
-          { value: "queued", label: "În coadă (nesunate)" },
+          { value: "queued", label: "În coadă (neexportate)" },
+          { value: "exported", label: "Exportat în PBX" },
           { value: "dialing", label: "Se sună / în convorbire" },
           { value: "answered", label: "Convorbire încheiată" },
           { value: "noanswer", label: "Nu a răspuns / ocupat" },
@@ -301,6 +307,9 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
                 ))}
               </datalist>
             </label>
+            <button type="button" disabled={queued.length === 0} onClick={() => setExportOpen(true)} className={`${topBtn} border-brand text-brand disabled:cursor-default disabled:opacity-40`} title="Pregătește ZIP-ul (numere + audio per plătitor) pentru PBX → Autoinformare">
+              ⬇ Export autoinformare ({queued.length})
+            </button>
             {bulk.phase === "idle" || bulk.phase === "done" ? (
               <button type="button" disabled={queued.length === 0 || !activeOperator} onClick={() => setBulk((b) => ({ ...b, phase: "confirm" }))} className={`${topBtn} disabled:cursor-default disabled:opacity-40`} title={activeOperator ? "Pornește apelurile pe rând, prin operatorul ales" : "Alege întâi apelantul (robotul)"}>
                 📞 Sună toți din coadă ({queued.length})
@@ -326,6 +335,13 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
         </p>
       )}
       {usersError && <p className="mt-1.5 text-[11px] text-st-progress">Lista de operatori nu s-a încărcat ({usersError}) — scrie loginul sau numărul scurt al robotului în câmpul „Apelant”.</p>}
+      {exportOpen && (
+        <AutoinformDialog
+          rows={queued.map((r) => ({ id: r.id, phone: r.phone, clientName: r.clientName, text: r.text }))}
+          onClose={() => setExportOpen(false)}
+          onExported={(ids) => setLocal((m) => { const n = { ...m }; for (const id of ids) n[id] = { ...n[id], status: "exported", operator: "autoinformare" }; return n; })}
+        />
+      )}
       {detail && (
         <Detail
           call={detail}

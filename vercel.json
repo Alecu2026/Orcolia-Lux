@@ -14,9 +14,6 @@
       "memory": 1769,
       "maxDuration": 300
     },
-    "app/api/cron/notify-calls/route.ts": {
-      "maxDuration": 60
-    },
     "app/api/cron/apa-canal-sync/route.ts": {
       "memory": 1769,
       "maxDuration": 300
@@ -36,10 +33,6 @@
     { "path": "/api/cron/imap",     "schedule": "0 16 * * *" },
     { "path": "/api/cron/imap",     "schedule": "0 18 * * *" },
     { "path": "/api/cron/imap",     "schedule": "0 20 * * *" },
-    { "path": "/api/cron/apa-canal-sync", "schedule": "0 1 * * *" },
-    { "path": "/api/cron/notify-calls", "schedule": "0 6 * * *" },
-    { "path": "/api/cron/notify-calls", "schedule": "0 9 * * *" },
-    { "path": "/api/cron/notify-calls", "schedule": "0 12 * * *" },
-    { "path": "/api/cron/notify-calls", "schedule": "0 15 * * *" }
+    { "path": "/api/cron/apa-canal-sync", "schedule": "0 1 * * *" }
   ]
 }

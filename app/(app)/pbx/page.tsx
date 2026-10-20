@@ -55,6 +55,7 @@ export default async function PbxPage({ searchParams }: { searchParams: Promise<
         dialedAt: q.dialedAt?.toISOString() ?? null,
         operator: q.operator,
         callId: q.callId,
+        status: q.status,
         note: q.note,
         userName: q.userName,
         pbxStatus: c?.status ?? null,
