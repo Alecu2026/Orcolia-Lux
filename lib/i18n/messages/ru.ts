@@ -14,6 +14,7 @@ const ru: Messages = {
     clients: "Клиенты",
     payers: "Плательщики",
     payerNotify: "Уведомления",
+    pbx: "АТС",
     users: "Пользователи",
     auditLogs: "Журнал аудита",
     telegram: "Telegram",

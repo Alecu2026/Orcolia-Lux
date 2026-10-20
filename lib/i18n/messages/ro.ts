@@ -12,6 +12,7 @@
     clients: "Clienți",
     payers: "Plătitori",
     payerNotify: "Notificări",
+    pbx: "PBX",
     users: "Utilizatori",
     auditLogs: "Audit Logs",
     telegram: "Telegram",

@@ -993,3 +993,48 @@ model PayerNote {
 
   @@index([clientId, createdAt])
 }
+
+// ── PBX (Moldcell) — apeluri primite prin webhook (/api/pbx) ──
+// Pentru un apel vin MAI MULTE mesaje (același callid): fiecare se păstrează brut în PbxEvent, iar PbxCall e
+// rezumatul apelului (un rând per callid), actualizat la fiecare mesaj nou.
+model PbxCall {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  callId      String    @unique
+  direction   String? // in | out
+  phone       String? // numărul celuilalt interlocutor, așa cum a venit (ex. 37378608080)
+  phoneE164   String? // +37378608080
+  diversion   String? // numărul companiei format de apelant (telnum/diversion)
+  pbxUser     String? // câmpul "user" din mesaj (operatorul care a răspuns)
+  ext         String? // extensia internă (ex. 703)
+  status      String? // rezultatul final din mesajul "history": success | missed | ...
+  state       String? // ultima stare din mesajele "event": INCOMING | ACCEPTED | COMPLETED
+  durationSec Int?
+  waitSec     Int? // cât a așteptat apelantul până la răspuns
+  recordingUrl String? // link către înregistrare (din "history")
+  rating      Int? // nota dată de client (mesajul "rating")
+  groupName   String? // departamentul prin care a trecut apelul (groupRealName)
+  lineName    String? // numele numărului companiei (telnum_name)
+  transferredTo String? // second_callid, la evenimentul TRANSFERRED
+  startAt     DateTime?
+  lastCmd     String?
+  eventCount  Int       @default(0)
+  // potrivire cu un client după telefon (la primirea apelului)
+  clientId    String?   @db.ObjectId
+  clientName  String?
+  firstSeenAt DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([startAt])
+  @@index([phoneE164])
+}
+
+model PbxEvent {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  callId     String
+  cmd        String?
+  payload    Json
+  receivedAt DateTime @default(now())
+
+  @@index([callId, receivedAt])
+  @@index([receivedAt])
+}

@@ -30,6 +30,7 @@ La prima accesare a `/login`, dacă baza e goală, aplicația cere crearea **con
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` | bot Telegram |
 | `CRON_SECRET` | protejează jobul de remindere |
 | `SMTP_*`, `EMAIL_FROM` | trimitere email |
+| `PBX_CRM_TOKEN` | cheia (crm_token) a integrării PBX Moldcell — webhook `/api/pbx`, pagina PBX |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `SMS_FROM` sau `SMS_HTTP_URL`, `SMS_HTTP_TOKEN` | trimitere SMS (pagina Notificări plătitori) |
 | `OPENAI_API_KEY`, `AI_*_MODEL` | voice-to-task |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | push PWA |

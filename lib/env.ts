@@ -79,6 +79,11 @@ export const env = {
     },
   },
 
+  // PBX Moldcell: webhook-ul /api/pbx acceptă doar mesaje cu acest token (câmpul crm_token din integrarea CRM a PBX-ului).
+  pbx: {
+    crmToken: optional("PBX_CRM_TOKEN"),
+  },
+
   imap: {
     host: optional("IMAP_HOST"),
     port: int("IMAP_PORT", 993),
