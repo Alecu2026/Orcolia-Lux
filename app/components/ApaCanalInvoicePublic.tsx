@@ -796,6 +796,8 @@ export default function ApaCanalInvoicePublic({
                 ({ overridden, textStyle }) => (
                   <div
                     style={{
+                      // Mărimea trebuie să fie proprie: în editor elementul e randat prin portal, deci nu moștenește 2.9mm de la rândul lui din flux.
+                      fontSize: "2.9mm",
                       lineHeight: 1.3,
                       paddingTop: "2mm",
                       paddingBottom: "0.6mm",
@@ -826,7 +828,7 @@ export default function ApaCanalInvoicePublic({
               "totalsBox",
               { flexShrink: 0, width: "58mm" },
               ({ textStyle }) => (
-                <div style={{ background: COLOR_BOX_BLUE, borderRadius: "3mm", padding: "2mm 3mm", width: "100%", height: "100%", ...textStyle }}>
+                <div style={{ background: COLOR_BOX_BLUE, borderRadius: "3mm", padding: "2mm 3mm", width: "100%", height: "100%", fontSize: "2.9mm", ...textStyle }}>
                   <div className="flex justify-between whitespace-nowrap">
                     <span>Suma calculată</span>
                     <span className="tabular-nums">{num2(sumaCalculata)}</span>

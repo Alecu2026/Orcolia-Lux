@@ -170,6 +170,12 @@ function measureFlow(root: HTMLElement): Flow {
   return out;
 }
 
+/** Șablon salvat incomplet (nu toate elementele au poziție + mărime) = salvat cu o versiune veche a editorului. */
+function isLegacy(l: ApaCanalLayout): boolean {
+  const hasAny = ALL_ELEMENT_KEYS.some((k) => l[k] !== undefined);
+  return hasAny && ALL_ELEMENT_KEYS.some((k) => l[k]?.xMm === undefined || l[k]?.widthMm === undefined);
+}
+
 const sameFlow = (a: Flow | null, b: Flow) => !!a && JSON.stringify(a) === JSON.stringify(b);
 
 // ── Șabloane de text cu variabile (punct de plecare pentru „Text personalizat”) ───────────────────
@@ -269,8 +275,13 @@ export default function ApaCanalLayoutEditor({
   const [grid, setGrid] = useState(true);
   const [sampleKey, setSampleKey] = useState("standard");
   const [showReal, setShowReal] = useState(false);
-  const [flow, setFlow] = useState<Flow | null>(null);
+  const [flowMeasured, setFlow] = useState<Flow | null>(null);
   const sample = SAMPLES[sampleKey]?.data ?? BASE_SAMPLE;
+
+  // Șablon salvat cu o versiune veche (doar câteva elemente au poziție): elementele neatinse rămân la pozițiile din cod,
+  // exact cum le arată factura publică. După „Pornește de la factura standard” sau după salvare, pozițiile vin din factura reală măsurată.
+  const [legacyMode, setLegacyMode] = useState(() => isLegacy(initial));
+  const flow = legacyMode ? null : flowMeasured;
 
   const dirty = useMemo(() => JSON.stringify(layout) !== savedJson, [layout, savedJson]);
 
@@ -395,6 +406,7 @@ export default function ApaCanalLayoutEditor({
         if (res?.ok) {
           const stored = res.layout ?? next;
           dispatch({ type: "replace", layout: stored });
+          setLegacyMode(false);
           setSavedJson(JSON.stringify(stored));
           setSavedAt(res.savedAt ?? new Date().toISOString());
           toast.success(okMsg);
@@ -427,6 +439,7 @@ export default function ApaCanalLayoutEditor({
 
   function resetAll() {
     if (!confirm("Readuci TOATE elementele la poziția din factura standard? (nu se salvează până nu apeși „Salvează”)")) return;
+    setLegacyMode(false);
     edit((l) => (l.customImages?.length ? { customImages: l.customImages } : {}), "reset-all");
   }
 
@@ -537,7 +550,7 @@ export default function ApaCanalLayoutEditor({
     [layout],
   );
   // Șablon salvat înainte de această versiune: nu are toate elementele (restul ar porni din poziții diferite de cele de pe factură).
-  const legacy = useMemo(() => ALL_ELEMENT_KEYS.some((k) => initial[k]?.xMm === undefined || initial[k]?.widthMm === undefined) && Object.keys(initial).length > 0, [initial]);
+  const legacy = legacyMode;
   const [legacyDismissed, setLegacyDismissed] = useState(false);
 
   const sel = boxOf(layout, selected);
@@ -560,7 +573,7 @@ export default function ApaCanalLayoutEditor({
               <b>Șablonul salvat e vechi</b> (nu are toate elementele sau are poziții/fonturi modificate din versiuni anterioare), de aceea unele elemente par nepotrivite.
               Pornește de la factura standard, apoi ajustează ce vrei.
             </p>
-            <button type="button" className={btnCls} onClick={() => { edit((l) => (l.customImages?.length ? { customImages: l.customImages } : {}), "reset-all"); setLegacyDismissed(true); }}>Pornește de la factura standard</button>
+            <button type="button" className={btnCls} onClick={() => { setLegacyMode(false); edit((l) => (l.customImages?.length ? { customImages: l.customImages } : {}), "reset-all"); setLegacyDismissed(true); }}>Pornește de la factura standard</button>
             <button type="button" className={btnCls} onClick={() => setLegacyDismissed(true)}>Păstrează șablonul</button>
           </div>
         )}

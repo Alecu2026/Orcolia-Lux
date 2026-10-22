@@ -108,22 +108,24 @@ export const APA_CANAL_DEFAULT_FONT_MM: Partial<Record<ApaCanalElementKey, numbe
 
 /** Poziții/mărimi implicite (mm), folosite doar ca punct de plecare în editor înainte de prima ajustare. */
 export const APA_CANAL_LAYOUT_DEFAULTS: Record<ApaCanalElementKey, Required<Pick<ApaCanalElementOverride, "xMm" | "yMm" | "widthMm" | "heightMm">>> = {
-  title: { xMm: 2.2, yMm: 2.2, widthMm: 200, heightMm: 8 },
-  titleLine: { xMm: 2.2, yMm: 12, widthMm: 190, heightMm: 3 },
-  datesBlock: { xMm: 2.2, yMm: 19.3, widthMm: 75, heightMm: 12 },
-  contPersonalBlock: { xMm: 80, yMm: 14.9, widthMm: 122, heightMm: 26 },
-  logo: { xMm: 205, yMm: 3, widthMm: 88.9, heightMm: 40.1 },
-  chart: { xMm: 2.2, yMm: 40.1, widthMm: 96.5, heightMm: 51 },
-  meterTable: { xMm: 101.5, yMm: 40.1, widthMm: 90, heightMm: 28.2 },
-  companyInfoText: { xMm: 205, yMm: 49, widthMm: 89.1, heightMm: 20.8 },
-  billingPeriodText: { xMm: 2.2, yMm: 93.6, widthMm: 150, heightMm: 5 },
-  servicesTable: { xMm: 2.2, yMm: 98.7, widthMm: 158, heightMm: 17.1 },
-  recalculariText: { xMm: 2.2, yMm: 121, widthMm: 35, heightMm: 10 },
-  totalsConnectorLine: { xMm: 2.2, yMm: 132.9, widthMm: 145.5, heightMm: 3 },
-  totalsBox: { xMm: 147.8, yMm: 121, widthMm: 49.7, heightMm: 20 },
-  atentieBox: { xMm: 2.2, yMm: 148.5, widthMm: 195.3, heightMm: 29 },
-  anuntBox: { xMm: 205.7, yMm: 80.2, widthMm: 88.4, heightMm: 30.4 },
-  contacteBlock: { xMm: 205.7, yMm: 115.1, widthMm: 88.4, heightMm: 44.6 },
+  // Valori MĂSURATE pe factura reală (fără șablon, A4 landscape, 2 servicii) — nu estimări. Logo-ul și ce depinde de el depind de imaginea încărcată;
+  // editorul le măsoară din nou cu logo-ul real, iar la salvare le scrie explicit.
+  title: { xMm: 5, yMm: 5, widthMm: 292, heightMm: 6 },
+  titleLine: { xMm: 5, yMm: 11.5, widthMm: 227, heightMm: 3 },
+  datesBlock: { xMm: 5, yMm: 16.1, widthMm: 130.2, heightMm: 10.2 },
+  contPersonalBlock: { xMm: 140.2, yMm: 16.1, widthMm: 73, heightMm: 24.5 },
+  logo: { xMm: 218.2, yMm: 13.6, widthMm: 78.8, heightMm: 40 },
+  chart: { xMm: 5, yMm: 43.6, widthMm: 130.2, heightMm: 47.9 },
+  meterTable: { xMm: 140.2, yMm: 43.6, widthMm: 73, heightMm: 17.2 },
+  companyInfoText: { xMm: 218.2, yMm: 43.6, widthMm: 78.8, heightMm: 18.4 },
+  billingPeriodText: { xMm: 5, yMm: 94.5, widthMm: 209.5, heightMm: 4.5 },
+  servicesTable: { xMm: 5, yMm: 101.5, widthMm: 209.5, heightMm: 18 },
+  recalculariText: { xMm: 5, yMm: 124.9, widthMm: 15.2, heightMm: 10.7 },
+  totalsConnectorLine: { xMm: 5, yMm: 133.7, widthMm: 148.5, heightMm: 3 },
+  totalsBox: { xMm: 156.5, yMm: 124.9, widthMm: 58, heightMm: 20.3 },
+  atentieBox: { xMm: 5, yMm: 147.7, widthMm: 209.5, heightMm: 28.8 },
+  anuntBox: { xMm: 219.5, yMm: 94.5, widthMm: 77.5, heightMm: 27.1 },
+  contacteBlock: { xMm: 219.5, yMm: 124.6, widthMm: 77.5, heightMm: 34.2 },
 };
 
 export const MM_TO_PX = 96 / 25.4;
