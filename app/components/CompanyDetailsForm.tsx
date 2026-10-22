@@ -28,6 +28,9 @@ export default function CompanyDetailsForm({
   const [logo, setLogo] = useState<string | null>(company.logo);
   const [warn, setWarn] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  // Tarifele sunt controlate: valoarea scrisă rămâne în câmp după salvare (formularul se resetează după acțiune și arăta valorile vechi).
+  const [tarifApa, setTarifApa] = useState(company.apaCanalTarifApa ? String(company.apaCanalTarifApa) : "");
+  const [tarifCanal, setTarifCanal] = useState(company.apaCanalTarifCanal ? String(company.apaCanalTarifCanal) : "");
 
   const [apaCanalLogo, setApaCanalLogo] = useState<string | null>(company.apaCanalLogo);
   const [apaCanalWarn, setApaCanalWarn] = useState("");
@@ -227,23 +230,31 @@ export default function CompanyDetailsForm({
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className={label}>Tarif implicit apă, lei/m³</label>
-              <input name="apaCanalTarifApa" type="number" inputMode="decimal" step="any" defaultValue={company.apaCanalTarifApa || ""} className={input} />
+              <input name="apaCanalTarifApa" type="number" inputMode="decimal" step="any" min="0" value={tarifApa} onChange={(e) => setTarifApa(e.target.value)} className={input} />
             </div>
             <div>
               <label className={label}>Tarif implicit canalizare, lei/m³</label>
-              <input name="apaCanalTarifCanal" type="number" inputMode="decimal" step="any" defaultValue={company.apaCanalTarifCanal || ""} className={input} />
+              <input name="apaCanalTarifCanal" type="number" inputMode="decimal" step="any" min="0" value={tarifCanal} onChange={(e) => setTarifCanal(e.target.value)} className={input} />
             </div>
           </div>
           <p className="-mt-1 text-xs text-ink-soft">
             Aceste tarife se pre-completează automat la crearea unei facturi noi Apă-Canal — pot fi modificate oricând direct pe factură.
             Salvarea de mai jos afectează <b>doar facturile viitoare</b>. Pentru a recalcula și facturile deja emise dar neachitate, salvează întâi, apoi:
           </p>
+          {/* Buton chiar lângă tarife (același formular): nu trebuie să cauți „Salvează" la finalul paginii; rezultatul apare aici. */}
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="submit" disabled={pending} className="tap h-10 cursor-pointer rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
+              {pending ? m.common.saving : "Salvează tarifele"}
+            </button>
+            {state?.ok && <span className="text-sm text-st-done">{state.message ?? m.company.saved}</span>}
+            {state?.error && <span className="text-sm text-st-cancelled">{state.error}</span>}
+          </div>
           <ApplyTariffButton hasSavedTariff={(company.apaCanalTarifApa || 0) > 0 || (company.apaCanalTarifCanal || 0) > 0} />
         </div>
       </details>
 
       {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
-      {state?.ok && <p className="text-sm text-st-done">{m.company.saved}</p>}
+      {state?.ok && <p className="text-sm text-st-done">{state.message ?? m.company.saved}</p>}
 
       <button type="submit" disabled={pending} className="tap h-11 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
         {pending ? m.common.saving : m.company.saveBtn}

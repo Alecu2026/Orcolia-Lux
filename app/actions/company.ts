@@ -8,7 +8,7 @@ import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
 import type { ApaCanalLayout } from "@/lib/apa-canal-layout";
 
-export type CompanyState = { ok?: boolean; error?: string } | undefined;
+export type CompanyState = { ok?: boolean; error?: string; message?: string } | undefined;
 
 function s(formData: FormData, key: string): string | null {
   const v = String(formData.get(key) ?? "").trim();
@@ -38,6 +38,17 @@ export async function updateCompanySettings(
     return { error: "Logo Apă-Canal prea mare (max ~5MB). Alege o imagine mai mică." };
   }
 
+  // Tarifele: acceptă și virgulă ca separator zecimal („5,50"); o valoare negativă sau ne-numerică e respinsă (nu o salvăm ca 0 pe tăcute).
+  const tariff = (key: string): number | null => {
+    const raw = String(formData.get(key) ?? "").trim().replace(",", ".");
+    if (raw === "") return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const tarifApa = tariff("apaCanalTarifApa");
+  const tarifCanal = tariff("apaCanalTarifCanal");
+  if (tarifApa === null || tarifCanal === null) return { error: "Tarifele trebuie să fie numere pozitive (ex. 12,50)." };
+
   const reqText = (key: string, fallback: string) => String(formData.get(key) ?? "").trim() || fallback;
 
   const data = {
@@ -61,8 +72,8 @@ export async function updateCompanySettings(
     apaCanalContactsText: reqText("apaCanalContactsText", ""),
     apaCanalAtentieText: reqText("apaCanalAtentieText", ""),
     apaCanalAnuntText: reqText("apaCanalAnuntText", ""),
-    apaCanalTarifApa: Number(formData.get("apaCanalTarifApa")) || 0,
-    apaCanalTarifCanal: Number(formData.get("apaCanalTarifCanal")) || 0,
+    apaCanalTarifApa: tarifApa,
+    apaCanalTarifCanal: tarifCanal,
   };
 
   await prisma.companySettings.upsert({
@@ -78,7 +89,8 @@ export async function updateCompanySettings(
 
   revalidatePath("/settings");
   updateTag("company");
-  return { ok: true };
+  const fmt = (n: number) => n.toLocaleString("ro-RO", { maximumFractionDigits: 4 });
+  return { ok: true, message: `Salvat. Tarife implicite: apă ${fmt(tarifApa)} lei/m³, canalizare ${fmt(tarifCanal)} lei/m³.` };
 }
 
 export type LayoutState = { ok?: boolean; error?: string } | undefined;

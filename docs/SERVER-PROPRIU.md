@@ -133,3 +133,11 @@ Aplicația citește mult din MongoDB (lista de plătitori, apelurile PBX), deci 
 7. **Memorie pentru Node:** dacă `heapUsed` se apropie de `heapTotal` și apar pauze, pornește aplicația cu mai multă memorie, ex.
    `NODE_OPTIONS=--max-old-space-size=4096 npm run start`.
 8. **Indexul nou pe facturi** (`clientId + issueDate`) se creează la `npm run db:push`; fără el lista de plătitori tot merge, dar mai lent.
+
+## 11. „Salvez și nu se salvează" (acțiuni de formular blocate)
+
+Salvările din formulare (Setări, tabele etc.) sunt „Server Actions" Next.js, care verifică ca antetul `Origin` să corespundă cu `Host`
+(sau `X-Forwarded-Host`). Dacă proxy-ul (nginx) nu trimite `Host`, salvarea eșuează fără să se vadă nimic în pagină. Verifică în configurația nginx
+(secțiunea 5) că există `proxy_set_header Host $host;` și `proxy_set_header X-Forwarded-Host $host;`. Eroarea apare în logul aplicației ca
+„Invalid Server Actions request" / „x-forwarded-host does not match origin". Dacă adresa publică diferă de ce vede aplicația, adaugă domeniul în
+`next.config.mjs` → `experimental.serverActions.allowedOrigins`.
