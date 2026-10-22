@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
-import type { ApaCanalLayout } from "@/lib/apa-canal-layout";
+import { sanitizeApaCanalLayout, type ApaCanalLayout } from "@/lib/apa-canal-layout";
 
 export type CompanyState = { ok?: boolean; error?: string; message?: string } | undefined;
 
@@ -110,19 +110,42 @@ export async function updateCompanySettings(
   return { ok: true, message: `Salvat. Tarife implicite: apă ${fmt(tarifApa)} lei/m³, canalizare ${fmt(tarifCanal)} lei/m³.` };
 }
 
-export type LayoutState = { ok?: boolean; error?: string } | undefined;
+export type LayoutState = { ok?: boolean; error?: string; layout?: ApaCanalLayout; savedAt?: string } | undefined;
 
-/** Salvează suprascrierile de poziție/mărime din editorul vizual al facturii Apă-Canal. */
+/**
+ * Salvează șablonul (poziții/mărimi/texte) din editorul vizual al facturii Apă-Canal. Intrarea trece prin curățare
+ * (doar valori valide, în pagină), iar după scriere citim ÎNAPOI din baza de date: dacă ce s-a stocat nu e ce am trimis,
+ * spunem asta în loc să afișăm „Salvat” degeaba. Răspunsul conține șablonul stocat — editorul se aliniază la el.
+ */
 export async function updateApaCanalLayout(layout: ApaCanalLayout): Promise<LayoutState> {
   const user = await requireUser();
   if (!can(user, "admin")) return { error: "Doar administratorul poate edita șablonul facturii." };
   if (DEMO) return { error: "Mod demo: conectează o bază de date." };
+  if (!layout || typeof layout !== "object" || Array.isArray(layout)) return { error: "Șablon invalid." };
+
+  const clean = sanitizeApaCanalLayout(layout);
+  if (JSON.stringify(clean).length > 12_000_000) {
+    return { error: "Șablonul e prea mare (fotografiile adăugate). Șterge sau micșorează o fotografie." };
+  }
 
   try {
-    await saveCompanyRow({ apaCanalLayout: layout }, { companyName: "Compania" });
+    await saveCompanyRow({ apaCanalLayout: clean }, { companyName: "Compania" });
   } catch (e) {
     console.error("[company] salvarea șablonului a eșuat:", e);
     return { error: `Nu s-a putut salva în baza de date: ${errLine(e)}` };
+  }
+
+  let stored: ApaCanalLayout = {};
+  try {
+    const row = await prisma.companySettings.findUnique({ where: { singleton: "main" }, select: { apaCanalLayout: true } });
+    stored = sanitizeApaCanalLayout(row?.apaCanalLayout);
+  } catch (e) {
+    console.error("[company] citirea șablonului după salvare a eșuat:", e);
+    return { error: `Șablonul s-a trimis, dar nu am putut verifica salvarea: ${errLine(e)}` };
+  }
+  if (JSON.stringify(stored) !== JSON.stringify(clean)) {
+    console.error("[company] șablonul citit înapoi diferă de cel trimis");
+    return { error: "Salvarea nu a ajuns în baza de date acestui site (valoarea citită înapoi e alta). Reîncarcă pagina și încearcă din nou." };
   }
 
   await logAudit(
@@ -131,6 +154,9 @@ export async function updateApaCanalLayout(layout: ApaCanalLayout): Promise<Layo
   );
 
   revalidatePath("/settings/apa-canal-layout");
+  // Facturile (pagina publică, PDF-ul, fereastra din aplicație și portalul) citesc același șablon: le reîmprospătăm pe toate.
+  revalidatePath("/invoice/public/[token]", "page");
+  revalidatePath("/portal", "layout");
   updateTag("company");
-  return { ok: true };
+  return { ok: true, layout: stored, savedAt: new Date().toISOString() };
 }

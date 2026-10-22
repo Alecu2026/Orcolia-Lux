@@ -3,7 +3,7 @@ import { unstable_cache } from "next/cache";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import type { QuietHoursConfig } from "../quiet-hours";
-import type { ApaCanalLayout } from "../apa-canal-layout";
+import { sanitizeApaCanalLayout, type ApaCanalLayout } from "../apa-canal-layout";
 
 export type Company = {
   companyName: string;
@@ -129,7 +129,8 @@ export const getCompanySettings = unstable_cache(
       select: SELECT,
     });
     if (!row) return DEFAULTS;
-    return { ...row, apaCanalLayout: (row.apaCanalLayout as ApaCanalLayout | null) ?? null };
+    // Șablonul trece prin curățare și la citire: o valoare coruptă din baza de date nu poate strica facturile.
+    return { ...row, apaCanalLayout: row.apaCanalLayout ? sanitizeApaCanalLayout(row.apaCanalLayout) : null };
   },
   ["company-settings"],
   { tags: ["company"], revalidate: 600 },

@@ -1,17 +1,45 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import type { Company } from "@/lib/queries/company";
-import type { ApaCanalLayout, ApaCanalElementKey, ApaCanalCustomImage } from "@/lib/apa-canal-layout";
-import { APA_CANAL_ELEMENT_LABELS, APA_CANAL_TEXT_KEYS, APA_CANAL_DEFAULT_FONT_MM, APA_CANAL_LAYOUT_DEFAULTS, MM_TO_PX, round1 } from "@/lib/apa-canal-layout";
+import {
+  ALL_ELEMENT_KEYS,
+  APA_CANAL_DEFAULT_FONT_MM,
+  APA_CANAL_ELEMENT_LABELS,
+  APA_CANAL_LAYOUT_DEFAULTS,
+  APA_CANAL_LINE_KEYS,
+  APA_CANAL_TEXT_KEYS,
+  APA_CANAL_VARIABLES,
+  FONT_MAX_MM,
+  FONT_MIN_MM,
+  MAX_CUSTOM_IMAGES,
+  MM_TO_PX,
+  PAGE_H_MM,
+  PAGE_W_MM,
+  clampBox,
+  completeApaCanalLayout,
+  minSizeMm,
+  round1,
+  round2,
+  sanitizeApaCanalLayout,
+  type ApaCanalCustomImage,
+  type ApaCanalElementKey,
+  type ApaCanalElementOverride,
+  type ApaCanalLayout,
+  type BoxMm,
+} from "@/lib/apa-canal-layout";
 import type { LayoutState } from "@/app/actions/company";
-import ApaCanalInvoicePublic, { type ApaCanalInvoiceData } from "./ApaCanalInvoicePublic";
+import ApaCanalInvoicePublic, { buildApaCanalVars, type ApaCanalInvoiceData } from "./ApaCanalInvoicePublic";
 import { useToast } from "./toast";
 
-const SAMPLE_INVOICE: ApaCanalInvoiceData = {
+// ── Date de test (fixe, ca randarea de pe server și din browser să fie identică) ───────────────────
+
+const MONTHS = ["2", "3", "4", "5", "6", "7"];
+const BASE_SAMPLE: ApaCanalInvoiceData = {
   number: "INV-2026-0000",
-  issueDate: new Date(),
-  dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  issueDate: new Date("2026-07-31T12:00:00Z"),
+  dueDate: new Date("2026-08-30T12:00:00Z"),
   currency: "MDL",
   contPersonal: "900616",
   sectorNr: "5sp",
@@ -27,10 +55,7 @@ const SAMPLE_INVOICE: ApaCanalInvoiceData = {
   datoriiAvans: -190,
   subtotal: 483.6,
   grandTotal: 293.6,
-  monthlyConsumption: ["7", "8", "9", "10", "11", "12", "1", "2", "3", "4", "5", "6"].map((label, i) => ({
-    label,
-    value: [10, 31, 10, 10, 6, 8, 5, 5, 27, 32, 0, 13][i],
-  })),
+  monthlyConsumption: MONTHS.map((label, i) => ({ label, value: [27, 32, 0, 13, 5, 13][i] })),
   client: { name: "Gheorghe" },
   items: [
     { id: "sample-apa", description: "Serviciul de alimentare cu apa", quantity: 13, unitPrice: 23.45, lineTotal: 304.85 },
@@ -38,83 +63,345 @@ const SAMPLE_INVOICE: ApaCanalInvoiceData = {
   ],
 };
 
-const inputCls = "h-9 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm outline-none focus:border-brand";
-const labelCls = "mb-1 block text-xs font-semibold text-ink-soft";
+const SAMPLES: Record<string, { label: string; data: ApaCanalInvoiceData }> = {
+  standard: { label: "Standard (2 servicii)", data: BASE_SAMPLE },
+  many: {
+    label: "Multe linii (6 servicii)",
+    data: {
+      ...BASE_SAMPLE,
+      subtotal: 1450.8,
+      grandTotal: 1260.8,
+      items: [1, 2, 3].flatMap((n) => [
+        { id: `a${n}`, description: "Serviciul de alimentare cu apa", quantity: 13, unitPrice: 23.45, lineTotal: 304.85 },
+        { id: `c${n}`, description: "Serviciul de canalizare", quantity: 13, unitPrice: 13.75, lineTotal: 178.75 },
+      ]),
+    },
+  },
+  long: {
+    label: "Nume și adresă foarte lungi",
+    data: {
+      ...BASE_SAMPLE,
+      consumerName: "SOCIETATEA COMERCIALĂ „AGRO-PRODUCT-EXPORT” CU RĂSPUNDERE LIMITATĂ",
+      consumAddress: "r-n.Cahul, s.Roșu, str. Mihai Eminescu, nr. 124, bl. 3, ap. 57",
+      sectorNr: "Agenti economici 1",
+    },
+  },
+  zero: {
+    label: "Fără consum (nimic de facturat)",
+    data: { ...BASE_SAMPLE, items: [], subtotal: 0, grandTotal: 0, datoriiAvans: 0, monthlyConsumption: MONTHS.map((label) => ({ label, value: 0 })) },
+  },
+};
 
-const ELEMENT_KEYS = Object.keys(APA_CANAL_ELEMENT_LABELS) as ApaCanalElementKey[];
+// ── Istoric (anulare / refacere) ───────────────────────────────────────────────────────────────────
+
+type HState = { layout: ApaCanalLayout; past: ApaCanalLayout[]; future: ApaCanalLayout[]; tag: string; at: number };
+type HAction =
+  | { type: "edit"; fn: (l: ApaCanalLayout) => ApaCanalLayout; tag: string; at: number }
+  | { type: "undo" }
+  | { type: "redo" }
+  | { type: "replace"; layout: ApaCanalLayout };
+
+function reducer(s: HState, a: HAction): HState {
+  switch (a.type) {
+    case "edit": {
+      const next = a.fn(s.layout);
+      if (Object.is(next, s.layout)) return s;
+      // Modificările succesive ale aceluiași câmp (tastare cifră cu cifră) se strâng într-un singur pas de anulare.
+      const merge = a.tag !== "" && a.tag === s.tag && a.at - s.at < 900;
+      return { layout: next, past: merge ? s.past : [...s.past, s.layout].slice(-100), future: [], tag: a.tag, at: a.at };
+    }
+    case "undo": {
+      if (!s.past.length) return s;
+      return { layout: s.past[s.past.length - 1], past: s.past.slice(0, -1), future: [s.layout, ...s.future], tag: "", at: 0 };
+    }
+    case "redo": {
+      if (!s.future.length) return s;
+      return { layout: s.future[0], past: [...s.past, s.layout], future: s.future.slice(1), tag: "", at: 0 };
+    }
+    case "replace":
+      return { ...s, layout: a.layout, tag: "", at: 0 };
+  }
+}
+
+// ── Măsurare: unde pune factura REALĂ fiecare element (fără șablon) ───────────────────────────────
+
+type Flow = Partial<Record<ApaCanalElementKey, BoxMm>>;
+
+function measureFlow(root: HTMLElement): Flow {
+  const page = root.querySelector<HTMLElement>(".invoice-page");
+  if (!page) return {};
+  const pr = page.getBoundingClientRect();
+  if (pr.width === 0) return {};
+  const k = pr.width / (PAGE_W_MM * MM_TO_PX); // ≈1; corectează o eventuală scalare reziduală
+  const mm = (px: number) => round2(px / k / MM_TO_PX);
+  const out: Flow = {};
+  page.querySelectorAll<HTMLElement>("[data-el]").forEach((el) => {
+    const key = el.dataset.el as ApaCanalElementKey;
+    if (!ALL_ELEMENT_KEYS.includes(key)) return;
+    const r = el.getBoundingClientRect();
+    let x = r.left - pr.left;
+    let y = r.top - pr.top;
+    let w = r.width;
+    let h = r.height;
+    if (key === "titleLine") {
+      // Linia vizibilă e copilul (1.1mm); zona de prindere (3mm) se centrează pe ea.
+      const c = el.firstElementChild?.getBoundingClientRect();
+      if (c) {
+        x = c.left - pr.left;
+        w = c.width;
+        y = c.top - pr.top + c.height / 2 - 1.5 * MM_TO_PX * k;
+        h = 3 * MM_TO_PX * k;
+      }
+    } else if (key === "totalsConnectorLine") {
+      // Linia e borduri de jos (2.8px) a elementului: centrul ei e la 1.4px de marginea de jos.
+      y = r.bottom - pr.top - 1.4 * k - 1.5 * MM_TO_PX * k;
+      h = 3 * MM_TO_PX * k;
+    }
+    // Fără logo încărcat (sau încă neîncărcat) înălțimea e 0: pornim de la un pătrat rezonabil, ca elementul să rămână prindabil.
+    if (key === "logo" && h < 5 * MM_TO_PX * k) h = Math.min(w, 40 * MM_TO_PX * k);
+    out[key] = clampBox({ xMm: mm(x), yMm: mm(y), widthMm: mm(w), heightMm: mm(h) }, minSizeMm(key));
+  });
+  // În factura reală linia albastră începe sub textul „Recalculări”: o lungim la stânga până la el, ca linia să fie continuă.
+  const rec = out.recalculariText;
+  const con = out.totalsConnectorLine;
+  if (rec && con && rec.xMm < con.xMm) {
+    out.totalsConnectorLine = clampBox({ ...con, xMm: rec.xMm, widthMm: con.widthMm + (con.xMm - rec.xMm) }, minSizeMm("totalsConnectorLine"));
+  }
+  return out;
+}
+
+const sameFlow = (a: Flow | null, b: Flow) => !!a && JSON.stringify(a) === JSON.stringify(b);
+
+// ── Șabloane de text cu variabile (punct de plecare pentru „Text personalizat”) ───────────────────
+
+const TEXT_TEMPLATES: Partial<Record<ApaCanalElementKey, string>> = {
+  title: "Factura pentru serviciul de alimentare cu apă și de canalizare",
+  datesBlock: "Data emiterii: {emitere}\nData limită de achitare: {scadenta}",
+  contPersonalBlock: "Cont personal: {cont}\nAdresa locului de consum:\n{adresa}\n{consumator}",
+  companyInfoText: "{firmaAdresa}\n{firmaEmail}\n{firma}\n{firmaCodFiscal}",
+  meterTable: "Contor: {contor}\nIndici: {indPrec} → {indAct}",
+  billingPeriodText: "Perioada de calcul: {perioada}",
+  servicesTable: "Apă: {apaVolum} m³ × {apaTarif} = {apaSuma}\nCanalizare: {canalVolum} m³ × {canalTarif} = {canalSuma}",
+  recalculariText: "Recalculări: {recalculari}\nPenalitate: {penalitati}",
+  totalsBox: "Suma calculată: {suma}\nDatorii(+)/avans(-): {datorii}\nSuma spre plată: {total}",
+  atentieBox: "ATENȚIE !\n{atentie}",
+  anuntBox: "Anunț !\n{anunt}",
+  contacteBlock: "Contacte: {contactNume}\n{contacte}",
+};
+
+// ── Câmp numeric: se poate tasta liber (și șterge), valoarea se limitează la părăsirea câmpului ───
+
+const fmtNum = (n: number) => String(round2(n));
+
+function NumField({
+  value,
+  onCommit,
+  className,
+  title,
+  placeholder,
+}: {
+  value: number | undefined;
+  onCommit: (n: number | undefined) => void;
+  className?: string;
+  title?: string;
+  placeholder?: string;
+}) {
+  const [text, setText] = useState("");
+  const [focus, setFocus] = useState(false);
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      title={title}
+      placeholder={placeholder}
+      className={className}
+      value={focus ? text : value === undefined ? "" : fmtNum(value)}
+      onFocus={(e) => {
+        setText(value === undefined ? "" : fmtNum(value));
+        setFocus(true);
+        e.currentTarget.select();
+      }}
+      onChange={(e) => {
+        setText(e.target.value);
+        const raw = e.target.value.trim().replace(",", ".");
+        if (raw === "") return onCommit(undefined);
+        const n = Number(raw);
+        if (Number.isFinite(n)) onCommit(n);
+      }}
+      onBlur={() => setFocus(false)}
+    />
+  );
+}
+
+const inputCls = "h-9 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm outline-none focus:border-brand";
+const cellCls = "h-7 w-full min-w-0 rounded border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1 text-center text-[11px] tabular-nums outline-none focus:border-brand";
+const labelCls = "mb-1 block text-xs font-semibold text-ink-soft";
+const btnCls = "tap h-9 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40";
+const miniBtn = "tap grid h-8 min-w-8 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] px-1.5 text-sm hover:bg-[var(--color-surface-2)]";
+
+const isTextKey = (k: ApaCanalElementKey) => APA_CANAL_TEXT_KEYS.includes(k);
+const clampFont = (n: number) => Math.min(FONT_MAX_MM, Math.max(FONT_MIN_MM, round1(n)));
 
 export default function ApaCanalLayoutEditor({
   company,
   onSave,
+  sampleToken,
+  host,
 }: {
   company: Company;
   onSave: (layout: ApaCanalLayout) => Promise<LayoutState>;
+  /** Token public al unei facturi Apă-Canal reale din această bază de date (pentru verificarea șablonului salvat). */
+  sampleToken?: string | null;
+  /** Site-ul pe care se salvează (fiecare site are propria bază de date și propriul șablon). */
+  host?: string;
 }) {
   const toast = useToast();
-  const [layout, setLayout] = useState<ApaCanalLayout>(company.apaCanalLayout ?? {});
+  const router = useRouter();
+  const initial = useMemo(() => sanitizeApaCanalLayout(company.apaCanalLayout), [company.apaCanalLayout]);
+  const [state, dispatch] = useReducer(reducer, { layout: initial, past: [], future: [], tag: "", at: 0 });
+  const layout = state.layout;
+  const [savedJson, setSavedJson] = useState(() => JSON.stringify(initial));
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [selected, setSelected] = useState<ApaCanalElementKey>("logo");
   const [pending, startTransition] = useTransition();
+  const [zoom, setZoom] = useState<"fit" | number>("fit");
+  const [snap, setSnap] = useState(0);
+  const [grid, setGrid] = useState(true);
+  const [sampleKey, setSampleKey] = useState("standard");
+  const [showReal, setShowReal] = useState(false);
+  const [flow, setFlow] = useState<Flow | null>(null);
+  const sample = SAMPLES[sampleKey]?.data ?? BASE_SAMPLE;
 
-  const PAGE_W_PX = 297 * MM_TO_PX;
-  const PAGE_H_PX = 210 * MM_TO_PX;
+  const dirty = useMemo(() => JSON.stringify(layout) !== savedJson, [layout, savedJson]);
 
-  // Factura se randează la mărime reală (297mm ≈ 1122px), care de obicei depășește lățimea
-  // disponibilă lângă panoul lateral — coloana din dreapta (logo/text companie/Anunț/Contacte/
-  // Scanează) ieșea din zona vizibilă fără niciun indiciu că mai trebuie scrollat orizontal,
-  // ceea ce părea că acele elemente "lipsesc". Rezolvare: scalăm vizual containerul ca să încapă
-  // mereu în lățime, transmițând același factor lui react-rnd prin prop-ul `scale` (necesar ca
-  // să convertească corect delta-urile de mouse la trage/redimensionare).
-  //
-  // Important: NU randăm factura editabilă până nu știm scala reală. react-rnd sincronizează
-  // poziția internă cu DOM-ul la montare/actualizare folosind `scale` — dacă am monta întâi cu
-  // scala implicită (1) și am schimba-o imediat după (la prima măsurătoare), acel du-te-vino
-  // (montare → schimbare scală fără remontare completă) producea poziții duble/greșite. Montând
-  // o singură dată, direct cu scala corectă, problema dispare (verificat cu teste reale de mouse).
+  // ── Măsurarea facturii reale (instanță ascunsă, fără șablon, la mărime reală) ──
+  const measureRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = measureRef.current;
+    if (!root) return;
+    let raf = 0;
+    const run = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const m = measureFlow(root);
+        if (Object.keys(m).length >= 10) setFlow((prev) => (sameFlow(prev, m) ? prev : m));
+      });
+    };
+    run();
+    const t = window.setTimeout(run, 600);
+    const ro = new ResizeObserver(run);
+    root.querySelectorAll("[data-el]").forEach((n) => ro.observe(n));
+    const imgs = Array.from(root.querySelectorAll("img"));
+    imgs.forEach((i) => i.addEventListener("load", run));
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(t);
+      ro.disconnect();
+      imgs.forEach((i) => i.removeEventListener("load", run));
+    };
+  }, [company]);
+
+  const boxOf = useCallback(
+    (l: ApaCanalLayout, key: ApaCanalElementKey): BoxMm => {
+      const base = flow?.[key] ?? APA_CANAL_LAYOUT_DEFAULTS[key];
+      const o = l[key];
+      return { xMm: o?.xMm ?? base.xMm, yMm: o?.yMm ?? base.yMm, widthMm: o?.widthMm ?? base.widthMm, heightMm: o?.heightMm ?? base.heightMm };
+    },
+    [flow],
+  );
+
+  // ── Scală: „Potrivit” = încape în lățime; sau procent din mărimea reală ──
   const previewRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState<number | null>(null);
+  const [fitScale, setFitScale] = useState<number | null>(null);
+  const PAGE_W_PX = PAGE_W_MM * MM_TO_PX;
+  const PAGE_H_PX = PAGE_H_MM * MM_TO_PX;
   useLayoutEffect(() => {
     const el = previewRef.current;
     if (!el) return;
     const update = () => {
       const availW = el.clientWidth - 32; // p-4 = 16px pe fiecare parte
-      setScale(Math.min(1, Math.round((availW / PAGE_W_PX) * 100) / 100));
+      setFitScale(Math.max(0.2, Math.min(1, Math.round((availW / PAGE_W_PX) * 100) / 100)));
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
   }, [PAGE_W_PX]);
+  const scale = zoom === "fit" ? fitScale : zoom;
 
-  function patch(key: ApaCanalElementKey, next: Partial<ApaCanalLayout[ApaCanalElementKey]>) {
-    setLayout((prev) => {
-      const base = APA_CANAL_LAYOUT_DEFAULTS[key];
-      const current = prev[key] ?? base;
-      return { ...prev, [key]: { ...current, ...next } };
-    });
-  }
+  // ── Editări ──
+  const edit = useCallback((fn: (l: ApaCanalLayout) => ApaCanalLayout, tag = "") => dispatch({ type: "edit", fn, tag, at: Date.now() }), []);
 
-  // Textul urmează caseta și când înălțimea e schimbată din câmpul numeric (nu doar la tras de
-  // colț pe factură) — vezi explicația din onResizeStop din ApaCanalInvoicePublic.
-  function patchHeight(key: ApaCanalElementKey, newHeightMm: number) {
-    setLayout((prev) => {
-      const base = APA_CANAL_LAYOUT_DEFAULTS[key];
-      const current = prev[key] ?? base;
-      const oldHeightMm = current.heightMm ?? base.heightMm;
-      const isText = (APA_CANAL_TEXT_KEYS as ApaCanalElementKey[]).includes(key);
-      if (!isText || oldHeightMm <= 0) return { ...prev, [key]: { ...current, heightMm: newHeightMm } };
-      const ratio = newHeightMm / oldHeightMm;
-      const currentFontSizeMm = (current as { fontSizeMm?: number }).fontSizeMm ?? APA_CANAL_DEFAULT_FONT_MM[key] ?? 3;
-      const fontSizeMm = Math.min(24, Math.max(1.5, round1(currentFontSizeMm * ratio)));
-      return { ...prev, [key]: { ...current, heightMm: newHeightMm, fontSizeMm } };
-    });
-  }
+  const setBox = useCallback(
+    (key: ApaCanalElementKey, patch: Partial<BoxMm>, tag: string) =>
+      edit((l) => {
+        const b = clampBox({ ...boxOf(l, key), ...patch }, minSizeMm(key));
+        return { ...l, [key]: { ...l[key], ...b } };
+      }, `${tag}-${key}`),
+    [edit, boxOf],
+  );
 
-  function save() {
+  const setField = useCallback(
+    (key: ApaCanalElementKey, patch: Partial<ApaCanalElementOverride>, tag: string) =>
+      edit((l) => ({ ...l, [key]: { ...boxOf(l, key), ...l[key], ...patch } }), `${tag}-${key}`),
+    [edit, boxOf],
+  );
+
+  // Tastatură: săgeți = deplasează elementul ales (Shift = 5mm, Alt = 0.1mm), Ctrl+Z / Ctrl+Y = anulare / refacere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        dispatch({ type: e.shiftKey ? "redo" : "undo" });
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        dispatch({ type: "redo" });
+        return;
+      }
+      const step = e.shiftKey ? 5 : e.altKey ? 0.1 : 0.5;
+      const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      edit(
+        (l) => {
+          const b = boxOf(l, selected);
+          const nb = clampBox({ ...b, xMm: b.xMm + d[0], yMm: b.yMm + d[1] }, minSizeMm(selected));
+          return { ...l, [selected]: { ...l[selected], ...nb } };
+        },
+        `nudge-${selected}`,
+      );
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [edit, boxOf, selected]);
+
+  // Avertizare la închiderea paginii cu modificări nesalvate.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  // ── Salvare ──
+  function persist(next: ApaCanalLayout, okMsg: string) {
     startTransition(async () => {
       try {
-        const res = await onSave(layout);
-        if (res?.ok) toast.success("Șablon salvat");
-        else toast.error(res?.error ?? "Eroare la salvare");
+        const res = await onSave(next);
+        if (res?.ok) {
+          const stored = res.layout ?? next;
+          dispatch({ type: "replace", layout: stored });
+          setSavedJson(JSON.stringify(stored));
+          setSavedAt(res.savedAt ?? new Date().toISOString());
+          toast.success(okMsg);
+          router.refresh();
+        } else {
+          toast.error(res?.error ?? "Eroare la salvare");
+        }
       } catch (e) {
         // Eroare aruncată de server sau de rețea (altfel nu s-ar vedea nimic): arătăm că salvarea a eșuat.
         console.error("[layout] salvarea a eșuat:", e);
@@ -123,18 +410,35 @@ export default function ApaCanalLayoutEditor({
     });
   }
 
-  function reset() {
-    setLayout({});
+  function save() {
+    // Șablon COMPLET: fiecare element cu poziție și mărime explicite — factura nu mai depinde de nimic implicit.
+    persist(completeApaCanalLayout(sanitizeApaCanalLayout(layout), flow ?? {}), "Șablon salvat și verificat în baza de date");
+  }
+
+  function removeTemplate() {
+    if (!confirm("Ștergi șablonul salvat? Facturile revin la aspectul automat (cel standard).")) return;
+    persist({}, "Șablon șters — facturile folosesc aspectul automat");
+  }
+
+  function discard() {
+    if (dirty && !confirm("Renunți la toate modificările nesalvate?")) return;
+    dispatch({ type: "replace", layout: JSON.parse(savedJson) as ApaCanalLayout });
+  }
+
+  function resetAll() {
+    if (!confirm("Readuci TOATE elementele la poziția din factura standard? (nu se salvează până nu apeși „Salvează”)")) return;
+    edit(() => ({}), "reset-all");
   }
 
   function resetOne(key: ApaCanalElementKey) {
-    setLayout((prev) => {
-      const next = { ...prev };
+    edit((l) => {
+      const next = { ...l };
       delete next[key];
       return next;
     });
   }
 
+  // ── Fotografii ──
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [photoWarn, setPhotoWarn] = useState("");
 
@@ -142,113 +446,255 @@ export default function ApaCanalLayoutEditor({
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    if (f.size > 5_000_000) {
-      setPhotoWarn("Fotografia e prea mare (max 5MB).");
-      return;
-    }
+    if ((layout.customImages?.length ?? 0) >= MAX_CUSTOM_IMAGES) return setPhotoWarn(`Cel mult ${MAX_CUSTOM_IMAGES} fotografii.`);
+    if (!f.type.startsWith("image/")) return setPhotoWarn("Alege un fișier imagine.");
+    if (f.size > 2_500_000) return setPhotoWarn("Fotografia e prea mare (max ~2,5MB). Micșorează-o înainte.");
     setPhotoWarn("");
     const reader = new FileReader();
     reader.onload = () => {
-      const dataUrl = String(reader.result);
       const image: ApaCanalCustomImage = {
         id: `img-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
         xMm: 100,
         yMm: 80,
         widthMm: 60,
         heightMm: 60,
-        dataUrl,
+        dataUrl: String(reader.result),
       };
-      setLayout((prev) => ({ ...prev, customImages: [...(prev.customImages ?? []), image] }));
+      edit((l) => ({ ...l, customImages: [...(l.customImages ?? []), image] }));
     };
     reader.readAsDataURL(f);
   }
 
-  function patchCustomImage(id: string, patch: Partial<ApaCanalCustomImage>) {
-    setLayout((prev) => ({
-      ...prev,
-      customImages: (prev.customImages ?? []).map((img) => (img.id === id ? { ...img, ...patch } : img)),
-    }));
-  }
+  const patchCustomImage = useCallback(
+    (id: string, p: Partial<ApaCanalCustomImage>, tag = "") =>
+      edit(
+        (l) => ({
+          ...l,
+          customImages: (l.customImages ?? []).map((img) => (img.id === id ? { ...img, ...clampBox({ ...img, ...p }, minSizeMm("image")) } : img)),
+        }),
+        tag ? `${tag}-${id}` : "",
+      ),
+    [edit],
+  );
 
   function deleteCustomImage(id: string) {
-    setLayout((prev) => ({ ...prev, customImages: (prev.customImages ?? []).filter((img) => img.id !== id) }));
+    edit((l) => ({ ...l, customImages: (l.customImages ?? []).filter((img) => img.id !== id) }));
   }
 
-  const base = APA_CANAL_LAYOUT_DEFAULTS[selected];
-  const val = layout[selected] ?? base;
-  const isTextKey = APA_CANAL_TEXT_KEYS.includes(selected);
+  // ── Variabile ──
+  const vars = useMemo(() => buildApaCanalVars(sample, company), [sample, company]);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+
+  function insertVariable(k: string) {
+    const token = `{${k}}`;
+    if (!isTextKey(selected)) {
+      void navigator.clipboard?.writeText(token).catch(() => {});
+      toast.success(`Copiat ${token} — lipește-l într-un element cu text`);
+      return;
+    }
+    const cur = layout[selected]?.textOverride ?? "";
+    const ta = textRef.current;
+    const pos = ta && document.activeElement === ta ? (ta.selectionStart ?? cur.length) : cur.length;
+    setField(selected, { textOverride: cur.slice(0, pos) + token + cur.slice(pos) }, "text");
+  }
+
+  // ── Verificări ──
+  const boxes = useMemo(() => ALL_ELEMENT_KEYS.map((k) => ({ key: k, box: boxOf(layout, k) })), [layout, boxOf]);
+  const overlaps = useMemo(() => {
+    const solid = boxes.filter((b) => !APA_CANAL_LINE_KEYS.includes(b.key));
+    const out: string[] = [];
+    for (let i = 0; i < solid.length; i++) {
+      for (let j = i + 1; j < solid.length; j++) {
+        const a = solid[i].box;
+        const b = solid[j].box;
+        const ox = Math.min(a.xMm + a.widthMm, b.xMm + b.widthMm) - Math.max(a.xMm, b.xMm);
+        const oy = Math.min(a.yMm + a.heightMm, b.yMm + b.heightMm) - Math.max(a.yMm, b.yMm);
+        if (ox > 1.5 && oy > 1.5) out.push(`${APA_CANAL_ELEMENT_LABELS[solid[i].key]} ↔ ${APA_CANAL_ELEMENT_LABELS[solid[j].key]}`);
+      }
+    }
+    return out;
+  }, [boxes]);
+
+  const sel = boxOf(layout, selected);
+  const selOv = layout[selected];
+  const textKey = isTextKey(selected);
+  const defaultFont = APA_CANAL_DEFAULT_FONT_MM[selected];
+  const photos = layout.customImages ?? [];
+  const groups = useMemo(() => {
+    const g = new Map<string, typeof APA_CANAL_VARIABLES>();
+    for (const v of APA_CANAL_VARIABLES) g.set(v.group, [...(g.get(v.group) ?? []), v]);
+    return [...g];
+  }, []);
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
-      <div ref={previewRef} className="min-w-0 flex-1 overflow-auto rounded-2xl border border-[var(--color-line)] bg-zinc-100 p-4">
-        {scale !== null && (
-          <div style={{ width: PAGE_W_PX * scale, height: PAGE_H_PX * scale }}>
-            <div style={{ width: PAGE_W_PX, height: PAGE_H_PX, transform: `scale(${scale})`, transformOrigin: "top left" }}>
-              <ApaCanalInvoicePublic
-                invoice={SAMPLE_INVOICE}
-                company={company}
-                layout={layout}
-                editable
-                previewScale={scale}
-                onLayoutChange={(key, override) => setLayout((prev) => ({ ...prev, [key]: override }))}
-                onCustomImageChange={patchCustomImage}
-              />
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {/* Bara de unelte */}
+        <div className="card flex flex-wrap items-center gap-2 p-3 text-xs">
+          <button type="button" className={btnCls} disabled={!state.past.length} onClick={() => dispatch({ type: "undo" })} title="Anulează (Ctrl+Z)">↶ Anulează</button>
+          <button type="button" className={btnCls} disabled={!state.future.length} onClick={() => dispatch({ type: "redo" })} title="Refă (Ctrl+Y)">↷ Refă</button>
+          <label className="flex items-center gap-1 font-medium">
+            Zoom
+            <select className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5" value={zoom === "fit" ? "fit" : String(zoom)} onChange={(e) => setZoom(e.target.value === "fit" ? "fit" : Number(e.target.value))}>
+              <option value="fit">Potrivit ecranului</option>
+              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-1 font-medium">
+            Lipire la grilă
+            <select className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5" value={snap} onChange={(e) => setSnap(Number(e.target.value))}>
+              <option value={0}>Liber</option>
+              <option value={0.5}>0,5 mm</option>
+              <option value={1}>1 mm</option>
+              <option value={5}>5 mm</option>
+            </select>
+          </label>
+          <label className="flex h-9 items-center gap-1.5 font-medium">
+            <input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={grid} onChange={(e) => setGrid(e.target.checked)} />
+            Grilă 10 mm + margini
+          </label>
+          <label className="flex items-center gap-1 font-medium">
+            Date de test
+            <select className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5" value={sampleKey} onChange={(e) => setSampleKey(e.target.value)}>
+              {Object.entries(SAMPLES).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
+            </select>
+          </label>
+          <span className="ml-auto text-ink-soft">
+            A4 landscape · {PAGE_W_MM}×{PAGE_H_MM} mm{scale ? ` · ${Math.round(scale * 100)}%` : ""}
+          </span>
+        </div>
+
+        {/* Pânza: exact pagina din PDF */}
+        <div ref={previewRef} className="min-w-0 overflow-auto rounded-2xl border border-[var(--color-line)] bg-zinc-200 p-4">
+          {scale !== null && (
+            <div key={scale} style={{ width: PAGE_W_PX * scale, height: PAGE_H_PX * scale }}>
+              <div style={{ width: PAGE_W_PX, height: PAGE_H_PX, transform: `scale(${scale})`, transformOrigin: "top left" }}>
+                <ApaCanalInvoicePublic
+                  invoice={sample}
+                  company={company}
+                  layout={layout}
+                  editable
+                  previewScale={scale}
+                  defaults={flow ?? undefined}
+                  selectedKey={selected}
+                  onSelect={setSelected}
+                  snapMm={snap}
+                  showGrid={grid}
+                  onLayoutChange={(key, override) => edit((l) => ({ ...l, [key]: override }), "")}
+                  onCustomImageChange={(id, p) => patchCustomImage(id, p)}
+                />
+              </div>
             </div>
+          )}
+        </div>
+
+        {/* Factura reală, așa cum o vede clientul / PDF-ul, cu șablonul SALVAT */}
+        <div className="card flex flex-col gap-2 p-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <b className="text-sm">Verifică pe o factură reală</b>
+            <span className="text-ink-soft">arată șablonul salvat în baza de date a acestui site — la fel ca portalul, linkul public și PDF-ul.</span>
+            {sampleToken ? (
+              <button type="button" className={`${btnCls} ml-auto`} onClick={() => setShowReal((v) => !v)}>{showReal ? "Ascunde" : "Arată factura reală"}</button>
+            ) : (
+              <span className="ml-auto text-ink-soft">Nu există încă nicio factură Apă-Canal.</span>
+            )}
           </div>
-        )}
+          {sampleToken && showReal && scale !== null && (
+            <div className="overflow-auto rounded-xl border border-[var(--color-line)] bg-zinc-200 p-2">
+              <div style={{ width: PAGE_W_PX * (fitScale ?? 1), height: PAGE_H_PX * (fitScale ?? 1) }}>
+                <iframe
+                  key={savedAt ?? "initial"}
+                  title="Factură reală"
+                  src={`/invoice/public/${sampleToken}?v=${encodeURIComponent(savedAt ?? "0")}`}
+                  style={{ width: PAGE_W_PX + 40, height: PAGE_H_PX + 120, border: 0, background: "white", transform: `scale(${fitScale ?? 1})`, transformOrigin: "top left" }}
+                />
+              </div>
+            </div>
+          )}
+          {sampleToken && (
+            <div className="flex flex-wrap gap-2">
+              <a className={`${btnCls} inline-flex items-center`} href={`/invoice/public/${sampleToken}`} target="_blank" rel="noreferrer">Deschide factura în filă nouă ↗</a>
+              <a className={`${btnCls} inline-flex items-center`} href={`/api/invoice/public/${sampleToken}/pdf`} target="_blank" rel="noreferrer">Descarcă PDF-ul ↗</a>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="flex w-full flex-col gap-4 lg:w-80 lg:shrink-0">
-        <div className="card flex flex-col gap-3 p-4">
-          <h3 className="text-sm font-bold">Elemente</h3>
-          <p className="-mt-2 text-xs text-ink-soft">
-            Trage/redimensionează direct pe factură (dreptunghiurile punctate), sau alege un element aici pentru control exact.
+      <div className="flex w-full flex-col gap-4 lg:w-96 lg:shrink-0">
+        {/* Salvare */}
+        <div className="card flex flex-col gap-2 p-4">
+          <div className="flex gap-2">
+            <button onClick={save} disabled={pending} className="tap h-11 flex-1 cursor-pointer rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
+              {pending ? "Se salvează…" : dirty ? "Salvează șablonul •" : "Salvează șablonul"}
+            </button>
+            <button onClick={discard} disabled={pending || !dirty} className={`${btnCls} h-11`} title="Revino la ultima versiune salvată">Renunță</button>
+          </div>
+          <p className={`text-[11px] ${dirty ? "font-semibold text-st-progress" : "text-ink-soft"}`}>
+            {dirty ? "Ai modificări nesalvate." : savedAt ? `Salvat și verificat la ${new Date(savedAt).toLocaleTimeString("ro-RO")}.` : "Nicio modificare nesalvată."}
           </p>
-          <select
-            className={inputCls}
-            value={selected}
-            onChange={(e) => setSelected(e.target.value as ApaCanalElementKey)}
-          >
-            {ELEMENT_KEYS.map((key) => (
-              <option key={key} value={key}>{APA_CANAL_ELEMENT_LABELS[key]}</option>
-            ))}
+          <p className="text-[11px] text-ink-soft">
+            Șablonul se salvează în baza de date a site-ului <b>{host ?? "curent"}</b> și se aplică pe facturile acestui site (portal, link public, PDF). Alt site (ex. Vercel față de serverul propriu) are propria bază de date și propriul șablon.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={resetAll} disabled={pending} className={btnCls}>Resetează tot la standard</button>
+            <button onClick={removeTemplate} disabled={pending} className={`${btnCls} text-st-cancelled`}>Șterge șablonul salvat</button>
+          </div>
+        </div>
+
+        {/* Element ales */}
+        <div className="card flex flex-col gap-3 p-4">
+          <h3 className="text-sm font-bold">Element ales</h3>
+          <p className="-mt-2 text-xs text-ink-soft">
+            Apasă pe un element din pânză sau alege-l aici. Săgeți = 0,5 mm (Shift 5 mm, Alt 0,1 mm).
+          </p>
+          <select className={inputCls} value={selected} onChange={(e) => setSelected(e.target.value as ApaCanalElementKey)}>
+            {ALL_ELEMENT_KEYS.map((key) => <option key={key} value={key}>{APA_CANAL_ELEMENT_LABELS[key]}</option>)}
           </select>
 
           <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className={labelCls}>X (mm)</label>
-              <input type="number" step="0.1" className={inputCls} value={val.xMm ?? base.xMm}
-                onChange={(e) => patch(selected, { xMm: Number(e.target.value) })} />
-            </div>
-            <div>
-              <label className={labelCls}>Y (mm)</label>
-              <input type="number" step="0.1" className={inputCls} value={val.yMm ?? base.yMm}
-                onChange={(e) => patch(selected, { yMm: Number(e.target.value) })} />
-            </div>
-            <div>
-              <label className={labelCls}>Lățime (mm)</label>
-              <input type="number" step="0.1" className={inputCls} value={val.widthMm ?? base.widthMm}
-                onChange={(e) => patch(selected, { widthMm: Number(e.target.value) })} />
-            </div>
-            <div>
-              <label className={labelCls}>Înălțime (mm)</label>
-              <input type="number" step="0.1" className={inputCls} value={val.heightMm ?? base.heightMm}
-                onChange={(e) => patchHeight(selected, Number(e.target.value))} />
-            </div>
+            {(
+              [
+                ["X (mm)", "xMm"],
+                ["Y (mm)", "yMm"],
+                ["Lățime (mm)", "widthMm"],
+                ["Înălțime (mm)", "heightMm"],
+              ] as const
+            ).map(([label, field]) => (
+              <div key={field}>
+                <label className={labelCls}>{label}</label>
+                <NumField className={inputCls} value={sel[field]} onCommit={(n) => n !== undefined && setBox(selected, { [field]: n }, field)} />
+              </div>
+            ))}
+          </div>
+          <p className="-mt-1 text-[11px] text-ink-soft">
+            Limite: pagina {PAGE_W_MM}×{PAGE_H_MM} mm · minim {minSizeMm(selected).w}×{minSizeMm(selected).h} mm. Valorile se corectează automat.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button type="button" className={miniBtn} title="Stânga" onClick={() => setBox(selected, { xMm: sel.xMm - 0.5 }, "nx")}>◀</button>
+            <button type="button" className={miniBtn} title="Sus" onClick={() => setBox(selected, { yMm: sel.yMm - 0.5 }, "ny")}>▲</button>
+            <button type="button" className={miniBtn} title="Jos" onClick={() => setBox(selected, { yMm: sel.yMm + 0.5 }, "ny")}>▼</button>
+            <button type="button" className={miniBtn} title="Dreapta" onClick={() => setBox(selected, { xMm: sel.xMm + 0.5 }, "nx")}>▶</button>
+            <span className="mx-1 h-6 w-px bg-[var(--color-line)]" />
+            <button type="button" className={`${miniBtn} text-[11px]`} title="Centrat pe lățimea paginii" onClick={() => setBox(selected, { xMm: (PAGE_W_MM - sel.widthMm) / 2 }, "al")}>↔ centru</button>
+            <button type="button" className={`${miniBtn} text-[11px]`} title="La marginea din stânga (5 mm)" onClick={() => setBox(selected, { xMm: 5 }, "al")}>⇤ 5mm</button>
+            <button type="button" className={`${miniBtn} text-[11px]`} title="La marginea de sus (5 mm)" onClick={() => setBox(selected, { yMm: 5 }, "al")}>⇥ sus</button>
           </div>
 
-          {isTextKey && (
+          {textKey && (
             <>
               <div className="flex items-end gap-3 border-t border-[var(--color-line)] pt-3">
                 <div className="flex-1">
-                  <label className={labelCls}>Mărime font (mm)</label>
-                  <input type="number" step="0.1" className={inputCls} value={layout[selected]?.fontSizeMm ?? ""}
+                  <label className={labelCls}>Mărime font (mm){defaultFont ? ` — implicit ${defaultFont}` : ""}</label>
+                  <NumField
+                    className={inputCls}
+                    value={selOv?.fontSizeMm}
                     placeholder="implicit"
-                    onChange={(e) => patch(selected, { fontSizeMm: e.target.value === "" ? undefined : Number(e.target.value) })} />
+                    onCommit={(n) => setField(selected, { fontSizeMm: n === undefined ? undefined : clampFont(n) }, "font")}
+                  />
                 </div>
                 <label className="flex h-9 items-center gap-1.5 text-xs font-medium">
-                  <input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!layout[selected]?.bold}
-                    onChange={(e) => patch(selected, { bold: e.target.checked })} />
+                  <input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!selOv?.bold} onChange={(e) => setField(selected, { bold: e.target.checked || undefined }, "bold")} />
                   Bold
                 </label>
               </div>
@@ -256,66 +702,135 @@ export default function ApaCanalLayoutEditor({
               <div>
                 <label className={labelCls}>Text personalizat (înlocuiește conținutul)</label>
                 <textarea
-                  className={`${inputCls} h-20 py-2`}
-                  value={layout[selected]?.textOverride ?? ""}
+                  ref={textRef}
+                  className={`${inputCls} h-28 py-2 font-mono text-xs`}
+                  value={selOv?.textOverride ?? ""}
+                  maxLength={3000}
                   placeholder="Lasă gol pentru conținutul normal al facturii"
-                  onChange={(e) => patch(selected, { textOverride: e.target.value === "" ? undefined : e.target.value })}
+                  onChange={(e) => setField(selected, { textOverride: e.target.value === "" ? undefined : e.target.value }, "text")}
                 />
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {TEXT_TEMPLATES[selected] && (
+                    <button type="button" className={`${btnCls} h-7 px-2 text-[11px]`} onClick={() => setField(selected, { textOverride: TEXT_TEMPLATES[selected] }, "text")}>
+                      Pornește de la textul standard, cu variabile
+                    </button>
+                  )}
+                  {selOv?.textOverride && (
+                    <button type="button" className={`${btnCls} h-7 px-2 text-[11px]`} onClick={() => setField(selected, { textOverride: undefined }, "text")}>Revino la conținutul normal</button>
+                  )}
+                </div>
                 <p className="mt-1 text-[11px] text-ink-soft">
-                  Atenție: pe elemente cu date live (sume, indici, tabele), textul rămâne fix identic pe toate facturile.
+                  Scrie variabile între acolade, ex. <code>{"{cont}"}</code> — fiecare factură își pune propriile valori. Lista completă e mai jos.
                 </p>
               </div>
             </>
           )}
 
-          <button
-            onClick={() => resetOne(selected)}
-            className="tap h-9 rounded-lg border border-[var(--color-line)] text-xs font-medium hover:bg-[var(--color-surface-2)]"
-          >
-            Resetează doar acest element
-          </button>
+          <button onClick={() => resetOne(selected)} className={btnCls}>Resetează doar acest element</button>
         </div>
 
+        {/* Toate elementele */}
+        <div className="card flex flex-col gap-2 p-4">
+          <h3 className="text-sm font-bold">Toate elementele</h3>
+          <p className="-mt-1 text-xs text-ink-soft">Valorile în mm: X, Y, lățime, înălțime. Editează direct aici.</p>
+          <div className="grid grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))] items-center gap-x-1 gap-y-1 text-[10px] font-semibold text-ink-soft">
+            <span>Element</span><span className="text-center">X</span><span className="text-center">Y</span><span className="text-center">Lăț.</span><span className="text-center">Înăl.</span>
+          </div>
+          <div className="flex max-h-96 flex-col gap-1 overflow-y-auto pr-1">
+            {boxes.map(({ key, box }) => (
+              <div
+                key={key}
+                onClick={() => setSelected(key)}
+                className={`grid cursor-pointer grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))] items-center gap-x-1 rounded-md px-1 py-0.5 ${selected === key ? "bg-brand/10 ring-1 ring-brand" : "hover:bg-[var(--color-surface-2)]"}`}
+              >
+                <span className="truncate text-[11px] font-medium" title={APA_CANAL_ELEMENT_LABELS[key]}>{APA_CANAL_ELEMENT_LABELS[key]}</span>
+                {(["xMm", "yMm", "widthMm", "heightMm"] as const).map((f) => (
+                  <NumField key={f} className={cellCls} value={box[f]} onCommit={(n) => n !== undefined && setBox(key, { [f]: n }, f)} />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Variabile */}
+        <details className="card p-4" open>
+          <summary className="cursor-pointer text-sm font-bold">Variabile ({APA_CANAL_VARIABLES.length})</summary>
+          <p className="mt-1 text-xs text-ink-soft">
+            Apasă pe una ca s-o inserezi în „Text personalizat” al elementului ales. Valorile arătate sunt din datele de test alese.
+          </p>
+          <div className="mt-2 flex max-h-[28rem] flex-col gap-3 overflow-y-auto pr-1">
+            {groups.map(([group, list]) => (
+              <div key={group}>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{group}</p>
+                <div className="flex flex-col gap-0.5">
+                  {list.map((v) => (
+                    <button
+                      key={v.key}
+                      type="button"
+                      onClick={() => insertVariable(v.key)}
+                      className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-1.5 py-1 text-left hover:bg-brand-soft"
+                      title={`Inserează {${v.key}}`}
+                    >
+                      <code className="rounded bg-[var(--color-surface-2)] px-1 text-[11px]">{`{${v.key}}`}</code>
+                      <span className="min-w-0 text-[11px]">
+                        <span className="text-ink-soft">{v.label}: </span>
+                        <span className="break-words font-medium">{(vars[v.key] ?? "").slice(0, 60) || "—"}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </details>
+
+        {/* Verificări */}
+        <div className="card flex flex-col gap-1 p-4 text-xs">
+          <h3 className="text-sm font-bold">Verificări</h3>
+          {overlaps.length === 0 ? (
+            <p className="text-st-done">✓ Nicio suprapunere între elemente. Toate sunt în pagină.</p>
+          ) : (
+            <>
+              <p className="text-st-progress">⚠ Elemente care se suprapun (verifică dacă e intenționat):</p>
+              <ul className="list-disc pl-5 text-ink-soft">
+                {overlaps.slice(0, 8).map((o) => <li key={o}>{o}</li>)}
+                {overlaps.length > 8 && <li>… și încă {overlaps.length - 8}</li>}
+              </ul>
+            </>
+          )}
+          <p className="mt-1 text-ink-soft">
+            Dacă o factură are mai multe servicii decât cele 2 standard, elementele de sub tabel coboară automat, fără să iasă din pagină.
+          </p>
+        </div>
+
+        {/* Fotografii */}
         <div className="card flex flex-col gap-3 p-4">
           <h3 className="text-sm font-bold">Fotografii</h3>
-          <p className="-mt-2 text-xs text-ink-soft">Adaugă o imagine liberă, apoi trage/redimensionează pe factură.</p>
+          <p className="-mt-2 text-xs text-ink-soft">Adaugă o imagine liberă (max {MAX_CUSTOM_IMAGES}), apoi trage/redimensionează pe pânză sau scrie valorile.</p>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickPhoto} />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="tap h-9 rounded-lg border border-[var(--color-line)] text-xs font-medium hover:bg-[var(--color-surface-2)]"
-          >
-            + Adaugă fotografie
-          </button>
+          <button onClick={() => fileInputRef.current?.click()} className={btnCls}>+ Adaugă fotografie</button>
           {photoWarn && <p className="text-xs text-st-cancelled">{photoWarn}</p>}
-
-          {(layout.customImages ?? []).map((img) => (
-            <div key={img.id} className="flex items-center gap-2 border-t border-[var(--color-line)] pt-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img.dataUrl} alt="" className="size-10 shrink-0 rounded-lg border border-[var(--color-line)] object-cover" />
-              <div className="grid flex-1 grid-cols-2 gap-1">
-                <input type="number" step="0.1" className={`${inputCls} h-7 text-xs`} value={img.xMm}
-                  onChange={(e) => patchCustomImage(img.id, { xMm: Number(e.target.value) })} title="X (mm)" />
-                <input type="number" step="0.1" className={`${inputCls} h-7 text-xs`} value={img.yMm}
-                  onChange={(e) => patchCustomImage(img.id, { yMm: Number(e.target.value) })} title="Y (mm)" />
+          {photos.map((img) => (
+            <div key={img.id} className="flex flex-col gap-1 border-t border-[var(--color-line)] pt-2">
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img.dataUrl} alt="" className="size-10 shrink-0 rounded-lg border border-[var(--color-line)] object-cover" />
+                <div className="grid flex-1 grid-cols-4 gap-1">
+                  {(["xMm", "yMm", "widthMm", "heightMm"] as const).map((f) => (
+                    <NumField key={f} className={cellCls} title={{ xMm: "X (mm)", yMm: "Y (mm)", widthMm: "Lățime (mm)", heightMm: "Înălțime (mm)" }[f]} value={img[f]} onCommit={(n) => n !== undefined && patchCustomImage(img.id, { [f]: n }, f)} />
+                  ))}
+                </div>
+                <button onClick={() => deleteCustomImage(img.id)} className="tap h-8 shrink-0 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-xs text-st-cancelled hover:bg-[var(--color-surface-2)]">Șterge</button>
               </div>
-              <button
-                onClick={() => deleteCustomImage(img.id)}
-                className="tap h-8 shrink-0 rounded-lg border border-[var(--color-line)] px-2 text-xs text-st-cancelled hover:bg-[var(--color-surface-2)]"
-              >
-                Șterge
-              </button>
+              <p className="text-[10px] text-ink-soft">X · Y · Lățime · Înălțime (mm)</p>
             </div>
           ))}
         </div>
+      </div>
 
-        <div className="flex gap-2">
-          <button onClick={save} disabled={pending} className="tap h-11 flex-1 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
-            {pending ? "Se salvează…" : "Salvează șablonul"}
-          </button>
-          <button onClick={reset} disabled={pending} className="tap h-11 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium hover:bg-[var(--color-surface-2)]">
-            Resetează tot
-          </button>
-        </div>
+      {/* Factura reală, fără șablon, la mărime reală — de aici luăm pozițiile de pornire exacte. */}
+      <div ref={measureRef} aria-hidden style={{ position: "absolute", top: 0, left: -20000, width: `${PAGE_W_MM}mm`, visibility: "hidden", pointerEvents: "none" }}>
+        <ApaCanalInvoicePublic invoice={BASE_SAMPLE} company={company} layout={null} />
       </div>
     </div>
   );

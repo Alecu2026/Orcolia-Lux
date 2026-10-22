@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Rnd } from "react-rnd";
 import type { Company } from "@/lib/queries/company";
@@ -11,6 +11,13 @@ import {
   APA_CANAL_LAYOUT_DEFAULTS,
   APA_CANAL_TEXT_KEYS,
   APA_CANAL_DEFAULT_FONT_MM,
+  PAGE_W_MM,
+  PAGE_H_MM,
+  minSizeMm,
+  clampBox,
+  sanitizeApaCanalLayout,
+  applyApaCanalVariables,
+  type BoxMm,
   type ApaCanalLayout,
   type ApaCanalElementKey,
   type ApaCanalElementOverride,
@@ -71,6 +78,48 @@ function factorOrDash(value: number, lineTotal: number): string {
   return value === 0 && lineTotal !== 0 ? "—" : num2(value);
 }
 
+/** Valorile live ale unei facturi, pentru variabilele din „Text personalizat” ({cont}, {total}…) — vezi APA_CANAL_VARIABLES. */
+export function buildApaCanalVars(invoice: ApaCanalInvoiceData, company: Company): Record<string, string> {
+  const apa = invoice.items.filter((it) => isApa(it.description));
+  const canal = invoice.items.filter((it) => !isApa(it.description) && /canalizare/i.test(it.description));
+  const total = (arr: typeof apa, pick: (it: (typeof apa)[number]) => number) => arr.reduce((s, it) => s + pick(it), 0);
+  const first = (arr: typeof apa, pick: (it: (typeof apa)[number]) => string) => (arr[0] ? pick(arr[0]) : "—");
+  return {
+    numar: invoice.number,
+    emitere: fmtDate(invoice.issueDate),
+    scadenta: fmtDate(invoice.dueDate),
+    perioada: invoice.billingPeriodLabel ? invoice.billingPeriodLabel.toUpperCase() : "—",
+    valuta: invoice.currency,
+    cont: invoice.contPersonal || "—",
+    sector: invoice.sectorNr || "—",
+    consumator: invoice.consumerName || invoice.client?.name || "—",
+    adresa: invoice.consumAddress || "—",
+    contor: invoice.meterNumber || "—",
+    indPrec: invoice.meterPrevReading || "—",
+    indAct: invoice.meterCurrReading || "—",
+    volumEst: invoice.isEstimatedVolume ? "DA" : "",
+    apaVolum: apa.length ? num2(total(apa, (it) => it.quantity)) : "—",
+    apaTarif: first(apa, (it) => factorOrDash(it.unitPrice, it.lineTotal)),
+    apaSuma: apa.length ? num2(total(apa, (it) => it.lineTotal)) : "—",
+    canalVolum: canal.length ? num2(total(canal, (it) => it.quantity)) : "—",
+    canalTarif: first(canal, (it) => factorOrDash(it.unitPrice, it.lineTotal)),
+    canalSuma: canal.length ? num2(total(canal, (it) => it.lineTotal)) : "—",
+    recalculari: num2(invoice.recalculari),
+    penalitati: num2(invoice.penalitati),
+    suma: num2(invoice.subtotal),
+    datorii: num2(invoice.datoriiAvans),
+    total: num2(invoice.grandTotal),
+    firma: company.apaCanalCompanyLine,
+    firmaAdresa: company.apaCanalAddress,
+    firmaEmail: company.apaCanalEmail,
+    firmaCodFiscal: company.apaCanalCodFiscal,
+    contactNume: company.apaCanalContactName,
+    contacte: company.apaCanalContactsText,
+    atentie: company.apaCanalAtentieText,
+    anunt: company.apaCanalAnuntText,
+  };
+}
+
 /** Rotunjește la un "număr frumos" (1/2/5 × 10^n) — ține numărul de linii de grilă mereu rezonabil. */
 function niceStep(raw: number): number {
   if (raw <= 0) return 1;
@@ -86,7 +135,7 @@ function niceStep(raw: number): number {
  * mic ies cu pas 5 (0,5,10,15,20...), iar cele cu consum mare ies cu pas 10/20/50 etc., mereu
  * păstrând un grafic lizibil indiferent de magnitudinea cifrelor.
  */
-function ConsumptionChart({ points }: { points: ConsumPoint[] }) {
+function ConsumptionChart({ points, fill = false }: { points: ConsumPoint[]; fill?: boolean }) {
   if (points.length === 0) return null;
   const maxVal = Math.max(...points.map((p) => p.value), 5);
   const step = niceStep(maxVal / 8);
@@ -95,7 +144,10 @@ function ConsumptionChart({ points }: { points: ConsumPoint[] }) {
   for (let v = yMax; v >= 0; v -= step) ySteps.push(Math.round(v * 100) / 100);
 
   return (
-    <div className="flex gap-[1.5mm] overflow-hidden p-[1.5mm]" style={{ height: "44mm", background: COLOR_BG, border: `1px solid ${COLOR_BORDER}` }}>
+    <div
+      className="flex gap-[1.5mm] overflow-hidden p-[1.5mm]"
+      style={{ height: fill ? undefined : "44mm", flex: fill ? 1 : undefined, minHeight: 0, background: COLOR_BG, border: `1px solid ${COLOR_BORDER}` }}
+    >
       <div className="flex h-full shrink-0 flex-col justify-between text-right leading-none" style={{ color: COLOR_CHART_TEXT, fontSize: "2.6mm" }}>
         {ySteps.map((s) => <span key={s}>{s}</span>)}
       </div>
@@ -151,6 +203,13 @@ function ConsumptionChartLabels({ points }: { points: ConsumPoint[] }) {
 
 type FieldState = { overridden: boolean; textStyle: React.CSSProperties };
 
+/** Casetele colorate își păstrează fundalul și rotunjirea și când conținutul lor e înlocuit cu „Text personalizat”. */
+const BOX_OVERRIDE_STYLE: Partial<Record<ApaCanalElementKey, React.CSSProperties>> = {
+  totalsBox: { background: COLOR_BOX_BLUE, borderRadius: "3mm", padding: "2mm 3mm" },
+  atentieBox: { background: COLOR_BOX_BLUE, borderRadius: "3.5mm", padding: "2.5mm 3.5mm" },
+  anuntBox: { background: COLOR_BOX_BLUE, borderRadius: "7mm", padding: "2.5mm 3.5mm", textAlign: "center" },
+};
+
 /**
  * Fiecare element de pe factură trece prin acest wrapper. Dacă firma nu are deloc un șablon
  * salvat, se randează exact ca înainte (în flux normal, grid/flex) — nicio schimbare de
@@ -177,8 +236,21 @@ function LayoutField({
   children,
   scale = 1,
   portalTarget,
+  defaults,
+  vars,
+  selected = false,
+  onSelect,
+  snapMm = 0,
 }: {
   elementKey: ApaCanalElementKey;
+  /** Poziții/mărimi de pornire MĂSURATE pe factura reală (editorul) — au prioritate față de cele fixe din cod. */
+  defaults?: Partial<Record<ApaCanalElementKey, BoxMm>>;
+  /** Valorile variabilelor ({cont}…) pentru textul personalizat. */
+  vars?: Record<string, string>;
+  selected?: boolean;
+  onSelect?: (key: ApaCanalElementKey) => void;
+  /** Pas de lipire la grilă, mm (0 = liber). */
+  snapMm?: number;
   layout?: ApaCanalLayout | null;
   /** Adevărat dacă firma are ORICE șablon salvat (indiferent dacă acest element anume a fost mutat). */
   hasCustomLayout?: boolean;
@@ -203,18 +275,29 @@ function LayoutField({
   // Text personalizat — înlocuiește complet conținutul normal (vezi ApaCanalElementOverride).
   const renderContent = (state: FieldState) =>
     override?.textOverride ? (
-      <div style={{ width: "100%", height: "100%", ...state.textStyle }}>
-        {override.textOverride.split("\n").map((line, i) => <p key={i}>{line}</p>)}
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          overflow: "hidden",
+          color: COLOR_TEXT,
+          fontSize: `${APA_CANAL_DEFAULT_FONT_MM[elementKey] ?? 3}mm`,
+          lineHeight: 1.4,
+          ...BOX_OVERRIDE_STYLE[elementKey],
+          ...state.textStyle,
+        }}
+      >
+        {applyApaCanalVariables(override.textOverride, vars ?? {}).split("\n").map((line, i) => <p key={i}>{line || " "}</p>)}
       </div>
     ) : (
       children(state)
     );
 
   if (!editable && !hasCustomLayout) {
-    return <div style={defaultStyle}>{renderContent({ overridden: false, textStyle })}</div>;
+    return <div data-el={elementKey} style={defaultStyle}>{renderContent({ overridden: false, textStyle })}</div>;
   }
 
-  const base = APA_CANAL_LAYOUT_DEFAULTS[elementKey];
+  const base = defaults?.[elementKey] ?? APA_CANAL_LAYOUT_DEFAULTS[elementKey];
   const ov = {
     xMm: override?.xMm ?? base.xMm,
     yMm: override?.yMm ?? base.yMm,
@@ -261,8 +344,16 @@ function LayoutField({
         width: ov.widthMm * MM_TO_PX,
         height: ov.heightMm * MM_TO_PX,
       }}
+      bounds="parent"
+      minWidth={minSizeMm(elementKey).w * MM_TO_PX}
+      minHeight={minSizeMm(elementKey).h * MM_TO_PX}
+      dragGrid={snapMm > 0 ? [snapMm * MM_TO_PX, snapMm * MM_TO_PX] : undefined}
+      resizeGrid={snapMm > 0 ? [snapMm * MM_TO_PX, snapMm * MM_TO_PX] : undefined}
+      onMouseDown={() => onSelect?.(elementKey)}
+      onDragStart={() => onSelect?.(elementKey)}
       onDragStop={(_e, d) => {
-        onChange?.(elementKey, { ...merged, xMm: round1(d.x / MM_TO_PX), yMm: round1(d.y / MM_TO_PX) });
+        const b = clampBox({ xMm: d.x / MM_TO_PX, yMm: d.y / MM_TO_PX, widthMm: ov.widthMm, heightMm: ov.heightMm }, minSizeMm(elementKey));
+        onChange?.(elementKey, { ...merged, xMm: b.xMm, yMm: b.yMm });
       }}
       onResizeStop={(_e, _dir, ref, _delta, pos) => {
         const newHeightMm = round1(ref.offsetHeight / MM_TO_PX);
@@ -274,17 +365,22 @@ function LayoutField({
         const scaledFontSizeMm = isText
           ? Math.min(24, Math.max(1.5, round1((merged.fontSizeMm ?? APA_CANAL_DEFAULT_FONT_MM[elementKey] ?? 3) * ratio)))
           : merged.fontSizeMm;
+        const b = clampBox(
+          { xMm: pos.x / MM_TO_PX, yMm: pos.y / MM_TO_PX, widthMm: ref.offsetWidth / MM_TO_PX, heightMm: newHeightMm },
+          minSizeMm(elementKey),
+        );
         onChange?.(elementKey, {
           ...merged,
-          widthMm: round1(ref.offsetWidth / MM_TO_PX),
-          heightMm: newHeightMm,
-          xMm: round1(pos.x / MM_TO_PX),
-          yMm: round1(pos.y / MM_TO_PX),
+          ...b,
           ...(isText ? { fontSizeMm: scaledFontSizeMm } : {}),
         });
       }}
       scale={scale}
-      style={{ outline: `1px dashed ${COLOR_BAR}`, background: "rgba(134,211,234,0.10)" }}
+      style={{
+        outline: selected ? "2px solid #0d9488" : `1px dashed ${COLOR_BAR}`,
+        background: selected ? "rgba(13,148,136,0.14)" : "rgba(134,211,234,0.10)",
+        zIndex: selected ? 45 : undefined,
+      }}
     >
       <div style={{ width: "100%", height: "100%" }}>{renderContent({ overridden: true, textStyle })}</div>
     </Rnd>,
@@ -360,16 +456,28 @@ function CustomImageField({
 export default function ApaCanalInvoicePublic({
   invoice,
   company,
-  layout,
+  layout: layoutProp,
   editable,
   onLayoutChange,
   onCustomImageChange,
   previewScale = 1,
   consumptionHistory,
+  defaults,
+  selectedKey,
+  onSelect,
+  snapMm = 0,
+  showGrid = false,
 }: {
   invoice: ApaCanalInvoiceData;
   company: Company;
   layout?: ApaCanalLayout | null;
+  /** Poziții de pornire măsurate pe factura reală (doar editorul) — vezi ApaCanalLayoutEditor. */
+  defaults?: Partial<Record<ApaCanalElementKey, BoxMm>>;
+  selectedKey?: ApaCanalElementKey | null;
+  onSelect?: (key: ApaCanalElementKey) => void;
+  snapMm?: number;
+  /** Grilă de 10mm + marginea de siguranță (doar editorul). */
+  showGrid?: boolean;
   editable?: boolean;
   onLayoutChange?: (key: ApaCanalElementKey, override: ApaCanalElementOverride) => void;
   onCustomImageChange?: (id: string, patch: Partial<ApaCanalCustomImage>) => void;
@@ -387,6 +495,9 @@ export default function ApaCanalInvoicePublic({
   // TOATE liniile, nu doar prima cu .find() — ~1.873 facturi (din import) au mai mult de o
   // linie de apă/canal (recalculări/corecții din aceeași perioadă, în sursa 1C); .find() le
   // arăta pe client doar UNA, ascunzând restul sumelor reale facturate din tabelul afișat.
+  // Șablonul trece mereu prin curățare: un șablon stricat (valori lipsă/negative/în afara paginii) nu poate rupe factura.
+  const layout = useMemo(() => (layoutProp ? sanitizeApaCanalLayout(layoutProp) : null), [layoutProp]);
+  const vars = useMemo(() => buildApaCanalVars(invoice, company), [invoice, company]);
   const apaItems = invoice.items.filter((it) => isApa(it.description));
   const canalItems = invoice.items.filter((it) => !isApa(it.description) && /canalizare/i.test(it.description));
   // Din invoice.subtotal (verificat mereu egal cu suma liniilor — vezi backfill-ul de audit),
@@ -415,7 +526,8 @@ export default function ApaCanalInvoicePublic({
   // Doar când există un șablon salvat (altfel tabelul e în flux normal — vezi LayoutField — și
   // își împinge singur vecinii mai jos, fără nicio suprapunere posibilă).
   const itemRowCount = apaItems.length + canalItems.length;
-  const tableOverflowMm = hasCustomLayout ? Math.max(0, itemRowCount - TABLE_BASELINE_ROWS) * TABLE_ROW_HEIGHT_MM : 0;
+  // În editor NU împingem elementele: valorile afișate/salvate trebuie să fie exact cele din șablon.
+  const tableOverflowMm = hasCustomLayout && !editable ? Math.max(0, itemRowCount - TABLE_BASELINE_ROWS) * TABLE_ROW_HEIGHT_MM : 0;
   // `.invoice-page` are `overflow: hidden` la 210mm (o singură pagină A4, tăiată strict) — pentru
   // cazurile extreme (rare: până la 38 de linii pe o factură), împingerea nelimitată ar scoate
   // caseta de total complet în afara paginii (invizibilă), ceea ce e mai rău decât suprapunerea
@@ -451,7 +563,7 @@ export default function ApaCanalInvoicePublic({
     if (editable) return; // editorul are propriul mecanism de scalare (ApaCanalLayoutEditor)
     const el = scaleWrapRef.current;
     if (!el) return;
-    const pageWidthPx = 297 * MM_TO_PX;
+    const pageWidthPx = PAGE_W_MM * MM_TO_PX;
     const update = () => {
       const availW = el.clientWidth;
       setAutoScale(availW > 0 ? Math.min(1, availW / pageWidthPx) : 1);
@@ -467,7 +579,21 @@ export default function ApaCanalInvoicePublic({
     defaultStyle: React.CSSProperties,
     children: (state: FieldState) => React.ReactNode,
   ) => (
-    <LayoutField elementKey={elementKey} layout={effectiveLayout} hasCustomLayout={hasCustomLayout} editable={editable} onChange={onLayoutChange} defaultStyle={defaultStyle} scale={previewScale} portalTarget={pageEl}>
+    <LayoutField
+      elementKey={elementKey}
+      layout={effectiveLayout}
+      hasCustomLayout={hasCustomLayout}
+      editable={editable}
+      onChange={onLayoutChange}
+      defaultStyle={defaultStyle}
+      scale={previewScale}
+      portalTarget={pageEl}
+      defaults={defaults}
+      vars={vars}
+      selected={selectedKey === elementKey}
+      onSelect={onSelect}
+      snapMm={snapMm}
+    >
       {children}
     </LayoutField>
   );
@@ -567,9 +693,9 @@ export default function ApaCanalInvoicePublic({
           {field(
             "chart",
             { gridColumn: 1, gridRow: 2, marginTop: "3mm", alignSelf: "center" },
-            () => (
-              <div style={{ width: "100%" }}>
-                <ConsumptionChart points={points} />
+            ({ overridden }) => (
+              <div style={overridden ? { width: "100%", height: "100%", display: "flex", flexDirection: "column" } : { width: "100%" }}>
+                <ConsumptionChart points={points} fill={overridden} />
                 <ConsumptionChartLabels points={points} />
               </div>
             ),
@@ -753,6 +879,24 @@ export default function ApaCanalInvoicePublic({
             portalTarget={pageEl}
           />
         ))}
+
+        {editable && showGrid && (
+          <>
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                zIndex: 60,
+                backgroundImage:
+                  "linear-gradient(to right, rgba(0,0,0,0.16) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.16) 1px, transparent 1px), linear-gradient(to right, rgba(0,0,0,0.07) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.07) 1px, transparent 1px)",
+                backgroundSize: "50mm 50mm, 50mm 50mm, 10mm 10mm, 10mm 10mm",
+              }}
+            />
+            <div aria-hidden style={{ position: "absolute", inset: "5mm", pointerEvents: "none", zIndex: 60, border: "1px dashed rgba(229,57,53,0.55)" }} />
+          </>
+        )}
       </div>
   );
 
@@ -770,7 +914,7 @@ export default function ApaCanalInvoicePublic({
         <div ref={scaleWrapRef} className="invoice-scale-measure">
           <div
             className="invoice-scale-outer"
-            style={{ width: `${297 * MM_TO_PX * autoScale}px`, height: `${210 * MM_TO_PX * autoScale}px` }}
+            style={{ width: `${PAGE_W_MM * MM_TO_PX * autoScale}px`, height: `${PAGE_H_MM * MM_TO_PX * autoScale}px` }}
           >
             <div className="invoice-scale-inner" style={{ "--invoice-scale": autoScale } as React.CSSProperties}>
               {pageContent}

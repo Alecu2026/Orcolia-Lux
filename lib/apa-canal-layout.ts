@@ -129,3 +129,170 @@ export const APA_CANAL_LAYOUT_DEFAULTS: Record<ApaCanalElementKey, Required<Pick
 export const MM_TO_PX = 96 / 25.4;
 
 export const round1 = (n: number) => Math.round(n * 10) / 10;
+/** Geometria (mm) se păstrează la 0,01 mm (~0,04 px): destul de fin ca factura salvată să fie identică cu cea măsurată. */
+export const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// ── Dimensiunea paginii, limite și protecții ───────────────────────────────────────────────────
+
+/** Pagina facturii: A4 landscape, exact ca în PDF (`@page { size: A4 landscape }`). */
+export const PAGE_W_MM = 297;
+export const PAGE_H_MM = 210;
+
+export const ALL_ELEMENT_KEYS = Object.keys(APA_CANAL_ELEMENT_LABELS) as ApaCanalElementKey[];
+
+/** Liniile decorative: au zonă de prindere de 3mm, dar pot fi foarte joase. */
+export const APA_CANAL_LINE_KEYS: ApaCanalElementKey[] = ["titleLine", "totalsConnectorLine"];
+
+export const FONT_MIN_MM = 1.5;
+export const FONT_MAX_MM = 24;
+export const MAX_CUSTOM_IMAGES = 10;
+export const MAX_IMAGE_DATA_URL = 3_500_000;
+export const MAX_TEXT_OVERRIDE = 3000;
+
+/** Dimensiunea minimă (mm) sub care un element nu mai poate fi nici văzut, nici prins cu mouse-ul. */
+export function minSizeMm(key: ApaCanalElementKey | "image"): { w: number; h: number } {
+  if (key === "image") return { w: 5, h: 5 };
+  return APA_CANAL_LINE_KEYS.includes(key) ? { w: 5, h: 1 } : { w: 8, h: 3 };
+}
+
+export type BoxMm = { xMm: number; yMm: number; widthMm: number; heightMm: number };
+
+function clamp(v: number, min: number, max: number): number {
+  if (!Number.isFinite(v)) return min;
+  return Math.min(max, Math.max(min, v));
+}
+
+/** Aduce o casetă în pagină: dimensiune între minim și pagina întreagă, poziție care nu o scoate din pagină. Nu aruncă niciodată. */
+export function clampBox(box: BoxMm, min: { w: number; h: number }): BoxMm {
+  const w = clamp(box.widthMm, min.w, PAGE_W_MM);
+  const h = clamp(box.heightMm, min.h, PAGE_H_MM);
+  return {
+    widthMm: round2(w),
+    heightMm: round2(h),
+    xMm: round2(clamp(box.xMm, 0, PAGE_W_MM - w)),
+    yMm: round2(clamp(box.yMm, 0, PAGE_H_MM - h)),
+  };
+}
+
+const finite = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
+/**
+ * Curăță un șablon venit de oriunde (formularul, baza de date, un import): doar cheile cunoscute, doar numere finite,
+ * totul în limitele paginii, texte și imagini cu plafon de mărime. Nu aruncă niciodată — o valoare stricată dispare,
+ * iar elementul revine la poziția/mărimea implicită, deci o factură nu poate ieși ruptă dintr-un șablon corupt.
+ */
+export function sanitizeApaCanalLayout(input: unknown): ApaCanalLayout {
+  const out: ApaCanalLayout = {};
+  if (!input || typeof input !== "object" || Array.isArray(input)) return out;
+  const src = input as Record<string, unknown>;
+
+  for (const key of ALL_ELEMENT_KEYS) {
+    const raw = src[key];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const r = raw as Record<string, unknown>;
+    const min = minSizeMm(key);
+    const base = APA_CANAL_LAYOUT_DEFAULTS[key];
+    const o: ApaCanalElementOverride = {};
+    const w = finite(r.widthMm);
+    const h = finite(r.heightMm);
+    const x = finite(r.xMm);
+    const y = finite(r.yMm);
+    if (w !== undefined) o.widthMm = round2(clamp(w, min.w, PAGE_W_MM));
+    if (h !== undefined) o.heightMm = round2(clamp(h, min.h, PAGE_H_MM));
+    if (x !== undefined) o.xMm = round2(clamp(x, 0, PAGE_W_MM - (o.widthMm ?? base.widthMm)));
+    if (y !== undefined) o.yMm = round2(clamp(y, 0, PAGE_H_MM - (o.heightMm ?? base.heightMm)));
+    if (APA_CANAL_TEXT_KEYS.includes(key)) {
+      const fs = finite(r.fontSizeMm);
+      if (fs !== undefined && fs > 0) o.fontSizeMm = round1(clamp(fs, FONT_MIN_MM, FONT_MAX_MM));
+      if (r.bold === true) o.bold = true;
+      if (typeof r.textOverride === "string" && r.textOverride.trim() !== "") o.textOverride = r.textOverride.slice(0, MAX_TEXT_OVERRIDE);
+    }
+    if (Object.keys(o).length) out[key] = o;
+  }
+
+  if (Array.isArray(src.customImages)) {
+    const images: ApaCanalCustomImage[] = [];
+    for (const raw of src.customImages.slice(0, MAX_CUSTOM_IMAGES)) {
+      if (!raw || typeof raw !== "object") continue;
+      const r = raw as Record<string, unknown>;
+      if (typeof r.dataUrl !== "string" || !r.dataUrl.startsWith("data:image/") || r.dataUrl.length > MAX_IMAGE_DATA_URL) continue;
+      const box = clampBox(
+        {
+          xMm: finite(r.xMm) ?? 100,
+          yMm: finite(r.yMm) ?? 80,
+          widthMm: finite(r.widthMm) ?? 60,
+          heightMm: finite(r.heightMm) ?? 60,
+        },
+        minSizeMm("image"),
+      );
+      images.push({ id: typeof r.id === "string" && r.id ? r.id.slice(0, 64) : `img-${images.length}`, dataUrl: r.dataUrl, ...box });
+    }
+    if (images.length) out.customImages = images;
+  }
+  return out;
+}
+
+/** Șablon complet: pentru FIECARE element, poziție + mărime explicite (din `defaults`, apoi din suprascrieri). Salvat așa, factura nu mai depinde de nimic implicit. */
+export function completeApaCanalLayout(
+  layout: ApaCanalLayout,
+  defaults: Partial<Record<ApaCanalElementKey, BoxMm>> = {},
+): ApaCanalLayout {
+  const out: ApaCanalLayout = { ...layout };
+  for (const key of ALL_ELEMENT_KEYS) {
+    const base = defaults[key] ?? APA_CANAL_LAYOUT_DEFAULTS[key];
+    const o = layout[key] ?? {};
+    out[key] = {
+      ...o,
+      xMm: o.xMm ?? base.xMm,
+      yMm: o.yMm ?? base.yMm,
+      widthMm: o.widthMm ?? base.widthMm,
+      heightMm: o.heightMm ?? base.heightMm,
+    };
+  }
+  return sanitizeApaCanalLayout(out);
+}
+
+// ── Variabile pentru texte personalizate ───────────────────────────────────────────────────────
+
+export type ApaCanalVariable = { key: string; label: string; group: string };
+
+/** Variabilele care se pot scrie în „Text personalizat”, ca {cont}: se înlocuiesc cu valorile REALE ale fiecărei facturi. */
+export const APA_CANAL_VARIABLES: ApaCanalVariable[] = [
+  { key: "numar", label: "Număr factură", group: "Factură" },
+  { key: "emitere", label: "Data emiterii", group: "Factură" },
+  { key: "scadenta", label: "Data limită de achitare", group: "Factură" },
+  { key: "perioada", label: "Perioada de calcul", group: "Factură" },
+  { key: "valuta", label: "Valută", group: "Factură" },
+  { key: "cont", label: "Cont personal", group: "Consumator" },
+  { key: "sector", label: "Sector", group: "Consumator" },
+  { key: "consumator", label: "Nume consumator", group: "Consumator" },
+  { key: "adresa", label: "Adresa locului de consum", group: "Consumator" },
+  { key: "contor", label: "Număr contor", group: "Contor" },
+  { key: "indPrec", label: "Indici precedenți", group: "Contor" },
+  { key: "indAct", label: "Indici actuali", group: "Contor" },
+  { key: "volumEst", label: "Volum estimativ (DA / gol)", group: "Contor" },
+  { key: "apaVolum", label: "Apă — volum, m³", group: "Servicii" },
+  { key: "apaTarif", label: "Apă — tarif, lei/m³", group: "Servicii" },
+  { key: "apaSuma", label: "Apă — sumă calculată", group: "Servicii" },
+  { key: "canalVolum", label: "Canalizare — volum, m³", group: "Servicii" },
+  { key: "canalTarif", label: "Canalizare — tarif, lei/m³", group: "Servicii" },
+  { key: "canalSuma", label: "Canalizare — sumă calculată", group: "Servicii" },
+  { key: "recalculari", label: "Recalculări", group: "Totaluri" },
+  { key: "penalitati", label: "Penalitate", group: "Totaluri" },
+  { key: "suma", label: "Suma calculată", group: "Totaluri" },
+  { key: "datorii", label: "Datorii(+) / avans(-)", group: "Totaluri" },
+  { key: "total", label: "Suma spre plată", group: "Totaluri" },
+  { key: "firma", label: "Denumirea companiei", group: "Companie" },
+  { key: "firmaAdresa", label: "Adresa companiei", group: "Companie" },
+  { key: "firmaEmail", label: "Email companie", group: "Companie" },
+  { key: "firmaCodFiscal", label: "Cod fiscal", group: "Companie" },
+  { key: "contactNume", label: "Persoana de contact", group: "Companie" },
+  { key: "contacte", label: "Lista de contacte", group: "Companie" },
+  { key: "atentie", label: "Textul „Atenție”", group: "Companie" },
+  { key: "anunt", label: "Textul „Anunț”", group: "Companie" },
+];
+
+/** Înlocuiește {variabila} cu valoarea ei; ce nu e variabilă cunoscută rămâne neatins (se vede imediat în previzualizare). */
+export function applyApaCanalVariables(text: string, vars: Record<string, string>): string {
+  return text.replace(/\{(\w+)\}/g, (whole, k: string) => (Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : whole));
+}
