@@ -18,6 +18,7 @@ import ApaCanalJsonImport from "./ApaCanalJsonImport";
 import InvoiceViewButton from "./InvoiceViewButton";
 import CompactCard, { CompactField } from "./CompactCard";
 import { DEFAULT_PER_PAGE, NOTIFY_PER_PAGE, perPageLabel } from "@/lib/payer-notify";
+import { buildPageButtons } from "@/lib/page-buttons";
 
 type Row = {
   id: string;
@@ -35,8 +36,9 @@ type Row = {
 
 export default function InvoicesList({
   items,
-  hasMore,
   page,
+  total,
+  totalPages,
   perPage = DEFAULT_PER_PAGE,
   status,
   q,
@@ -44,8 +46,10 @@ export default function InvoicesList({
   canImportApaCanal = false,
 }: {
   items: Row[];
-  hasMore: boolean;
   page: number;
+  /** Câte facturi sunt în total (cu filtrele curente) și câte pagini înseamnă. */
+  total: number;
+  totalPages: number;
   perPage?: number;
   status: string;
   q: string;
@@ -59,6 +63,7 @@ export default function InvoicesList({
   useEffect(() => setRows(items), [items]);
   const [search, setSearch] = useState(q);
   const [copied, setCopied] = useState<string | null>(null);
+  const [goto, setGoto] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mod telefon: fiecare factură devine un card. `cardsPref` = alegerea utilizatorului; null = automat (carduri pe ecrane înguste).
   const [cardsPref, setCardsPref] = useState<boolean | null>(null);
@@ -183,7 +188,10 @@ export default function InvoicesList({
       </div>
 
       <div className="mb-1 flex flex-wrap items-center gap-x-3 text-xs">
-        <span><b>{rows.length}</b>{hasMore ? "+" : ""} facturi pe această pagină</span>
+        <span>
+          <b>{total.toLocaleString("ro-RO")}</b> facturi
+          {total > 0 && <span className="text-ink-soft"> · afișate {((page - 1) * perPage + 1).toLocaleString("ro-RO")}–{((page - 1) * perPage + rows.length).toLocaleString("ro-RO")} · pagina {page}/{totalPages}</span>}
+        </span>
         <span className="text-ink-soft">Σ pagină: <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
         <button
           type="button"
@@ -346,15 +354,61 @@ export default function InvoicesList({
       </div>
       )}
 
-      {(page > 1 || hasMore) && (
-        <div className="mt-3 flex items-center justify-between">
-          <button disabled={page <= 1} onClick={() => navigate({ page: page - 1 })} className="tap card inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-xs font-medium disabled:cursor-default disabled:opacity-40">
-            <IconChevronLeft className="size-3.5" /> {m.common.previous}
+      {totalPages > 1 && (
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-1">
+          <button
+            disabled={page <= 1}
+            onClick={() => navigate({ page: page - 1 })}
+            className="tap grid size-7 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40"
+            aria-label={m.common.previous}
+          >
+            <IconChevronLeft className="size-4" />
           </button>
-          <span className="text-xs text-ink-soft">Pagina {page}</span>
-          <button disabled={!hasMore} onClick={() => navigate({ page: page + 1 })} className="tap card inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-xs font-medium disabled:cursor-default disabled:opacity-40">
-            {m.common.next} <IconChevronRight className="size-3.5" />
+          {buildPageButtons(page, totalPages).map((b, i) =>
+            b === "…" ? (
+              <span key={`e${i}`} className="flex h-7 w-6 items-center justify-center text-sm text-ink-soft">…</span>
+            ) : (
+              <button
+                key={b}
+                onClick={() => navigate({ page: b })}
+                aria-current={b === page ? "page" : undefined}
+                className={`tap h-7 min-w-[28px] cursor-pointer rounded-lg px-2 text-xs font-medium ${b === page ? "bg-brand text-white" : "border border-[var(--color-line)] text-ink hover:bg-[var(--color-surface-2)]"}`}
+              >
+                {b}
+              </button>
+            ),
+          )}
+          <button
+            disabled={page >= totalPages}
+            onClick={() => navigate({ page: page + 1 })}
+            className="tap grid size-7 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40"
+            aria-label={m.common.next}
+          >
+            <IconChevronRight className="size-4" />
           </button>
+          {/* Salt direct la o pagină aleasă */}
+          <form
+            className="ml-2 flex items-center gap-1 text-xs text-ink-soft"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const n = Math.floor(Number(goto));
+              if (!Number.isFinite(n) || n < 1) return;
+              setGoto("");
+              navigate({ page: Math.min(n, totalPages) });
+            }}
+          >
+            Mergi la
+            <input
+              value={goto}
+              onChange={(e) => setGoto(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              inputMode="numeric"
+              placeholder={String(page)}
+              aria-label="Număr pagină"
+              className="h-7 w-14 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-center text-xs text-ink outline-none focus:border-brand"
+            />
+            / {totalPages}
+            <button type="submit" className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-xs font-medium text-ink hover:bg-[var(--color-surface-2)]">Du-te</button>
+          </form>
         </div>
       )}
     </>

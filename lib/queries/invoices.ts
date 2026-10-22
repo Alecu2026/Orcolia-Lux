@@ -28,8 +28,8 @@ export async function listInvoices(opts: {
   page?: number;
   /** Câte pe pagină (implicit 50; PER_PAGE_ALL = toate). */
   perPage?: number;
-}): Promise<{ items: InvoiceListItem[]; hasMore: boolean; page: number }> {
-  if (DEMO) return { items: [], hasMore: false, page: 1 };
+}): Promise<{ items: InvoiceListItem[]; hasMore: boolean; page: number; total: number; totalPages: number }> {
+  if (DEMO) return { items: [], hasMore: false, page: 1, total: 0, totalPages: 1 };
   const page = Math.max(1, opts.page ?? 1);
   const search = opts.search?.trim();
   const PAGE_SIZE = Math.min(Math.max(1, Math.floor(opts.perPage ?? DEFAULT_PAGE_SIZE) || DEFAULT_PAGE_SIZE), PER_PAGE_ALL);
@@ -63,7 +63,7 @@ export async function listInvoices(opts: {
     currency: true,
     publicToken: true,
   } as const;
-  const [rawRows, nameById] = await Promise.all([
+  const [rawRows, nameById, total] = await Promise.all([
     prisma.invoice.findMany({
       where,
       select: bigPage ? { ...base, clientId: true } : { ...base, client: { select: { name: true } } },
@@ -74,9 +74,11 @@ export async function listInvoices(opts: {
     bigPage
       ? prisma.client.findMany({ select: { id: true, name: true } }).then((cs) => new Map(cs.map((c) => [c.id, c.name])))
       : Promise.resolve(null),
+    prisma.invoice.count({ where }),
   ]);
   const rows = rawRows as (Omit<(typeof rawRows)[number], "client"> & { client?: { name: string } | null; clientId?: string | null })[];
 
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const hasMore = rows.length > PAGE_SIZE;
   return {
     items: rows.slice(0, PAGE_SIZE).map((r) => ({
@@ -94,6 +96,8 @@ export async function listInvoices(opts: {
     })),
     hasMore,
     page,
+    total,
+    totalPages,
   };
 }
 

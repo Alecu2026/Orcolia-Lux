@@ -21,17 +21,20 @@ export default async function InvoicesPage({
     ? (sp.status as InvoiceStatus)
     : undefined;
   const q = sp.q?.trim() || "";
-  const page = Math.max(1, Number(sp.page) || 1);
+  const wantedPage = Math.max(1, Math.floor(Number(sp.page)) || 1);
 
   const perPage = normalizePerPageClient(sp.ps);
-  const result = await listInvoices({ status, search: q, page, perPage });
+  let result = await listInvoices({ status, search: q, page: wantedPage, perPage });
+  // pagină cerută după ultima (ex. din link vechi sau după filtrare): arătăm ultima, nu o listă goală
+  if (wantedPage > result.totalPages) result = await listInvoices({ status, search: q, page: result.totalPages, perPage });
 
   return (
     <div className="w-full">
       <InvoicesList
         items={result.items}
-        hasMore={result.hasMore}
         page={result.page}
+        total={result.total}
+        totalPages={result.totalPages}
         perPage={perPage}
         status={status ?? ""}
         q={q}
