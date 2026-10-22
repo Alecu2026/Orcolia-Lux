@@ -36,13 +36,25 @@ function parseNotifyEvents(formData: FormData): string[] {
     .filter((e) => NOTIFY_EVENT_KEYS.includes(e));
 }
 
+/** Administrator în sens larg: rol ADMIN sau permisiunea „admin”. Doar ei pot crea/promova administratori (altfel un angajat cu „Gestionare utilizatori” și-ar putea acorda singur acces total). */
+const isAdminLevel = (u: { role: string; permissions: string[] }) => u.role === "ADMIN" || u.permissions.includes("admin");
+
+/** Telegram chat ID: număr (grupurile au id negativ). Gol = fără Telegram. */
+function parseTelegram(formData: FormData): { value: string | null; error?: string } {
+  const raw = String(formData.get("telegramChatId") ?? "").trim();
+  if (!raw) return { value: null };
+  if (!/^-?\d{5,15}$/.test(raw)) return { value: null, error: "Telegram chat ID invalid: doar cifre (ex. 123456789)." };
+  return { value: raw };
+}
+
 const NOTIFY_SCOPES = ["ALL", "TEAMS", "MEMBERS"];
 function parseNotifyScope(formData: FormData): string {
   const v = String(formData.get("notifyScope") ?? "ALL");
   return NOTIFY_SCOPES.includes(v) ? v : "ALL";
 }
+/** Id-uri de echipe/utilizatori: doar valori de forma ObjectId, fără dubluri — o valoare străină ar face update-ul să cadă. */
 function parseIdList(formData: FormData, key: string): string[] {
-  return formData.getAll(key).map(String).filter(Boolean);
+  return [...new Set(formData.getAll(key).map(String).filter((v) => /^[a-f0-9]{24}$/i.test(v)))];
 }
 
 const TASK_VIEW_SCOPES = ["ALL", "RESTRICTED"];
@@ -63,11 +75,18 @@ export async function createUser(
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const role = formData.get("role") === "ADMIN" ? "ADMIN" : "STAFF";
-  const isActive = formData.get("isActive") !== "off";
+  // O bifă nebifată nu trimite nimic în formular: „activ” înseamnă exact valoarea „on”, nu „orice în afară de off”.
+  const isActive = formData.get("isActive") === "on";
 
   if (name.length < 2) return { error: "Nume prea scurt." };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Email invalid." };
   if (password.length < 8) return { error: "Parola: minim 8 caractere." };
+  const telegram = parseTelegram(formData);
+  if (telegram.error) return { error: telegram.error };
+  if (role === "ADMIN" && !isAdminLevel(user)) return { error: "Doar un administrator poate crea alt administrator." };
+  if (role === "STAFF" && parsePerms(formData).includes("admin") && !isAdminLevel(user)) {
+    return { error: "Doar un administrator poate acorda acces administrativ." };
+  }
 
   const exists = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   if (exists) return { error: "Există deja un cont cu acest email." };
@@ -81,7 +100,7 @@ export async function createUser(
       isActive,
       permissions: role === "ADMIN" ? [] : parsePerms(formData),
       notifyEvents: parseNotifyEvents(formData),
-      telegramChatId: String(formData.get("telegramChatId") ?? "").trim() || null,
+      telegramChatId: telegram.value,
       notifyScope: parseNotifyScope(formData),
       notifyTeamIds: parseIdList(formData, "notifyTeamIds"),
       notifyMemberIds: parseIdList(formData, "notifyMemberIds"),
@@ -113,11 +132,16 @@ export async function updateUser(
   const id = String(formData.get("id") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  let role: "ADMIN" | "STAFF" = formData.get("role") === "ADMIN" ? "ADMIN" : "STAFF";
-  const isActive = formData.get("isActive") !== "off";
+  // Un câmp „rol” dezactivat în formular nu se trimite deloc: atunci păstrăm rolul de acum (altfel ar părea retrogradare în STAFF).
+  const roleRaw = formData.get("role");
+  let role: "ADMIN" | "STAFF" = roleRaw === "ADMIN" ? "ADMIN" : "STAFF";
+  const isActive = formData.get("isActive") === "on";
   const newPassword = String(formData.get("password") ?? "");
   if (name.length < 2) return { error: "Nume prea scurt." };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Email invalid." };
+  if (newPassword !== "" && newPassword.length < 8) return { error: "Parola nouă: minim 8 caractere (sau lasă gol ca să rămână neschimbată)." };
+  const telegram = parseTelegram(formData);
+  if (telegram.error) return { error: telegram.error };
 
   const [emailOwner, before] = await Promise.all([
     prisma.user.findUnique({ where: { email }, select: { id: true } }),
@@ -128,6 +152,15 @@ export async function updateUser(
   ]);
   if (emailOwner && emailOwner.id !== id) return { error: "Există deja un cont cu acest email." };
   if (!before) return { error: "Utilizator inexistent." };
+  if (roleRaw !== "ADMIN" && roleRaw !== "STAFF") role = before.role;
+
+  // Doar un administrator poate umbla la conturile administrative sau le poate crea (nu un angajat cu „Gestionare utilizatori”).
+  if (!isAdminLevel(admin)) {
+    if (before.role === "ADMIN" || before.permissions.includes("admin")) return { error: "Doar un administrator poate modifica un administrator." };
+    if (role === "ADMIN") return { error: "Doar un administrator poate crea alt administrator." };
+    if (parsePerms(formData).includes("admin")) return { error: "Doar un administrator poate acorda acces administrativ." };
+  }
+  if (id === admin.id && !isActive) return { error: "Nu te poți dezactiva pe tine." };
 
   // Un super-admin rămâne mereu administrator, iar un non-super nu poate umbla la un super-admin.
   if (before.isSuperAdmin && !isSuper(admin)) return { error: "Doar un super-admin poate modifica un alt super-admin." };
@@ -158,7 +191,7 @@ export async function updateUser(
         isActive,
         permissions: newPerms,
         notifyEvents: newNotify,
-        telegramChatId: String(formData.get("telegramChatId") ?? "").trim() || null,
+        telegramChatId: telegram.value,
         notifyScope: parseNotifyScope(formData),
         notifyTeamIds: parseIdList(formData, "notifyTeamIds"),
         notifyMemberIds: parseIdList(formData, "notifyMemberIds"),
@@ -168,6 +201,10 @@ export async function updateUser(
         ...(newPassword.length >= 8 ? { passwordHash: await hashPassword(newPassword) } : {}),
       },
     });
+    // Cont dezactivat sau parolă schimbată: sesiunile existente nu mai trebuie să funcționeze.
+    if ((!isActive && before.isActive) || newPassword.length >= 8) {
+      if (id !== admin.id) await prisma.session.deleteMany({ where: { userId: id } });
+    }
   } catch (e) {
     // Concurență: alt request a luat emailul între verificarea de mai sus și acest update.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
