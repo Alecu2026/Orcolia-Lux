@@ -2,6 +2,7 @@ import type { Messages } from "./ro";
 
 const ru: Messages = {
   nav: {
+    appointments: "Записи",
     dashboard: "Главная",
     tasks: "Задачи",
     tickets: "Заявки",
@@ -707,9 +708,9 @@ const ru: Messages = {
     bankLabel: "IBAN / Банковские реквизиты (необязательно)",
     currencyLabel: "Валюта",
     invoicePrefixLabel: "Префикс счета",
-    apptModuleLabel: "Название модуля записей",
-    apptModulePlaceholder: "Записи",
-    apptModuleHint: "Отображается в меню и заголовке (например: «Бронирования», «Консультации»).",
+    apptModuleLabel: "Название приложения (сверху, над меню)",
+    apptModulePlaceholder: "CRM",
+    apptModuleHint: "Отображается в левом верхнем углу (например: «CRM»). Страница в меню всегда называется «Записи».",
     saved: "Сохранено.",
     saveBtn: "Сохранить данные компании",
   },

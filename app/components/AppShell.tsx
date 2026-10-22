@@ -18,7 +18,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard",        labelKey: "dashboard",  icon: gridIcon(),      perm: "dashboard.view" },
   { href: "/tasks",            labelKey: "tasks",       icon: checklistIcon(), perm: "tasks.view" },
   { href: "/tickets",          labelKey: "tickets",     icon: ticketIcon(),    perm: "tickets.view" },
-  { href: "/appointments",     labelKey: "dashboard",   icon: apptIcon(),      perm: "appointments.view" },
+  { href: "/appointments",     labelKey: "appointments", icon: apptIcon(),      perm: "appointments.view" },
   { href: "/projects",         labelKey: "projects",    icon: folderIcon(),    perm: "projects.view" },
   { href: "/kanban",           labelKey: "kanban",      icon: kanbanIcon(),    perm: "kanban.view" },
   { href: "/calendar",         labelKey: "calendar",    icon: calIcon(),       perm: "calendar.view" },
@@ -56,9 +56,7 @@ function NavList({
     <nav className="flex flex-col gap-1">
       {visibleNav(items, perms).map((item) => {
         const active = path === item.href || path.startsWith(`${item.href}/`);
-        const label = item.href === "/appointments"
-          ? (appointmentsLabel ?? m.nav[item.labelKey])
-          : m.nav[item.labelKey];
+        const label = m.nav[item.labelKey];
         return (
           <Link
             key={item.href}
@@ -162,9 +160,7 @@ function AppShellInner({
     window.scrollTo(0, 0);
   }, [path]);
   const current = NAV.find((n) => path.startsWith(n.href))
-    ? (path.startsWith("/appointments")
-        ? (appointmentsLabel ?? m.nav.dashboard)
-        : m.nav[NAV.find((n) => path.startsWith(n.href))!.labelKey])
+    ? m.nav[NAV.find((n) => path.startsWith(n.href))!.labelKey]
     : m.nav.dashboard;
 
   return (
@@ -256,9 +252,7 @@ function BottomNav({ perms, appointmentsLabel }: { perms?: Record<string, boolea
     <nav className="fixed bottom-0 left-0 right-0 z-30 flex items-stretch border-t border-[var(--color-line)] bg-[var(--color-surface)] pb-[env(safe-area-inset-bottom)] lg:hidden">
       {items.map((item) => {
         const active = path.startsWith(item.href);
-        const label = item.href === "/appointments"
-          ? (appointmentsLabel ?? m.nav[item.labelKey])
-          : m.nav[item.labelKey];
+        const label = m.nav[item.labelKey];
         return (
           <Link
             key={item.href}

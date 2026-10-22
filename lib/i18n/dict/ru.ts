@@ -402,7 +402,7 @@ export const RU: Record<string, string> = {
   "Doar anumite echipe / persoane": "Только определённые команды / люди",
   "+ task-urile lui (create sau asignate lui), mereu vizibile": "+ его собственные задачи (созданные им или назначенные ему), всегда видны",
   "Nimic ales: va vedea doar task-urile create de el sau asignate lui.": "Ничего не выбрано: он увидит только задачи, созданные им или назначенные ему.",
-  "Task-uri / Tichete / Work Orders": "Задачи / Заявки / Наряды",
+  "Task-uri / Tichete": "Задачи / Заявки",
   "Proiecte": "Проекты",
   "Clienți": "Клиенты",
   "Programări": "Записи",

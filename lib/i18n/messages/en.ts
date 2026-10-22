@@ -3,6 +3,7 @@ import type { Messages } from "./ro";
 const en: Messages = {
   nav: {
     dashboard: "Dashboard",
+    appointments: "Appointments",
     tasks: "Tasks",
     tickets: "Tickets",
     kanban: "Kanban",
@@ -707,9 +708,9 @@ const en: Messages = {
     bankLabel: "IBAN / Bank details (optional)",
     currencyLabel: "Currency",
     invoicePrefixLabel: "Invoice prefix",
-    apptModuleLabel: "Appointments module name",
-    apptModulePlaceholder: "Appointments",
-    apptModuleHint: "Appears in the menu and header (e.g. \"Reservations\", \"Consultations\").",
+    apptModuleLabel: "App name (top, above the menu)",
+    apptModulePlaceholder: "CRM",
+    apptModuleHint: "Shown in the top-left corner (e.g. \"CRM\"). The menu page is always called \"Appointments\".",
     saved: "Saved.",
     saveBtn: "Save company details",
   },

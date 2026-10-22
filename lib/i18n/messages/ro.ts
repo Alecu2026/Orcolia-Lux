@@ -1,6 +1,7 @@
 ﻿const ro = {
   nav: {
     dashboard: "Dashboard",
+    appointments: "Programări",
     tasks: "Task-uri",
     tickets: "Tichete",
     kanban: "Kanban",
@@ -705,9 +706,9 @@
     bankLabel: "IBAN / Detalii bancare (opțional)",
     currencyLabel: "Monedă",
     invoicePrefixLabel: "Prefix factură",
-    apptModuleLabel: "Denumire modul programări",
-    apptModulePlaceholder: "Programări",
-    apptModuleHint: "Apare în meniu și în header (ex: \"Rezervări\", \"Consultații\").",
+    apptModuleLabel: "Numele aplicației (sus, deasupra meniului)",
+    apptModulePlaceholder: "CRM",
+    apptModuleHint: "Apare în colțul din stânga sus (ex: \"CRM\"). Pagina din meniu se numește mereu „Programări”.",
     saved: "Salvat.",
     saveBtn: "Salvează datele companiei",
   },

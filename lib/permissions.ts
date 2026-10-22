@@ -5,7 +5,7 @@
  */
 
 export type PermissionKey =
-  // Task-uri / Tichete / Work Orders
+  // Task-uri / Tichete
   | "tasks.view"
   | "tasks.create"
   | "tasks.edit"
@@ -58,7 +58,7 @@ export const PERMISSION_GROUPS: {
   items: { key: PermissionKey; label: string }[];
 }[] = [
   {
-    group: "Task-uri / Tichete / Work Orders",
+    group: "Task-uri / Tichete",
     items: [
       { key: "tasks.view", label: "Vizualizare" },
       { key: "tasks.create", label: "Creare" },
