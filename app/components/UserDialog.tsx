@@ -422,6 +422,9 @@ export default function UserDialog({
               />
               {!allEvents && (
                 <div className="mt-2">
+                  <p className="mb-2 rounded-lg bg-brand-soft/40 px-3 py-2 text-[11px] text-ink-soft">
+                    {t("Fiecare bifă de mai jos înseamnă: la ORICE task, factură sau proiect din firmă, nu doar la cele ale lui. Ex. „Comentariu nou pe task” = primește comentariile de la toate task-urile; fără bifă, doar de la task-urile unde e creator sau asignat.")}
+                  </p>
                   <div className="mb-1.5 flex items-center gap-1.5">
                     <button type="button" className={chip} onClick={() => { setTouched(true); setEvents(new Set(ALL_EVENT_KEYS)); }}>{t("Bifează toate")}</button>
                     <button type="button" className={chip} onClick={() => { setTouched(true); setEvents(new Set()); }}>{t("Debifează toate")}</button>
