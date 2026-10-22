@@ -127,7 +127,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
 
   // Starea apelurilor vine din webhook-ul PBX — reîmprospătăm discret cât fila e vizibilă.
   useEffect(() => {
-    const t = setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, 15_000);
+    const t = setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, 60_000);
     return () => clearInterval(t);
   }, [router]);
 

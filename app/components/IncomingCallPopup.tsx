@@ -22,7 +22,7 @@ type ActiveCall = {
   context: CallerContext | null;
 };
 
-const POLL_MS = 3000;
+const POLL_MS = 4000;
 const pretty = (p: string | null) => (p ? (p.startsWith("373") ? `+${p}` : p) : "număr necunoscut");
 const money = (n: number) => `${n.toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MDL`;
 

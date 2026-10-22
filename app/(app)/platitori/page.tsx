@@ -5,6 +5,7 @@ import { env } from "@/lib/env";
 import ImportButton from "@/app/components/ImportButton";
 import ApaCanalApiSync from "@/app/components/ApaCanalApiSync";
 import PayerNotifyManager from "@/app/components/PayerNotifyManager";
+import { timed } from "@/lib/timing";
 import { listPayers, listPayerMonths, countPayersNeedingNameFix, normalizePerPage } from "@/lib/queries/payers";
 import { filtersToListOpts } from "@/lib/queries/payer-notify";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
@@ -35,9 +36,9 @@ export default async function PayersPage({
   let page = Math.max(1, Math.floor(Number(sp.page)) || 1);
 
   const [first, months, nameFixCount] = await Promise.all([
-    listPayers({ ...opts, page }),
-    listPayerMonths(),
-    countPayersNeedingNameFix(),
+    timed("platitori/listPayers", listPayers({ ...opts, page })),
+    timed("platitori/listPayerMonths", listPayerMonths()),
+    timed("platitori/countNameFix", countPayersNeedingNameFix()),
   ]);
   let res = first;
   const lastPage = Math.max(1, Math.ceil(first.total / ssrPerPage));

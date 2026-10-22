@@ -1,6 +1,7 @@
 import { requirePermission } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { env } from "@/lib/env";
+import { timed } from "@/lib/timing";
 import { listPayers, listPayerMonths, normalizePerPage } from "@/lib/queries/payers";
 import { filtersToListOpts, listPayerTemplates } from "@/lib/queries/payer-notify";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
@@ -26,7 +27,11 @@ export default async function PayerNotificationsPage({
   const opts = { ...filtersToListOpts(filters), perPage: normalizePerPage(ssrPerPage) };
   let page = Math.max(1, Math.floor(Number(sp.page)) || 1);
 
-  const [first, months, templates] = await Promise.all([listPayers({ ...opts, page }), listPayerMonths(), listPayerTemplates()]);
+  const [first, months, templates] = await Promise.all([
+    timed("notificari/listPayers", listPayers({ ...opts, page })),
+    timed("notificari/listPayerMonths", listPayerMonths()),
+    timed("notificari/listPayerTemplates", listPayerTemplates()),
+  ]);
   let res = first;
   const lastPage = Math.max(1, Math.ceil(first.total / ssrPerPage));
   if (page > lastPage) {

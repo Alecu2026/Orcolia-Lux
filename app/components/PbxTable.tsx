@@ -88,7 +88,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
 
   // Apelurile noi apar singure (reîmprospătare discretă la 20 s cât timp fila e vizibilă).
   useEffect(() => {
-    const t = setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, 20_000);
+    const t = setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, 60_000);
     return () => clearInterval(t);
   }, [router]);
 

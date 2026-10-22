@@ -245,7 +245,7 @@ export default function PayerDetailDialog({
           </div>
         </Section>
 
-        <Section title="Ultimele facturi">
+        <Section title={detail ? `Facturi (${detail.invoices.length})` : "Facturi"}>
           {error ? (
             <p className="px-2.5 py-2 text-sm text-st-cancelled">{error}</p>
           ) : !detail ? (
@@ -253,7 +253,7 @@ export default function PayerDetailDialog({
           ) : detail.invoices.length === 0 ? (
             <p className="px-2.5 py-2 text-sm text-ink-soft">—</p>
           ) : (
-            <ul className="divide-y divide-[var(--color-line)] text-sm">
+            <ul className="max-h-80 divide-y divide-[var(--color-line)] overflow-y-auto overscroll-contain text-sm">
               {detail.invoices.map((i) => {
                 const s = INVOICE_STATUS[i.status as InvoiceStatusKey];
                 return (

@@ -36,8 +36,9 @@ async function launchBrowser() {
       cleanup: () => rm(userDataDir, { recursive: true, force: true }),
     };
   }
-  const { chromium: playwrightChromium } = await import("playwright");
-  const browser = await playwrightChromium.launch({ headless: true });
+  // Server propriu / dezvoltare: Chromium instalat cu `npx playwright-core install chromium`, sau un Chrome/Chromium existent, indicat prin CHROME_PATH.
+  const { chromium: playwrightChromium } = await import("playwright-core");
+  const browser = await playwrightChromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || undefined, args: ["--no-sandbox"] });
   return {
     newPage: () => browser.newPage(),
     close: () => browser.close(),
@@ -59,7 +60,7 @@ export async function GET(
   try {
     session = await launchBrowser();
     const page = await session.newPage();
-    await page.goto(`${env.appUrl}/invoice/public/${token}`, { waitUntil: "networkidle" });
+    await page.goto(`${(env.internalAppUrl || env.appUrl).replace(/\/$/, "")}/invoice/public/${token}`, { waitUntil: "networkidle" });
     const pdfBuffer = await page.pdf({
       format: "A4",
       landscape: invoice.kind === "APA_CANAL",

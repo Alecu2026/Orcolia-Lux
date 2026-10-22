@@ -87,6 +87,8 @@ const TEXT_CLS: Record<Look["text"], string> = {
 const ZEBRA_BG = "bg-[color-mix(in_srgb,var(--color-surface-2)_70%,var(--color-surface))]";
 
 type Persisted = {
+  /** Mod telefon (carduri): true/false = ales de utilizator; lipsă = automat (carduri pe ecran îngust). */
+  cm?: boolean;
   v: Record<string, string>;
   pp: number;
   sk: string;
@@ -155,6 +157,11 @@ export default function DataTable<T extends { id: string }>({
   const [vis, setVis] = useState<Record<string, boolean>>({});
   const [look, setLook] = useState<Look>(DEFAULT_LOOK);
   const [colsOpen, setColsOpen] = useState(false);
+  // Mod telefon: fiecare rând devine un card cu câmpurile unul sub altul. `cardsPref` = alegerea utilizatorului (null = automat:
+  // carduri pe ecrane înguste, tabel pe restul).
+  const [cardsPref, setCardsPref] = useState<boolean | null>(null);
+  const [narrow, setNarrow] = useState(false);
+  const cards = cardsPref ?? narrow;
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overKey, setOverKey] = useState<string | null>(null);
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -165,9 +172,11 @@ export default function DataTable<T extends { id: string }>({
   useEffect(() => {
     let savedCols: Persisted | null = null;
     try { savedCols = JSON.parse(localStorage.getItem(STORAGE) ?? "null") as Persisted | null; } catch {}
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNarrow(window.matchMedia("(max-width: 639px)").matches);
+    if (savedCols && typeof savedCols.cm === "boolean") setCardsPref(savedCols.cm);
     if (savedCols) {
       const ck = new Set(columns.map((c) => c.key));
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (Array.isArray(savedCols.co)) setOrder(savedCols.co.filter((k) => ck.has(k)));
       if (savedCols.lk) setLook({ ...DEFAULT_LOOK, ...savedCols.lk });
       if (savedCols.cv) setVis(Object.fromEntries(Object.entries(savedCols.cv).filter(([k, b]) => ck.has(k) && typeof b === "boolean")));
@@ -201,11 +210,11 @@ export default function DataTable<T extends { id: string }>({
   useEffect(() => {
     if (!ready) return;
     try {
-      const empty = Object.keys(values).length === 0 && perPage === DEFAULT_PER_PAGE && sortKey === (defaultSort?.key ?? "") && sortDir === (defaultSort?.dir ?? "asc") && order.length === 0 && Object.keys(vis).length === 0 && JSON.stringify(look) === JSON.stringify(DEFAULT_LOOK);
+      const empty = Object.keys(values).length === 0 && perPage === DEFAULT_PER_PAGE && sortKey === (defaultSort?.key ?? "") && sortDir === (defaultSort?.dir ?? "asc") && order.length === 0 && Object.keys(vis).length === 0 && JSON.stringify(look) === JSON.stringify(DEFAULT_LOOK) && cardsPref === null;
       if (empty) localStorage.removeItem(STORAGE);
-      else localStorage.setItem(STORAGE, JSON.stringify({ v: values, pp: perPage, sk: sortKey, sd: sortDir, co: order, cv: vis, lk: look } satisfies Persisted));
+      else localStorage.setItem(STORAGE, JSON.stringify({ v: values, pp: perPage, sk: sortKey, sd: sortDir, co: order, cv: vis, lk: look, ...(cardsPref === null ? {} : { cm: cardsPref }) } satisfies Persisted));
     } catch {}
-  }, [values, perPage, sortKey, sortDir, order, vis, look, ready, STORAGE, defaultSort]);
+  }, [values, perPage, sortKey, sortDir, order, vis, look, cardsPref, ready, STORAGE, defaultSort]);
 
   // Închide fereastra „Coloane" la click în afara ei sau la Escape.
   useEffect(() => {
@@ -229,6 +238,9 @@ export default function DataTable<T extends { id: string }>({
   }, [columns, order]);
   const isVisible = (c: Col<T>) => vis[c.key] ?? !c.defaultHidden;
   const visibleCols = [...fixedStart, ...orderedLabeled.filter(isVisible), ...fixedEnd];
+  const cardFields = orderedLabeled.filter(isVisible);
+  const cardActions = [...fixedStart, ...fixedEnd];
+  const sortableCols = labeled.filter((c) => c.sort);
 
   /** Mută coloana `from` înaintea coloanei `to` (drag & drop) sau cu un pas (▲▼). */
   function moveCol(from: string, to: string) {
@@ -346,7 +358,34 @@ export default function DataTable<T extends { id: string }>({
         <span><b>{nf(total)}</b> {noun}{activeCount > 0 ? " (filtrat)" : ""}</span>
         {total > 0 && <span className="text-ink-soft">afișați {nf(from)}–{nf(to)} din {nf(total)}{totalPages > 1 ? ` · pagina ${curPage}/${totalPages}` : ""}</span>}
         {summaryExtra?.(filtered)}
-        <div ref={colsBox} className="relative ml-auto">
+        {cards && sortableCols.length > 0 && (
+          <label className="flex items-center gap-1 text-xs text-ink-soft">
+            Sortare
+            <select
+              value={sortKey}
+              onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); setPage(1); }}
+              className={fld(sortedByUser ? "x" : "")}
+              aria-label="Sortare"
+            >
+              {!sortableCols.some((c) => c.key === sortKey) && <option value="">—</option>}
+              {sortableCols.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+            </select>
+            <button type="button" onClick={() => { setSortDir((d) => (d === "asc" ? "desc" : "asc")); setPage(1); }} className="tap h-7 w-7 cursor-pointer rounded-lg border border-[var(--color-line)] text-[11px] hover:bg-[var(--color-surface-2)]" aria-label="Direcția sortării" title={sortDir === "asc" ? "Crescător" : "Descrescător"}>
+              {sortDir === "asc" ? "▲" : "▼"}
+            </button>
+          </label>
+        )}
+        <div className="ml-auto flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setCardsPref(!cards)}
+          className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+          title={cards ? "Înapoi la tabel" : "Afișează fiecare rând ca un card, cu câmpurile unul sub altul (potrivit pentru telefon)"}
+          aria-pressed={cards}
+        >
+          {cards ? "▦ Tabel" : "📱 Mod telefon"}
+        </button>
+        <div ref={colsBox} className="relative">
           <button
             type="button"
             onClick={() => setColsOpen((o) => !o)}
@@ -388,6 +427,7 @@ export default function DataTable<T extends { id: string }>({
             </div>
           )}
         </div>
+        </div>
         <label className="flex items-center gap-1.5 text-xs text-ink-soft">
           Afișează
           <select
@@ -401,6 +441,37 @@ export default function DataTable<T extends { id: string }>({
         </label>
       </div>
 
+      {cards ? (
+        <div className={`flex flex-col gap-2 ${TEXT_CLS[look.text]}`}>
+          {pageRows.map((r) => (
+            <div
+              key={r.id}
+              onClick={onRowClick ? () => onRowClick(r) : undefined}
+              className={`card overflow-hidden ${onRowClick ? "cursor-pointer active:bg-brand-soft/30" : ""} ${rowClassName?.(r) ?? ""}`}
+            >
+              <dl className="divide-y divide-[var(--color-line)]">
+                {cardFields.map((c) => (
+                  <div key={c.key} className="grid grid-cols-[minmax(5.5rem,34%)_1fr] items-start gap-x-3 px-3 py-1.5 text-[13px] leading-snug">
+                    <dt className="pt-px text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{c.label}</dt>
+                    <dd className={`min-w-0 break-words ${c.right ? "tabular-nums" : ""}`}>{c.render(r)}</dd>
+                  </div>
+                ))}
+              </dl>
+              {cardActions.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-[13px]">
+                  {cardActions.map((c) => <span key={c.key}>{c.render(r)}</span>)}
+                </div>
+              )}
+            </div>
+          ))}
+          {pageRows.length === 0 && (
+            <div className="card p-8 text-center text-ink-soft">
+              {activeCount > 0 ? "Nimic cu filtrele acestea." : emptyText}{" "}
+              {activeCount > 0 && <button type="button" onClick={clearAll} className="cursor-pointer font-semibold text-brand underline">Resetează filtrele</button>}
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="card overflow-auto" style={{ maxHeight: perPage > 50 ? "max(78vh, 890px)" : undefined }}>
         <table
           className={`w-max min-w-full border-separate border-spacing-0 ${TEXT_CLS[look.text]}`}
@@ -460,6 +531,7 @@ export default function DataTable<T extends { id: string }>({
           </tbody>
         </table>
       </div>
+      )}
 
       {total > 0 && totalPages > 1 && (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1">

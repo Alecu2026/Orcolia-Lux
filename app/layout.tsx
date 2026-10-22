@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import { env } from "@/lib/env";
 import "./globals.css";
 
@@ -65,8 +63,6 @@ export default function RootLayout({
       </head>
       <body className="min-h-full antialiased">
         {children}
-        <Analytics />
-        <SpeedInsights />
       </body>
     </html>
   );

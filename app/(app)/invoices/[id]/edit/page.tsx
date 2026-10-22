@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/dal";
 import { can } from "@/lib/permissions";
-import { getInvoice, invoiceProjectOptions } from "@/lib/queries/invoices";
+import { getApaCanalMonthlyForForm, getInvoice, invoiceProjectOptions } from "@/lib/queries/invoices";
 import { getCompanySettings } from "@/lib/queries/company";
 import { crmClientOptionsPlus } from "@/lib/queries/clients";
 import { prisma } from "@/lib/prisma";
@@ -36,6 +36,19 @@ export default async function EditInvoicePage({
     const rawConsumption = Array.isArray(invoice.monthlyConsumption)
       ? (invoice.monthlyConsumption as { label: string; value: number }[])
       : [];
+
+    // Grila „Consum lunar": valorile salvate pe factură au prioritate, dar o lună rămasă goală sau 0 se completează din facturile celorlalte
+    // luni ale plătitorului (altfel formularul arată doar luna facturii curente, deși plătitorul are consum în celelalte).
+    const history = invoice.clientId ? await getApaCanalMonthlyForForm(invoice.clientId, invoice.issueDate) : [];
+    const consumByLabel = new Map<string, number>();
+    for (const p of history) consumByLabel.set(String(p.label), p.value);
+    for (const p of rawConsumption) {
+      const label = String(p.label);
+      const own = Number(p.value);
+      if (Number.isFinite(own) && own !== 0) consumByLabel.set(label, own);
+      else if (!consumByLabel.has(label)) consumByLabel.set(label, Number.isFinite(own) ? own : 0);
+    }
+    const monthlyConsumptionInitial = [...consumByLabel.entries()].map(([label, value]) => ({ label, value: String(value) }));
 
     // Facturile create de importuri mai vechi pot avea contul personal / adresa goale, deși plătitorul le are pe fișă —
     // le completăm din fișa lui (doar în formular; se salvează pe factură abia când apeși Salvează).
@@ -72,7 +85,7 @@ export default async function EditInvoicePage({
       recalculari: String(invoice.recalculari ?? 0),
       penalitati: String(invoice.penalitati ?? 0),
       datoriiAvans: String(invoice.datoriiAvans ?? 0),
-      monthlyConsumption: rawConsumption.map((p) => ({ label: String(p.label), value: String(p.value) })),
+      monthlyConsumption: monthlyConsumptionInitial,
     };
 
     return (

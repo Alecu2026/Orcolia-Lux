@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isCronAuthorized } from "@/lib/cron-auth";
 import { processDueReminders } from "@/lib/services/reminders";
 import { checkOverdueTasks, checkTaskReminders } from "@/lib/services/tasks";
 import { notifyUsers, filteredAdminRecipients } from "@/lib/services/notifications";
@@ -246,10 +247,12 @@ async function processUpcomingAppointments(since: Date, now: Date): Promise<numb
   return count;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  if (!isCronAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   return run();
 }
 
-export async function POST() {
+export async function POST(req: Request) {
+  if (!isCronAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   return run();
 }

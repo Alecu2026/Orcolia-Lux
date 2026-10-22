@@ -184,6 +184,37 @@ export async function getApaCanalConsumptionHistory(clientId: string, limit = 6)
     .map(([, p]) => p);
 }
 
+/**
+ * Consumul (m³) pe lună, pentru cele 12 luni care se termină cu luna lui `issueDate` — ca să precompletăm grila „Consum lunar" din
+ * formularul unei facturi cu valorile din celelalte facturi Apă-Canal ale aceluiași plătitor (altfel formularul arată doar luna
+ * facturii curente, restul rămân goale). Valoarea unei luni = consumul din factura emisă în luna aceea (cea mai recentă, dacă sunt
+ * mai multe), iar dacă factura nu are grafic salvat, cantitatea de la „alimentare cu apă". Eticheta = numărul lunii (1–12).
+ */
+export async function getApaCanalMonthlyForForm(clientId: string, issueDate: Date): Promise<ConsumptionPoint[]> {
+  if (DEMO) return [];
+  const start = new Date(Date.UTC(issueDate.getUTCFullYear(), issueDate.getUTCMonth() - 11, 1));
+  const end = new Date(Date.UTC(issueDate.getUTCFullYear(), issueDate.getUTCMonth() + 1, 1)); // exclusiv
+  const invoices = await prisma.invoice.findMany({
+    where: { clientId, kind: "APA_CANAL", issueDate: { gte: start, lt: end } },
+    orderBy: { issueDate: "desc" },
+    select: { issueDate: true, monthlyConsumption: true, items: true },
+  });
+  const byMonth = new Map<number, number>();
+  for (const inv of invoices) {
+    const month = inv.issueDate.getUTCMonth() + 1;
+    if (byMonth.has(month)) continue; // prima întâlnită = cea mai recentă pentru luna aceea (orderBy desc)
+    const points = Array.isArray(inv.monthlyConsumption) ? (inv.monthlyConsumption as ConsumptionPoint[]) : [];
+    const own = points.find((p) => String(p.label) === String(month)) ?? points[0];
+    let value = own != null && Number.isFinite(Number(own.value)) ? Number(own.value) : null;
+    if (value == null) {
+      const apa = inv.items.find((it) => /alimentare cu ap[aă]/i.test(it.description));
+      if (apa && Number.isFinite(apa.quantity)) value = apa.quantity;
+    }
+    if (value != null) byMonth.set(month, value);
+  }
+  return [...byMonth.entries()].map(([m, v]) => ({ label: String(m), value: v }));
+}
+
 // --- Date reactive pentru formularul de creare ---
 
 export const invoiceProjectOptions = unstable_cache(

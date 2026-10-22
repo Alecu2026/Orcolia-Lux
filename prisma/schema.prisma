@@ -556,6 +556,8 @@ model Invoice {
 
   @@index([status])
   @@index([clientId])
+  // Ultima factură pe client (snapshot-ul de plătitori): sortare după client + dată fără sortare în memorie
+  @@index([clientId, issueDate])
   @@index([createdAt])
 }
 

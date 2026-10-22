@@ -127,6 +127,7 @@ export const NOTIFY_TOKENS = [
   { key: "factura", label: "Nr. factură" },
   { key: "scadenta", label: "Scadență" },
   { key: "adresa", label: "Adresă" },
+  { key: "link", label: "Link factură (se deschide direct)" },
 ] as const;
 export type NotifyTokenKey = (typeof NOTIFY_TOKENS)[number]["key"];
 export type NotifyVars = Record<NotifyTokenKey, string>;
@@ -154,6 +155,8 @@ export function buildVars(p: {
   invoiceNumber: string | null;
   dueDate: string | Date | null;
   address: string | null;
+  /** Linkul public al facturii (se deschide fără autentificare). */
+  invoiceLink?: string | null;
 }): NotifyVars {
   return {
     nume: p.name,
@@ -162,6 +165,7 @@ export function buildVars(p: {
     factura: p.invoiceNumber ?? "—",
     scadenta: p.dueDate ? fmtDay(p.dueDate) : "—",
     adresa: p.address ?? "—",
+    link: p.invoiceLink ?? "—",
   };
 }
 
@@ -173,8 +177,8 @@ export const NOTIFY_PRESETS: NotifyPreset[] = [
     label: "Reamintire datorie",
     subject: "Reamintire: factură de achitat",
     email:
-      "Stimate(ă) {nume},\n\nVă reamintim că aveți de achitat {suma} pentru factura {factura} (cont {cont}). Termen de plată: {scadenta}.\n\nVă mulțumim!",
-    sms: "Apa-Canal: {nume}, aveti de achitat {suma} (factura {factura}, cont {cont}). Multumim!",
+      "Stimate(ă) {nume},\n\nVă reamintim că aveți de achitat {suma} pentru factura {factura} (cont {cont}). Termen de plată: {scadenta}.\n\nVezi factura: {link}\n\nVă mulțumim!",
+    sms: "Apa-Canal: {nume}, aveti de achitat {suma} (factura {factura}, cont {cont}). Factura: {link}",
     call: "Bună ziua, {nume}. Vă sunăm de la Apă-Canal. Aveți de achitat suma de {suma} pentru factura {factura}, cu termen de plată {scadenta}. Vă mulțumim și vă dorim o zi bună!",
   },
   {
@@ -182,8 +186,8 @@ export const NOTIFY_PRESETS: NotifyPreset[] = [
     label: "Factură nouă",
     subject: "Factura dumneavoastră {factura} este disponibilă",
     email:
-      "Stimate(ă) {nume},\n\nFactura {factura} în valoare de {suma} (cont {cont}) a fost emisă. Scadență: {scadenta}.\n\nVă mulțumim!",
-    sms: "Apa-Canal: factura {factura} de {suma} a fost emisa. Scadenta: {scadenta}.",
+      "Stimate(ă) {nume},\n\nFactura {factura} în valoare de {suma} (cont {cont}) a fost emisă. Scadență: {scadenta}.\n\nVezi factura: {link}\n\nVă mulțumim!",
+    sms: "Apa-Canal: factura {factura} de {suma} a fost emisa. Scadenta: {scadenta}. {link}",
     call: "Bună ziua, {nume}. Vă informăm că a fost emisă factura {factura} în valoare de {suma}. Termenul de plată este {scadenta}. Vă mulțumim!",
   },
   {

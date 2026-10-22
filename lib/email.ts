@@ -277,7 +277,10 @@ const escapeHtml = (s: string) =>
 
 function payerNotificationTemplate(d: PayerNotificationEmailData): string {
   const company = d.companyName ? escapeHtml(d.companyName) : "Apă-Canal";
-  const body = escapeHtml(d.body).replace(/\r?\n/g, "<br>");
+  // Linkurile din mesaj (ex. {link} = factura) devin clicabile; textul a fost deja escapat, deci adresa e sigură în atribut.
+  const body = escapeHtml(d.body)
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#0d9488;font-weight:600;word-break:break-all">$1</a>')
+    .replace(/\r?\n/g, "<br>");
   return `<!doctype html>
 <html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">

@@ -59,6 +59,23 @@ export default function InvoicesList({
   const [search, setSearch] = useState(q);
   const [copied, setCopied] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mod telefon: fiecare factură devine un card. `cardsPref` = alegerea utilizatorului; null = automat (carduri pe ecrane înguste).
+  const [cardsPref, setCardsPref] = useState<boolean | null>(null);
+  const [narrow, setNarrow] = useState(false);
+  const cards = cardsPref ?? narrow;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNarrow(window.matchMedia("(max-width: 639px)").matches);
+    try {
+      const v = localStorage.getItem("invoices-view");
+      if (v === "cards" || v === "table") setCardsPref(v === "cards");
+    } catch {}
+  }, []);
+  function toggleCards() {
+    const next = !cards;
+    setCardsPref(next);
+    try { localStorage.setItem("invoices-view", next ? "cards" : "table"); } catch {}
+  }
 
   function navigate(params: Record<string, string | number>) {
     const sp = new URLSearchParams();
@@ -167,7 +184,16 @@ export default function InvoicesList({
       <div className="mb-1 flex flex-wrap items-center gap-x-3 text-xs">
         <span><b>{rows.length}</b>{hasMore ? "+" : ""} facturi pe această pagină</span>
         <span className="text-ink-soft">Σ pagină: <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-soft">
+        <button
+          type="button"
+          onClick={toggleCards}
+          aria-pressed={cards}
+          title={cards ? "Înapoi la tabel" : "Afișează fiecare factură ca un card, cu câmpurile unul sub altul (potrivit pentru telefon)"}
+          className={`tap ml-auto h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+        >
+          {cards ? "▦ Tabel" : "📱 Mod telefon"}
+        </button>
+        <label className="flex items-center gap-1.5 text-xs text-ink-soft">
           Afișează
           <select
             value={perPage}
@@ -182,6 +208,65 @@ export default function InvoicesList({
         </label>
       </div>
 
+      {cards ? (
+        <div className="flex flex-col gap-2">
+          {rows.map((r) => {
+            const st = INVOICE_STATUS[r.status];
+            const late = r.status !== "PAID" && r.status !== "CANCELLED" && isPastDate(r.dueDate);
+            return (
+              <div key={r.id} className="card overflow-hidden">
+                <div className="flex items-start justify-between gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-semibold leading-snug">
+                      {r.number}
+                      {r.kind === "APA_CANAL" && <span className="ml-1.5 rounded bg-sky-100 px-1 text-[10px] font-semibold text-sky-700">Apă-Canal</span>}
+                    </div>
+                    <div className="break-words text-[12px] text-ink-soft">{r.clientName ?? m.invoices.noClient}</div>
+                  </div>
+                  <div className="shrink-0 text-right text-[15px] font-bold tabular-nums">{money(r.grandTotal, r.currency)}</div>
+                </div>
+                <dl className="divide-y divide-[var(--color-line)] text-[13px] leading-snug">
+                  <InvCardRow label="Emisă">{fmtDate(r.issueDate)}</InvCardRow>
+                  <InvCardRow label="Scadență">
+                    <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtDate(r.dueDate)}{late ? " · depășită" : ""}</span>
+                  </InvCardRow>
+                  <InvCardRow label="Achitată">
+                    {r.status === "PAID" ? (
+                      r.paidAt ? <span className="text-st-done">{fmtDate(r.paidAt)}</span> : <span className="text-ink-soft/70">? (data nu s-a înregistrat)</span>
+                    ) : <span className="text-ink-soft/60">—</span>}
+                  </InvCardRow>
+                  <InvCardRow label="Status">
+                    <select
+                      value={r.status}
+                      onChange={(e) => changeStatus(r.id, e.target.value as InvoiceStatusKey)}
+                      className={`h-6 cursor-pointer rounded-full border-0 px-2 text-[12px] font-medium outline-none ${st.cls}`}
+                      aria-label={`Status ${r.number}`}
+                    >
+                      {INVOICE_STATUS_LIST.map((x) => (
+                        <option key={x} value={x}>{INVOICE_STATUS[x].label}</option>
+                      ))}
+                    </select>
+                  </InvCardRow>
+                </dl>
+                <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2">
+                  <InvoiceViewButton token={r.publicToken} title={`${r.number}${r.clientName ? ` · ${r.clientName}` : ""}`} className={cardBtn} />
+                  <Link href={`/invoices/${r.id}/edit`} className={cardBtn}>{m.common.edit}</Link>
+                  <button type="button" onClick={() => copyLink(r.publicToken)} className={cardBtn}>
+                    {copied === r.publicToken ? m.invoices.copied : m.invoices.copyLink}
+                  </button>
+                  <a href={`/invoice/public/${r.publicToken}`} target="_blank" rel="noopener noreferrer" className={cardBtn}>
+                    {m.invoices.publicPdf} ↗
+                  </a>
+                  <button type="button" onClick={() => remove(r.id)} className={`${cardBtn} text-st-cancelled`} title={m.common.delete} aria-label={m.common.delete}>
+                    <IconTrash className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {rows.length === 0 && <div className="card p-8 text-center text-ink-soft">{m.invoices.noInvoices}</div>}
+        </div>
+      ) : (
       <div className="card overflow-auto">
         <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] leading-[14px]">
           <thead className="bg-[var(--color-surface-2)]">
@@ -256,6 +341,7 @@ export default function InvoicesList({
           </tbody>
         </table>
       </div>
+      )}
 
       {(page > 1 || hasMore) && (
         <div className="mt-3 flex items-center justify-between">
@@ -274,6 +360,18 @@ export default function InvoicesList({
 
 const btn =
   "tap inline-flex h-5 cursor-pointer items-center rounded border border-[var(--color-line)] px-1.5 text-[10px] leading-none hover:bg-brand-soft";
+
+const cardBtn =
+  "tap inline-flex h-8 cursor-pointer items-center rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 text-[12px] leading-none hover:bg-brand-soft";
+
+function InvCardRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[minmax(5.5rem,34%)_1fr] items-center gap-x-3 px-3 py-1.5">
+      <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</dt>
+      <dd className="min-w-0 break-words">{children}</dd>
+    </div>
+  );
+}
 
 /** Scadența a trecut? (în afara componentei, ca randarea să rămână pură). */
 function isPastDate(d: string | Date | null): boolean {

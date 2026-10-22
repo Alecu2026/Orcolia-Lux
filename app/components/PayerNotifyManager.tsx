@@ -63,6 +63,8 @@ const flagsOf = (r: PayerRow) => (isEmail(r.email) ? 1 : 0) | (normalizePhone(r.
 
 function rowVars(r: PayerRow): NotifyVars {
   return buildVars({
+    // în previzualizare: forma linkului, cu domeniul aplicației (cel real are în coadă un cod unic al facturii)
+    invoiceLink: r.latestInvoice && typeof window !== "undefined" ? `${window.location.origin}/invoice/public/…` : null,
     name: r.name,
     account: r.meterSeries ?? r.contract,
     amount: r.latestInvoice?.grandTotal ?? null,
@@ -74,6 +76,7 @@ function rowVars(r: PayerRow): NotifyVars {
 }
 
 const SAMPLE_VARS = buildVars({
+  invoiceLink: "https://exemplu.md/invoice/public/…",
   name: "Ion Popescu", account: "123456", amount: 250, currency: "MDL", invoiceNumber: "AC-0001",
   dueDate: new Date(Date.now() + 10 * 86_400_000), address: "str. Exemplu 1",
 });
@@ -159,6 +162,24 @@ export default function PayerNotifyManager({
   // ── Șabloane (optimist: UI-ul se schimbă pe loc, serverul confirmă din urmă; la eșec revenim + mesaj) ──
   const [templates, setTemplates] = useState<PayerTemplate[]>(initialTemplates);
   const [tplOpen, setTplOpen] = useState(false);
+  // Mod telefon: fiecare plătitor devine un card, cu câmpurile unul sub altul. `cardsPref` = alegerea utilizatorului; null = automat
+  // (carduri pe ecrane înguste, tabel pe restul). Se păstrează în localStorage.
+  const [cardsPref, setCardsPref] = useState<boolean | null>(null);
+  const [narrow, setNarrow] = useState(false);
+  const cards = cardsPref ?? narrow;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNarrow(window.matchMedia("(max-width: 639px)").matches);
+    try {
+      const v = localStorage.getItem("payer-notify-view");
+      if (v === "cards" || v === "table") setCardsPref(v === "cards");
+    } catch {}
+  }, []);
+  function toggleCards() {
+    const next = !cards;
+    setCardsPref(next);
+    try { localStorage.setItem("payer-notify-view", next ? "cards" : "table"); } catch {}
+  }
   const [detailRow, setDetailRow] = useState<PayerRow | null>(null);
 
   function createTemplate(d: PayerTemplateDraft) {
@@ -679,7 +700,16 @@ export default function PayerNotifyManager({
         ) : ds.loading ? (
           <span className="text-ink-soft">se încarcă lista completă…</span>
         ) : null}
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-soft">
+        <button
+          type="button"
+          onClick={toggleCards}
+          aria-pressed={cards}
+          title={cards ? "Înapoi la tabel" : "Afișează fiecare plătitor ca un card, cu câmpurile unul sub altul (potrivit pentru telefon)"}
+          className={`tap ml-auto h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+        >
+          {cards ? "▦ Tabel" : "📱 Mod telefon"}
+        </button>
+        <label className="flex items-center gap-1.5 text-xs text-ink-soft">
           Afișează
           <select
             value={perPage}
@@ -700,6 +730,77 @@ export default function PayerNotifyManager({
       )}
 
       {/* ── Tabel (stil 1C) ───────────────────────────────────────────────── */}
+      {cards ? (
+        <div className={`flex flex-col gap-2 transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
+          {pageRows.map((r, i) => {
+            const sel = selected.has(r.id);
+            const st = r.latestInvoice ? INVOICE_STATUS[r.latestInvoice.status as InvoiceStatusKey] : null;
+            const flags = flagsOf(r);
+            const recent = notifiedRecently(r.lastNotifiedAt);
+            return (
+              <div
+                key={r.id}
+                onClick={() => setDetailRow(r)}
+                className={`card cursor-pointer overflow-hidden ${sel ? "border-brand bg-brand-soft/40" : ""}`}
+              >
+                <div className="flex items-start gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2">
+                  {canSelect && (
+                    <input
+                      type="checkbox"
+                      checked={sel}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => toggleRow(i, false)}
+                      className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[var(--color-brand)]"
+                      aria-label={`Selectează ${r.name}`}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1 break-words text-[14px] font-semibold leading-snug">{r.name}</div>
+                  {canSend && (
+                    <button
+                      type="button"
+                      disabled={flags === 0}
+                      onClick={(e) => { e.stopPropagation(); openForRow(r); }}
+                      title={flags === 0 ? "Fără email/telefon valid" : "Trimite doar acestui plătitor"}
+                      className="tap grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-sm hover:bg-brand-soft disabled:cursor-default disabled:opacity-30"
+                    >
+                      ✉
+                    </button>
+                  )}
+                </div>
+                <dl className="divide-y divide-[var(--color-line)] text-[13px] leading-snug">
+                  <CardRow label="Cont / contract">{r.meterSeries ?? r.contract ?? "—"}</CardRow>
+                  <CardRow label="Adresă">{r.consumAddress ?? <Dash />}</CardRow>
+                  <CardRow label="Email">
+                    {r.email ? <span className={flags & 1 ? "" : "text-st-progress"} title={flags & 1 ? undefined : "Adresă invalidă"}>{r.email}</span> : <Dash />}
+                  </CardRow>
+                  <CardRow label="Telefon">
+                    {r.phone ? <span className={`tabular-nums ${flags & 2 ? "" : "text-st-progress"}`} title={flags & 2 ? undefined : "Număr invalid pentru SMS"}>{r.phone}</span> : <Dash />}
+                  </CardRow>
+                  <CardRow label="Factură">{r.latestInvoice?.number ?? <Dash />}</CardRow>
+                  <CardRow label="Scadență">{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</CardRow>
+                  <CardRow label="De achitat">
+                    {r.latestInvoice ? <span className={`tabular-nums ${r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>{money(r.latestInvoice.grandTotal)}</span> : <Dash />}
+                  </CardRow>
+                  <CardRow label="Status">
+                    {st ? <span className={`inline-block rounded-full px-2 text-[11px] font-medium ${st.cls}`}>{st.label}</span> : <Dash />}
+                  </CardRow>
+                  <CardRow label="Portal">{r.activated ? <span className="text-st-done">✓ activ</span> : <span className="text-ink-soft/60">—</span>}</CardRow>
+                  <CardRow label="Facturi">{r.invoiceCount}</CardRow>
+                  <CardRow label="Ultima notificare">
+                    {r.lastNotifiedAt ? <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt)}</span> : <Dash />}
+                  </CardRow>
+                </dl>
+              </div>
+            );
+          })}
+          {pageRows.length === 0 && !loading && (
+            <div className="card p-8 text-center text-ink-soft">
+              Niciun plătitor cu filtrele acestea.{" "}
+              {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">Resetează filtrele</button>}
+            </div>
+          )}
+        </div>
+      ) : (
       <div className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`} style={{ maxHeight: perPage > 50 ? "max(78vh, 890px)" : undefined }}>
         <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] leading-[14px]">
           <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
@@ -821,6 +922,7 @@ export default function PayerNotifyManager({
           </tbody>
         </table>
       </div>
+      )}
 
       {/* ── Paginare numerică (ca în Task-uri) ─────────────────────────────── */}
       {view.total > 0 && (
@@ -960,4 +1062,14 @@ function buildPageButtons(current: number, total: number): (number | "…")[] {
     out.push(sorted[i]);
   }
   return out;
+}
+
+/** Un câmp al cardului din modul telefon: eticheta mică deasupra/în stânga, valoarea lizibilă, cu rânduri multiple dacă e lungă. */
+function CardRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[minmax(5.5rem,34%)_1fr] items-start gap-x-3 px-3 py-1.5">
+      <dt className="pt-px text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</dt>
+      <dd className="min-w-0 break-words">{children}</dd>
+    </div>
+  );
 }

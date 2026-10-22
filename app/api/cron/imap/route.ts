@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { env } from "@/lib/env";
+import { isCronAuthorized } from "@/lib/cron-auth";
 import { pollInbox } from "@/lib/services/imap-poller";
 
 export const dynamic = "force-dynamic";
@@ -11,13 +11,11 @@ async function run() {
 }
 
 export async function GET(req: Request) {
-  const secret = new URL(req.url).searchParams.get("secret") ?? "";
-  if (env.cronSecret && secret !== env.cronSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!isCronAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   return run();
 }
 
-export async function POST() {
+export async function POST(req: Request) {
+  if (!isCronAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   return run();
 }

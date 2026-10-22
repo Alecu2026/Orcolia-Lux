@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import type { InvoiceStatus, Prisma } from "@prisma/client";
 import { PER_PAGE_ALL, type MonthTuple, type SnapTuple } from "../payer-notify";
+import { cachedAsync } from "../ttl-cache";
 
 const PAGE_SIZE = 50;
 /** Câți plătitori pe pagină alege utilizatorul (?perPage=) — plafonat ca să nu încărcăm mii de rânduri odată. */
@@ -92,16 +93,21 @@ export function monthRange(month: string): { gte: Date; lt: Date } {
 }
 
 /** Lunile în care există facturi Apă-Canal, cu numărul de facturi — pentru lista "Luna facturii". */
-export async function listPayerMonths(): Promise<{ month: string; count: number }[]> {
-  if (DEMO) return [];
+// Scanează toate facturile Apă-Canal doar ca să afle ce luni există, iar lista se schimbă rar (la importul din 1C): o ținem 10 minute.
+const monthsCached = cachedAsync(10 * 60_000, async (): Promise<{ month: string; count: number }[]> => {
   const res = (await prisma.invoice.aggregateRaw({
     pipeline: [
       { $match: { kind: "APA_CANAL" } },
       { $group: { _id: { $dateToString: { format: "%Y-%m", date: "$issueDate" } }, n: { $sum: 1 } } },
       { $sort: { _id: -1 } },
     ],
+    options: { allowDiskUse: true },
   })) as unknown as { _id: string; n: number }[];
   return res.filter((r) => r._id).map((r) => ({ month: r._id, count: r.n }));
+});
+export async function listPayerMonths(): Promise<{ month: string; count: number }[]> {
+  if (DEMO) return [];
+  return monthsCached();
 }
 
 /** Filtrele de sold/status aplicate pe factura unei luni (în memorie). */
@@ -122,9 +128,11 @@ export function matchesMonthInvoice(
  * (Prisma/MongoDB tratează "?" ca metacaracter de regex acolo, ceea ce ajunge să se potrivească
  * practic cu ORICE nume) — scanăm în memorie (proiecție ușoară, id+nume, ~19k rânduri, rapid).
  */
+// Scanează toți plătitorii (id + nume) la fiecare încărcare a paginii: o ținem 60 s.
+const nameFixCountCached = cachedAsync(60_000, async () => (await findClientIdsNeedingNameFix()).length);
 export async function countPayersNeedingNameFix(): Promise<number> {
   if (DEMO) return 0;
-  return (await findClientIdsNeedingNameFix()).length;
+  return nameFixCountCached();
 }
 
 async function findClientIdsNeedingNameFix(): Promise<string[]> {
@@ -604,21 +612,101 @@ export async function getPayerTickets(clientId: string) {
  * local din browser: încărcat o singură dată, apoi filtrat/sortat/paginat în JS, fără interogări la fiecare filtru.
  * Trei citiri în bloc (clienți, facturi, date de instalare) potrivite în memorie — aceeași tehnică ca exportul.
  */
-export async function getPayerSnapshot(): Promise<SnapTuple[]> {
-  if (DEMO) return [];
-  const [clients, invoices, installBy] = await Promise.all([
-    prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true } }),
-    prisma.invoice.findMany({ where: { clientId: { not: null } }, select: INVOICE_SELECT }),
-    installDateMap(),
-  ]);
-  byIssueDesc(invoices);
-  const latest = new Map<string, (typeof invoices)[number]>();
+type LatestInvoice = { number: string; status: InvoiceStatus; grandTotal: number; currency: string; dueDate: Date | null };
+
+// MongoDB întoarce valorile în format EJSON ({ $oid }, { $date }, { $numberDouble }…) — le aducem la tipuri JS.
+const ejId = (v: unknown): string | null => (typeof v === "string" ? v : v && typeof v === "object" && "$oid" in v ? String((v as { $oid: unknown }).$oid) : null);
+const ejNum = (v: unknown): number => {
+  if (typeof v === "number") return v;
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    const n = Number(o.$numberDouble ?? o.$numberInt ?? o.$numberLong ?? o.$numberDecimal ?? NaN);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+};
+const ejDate = (v: unknown): Date | null => {
+  if (!v) return null;
+  if (typeof v === "string" || typeof v === "number") return new Date(v);
+  const d = (v as { $date?: unknown }).$date;
+  if (typeof d === "string" || typeof d === "number") return new Date(d);
+  const n = (d as { $numberLong?: string } | undefined)?.$numberLong;
+  return n ? new Date(Number(n)) : null;
+};
+
+/**
+ * Ultima factură și numărul de facturi pe client, calculate ÎN baza de date (agregare): în Node ajung ~19.000 de rânduri, nu toate
+ * facturile. Citirea tuturor facturilor ca obiecte blochează procesul Node secunde-minute (deserializare + memorie) și încetinește
+ * toate celelalte cereri. Întoarce null dacă agregarea eșuează — apelantul revine la citirea veche.
+ */
+async function latestInvoiceStats(): Promise<{ latest: Map<string, LatestInvoice>; count: Map<string, number> } | null> {
+  try {
+    const raw = (await prisma.invoice.aggregateRaw({
+      pipeline: [
+        { $match: { clientId: { $ne: null } } },
+        { $project: { clientId: 1, number: 1, status: 1, grandTotal: 1, currency: 1, dueDate: 1, issueDate: 1 } },
+        { $sort: { clientId: 1, issueDate: -1 } },
+        {
+          $group: {
+            _id: "$clientId",
+            n: { $sum: 1 },
+            number: { $first: "$number" },
+            status: { $first: "$status" },
+            grandTotal: { $first: "$grandTotal" },
+            currency: { $first: "$currency" },
+            dueDate: { $first: "$dueDate" },
+          },
+        },
+      ],
+      options: { allowDiskUse: true },
+    })) as unknown as Record<string, unknown>[];
+    const latest = new Map<string, LatestInvoice>();
+    const count = new Map<string, number>();
+    for (const r of raw) {
+      const id = ejId(r._id);
+      if (!id) continue;
+      count.set(id, ejNum(r.n));
+      latest.set(id, {
+        number: String(r.number ?? ""),
+        status: r.status as InvoiceStatus,
+        grandTotal: ejNum(r.grandTotal),
+        currency: String(r.currency ?? "MDL"),
+        dueDate: ejDate(r.dueDate),
+      });
+    }
+    return { latest, count };
+  } catch (e) {
+    console.error("[platitori-snapshot] agregarea facturilor a eșuat, folosesc citirea completă:", e);
+    return null;
+  }
+}
+
+/** Varianta veche (fallback): toate facturile în Node, sortate în JS. */
+async function latestInvoiceStatsFromRows(): Promise<{ latest: Map<string, LatestInvoice>; count: Map<string, number> }> {
+  const invoices = byIssueDesc(await prisma.invoice.findMany({ where: { clientId: { not: null } }, select: INVOICE_SELECT }));
+  const latest = new Map<string, LatestInvoice>();
   const count = new Map<string, number>();
   for (const inv of invoices) {
     if (!inv.clientId) continue;
     if (!latest.has(inv.clientId)) latest.set(inv.clientId, inv); // sortat desc → prima = cea mai recentă
     count.set(inv.clientId, (count.get(inv.clientId) ?? 0) + 1);
   }
+  return { latest, count };
+}
+
+/**
+ * Snapshot COMPLET al plătitorilor (tupluri compacte — vezi SnapTuple în lib/payer-notify.ts), pentru motorul
+ * local din browser: încărcat o singură dată, apoi filtrat/sortat/paginat în JS, fără interogări la fiecare filtru.
+ * Citiri în bloc (clienți, ultima factură pe client, date de instalare) potrivite în memorie — aceeași tehnică ca exportul.
+ */
+export async function getPayerSnapshot(): Promise<SnapTuple[]> {
+  if (DEMO) return [];
+  const [clients, stats, installBy] = await Promise.all([
+    prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true } }),
+    latestInvoiceStats(),
+    installDateMap(),
+  ]);
+  const { latest, count } = stats && stats.latest.size > 0 ? stats : await latestInvoiceStatsFromRows();
   return clients.map((c): SnapTuple => {
     const inv = latest.get(c.id);
     return [

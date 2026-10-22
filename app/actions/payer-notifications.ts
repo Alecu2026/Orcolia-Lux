@@ -155,7 +155,7 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
       ? prisma.invoice.findMany({
           where: { clientId: { in: ids } },
           orderBy: { issueDate: "desc" },
-          select: { clientId: true, number: true, grandTotal: true, currency: true, dueDate: true },
+          select: { clientId: true, number: true, grandTotal: true, currency: true, dueDate: true, publicToken: true },
         })
       : Promise.resolve([]),
     prisma.payerNotificationLog.findMany({
@@ -195,6 +195,7 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
 
     const inv = latestInvoice.get(c.id);
     const vars: NotifyVars = buildVars({
+      invoiceLink: inv?.publicToken ? `${env.appUrl.replace(/\/$/, "")}/invoice/public/${inv.publicToken}` : null,
       name: c.name,
       account: c.meterSeries ?? c.apaCanalContract,
       amount: inv?.grandTotal ?? null,
@@ -335,6 +336,7 @@ export async function sendTestNotificationAction(input: {
   if (msgError) return { ok: false, error: msgError };
 
   const sample = buildVars({
+    invoiceLink: `${env.appUrl.replace(/\/$/, "")}/invoice/public/EXEMPLU`,
     name: "Ion Popescu",
     account: "123456",
     amount: 250,

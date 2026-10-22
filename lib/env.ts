@@ -53,6 +53,9 @@ export const env = {
   sessionTtlDays: int("SESSION_TTL_DAYS", 180),
 
   appUrl: optional("NEXT_PUBLIC_APP_URL", "http://localhost:3000"),
+  // Adresa la care serverul se poate apela pe el însuși (ex. http://127.0.0.1:3000), pentru generarea PDF-ului de factură. Pe un server
+  // propriu, adresa publică nu e mereu accesibilă din interior (NAT/firewall). Dacă lipsește, se folosește NEXT_PUBLIC_APP_URL.
+  internalAppUrl: optional("INTERNAL_APP_URL"),
 
   telegram: {
     botToken: optional("TELEGRAM_BOT_TOKEN"),

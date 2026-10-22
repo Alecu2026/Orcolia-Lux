@@ -44,7 +44,8 @@ export async function GET(req: Request) {
         portalActivatedAt: payer.portalActivatedAt,
         portalLastLoginAt: payer.portalLastLoginAt,
       },
-      invoices: invoices.slice(0, 5).map((i) => ({
+      // toate facturile (cele mai noi primele); plafon de siguranță, ca un răspuns să nu crească nemărginit
+      invoices: invoices.slice(0, 300).map((i) => ({
         id: i.id, publicToken: i.publicToken, number: i.number, status: i.status, grandTotal: i.grandTotal, currency: i.currency,
         issueDate: i.issueDate, dueDate: i.dueDate, paidAt: i.paidAt, billingPeriodLabel: i.billingPeriodLabel,
       })),
