@@ -1,9 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useMessages } from "@/lib/i18n/context";
+import { useMessages, useT } from "@/lib/i18n/context";
 
-const VAPID = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
+// Cheia publică VAPID: curățăm ghilimele/spații/rânduri noi lipite din greșeală la copiere în setările serverului.
+const VAPID = (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "").replace(/["'s]/g, "");
+
+/** Cheia publică validă = 65 de octeți, începând cu 0x04 (punct P-256 necomprimat), în base64url. */
+function vapidProblem(key: string): boolean {
+  try {
+    const a = urlBase64ToUint8Array(key);
+    return a.length !== 65 || a[0] !== 4;
+  } catch {
+    return true;
+  }
+}
 
 function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
@@ -17,6 +28,7 @@ function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
 
 export default function PushToggle() {
   const m = useMessages();
+  const t = useT();
   const [supported, setSupported] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -37,6 +49,9 @@ export default function PushToggle() {
     setMsg("");
     try {
       if (!VAPID) throw new Error(m.push.missingKey);
+      if (vapidProblem(VAPID)) {
+        throw new Error(t("Cheia NEXT_PUBLIC_VAPID_PUBLIC_KEY de pe server nu e validă (trebuie cheia PUBLICĂ, ~87 de caractere, fără ghilimele; nu cheia privată). Generează o pereche cu „npx web-push generate-vapid-keys”, pune-o în setări și refă build-ul/deploy-ul.")); 
+      }
       const reg = await navigator.serviceWorker.register("/sw.js");
       const perm = await Notification.requestPermission();
       if (perm !== "granted") throw new Error(m.push.permissionDenied);

@@ -352,4 +352,5 @@ export const EN: Record<string, string> = {
   "Reamintire datorie": "Debt reminder",
   "Factură nouă": "New invoice",
   "Anunț general": "General announcement",
+  "Cheia NEXT_PUBLIC_VAPID_PUBLIC_KEY de pe server nu e validă (trebuie cheia PUBLICĂ, ~87 de caractere, fără ghilimele; nu cheia privată). Generează o pereche cu „npx web-push generate-vapid-keys”, pune-o în setări și refă build-ul/deploy-ul.": "The NEXT_PUBLIC_VAPID_PUBLIC_KEY on the server is not valid (it must be the PUBLIC key, ~87 characters, without quotes; not the private key). Generate a pair with \"npx web-push generate-vapid-keys\", put it in the settings and rebuild/redeploy.",
 };
