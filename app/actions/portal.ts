@@ -3,7 +3,7 @@
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireClient } from "@/lib/client-dal";
-import { filteredAdminRecipients, notifyUsers } from "@/lib/services/notifications";
+import { filteredAdminRecipients, notifyUsers, observerRecipients } from "@/lib/services/notifications";
 
 export type PortalTicketState = { ok?: boolean; error?: string } | undefined;
 
@@ -51,7 +51,8 @@ export async function createPortalTicket(
 
   after(async () => {
     try {
-      const ids = await filteredAdminRecipients({ eventKeys: ["ticket.portal"] });
+      // Administratorii (după setările lor) + oricine a bifat „Tichet nou din portal” (și angajați, nu doar administratori).
+      const ids = [...new Set([...(await filteredAdminRecipients({ eventKeys: ["ticket.portal"] })), ...(await observerRecipients("ticket.portal"))])];
       if (ids.length) {
         await notifyUsers(
           ids,

@@ -18,7 +18,7 @@ import { listByDateKey, listByDateKeys } from "../queries/appointments";
 import { searchClients } from "../queries/clients";
 import { listCategories } from "../queries/categories";
 import { createAppointment, changeStatus } from "./appointments";
-import { createTask, changeTaskStatus, changeTaskProgress, addTaskComment, notifyNewTask } from "./tasks";
+import { createTask, changeTaskStatus, changeTaskProgress, addTaskComment, notifyNewTask, userCanActOnTask } from "./tasks";
 import { transcribeAudio } from "./voice";
 import { todayKey, tomorrowKey, weekKeys, formatTime, formatDate, humanDay, dayBoundsUtc, dateKeyOf } from "../date";
 import { getQuietHoursSettings } from "../queries/company";
@@ -522,6 +522,11 @@ async function handleCallback(cb: Cb) {
   // Pornește fluxul de comentariu: următorul mesaj text trimis devine comentariul
   const commMatch = data.match(/^TCOMM:(.+)$/);
   if (commMatch) {
+    // Nu pornim fluxul de comentariu pentru un task la care nu are acces (butoanele pot ajunge la alții prin redirecționare).
+    if (!(await userCanActOnTask(user.userId, commMatch[1]))) {
+      await sendMessage(chatId, "❌ Nu ai acces la acest task.");
+      return;
+    }
     await prisma.telegramAccount
       .update({
         where: { telegramUserId: String(cb.from.id) },
@@ -557,7 +562,7 @@ async function handleCallback(cb: Cb) {
   // Progres TASK din butoane
   const prMatch = data.match(/^TPR:(\d+):(.+)$/);
   if (prMatch) {
-    const res = await changeTaskProgress(prMatch[2], user.userId, Number(prMatch[1]));
+    const res = await changeTaskProgress(prMatch[2], user.userId, Number(prMatch[1]), { fromTelegram: true });
     await sendMessage(chatId, res.ok ? `📊 Progres: ${prMatch[1]}%` : `❌ ${res.error}`);
     return;
   }

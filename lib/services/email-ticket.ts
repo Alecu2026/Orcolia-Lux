@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { env } from "../env";
-import { filteredAdminRecipients, notifyUsers } from "./notifications";
+import { filteredAdminRecipients, notifyUsers, observerRecipients } from "./notifications";
 import nodemailer from "nodemailer";
 
 // ── Email transport (shared with lib/email.ts logic) ────────────────────────
@@ -297,7 +297,7 @@ async function notifyStaff(
   if (type === "reply" && assigneeId) {
     await notifyUsers([assigneeId], payload, { telegram: true });
   } else {
-    const admins = await filteredAdminRecipients({ eventKeys: ["ticket.email"] });
+    const admins = [...new Set([...(await filteredAdminRecipients({ eventKeys: ["ticket.email"] })), ...(await observerRecipients("ticket.email"))])];
     if (!admins.length) return;
     await notifyUsers(admins, payload, { telegram: true });
   }

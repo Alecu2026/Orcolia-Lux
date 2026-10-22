@@ -285,16 +285,35 @@ export async function listTasks(
         ? [{ dueAt: "desc" }, { createdAt: "desc" }]
         : [{ status: "asc" }, { createdAt: "desc" }];
 
-  const [rows, total] = await Promise.all([
-    prisma.task.findMany({
-      where,
-      select: TASK_SELECT,
-      orderBy,
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    prisma.task.count({ where }),
-  ]);
+  const skip = (page - 1) * pageSize;
+  let rows: Awaited<ReturnType<typeof prisma.task.findMany<{ where: Prisma.TaskWhereInput; select: typeof TASK_SELECT }>>>;
+  let total: number;
+  if (filter.sort === "dueAsc") {
+    // MongoDB pune valorile lipsă primele la sortarea crescătoare: task-urile fără termen ar acoperi lista. Vrem întâi cele cu termen
+    // (cele mai apropiate primele), apoi cele fără — fără a încărca tot: două felii din aceeași ordine, calculate din numărătoare.
+    const [dated, all] = await Promise.all([
+      prisma.task.count({ where: { AND: [where, { dueAt: { not: null } }] } }),
+      prisma.task.count({ where }),
+    ]);
+    total = all;
+    const undated = all - dated; // în ordinea „crescător” ele vin primele: pozițiile 0..undated-1; cele cu termen: undated..all-1
+    const parts: typeof rows = [];
+    if (skip < dated) {
+      const take = Math.min(pageSize, dated - skip);
+      parts.push(...(await prisma.task.findMany({ where, select: TASK_SELECT, orderBy, skip: undated + skip, take })));
+    }
+    const room = pageSize - parts.length;
+    if (room > 0 && undated > 0) {
+      const uSkip = Math.max(0, skip - dated);
+      if (uSkip < undated) parts.push(...(await prisma.task.findMany({ where, select: TASK_SELECT, orderBy, skip: uSkip, take: Math.min(room, undated - uSkip) })));
+    }
+    rows = parts;
+  } else {
+    [rows, total] = await Promise.all([
+      prisma.task.findMany({ where, select: TASK_SELECT, orderBy, skip, take: pageSize }),
+      prisma.task.count({ where }),
+    ]);
+  }
 
   const totalPages = Math.ceil(total / pageSize);
   const hasMore = page < totalPages;

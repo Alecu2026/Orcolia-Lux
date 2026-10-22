@@ -449,4 +449,8 @@ export const RU: Record<string, string> = {
   "Angajatul primește MEREU, fără nicio bifă, notificările despre task-urile lui: i s-a dat un task, cineva a comentat sau a schimbat statusul la un task al lui, task-ul lui a întârziat. Bifele de mai jos adaugă notificări despre lucruri în care NU e implicat (ex. orice task sau factură nouă din firmă).": "Сотрудник ВСЕГДА получает без всяких отметок уведомления о своих задачах: ему назначили задачу, кто-то прокомментировал или изменил статус его задачи, его задача просрочена. Отметки ниже добавляют уведомления о том, к чему он НЕ причастен (напр. любая новая задача или счёт в компании).",
   "Nimic bifat: primește doar notificările despre task-urile lui (asignat, comentarii, întârziere). Nu primește nimic despre task-urile, facturile sau proiectele altora.": "Ничего не отмечено: приходят только уведомления о его задачах (назначение, комментарии, просрочка). Ничего о задачах, счетах или проектах других.",
   "Fiecare bifă de mai jos înseamnă: la ORICE task, factură sau proiect din firmă, nu doar la cele ale lui. Ex. „Comentariu nou pe task” = primește comentariile de la toate task-urile; fără bifă, doar de la task-urile unde e creator sau asignat.": "Каждая отметка ниже означает: по ЛЮБОЙ задаче, счёту или проекту в компании, а не только по его собственным. Напр. «Новый комментарий к задаче» = получает комментарии по всем задачам; без отметки — только по задачам, где он автор или исполнитель.",
+  "Reamintire task (periodică)": "Напоминание о задаче (периодическое)",
+  "Tichet nou din portalul clienților": "Новая заявка из портала клиентов",
+  "Mesaj nou de la client pe un tichet": "Новое сообщение клиента в заявке",
+  "Tichet nou din email": "Новая заявка из email",
 };

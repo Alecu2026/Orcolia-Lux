@@ -6,7 +6,7 @@ import { getCurrentUser } from "../dal";
 import { getCurrentClient } from "../client-dal";
 import { can, canEditTask, canViewTask } from "../permissions";
 import { sendTicketMessageEmail } from "../email";
-import { filteredAdminRecipients, notifyUsers } from "./notifications";
+import { filteredAdminRecipients, notifyUsers, observerRecipients } from "./notifications";
 import type { ChatMessage, ChatSender, ChatState } from "../ticket-chat-shared";
 
 const TASK_SELECT = {
@@ -140,7 +140,12 @@ export async function notifyChatMessage(access: Extract<ChatAccess, { ok: true }
   try {
     if (viewer.kind === "client") {
       const assigned = [task.assigneeId, ...task.extraAssigneeIds].filter((x): x is string => !!x);
-      const ids = assigned.length ? assigned : await filteredAdminRecipients({ eventKeys: ["ticket.message", "ticket.portal"] });
+      const ids = assigned.length
+        ? assigned
+        : [...new Set([
+            ...(await filteredAdminRecipients({ eventKeys: ["ticket.message", "ticket.portal"] })),
+            ...(await observerRecipients("ticket.message")),
+          ])];
       if (ids.length) {
         await notifyUsers(
           ids,

@@ -11,7 +11,7 @@ import {
 } from "@/lib/import-utils";
 import { createTask } from "@/lib/services/tasks";
 import { createAppointment } from "@/lib/services/appointments";
-import { DEFAULT_TZ } from "@/lib/date";
+import { DEFAULT_TZ, zonedToUtc } from "@/lib/date";
 import type { Prisma } from "@prisma/client";
 
 const TZ = DEFAULT_TZ;
@@ -57,6 +57,7 @@ export async function POST(req: Request) {
 
   // ─── TASKS / TICHETE ──────────────────────────────────────────────────────
   if (entity === "tasks" || entity === "tickets") {
+    if (!can(user, "tasks.create")) return Response.json({ error: "Fără permisiune pentru import de task-uri." }, { status: 403 });
     // Pre-fetch lookup tables
     const [allUsers, allTeams, allProjects, allCategories, allClients] = await Promise.all([
       prisma.user.findMany({ select: { id: true, name: true } }),
@@ -156,6 +157,10 @@ export async function POST(req: Request) {
         if (existing) {
           projectId = existing;
         } else {
+          if (!can(user, "projects.create")) {
+            result.failed.push({ row: rowNum, error: `Proiectul '${r["Proiect"]}' nu există și nu ai permisiunea să-l creezi.` });
+            continue;
+          }
           // Creează proiect rapid doar cu denumirea
           const newProj = await prisma.project.create({
             data: { name: r["Proiect"].trim(), ownerId: user.id },
@@ -173,6 +178,10 @@ export async function POST(req: Request) {
         if (existing) {
           taskClientId = existing;
         } else {
+          if (!can(user, "clients.create")) {
+            result.failed.push({ row: rowNum, error: `Clientul '${r["Client"]}' nu există și nu ai permisiunea să-l creezi.` });
+            continue;
+          }
           const newClient = await prisma.client.create({
             data: { userId: user.id, name: r["Client"].trim() },
             select: { id: true },
@@ -205,7 +214,8 @@ export async function POST(req: Request) {
           });
           continue;
         }
-        dueAt = new Date(`${dateKey}T00:00:00.000Z`);
+        // Miezul nopții în fusul Europe/Bucharest (ca la crearea din formular), nu miezul nopții UTC.
+        dueAt = zonedToUtc(dateKey, "00:00", TZ);
       }
 
       try {
@@ -243,6 +253,7 @@ export async function POST(req: Request) {
 
   // ─── PROJECTS ─────────────────────────────────────────────────────────────
   if (entity === "projects") {
+    if (!can(user, "projects.create")) return Response.json({ error: "Fără permisiune pentru import de proiecte." }, { status: 403 });
     const [allUsers, allTeams, allClients, existingProjects] = await Promise.all([
       prisma.user.findMany({ select: { id: true, name: true } }),
       prisma.team.findMany({ select: { id: true, name: true } }),
@@ -344,6 +355,7 @@ export async function POST(req: Request) {
 
   // ─── CLIENTS ──────────────────────────────────────────────────────────────
   if (entity === "clients") {
+    if (!can(user, "clients.create")) return Response.json({ error: "Fără permisiune pentru import de clienți." }, { status: 403 });
     const result: ImportResult = { imported: 0, total: rows.length, failed: [] };
 
     for (let i = 0; i < rows.length; i++) {
@@ -380,6 +392,7 @@ export async function POST(req: Request) {
 
   // ─── APPOINTMENTS ─────────────────────────────────────────────────────────
   if (entity === "appointments") {
+    if (!can(user, "appointments.manage")) return Response.json({ error: "Fără permisiune pentru import de programări." }, { status: 403 });
     const [allClients, allCategories] = await Promise.all([
       prisma.client.findMany({
         where: { userId: user.id },

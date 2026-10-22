@@ -595,6 +595,8 @@ export async function deleteTask(id: string): Promise<void> {
   const task = await prisma.task.findUnique({ where: { id }, select: { title: true, type: true } });
   await prisma.taskActivity.deleteMany({ where: { taskId: id } });
   await prisma.taskComment.deleteMany({ where: { taskId: id } });
+  // Notificările task-ului ar rămâne cu link spre o pagină care nu mai există.
+  await prisma.notification.deleteMany({ where: { taskId: id } }).catch(() => {});
   await prisma.task.delete({ where: { id } }).catch(() => {});
   if (task) {
     await logAudit(
