@@ -23,7 +23,7 @@ export default async function PublicInvoicePage({
   if (invoice.kind === "APA_CANAL") {
     // Graficul din factură: trend pe ultimele luni ale clientului, nu doar luna facturii curente
     // (vezi getApaCanalConsumptionHistory — invoice.monthlyConsumption singur are un punct).
-    const consumptionHistory = invoice.clientId ? await getApaCanalConsumptionHistory(invoice.clientId) : [];
+    const consumptionHistory = invoice.clientId ? await getApaCanalConsumptionHistory(invoice.clientId, 6, invoice.issueDate) : [];
     return (
       <main className="min-h-dvh bg-zinc-100 p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] print:bg-white print:p-0">
         <div className="mx-auto max-w-[1180px]">

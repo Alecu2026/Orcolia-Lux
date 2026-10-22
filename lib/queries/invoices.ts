@@ -172,10 +172,11 @@ export type ConsumptionPoint = { label: string; value: number };
  * O lună apărută de mai multe ori (corecție ulterioară) se reține o singură dată — factura cea
  * mai recentă pentru luna aia.
  */
-export async function getApaCanalConsumptionHistory(clientId: string, limit = 6): Promise<ConsumptionPoint[]> {
+export async function getApaCanalConsumptionHistory(clientId: string, limit = 6, upTo?: Date): Promise<ConsumptionPoint[]> {
   if (DEMO) return [];
   const invoices = await prisma.invoice.findMany({
-    where: { clientId, kind: "APA_CANAL" },
+    // `upTo`: graficul unei facturi arată luni până la luna ei inclusiv — nu luni mai noi (factura din august nu arată septembrie).
+    where: { clientId, kind: "APA_CANAL", ...(upTo ? { issueDate: { lte: upTo } } : {}) },
     orderBy: { issueDate: "desc" },
     take: limit,
     select: { issueDate: true, monthlyConsumption: true },
