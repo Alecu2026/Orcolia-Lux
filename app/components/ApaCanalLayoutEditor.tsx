@@ -427,7 +427,18 @@ export default function ApaCanalLayoutEditor({
 
   function resetAll() {
     if (!confirm("Readuci TOATE elementele la poziția din factura standard? (nu se salvează până nu apeși „Salvează”)")) return;
-    edit(() => ({}), "reset-all");
+    edit((l) => (l.customImages?.length ? { customImages: l.customImages } : {}), "reset-all");
+  }
+
+  function resetFonts() {
+    edit((l) => {
+      const next: ApaCanalLayout = { ...l };
+      for (const k of ALL_ELEMENT_KEYS) {
+        const o = l[k];
+        if (o?.fontSizeMm !== undefined) next[k] = { ...o, fontSizeMm: undefined };
+      }
+      return next;
+    }, "reset-fonts");
   }
 
   function resetOne(key: ApaCanalElementKey) {
@@ -515,6 +526,20 @@ export default function ApaCanalLayoutEditor({
     return out;
   }, [boxes]);
 
+  // Fonturi care se abat mult de cel standard (de obicei din redimensionări repetate care au scalat textul).
+  const oddFonts = useMemo(
+    () =>
+      APA_CANAL_TEXT_KEYS.filter((k) => {
+        const fs = layout[k]?.fontSizeMm;
+        const def = APA_CANAL_DEFAULT_FONT_MM[k];
+        return fs !== undefined && def !== undefined && (fs > def * 1.5 || fs < def * 0.6);
+      }),
+    [layout],
+  );
+  // Șablon salvat înainte de această versiune: nu are toate elementele (restul ar porni din poziții diferite de cele de pe factură).
+  const legacy = useMemo(() => ALL_ELEMENT_KEYS.some((k) => initial[k]?.xMm === undefined || initial[k]?.widthMm === undefined) && Object.keys(initial).length > 0, [initial]);
+  const [legacyDismissed, setLegacyDismissed] = useState(false);
+
   const sel = boxOf(layout, selected);
   const selOv = layout[selected];
   const textKey = isTextKey(selected);
@@ -529,6 +554,16 @@ export default function ApaCanalLayoutEditor({
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
       <div className="flex min-w-0 flex-1 flex-col gap-3">
+        {legacy && !legacyDismissed && (
+          <div className="card flex flex-wrap items-center gap-3 border-st-progress/40 bg-st-progress/10 p-3 text-xs text-st-progress">
+            <p className="min-w-0 flex-1">
+              <b>Șablonul salvat e vechi</b> (nu are toate elementele sau are poziții/fonturi modificate din versiuni anterioare), de aceea unele elemente par nepotrivite.
+              Pornește de la factura standard, apoi ajustează ce vrei.
+            </p>
+            <button type="button" className={btnCls} onClick={() => { edit((l) => (l.customImages?.length ? { customImages: l.customImages } : {}), "reset-all"); setLegacyDismissed(true); }}>Pornește de la factura standard</button>
+            <button type="button" className={btnCls} onClick={() => setLegacyDismissed(true)}>Păstrează șablonul</button>
+          </div>
+        )}
         {/* Bara de unelte */}
         <div className="card flex flex-wrap items-center gap-2 p-3 text-xs">
           <button type="button" className={btnCls} disabled={!state.past.length} onClick={() => dispatch({ type: "undo" })} title="Anulează (Ctrl+Z)">↶ Anulează</button>
@@ -637,6 +672,7 @@ export default function ApaCanalLayoutEditor({
           </p>
           <div className="flex flex-wrap gap-2">
             <button onClick={resetAll} disabled={pending} className={btnCls}>Resetează tot la standard</button>
+            <button onClick={resetFonts} disabled={pending} className={btnCls} title="Elimină mărimile de font modificate; textul revine la mărimea standard">Resetează fonturile</button>
             <button onClick={removeTemplate} disabled={pending} className={`${btnCls} text-st-cancelled`}>Șterge șablonul salvat</button>
           </div>
         </div>
@@ -797,6 +833,11 @@ export default function ApaCanalLayoutEditor({
                 {overlaps.length > 8 && <li>… și încă {overlaps.length - 8}</li>}
               </ul>
             </>
+          )}
+          {oddFonts.length > 0 && (
+            <p className="text-st-progress">
+              ⚠ Font mult diferit de cel standard: {oddFonts.map((k) => APA_CANAL_ELEMENT_LABELS[k]).join(", ")}. Folosește „Resetează fonturile”.
+            </p>
           )}
           <p className="mt-1 text-ink-soft">
             Dacă o factură are mai multe servicii decât cele 2 standard, elementele de sub tabel coboară automat, fără să iasă din pagină.
