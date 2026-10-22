@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useMessages, useT } from "@/lib/i18n/context";
 
 // Cheia publică VAPID: curățăm ghilimele/spații/rânduri noi lipite din greșeală la copiere în setările serverului.
-const VAPID = (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "").replace(/["'s]/g, "");
+const VAPID = (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "").replace(/["'\s]/g, "");
 
 /** Cheia publică validă = 65 de octeți, începând cu 0x04 (punct P-256 necomprimat), în base64url. */
 function vapidProblem(key: string): boolean {
