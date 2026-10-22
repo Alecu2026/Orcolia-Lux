@@ -290,7 +290,22 @@ export async function listTasks(
 
   const totalPages = Math.ceil(total / pageSize);
   const hasMore = page < totalPages;
-  return { items: rows.map(toRow), hasMore, page, total, totalPages };
+  return { items: await withClientNames(rows.map(toRow)), hasMore, page, total, totalPages };
+}
+
+/**
+ * Completează numele clientului pe rânduri. Lista nu îl citea (clientName rămânea null), deci coloana „Client" arăta „—" imediat ce
+ * rândurile se reîncărcau de pe server, deși clientul era salvat. Se citesc doar clienții distincți din rândurile curente (puțini), nu toți.
+ */
+async function withClientNames(items: TaskRow[]): Promise<TaskRow[]> {
+  const ids = [...new Set(items.map((r) => r.clientId).filter((x): x is string => !!x))];
+  if (ids.length === 0) return items;
+  const names = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const rows = await prisma.client.findMany({ where: { id: { in: ids.slice(i, i + 200) } }, select: { id: true, name: true } });
+    for (const c of rows) names.set(c.id, c.name);
+  }
+  return items.map((r) => (r.clientId ? { ...r, clientName: names.get(r.clientId) ?? null } : r));
 }
 
 export type CalendarTask = {

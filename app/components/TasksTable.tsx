@@ -235,7 +235,7 @@ export default function TasksTable({
           disabled={!canEditRow(t)}
           options={clients.map((o) => ({ value: o.id, label: o.name }))}
           onChange={(v) => patchTask(t, { clientId: v || null }, { clientId: v || null, clientName: nameIn(clients, v) })}
-          display={t.clientName ?? dash}
+          display={t.clientName ?? nameIn(clients, t.clientId ?? "") ?? dash}
         />
       ),
     },
