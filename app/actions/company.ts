@@ -10,6 +10,22 @@ import type { ApaCanalLayout } from "@/lib/apa-canal-layout";
 
 export type CompanyState = { ok?: boolean; error?: string; message?: string } | undefined;
 
+/** Ultima linie a unei erori (mesajele Prisma sunt lungi, cu bucăți de cod): destul cât să se vadă cauza în ecran. */
+function errLine(e: unknown): string {
+  const lines = String(e instanceof Error ? e.message : e).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  return (lines[lines.length - 1] ?? "eroare necunoscută").slice(0, 220);
+}
+
+/**
+ * Salvează rândul unic de setări fără `upsert`: pe MongoDB, Prisma îl poate executa ca tranzacție, iar un MongoDB fără „replica set"
+ * (frecvent la un server propriu) o refuză. Citire + update/create sunt operații simple, fără tranzacție.
+ */
+async function saveCompanyRow(update: Record<string, unknown>, createExtra: Record<string, unknown> = {}) {
+  const existing = await prisma.companySettings.findUnique({ where: { singleton: "main" }, select: { id: true } });
+  if (existing) await prisma.companySettings.update({ where: { id: existing.id }, data: update });
+  else await prisma.companySettings.create({ data: { singleton: "main", ...createExtra, ...update } as never });
+}
+
 function s(formData: FormData, key: string): string | null {
   const v = String(formData.get(key) ?? "").trim();
   return v === "" ? null : v;
@@ -76,11 +92,12 @@ export async function updateCompanySettings(
     apaCanalTarifCanal: tarifCanal,
   };
 
-  await prisma.companySettings.upsert({
-    where: { singleton: "main" },
-    create: { singleton: "main", ...data },
-    update: data,
-  });
+  try {
+    await saveCompanyRow(data);
+  } catch (e) {
+    console.error("[company] salvarea setărilor a eșuat:", e);
+    return { error: `Nu s-a putut salva în baza de date: ${errLine(e)}` };
+  }
 
   await logAudit(
     { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
@@ -101,11 +118,12 @@ export async function updateApaCanalLayout(layout: ApaCanalLayout): Promise<Layo
   if (!can(user, "admin")) return { error: "Doar administratorul poate edita șablonul facturii." };
   if (DEMO) return { error: "Mod demo: conectează o bază de date." };
 
-  await prisma.companySettings.upsert({
-    where: { singleton: "main" },
-    create: { singleton: "main", companyName: "Compania", apaCanalLayout: layout },
-    update: { apaCanalLayout: layout },
-  });
+  try {
+    await saveCompanyRow({ apaCanalLayout: layout }, { companyName: "Compania" });
+  } catch (e) {
+    console.error("[company] salvarea șablonului a eșuat:", e);
+    return { error: `Nu s-a putut salva în baza de date: ${errLine(e)}` };
+  }
 
   await logAudit(
     { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },

@@ -111,9 +111,15 @@ export default function ApaCanalLayoutEditor({
 
   function save() {
     startTransition(async () => {
-      const res = await onSave(layout);
-      if (res?.ok) toast.success("Șablon salvat");
-      else toast.error(res?.error ?? "Eroare la salvare");
+      try {
+        const res = await onSave(layout);
+        if (res?.ok) toast.success("Șablon salvat");
+        else toast.error(res?.error ?? "Eroare la salvare");
+      } catch (e) {
+        // Eroare aruncată de server sau de rețea (altfel nu s-ar vedea nimic): arătăm că salvarea a eșuat.
+        console.error("[layout] salvarea a eșuat:", e);
+        toast.error("Salvarea nu a reușit (eroare de server sau de rețea). Reîncarcă pagina și încearcă din nou.");
+      }
     });
   }
 
