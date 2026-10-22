@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { startTransition, useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { updateSettings, type SettingsState } from "@/app/actions/settings";
 import type { Settings } from "@/lib/queries/settings";
@@ -42,7 +42,7 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
   }, [state, router, selectedTheme]);
 
   return (
-    <form action={action} className="card flex flex-col gap-4 p-5">
+    <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startTransition(() => action(fd)); }} className="card flex flex-col gap-4 p-5">
       <h2 className="text-base font-bold">{m.settings.preferences}</h2>
 
       <div className="grid gap-3 sm:grid-cols-2">

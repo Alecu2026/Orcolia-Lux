@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { startTransition, useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   updateMyProfile,
@@ -61,7 +61,7 @@ export default function MyProfileForm({
     <div className="card flex flex-col gap-5 p-5">
       <h2 className="text-base font-bold">Profilul meu</h2>
 
-      <form action={action} className="flex flex-col gap-3">
+      <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startTransition(() => action(fd)); }} className="flex flex-col gap-3">
         <div>
           <label className={label}>Nume</label>
           <input name="name" defaultValue={name} required className={input} />

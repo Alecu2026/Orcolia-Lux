@@ -90,7 +90,7 @@ server {
 
 Se generează cu un Chromium fără interfață. Pe Vercel e inclus; pe server propriu alegi una:
 
-1. `npx playwright-core install --with-deps chromium` (descarcă Chromium și bibliotecile de sistem), **sau**
+1. `npx playwright-core install --with-deps chromium` — rulat **cu același utilizator cu care pornește aplicația** (Chromium se pune în `~/.cache/ms-playwright` al acelui utilizator; descarcă și bibliotecile de sistem), **sau**
 2. folosești un Chrome/Chromium deja instalat: `CHROME_PATH=/usr/bin/chromium`.
 
 Și setezi `INTERNAL_APP_URL=http://127.0.0.1:3000`, ca serverul să-și poată deschide singur pagina facturii (adresa publică nu e
@@ -141,3 +141,5 @@ Salvările din formulare (Setări, tabele etc.) sunt „Server Actions" Next.js,
 (secțiunea 5) că există `proxy_set_header Host $host;` și `proxy_set_header X-Forwarded-Host $host;`. Eroarea apare în logul aplicației ca
 „Invalid Server Actions request" / „x-forwarded-host does not match origin". Dacă adresa publică diferă de ce vede aplicația, adaugă domeniul în
 `next.config.mjs` → `experimental.serverActions.allowedOrigins`.
+
+**Semn că lipsește Chromium:** descărcarea PDF-ului unei facturi dă 500, iar `/api/invoice/public/<cod>/pdf` întoarce „Executable doesn't exist at …/ms-playwright/…”. Se rezolvă cu comanda de mai sus (apoi repornire).

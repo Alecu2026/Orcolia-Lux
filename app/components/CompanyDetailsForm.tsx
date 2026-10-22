@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { updateCompanySettings, type CompanyState } from "@/app/actions/company";
 import type { Company } from "@/lib/queries/company";
@@ -76,7 +76,7 @@ export default function CompanyDetailsForm({
   }
 
   return (
-    <form action={action} className="card flex flex-col gap-4 p-5">
+    <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startTransition(() => action(fd)); }} className="card flex flex-col gap-4 p-5">
       <h2 className="text-base font-bold">{m.company.title}</h2>
       <p className="-mt-2 text-xs text-ink-soft">{m.company.subtitle}</p>
 

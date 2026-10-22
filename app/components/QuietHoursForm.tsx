@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { startTransition, useActionState, useEffect } from "react";
 import { updateQuietHours, type SettingsState } from "@/app/actions/settings";
 import type { QuietHoursConfig } from "@/lib/quiet-hours";
 import { useToast } from "./toast";
@@ -53,7 +53,7 @@ export default function QuietHoursForm({
           <p className="mt-1 text-xs text-ink-soft">{m.settings.quietHoursSuperAdminOnly}</p>
         </div>
       ) : (
-        <form action={action} className="flex flex-col gap-3">
+        <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startTransition(() => action(fd)); }} className="flex flex-col gap-3">
           <label className="flex items-center gap-2 text-sm font-medium">
             <input
               type="checkbox"
