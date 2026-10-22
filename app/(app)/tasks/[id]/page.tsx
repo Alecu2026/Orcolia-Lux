@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { requirePermission } from "@/lib/dal";
+import { requireAnyPermission } from "@/lib/dal";
 import { can, canEditTask, canViewTask } from "@/lib/permissions";
-import { getTask } from "@/lib/queries/tasks";
+import { getTask, ticketCreatorName } from "@/lib/queries/tasks";
 import { listTaskComments } from "@/lib/services/tasks";
 import { dateKeyOf, formatDate, formatTime } from "@/lib/date";
 import { userOptions } from "@/lib/queries/users";
@@ -87,7 +87,7 @@ export default async function TaskDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await requirePermission("tasks.view");
+  const user = await requireAnyPermission(["tasks.view", "tickets.view", "kanban.view", "calendar.view"]);
   const { id } = await params;
 
   const { env } = await import("@/lib/env");
@@ -171,7 +171,7 @@ export default async function TaskDetailPage({
       at: task.createdAt,
       dot: "bg-st-new",
       action: "CREATED",
-      userName: task.creator.name,
+      userName: ticketCreatorName(task),
     },
   ];
 
@@ -339,7 +339,7 @@ export default async function TaskDetailPage({
             <MetaRow label="Scadent" value={fmtDue(task.dueAt)} alert={!!isOverdue} />
           )}
           <MetaRow label="Creat" value={fmtDateTime(task.createdAt)} />
-          <MetaRow label="Creat de" value={task.creator.name} />
+          <MetaRow label="Creat de" value={ticketCreatorName(task)} />
         </div>
 
         <div className="mt-4 border-t border-[var(--color-line)] pt-4 flex flex-col gap-3">

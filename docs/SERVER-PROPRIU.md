@@ -61,9 +61,11 @@ K="Authorization: Bearer <CRON_SECRET>"
 
 0 6 * * *      curl -fsS -m 120 -H "$K" $S/api/cron              # notificări task-uri, remindere zilnice
 */10 * * * *   curl -fsS -m 60  -H "$K" $S/api/cron/reminders    # remindere programări
-0 8-20/2 * * * curl -fsS -m 60  -H "$K" $S/api/cron/imap         # citire căsuță email
+*/10 * * * *   curl -fsS -m 60  -H "$K" $S/api/cron/imap         # citire căsuță email (tichete din email, la 10 minute)
 0 1 * * *      curl -fsS -m 310 -H "$K" $S/api/cron/apa-canal-sync   # sincronizare Apă-Canal (poate dura minute)
 ```
+
+Pe Vercel plan **Hobby** cron-urile pot rula cel mult o dată pe zi (de aceea `vercel.json` are câte o intrare pe oră pentru citirea emailului); la 10 minute merge doar pe server propriu (crontab), pe planul Pro sau cu un planificator extern care apelează `/api/cron/imap` cu `CRON_SECRET`.
 
 Cron-ul de apeluri automate **nu mai există**: apelurile pleacă direct din aplicație, la „Trimite”.
 

@@ -68,10 +68,24 @@ const TASK_SELECT = {
   project: { select: { name: true, clientId: true, lat: true, lng: true } },
   category: { select: { name: true, color: true } },
   creator: { select: { name: true } },
+  fromName: true,
+  fromEmail: true,
   chatLastMsgAt: true,
   chatLastSender: true,
   chatStaffReadAt: true,
 } as const;
+
+/**
+ * „Creat de”: tichetele din portal / email sunt create de client (în DB `creatorId` e un administrator-substitut, clientul nu e utilizator),
+ * deci acolo afișăm solicitantul real (`fromName`/`fromEmail`). Task-urile și tichetele create de angajați rămân pe creatorul real.
+ */
+export function ticketCreatorName(t: { type: string; fromName?: string | null; fromEmail?: string | null; creator?: { name: string } | null }): string {
+  if (t.type === "TICKET") {
+    const who = (t.fromName || t.fromEmail || "").trim();
+    if (who) return who;
+  }
+  return t.creator?.name ?? "Necunoscut";
+}
 
 function toRow(t: Prisma.TaskGetPayload<{ select: typeof TASK_SELECT }>): TaskRow {
   return {
@@ -103,7 +117,7 @@ function toRow(t: Prisma.TaskGetPayload<{ select: typeof TASK_SELECT }>): TaskRo
     projectLat: t.project?.lat ?? null,
     projectLng: t.project?.lng ?? null,
     clientName: null,
-    creatorName: t.creator?.name ?? "Necunoscut",
+    creatorName: ticketCreatorName(t),
     createdAt: t.createdAt,
     chatUnread: t.chatLastSender === "CLIENT" && !!t.chatLastMsgAt && (!t.chatStaffReadAt || t.chatStaffReadAt < t.chatLastMsgAt),
   };

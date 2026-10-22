@@ -3,6 +3,8 @@ import { processInboundEmail } from "@/lib/services/email-ticket";
 import { detectSpam } from "@/lib/spam-filter";
 import { isRateLimited } from "@/lib/rate-limit";
 import { env } from "@/lib/env";
+import { htmlToText, stripQuotedReply } from "@/lib/email-body";
+import { timingSafeEqual } from "node:crypto";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -58,8 +60,14 @@ function cleanId(id: string): string {
 
 export async function POST(req: NextRequest) {
   // Verificare secret (header X-Email-Secret sau query param secret)
+  // Fără EMAIL_INBOUND_SECRET setat endpoint-ul e oprit (altfel oricine de pe internet ar putea crea tichete).
+  if (!env.emailInboundSecret) {
+    return NextResponse.json({ error: "Endpoint dezactivat: setează EMAIL_INBOUND_SECRET." }, { status: 503 });
+  }
   const secret = req.headers.get("x-email-secret") ?? req.nextUrl.searchParams.get("secret") ?? "";
-  if (env.emailInboundSecret && secret !== env.emailInboundSecret) {
+  const a = Buffer.from(secret);
+  const b = Buffer.from(env.emailInboundSecret);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -78,6 +86,9 @@ export async function POST(req: NextRequest) {
   if (isRateLimited(email.fromEmail, 10, 60 * 60 * 1000)) {
     return NextResponse.json({ error: "Rate limited" }, { status: 429 });
   }
+
+  // Corp: text simplu, iar dacă lipsește (email doar HTML) textul curățat din HTML; fără citatul răspunsului anterior.
+  email.bodyText = stripQuotedReply(email.bodyText.trim() || htmlToText(email.bodyHtml));
 
   // Spam filter
   const spamReason = detectSpam(email.fromEmail, email.subject, email.bodyText);

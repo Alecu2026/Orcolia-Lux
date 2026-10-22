@@ -4,7 +4,7 @@ import { env } from "../env";
 import { DEMO } from "../demo";
 import { getCurrentUser } from "../dal";
 import { getCurrentClient } from "../client-dal";
-import { can, canEditTask, canViewTask } from "../permissions";
+import { canEditTask, canViewTask, canViewTaskData } from "../permissions";
 import { sendTicketMessageEmail } from "../email";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "./notifications";
 import type { ChatMessage, ChatSender, ChatState } from "../ticket-chat-shared";
@@ -35,7 +35,7 @@ export async function resolveChatAccess(taskId: string, as: "staff" | "client"):
   if (as === "staff") {
     const user = await getCurrentUser();
     if (!user) return { ok: false, status: 401, error: "Autentificare necesară." };
-    if (!can(user, "tasks.view")) return { ok: false, status: 403, error: "Fără permisiune." };
+    if (!canViewTaskData(user)) return { ok: false, status: 403, error: "Fără permisiune." };
     const task = await loadTask(taskId);
     if (!task || task.type !== "TICKET" || !canViewTask(user, task)) return { ok: false, status: 404, error: "Tichet inexistent." };
     let blockedReason: string | null = null;

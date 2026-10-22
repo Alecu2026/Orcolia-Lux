@@ -4,6 +4,7 @@ import { DEMO } from "../demo";
 import { env } from "../env";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "./notifications";
 import nodemailer from "nodemailer";
+import { htmlToText } from "../email-body";
 
 // ── Email transport (shared with lib/email.ts logic) ────────────────────────
 function getTransport() {
@@ -29,6 +30,12 @@ function decodeRfc2047(str: string): string {
       try { return decodeURIComponent(qp); } catch { return data; }
     } catch { return str; }
   });
+}
+
+/** Domeniul pentru Message-ID-urile generate: cel al adresei de trimitere (nu un domeniu fix). */
+function msgDomain(): string {
+  const addr = (env.smtp.from?.match(/<([^>]+)>/)?.[1] ?? env.smtp.from ?? env.smtp.user ?? "").trim();
+  return addr.split("@")[1]?.replace(/[^a-z0-9.-]/gi, "") || "localhost";
 }
 
 // ── Normalize subject pentru threading ──────────────────────────────────────
@@ -131,7 +138,7 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
   // Decodează RFC 2047 în caz că vine ne-decodat din webhook (IMAP îl decodează deja)
   const subject = decodeRfc2047(email.subject.trim()) || "(fără subiect)";
   const fromName = email.fromName ? decodeRfc2047(email.fromName) : email.fromName;
-  const body = email.bodyText.trim() || email.bodyHtml?.replace(/<[^>]+>/g, " ").trim() || "";
+  const body = email.bodyText.trim() || htmlToText(email.bodyHtml);
 
   // Idempotency: skip if this exact messageId was already stored
   if (email.messageId) {
@@ -184,7 +191,7 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
         direction: "INBOUND",
         fromEmail,
         fromName: fromName,
-        toEmail: env.smtp.from || "info@scada.md",
+        toEmail: env.smtp.from || env.smtp.user || "",
         subject,
         body,
         messageId: email.messageId,
@@ -229,7 +236,7 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
       direction: "INBOUND",
       fromEmail,
       fromName: fromName,
-      toEmail: env.smtp.from || "info@scada.md",
+      toEmail: env.smtp.from || env.smtp.user || "",
       subject,
       body,
       messageId: email.messageId,
@@ -317,7 +324,7 @@ async function sendAutoAck(opts: {
 
   const seqLabel = opts.ticketSeq != null ? ` (#${opts.ticketSeq})` : "";
   const clientName = opts.toName || opts.toEmail;
-  const msgId = `<ack-${Date.now()}@scada.md>`;
+  const msgId = `<ack-${Date.now()}@${msgDomain()}>`;
 
   const bodyText = `Bună, ${clientName},\n\nAm primit mesajul tău${seqLabel}. Un coleg te va contacta în cel mai scurt timp.\n\n— ${opts.companyName}`;
   const bodyHtml = `<!doctype html><html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
@@ -387,30 +394,13 @@ export async function sendEmailReply(opts: {
   const transport = getTransport();
   if (!transport) throw new Error("SMTP neconfigurat.");
 
-  // Asignează operatorul care răspunde și setează statusul IN_PROGRESS
-  if (opts.staffUserId) {
-    await prisma.task.update({
-      where: { id: opts.taskId },
-      data: { assigneeId: opts.staffUserId, status: "IN_PROGRESS" },
-    });
-    await prisma.taskActivity.create({
-      data: {
-        taskId: opts.taskId,
-        userId: opts.staffUserId,
-        action: "STATUS_CHANGED",
-        fromStatus: ticket.status,
-        toStatus: "IN_PROGRESS",
-      },
-    }).catch(() => {});
-  }
-
   const company = opts.companyName || "Echipa noastră";
   const from = opts.fromName && opts.fromAddr
     ? `${opts.fromName} <${opts.fromAddr}>`
     : env.smtp.from;
 
   const subject = `Re: ${ticket.title}`;
-  const msgId = `<reply-${opts.taskId}-${Date.now()}@scada.md>`;
+  const msgId = `<reply-${opts.taskId}-${Date.now()}@${msgDomain()}>`;
 
   const html = replyTemplate({
     clientName: ticket.fromName || ticket.fromEmail,
@@ -442,6 +432,24 @@ export async function sendEmailReply(opts: {
       messageId: msgId,
     },
   });
+
+  // Asignează operatorul care răspunde și setează statusul IN_PROGRESS — abia după ce emailul a plecat
+  // (dacă trimiterea eșuează, tichetul nu își schimbă asignatul / statusul).
+  if (opts.staffUserId) {
+    await prisma.task.update({
+      where: { id: opts.taskId },
+      data: { assigneeId: opts.staffUserId, status: "IN_PROGRESS" },
+    });
+    await prisma.taskActivity.create({
+      data: {
+        taskId: opts.taskId,
+        userId: opts.staffUserId,
+        action: "STATUS_CHANGED",
+        fromStatus: ticket.status,
+        toStatus: "IN_PROGRESS",
+      },
+    }).catch(() => {});
+  }
 }
 
 function replyTemplate(d: {
@@ -583,7 +591,7 @@ export async function checkAutoCloseEmailTickets(): Promise<number> {
     if (transport && t.fromEmail) {
       const subject = `Re: ${t.title}`;
       const body = `Bună,\n\nTichetul dumneavoastră a fost închis automat deoarece nu am primit niciun răspuns în ultimele 48 de ore.\n\nDacă mai aveți nevoie de ajutor, scrieți-ne oricând și vom deschide un nou tichet.\n\n— ${fromName}`;
-      const msgId = `<autoclose-${t.id}-${Date.now()}@scada.md>`;
+      const msgId = `<autoclose-${t.id}-${Date.now()}@${msgDomain()}>`;
       await transport.sendMail({
         from: `${fromName} <${fromAddr}>`,
         to: t.fromEmail,

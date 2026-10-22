@@ -5,6 +5,8 @@ import { prisma } from "../prisma";
 import { processInboundEmail } from "./email-ticket";
 import { detectSpam } from "../spam-filter";
 import { isRateLimited } from "../rate-limit";
+import { htmlToText, stripQuotedReply } from "../email-body";
+import { simpleParser } from "mailparser";
 
 const LAST_UID_KEY = "imap-last-uid";
 
@@ -48,7 +50,7 @@ export async function pollInbox(): Promise<{ processed: number; errors: number }
       if (!uids || uids.length === 0) return { processed: 0, errors: 0 };
       console.log(`[imap] emailuri noi (UID>${lastUid}): ${uids.join(", ")}`);
 
-      // Procesăm câte un email pe rând — serverul scada.md taie conexiunea
+      // Procesăm câte un email pe rând — unele servere taie conexiunea
       // dacă facem fetch bulk cu source:true pe multe mesaje simultan
       for (const uid of uids) {
         try {
@@ -127,131 +129,26 @@ export async function pollInbox(): Promise<{ processed: number; errors: number }
 }
 
 // ── Parser mesaj ─────────────────────────────────────────────────────────────
+// MIME complet (multipart imbricat, base64 / quoted-printable, charset-uri, capete cu LF sau CRLF) prin mailparser.
 async function parseMessage(msg: import("imapflow").FetchMessageObject) {
   if (!msg?.source) return null;
 
-  const raw = msg.source.toString("utf-8");
-
-  // Extrage headers din sursa brută
-  const headerEnd = raw.indexOf("\r\n\r\n");
-  const headerSection = headerEnd > -1 ? raw.slice(0, headerEnd) : raw.slice(0, 2000);
-  const body = headerEnd > -1 ? raw.slice(headerEnd + 4) : "";
-
-  function getHeader(name: string): string {
-    const re = new RegExp(`^${name}:\\s*(.+?)(?=\\r?\\n(?!\\s)|$)`, "ims");
-    const m = headerSection.match(re);
-    return m ? m[1].replace(/\r?\n\s+/g, " ").trim() : "";
-  }
-
-  const fromRaw = getHeader("From") || (msg.envelope?.from?.[0]
-    ? `${msg.envelope.from[0].name ?? ""} <${msg.envelope.from[0].address ?? ""}>`.trim()
-    : "");
-
-  const fromEmail = extractEmail(fromRaw);
-  const fromName = decodeWords(extractName(fromRaw) || msg.envelope?.from?.[0]?.name || "");
-  const subject = decodeWords(getHeader("Subject") || msg.envelope?.subject || "(fără subiect)");
-  const messageId = cleanId(getHeader("Message-ID") || getHeader("Message-Id") || "");
-  const inReplyTo = cleanId(getHeader("In-Reply-To") || "");
-  const references = getHeader("References") || "";
-
-  // Body: încearcă text/plain, fallback la curățare HTML
-  const rawBody = extractTextBody(raw) || body.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  const bodyText = stripQuoted(rawBody);
-
+  const mail = await simpleParser(msg.source);
+  const from = mail.from?.value?.[0];
+  const fromEmail = (from?.address ?? msg.envelope?.from?.[0]?.address ?? "").toLowerCase().trim();
   if (!fromEmail) return null;
 
+  const fromName = (from?.name ?? msg.envelope?.from?.[0]?.name ?? "").trim();
+  const subject = (mail.subject ?? msg.envelope?.subject ?? "").trim() || "(fără subiect)";
+  const messageId = cleanId(mail.messageId ?? "");
+  const inReplyTo = cleanId(mail.inReplyTo ?? "");
+  const references = Array.isArray(mail.references) ? mail.references.join(" ") : (mail.references ?? "");
+
+  // Corp: text/plain, iar dacă lipsește, HTML curățat; apoi fără citatul răspunsului anterior.
+  const rawBody = (mail.text ?? "").trim() || htmlToText(typeof mail.html === "string" ? mail.html : "");
+  const bodyText = stripQuotedReply(rawBody);
+
   return { fromEmail, fromName, subject, bodyText, messageId, inReplyTo, references };
-}
-
-function stripQuoted(text: string): string {
-  const lines = text.split(/\r?\n/);
-  const result: string[] = [];
-  for (const line of lines) {
-    // Stop at quoted reply block (lines starting with ">") or "On ... wrote:" separator
-    if (/^>/.test(line)) break;
-    if (/^(On .+wrote:|----+ ?Original Message ?----+)/i.test(line)) break;
-    result.push(line);
-  }
-  return result.join("\n").trim();
-}
-
-function extractTextBody(raw: string): string {
-  // Caută boundary multipart
-  const boundaryMatch = raw.match(/Content-Type:\s*multipart\/\w+;\s*boundary="?([^"\r\n]+)"?/i);
-  if (boundaryMatch) {
-    const boundary = boundaryMatch[1].trim();
-    const parts = raw.split(`--${boundary}`);
-    for (const part of parts) {
-      if (/Content-Type:\s*text\/plain/i.test(part)) {
-        const bodyStart = part.indexOf("\r\n\r\n");
-        if (bodyStart > -1) {
-          const body = part.slice(bodyStart + 4).replace(/--$/, "").trim();
-          const decoded = decodeQuotedPrintable(body);
-          if (decoded.length > 5) return decoded;
-        }
-      }
-    }
-    // Fallback: prima parte text/html
-    for (const part of parts) {
-      if (/Content-Type:\s*text\/html/i.test(part)) {
-        const bodyStart = part.indexOf("\r\n\r\n");
-        if (bodyStart > -1) {
-          return part.slice(bodyStart + 4).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-        }
-      }
-    }
-  }
-
-  // Single-part: verifică dacă există Content-Type text/plain
-  if (/Content-Type:\s*text\/plain/i.test(raw)) {
-    const start = raw.indexOf("\r\n\r\n");
-    if (start > -1) return decodeQuotedPrintable(raw.slice(start + 4).trim());
-  }
-
-  return "";
-}
-
-function decodeQuotedPrintable(str: string): string {
-  // Remove soft line breaks, then decode QP bytes as UTF-8 (not Latin-1)
-  const unfolded = str.replace(/=\r?\n/g, "");
-  const bytes: number[] = [];
-  let i = 0;
-  while (i < unfolded.length) {
-    if (unfolded[i] === "=" && i + 2 < unfolded.length && /[0-9A-Fa-f]{2}/.test(unfolded.slice(i + 1, i + 3))) {
-      bytes.push(parseInt(unfolded.slice(i + 1, i + 3), 16));
-      i += 3;
-    } else {
-      const code = unfolded.charCodeAt(i);
-      if (code < 0x80) { bytes.push(code); }
-      else if (code < 0x800) { bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f)); }
-      else { bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f)); }
-      i++;
-    }
-  }
-  return Buffer.from(bytes).toString("utf-8");
-}
-
-function decodeWords(str: string): string {
-  return str.replace(/=\?([^?]+)\?([BQbq])\?([^?]*)\?=/g, (_, charset, encoding, data) => {
-    try {
-      if (encoding.toUpperCase() === "B") {
-        return Buffer.from(data, "base64").toString("utf-8");
-      }
-      return decodeQuotedPrintable(data.replace(/_/g, " "));
-    } catch {
-      return str;
-    }
-  });
-}
-
-function extractEmail(from: string): string {
-  const m = from.match(/<([^>]+)>/);
-  return (m ? m[1] : from).trim().toLowerCase();
-}
-
-function extractName(from: string): string {
-  const m = from.match(/^(.+?)\s*</);
-  return m ? m[1].replace(/^["']|["']$/g, "").trim() : "";
 }
 
 function cleanId(id: string): string {

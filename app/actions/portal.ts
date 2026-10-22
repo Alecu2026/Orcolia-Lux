@@ -45,6 +45,9 @@ export async function createPortalTicket(
       priority: "MEDIUM",
       creatorId: systemUser.id,
       clientId: client.id,
+      // Solicitantul real (clientul nu e utilizator): apare la „Creat de” în loc de administratorul-substitut.
+      fromName: client.name,
+      fromEmail: client.email ?? null,
     },
     select: { id: true, seq: true },
   });
