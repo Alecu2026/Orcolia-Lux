@@ -10,6 +10,8 @@ function isStaleDeployError(error: Error): boolean {
   const msg = `${error.name} ${error.message}`.toLowerCase();
   return (
     msg.includes("failed to find server action") ||
+    msg.includes("unrecognizedactionerror") ||
+    msg.includes("was not found on the server") ||
     msg.includes("chunkloaderror") ||
     (msg.includes("loading chunk") && msg.includes("failed")) ||
     msg.includes("failed to fetch dynamically imported module") ||
@@ -28,7 +30,17 @@ export default function GlobalError({
 
   useEffect(() => {
     console.error("[global-error] eroare neprinsă:", error);
-  }, [error]);
+    // Pagină veche după un deploy: reîncărcăm automat o singură dată (fără buclă) ca să ia versiunea nouă.
+    if (stale) {
+      try {
+        if (sessionStorage.getItem("stale-reload") !== "1") {
+          sessionStorage.setItem("stale-reload", "1");
+          window.location.reload();
+          return;
+        }
+      } catch {}
+    }
+  }, [error, stale]);
 
   return (
     <html lang="ro">

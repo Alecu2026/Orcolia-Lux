@@ -10,6 +10,8 @@ function isStaleDeployError(error: Error): boolean {
   const msg = `${error.name} ${error.message}`.toLowerCase();
   return (
     msg.includes("failed to find server action") ||
+    msg.includes("unrecognizedactionerror") ||
+    msg.includes("was not found on the server") ||
     msg.includes("chunkloaderror") ||
     (msg.includes("loading chunk") && msg.includes("failed")) ||
     msg.includes("failed to fetch dynamically imported module") ||
