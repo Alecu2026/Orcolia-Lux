@@ -66,6 +66,29 @@ select optgroup {
   input[type="time"]:not(:disabled) {
     cursor: pointer;
   }
+
+  /* Pe telefon (iOS/Android) câmpurile de dată/oră au o lățime proprie și ies din coloana grilei; le ținem în container. */
+  input[type="date"],
+  input[type="time"],
+  input[type="datetime-local"],
+  input[type="month"] {
+    min-width: 0;
+    max-width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  input[type="date"]::-webkit-date-and-time-value,
+  input[type="time"]::-webkit-date-and-time-value,
+  input[type="datetime-local"]::-webkit-date-and-time-value {
+    text-align: left;
+    min-width: 0;
+  }
+}
+
+/* Elementele unei grile pot fi mai înguste decât conținutul lor (altfel un câmp lat le împinge în afara ecranului). */
+form .grid > *,
+dialog .grid > * {
+  min-width: 0;
 }
 
 html,

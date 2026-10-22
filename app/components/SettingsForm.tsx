@@ -8,7 +8,7 @@ import ReminderOffsetPicker from "./ReminderOffsetPicker";
 import { useMessages } from "@/lib/i18n/context";
 
 const input =
-  "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
+  "h-11 w-full min-w-0 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
 const label = "mb-1.5 block text-xs font-semibold text-ink-soft";
 
 export default function SettingsForm({ settings }: { settings: Settings }) {
