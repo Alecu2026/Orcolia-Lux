@@ -412,7 +412,7 @@ export default function UserDialog({
               <p className="mb-2 text-[11px] text-ink-soft">
                 {isAdminRole
                   ? t("Administratorul primește notificări despre tot ce se întâmplă în aplicație. Poți limita tipurile de evenimente (și sursa, mai jos). Notificările care îl privesc direct vin mereu.")
-                  : t("Angajatul primește mereu notificările care îl privesc direct (task asignat lui, comentarii la task-urile lui etc.). Bifează aici și evenimente generale, ca observator.")}
+                  : t("Angajatul primește MEREU, fără nicio bifă, notificările despre task-urile lui: i s-a dat un task, cineva a comentat sau a schimbat statusul la un task al lui, task-ul lui a întârziat. Bifele de mai jos adaugă notificări despre lucruri în care NU e implicat (ex. orice task sau factură nouă din firmă).")}
               </p>
               <Toggle
                 checked={allEvents}
@@ -436,7 +436,7 @@ export default function UserDialog({
                     <p className="mt-2 text-[11px] text-st-progress">
                       {isAdminRole
                         ? t("Niciun tip bifat: administratorul va primi TOATE tipurile (listă goală = toate). Bifează „Toate tipurile” dacă asta vrei.")
-                        : t("Niciun eveniment general bifat: primește doar notificările care îl privesc direct.")}
+                        : t("Nimic bifat: primește doar notificările despre task-urile lui (asignat, comentarii, întârziere). Nu primește nimic despre task-urile, facturile sau proiectele altora.")}
                     </p>
                   )}
                 </div>

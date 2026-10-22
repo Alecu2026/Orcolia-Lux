@@ -446,4 +446,6 @@ export const EN: Record<string, string> = {
   "Kanban": "Kanban",
   "Calendar": "Calendar",
   "Hartă": "Map",
+  "Angajatul primește MEREU, fără nicio bifă, notificările despre task-urile lui: i s-a dat un task, cineva a comentat sau a schimbat statusul la un task al lui, task-ul lui a întârziat. Bifele de mai jos adaugă notificări despre lucruri în care NU e implicat (ex. orice task sau factură nouă din firmă).": "The employee ALWAYS receives, without ticking anything, notifications about their own tasks: a task was given to them, someone commented or changed the status of one of their tasks, their task is overdue. The ticks below add notifications about things they are NOT involved in (e.g. any new task or invoice in the company).",
+  "Nimic bifat: primește doar notificările despre task-urile lui (asignat, comentarii, întârziere). Nu primește nimic despre task-urile, facturile sau proiectele altora.": "Nothing ticked: they only receive notifications about their own tasks (assigned, comments, overdue). Nothing about other people's tasks, invoices or projects.",
 };

@@ -446,4 +446,6 @@ export const RU: Record<string, string> = {
   "Kanban": "Канбан",
   "Calendar": "Календарь",
   "Hartă": "Карта",
+  "Angajatul primește MEREU, fără nicio bifă, notificările despre task-urile lui: i s-a dat un task, cineva a comentat sau a schimbat statusul la un task al lui, task-ul lui a întârziat. Bifele de mai jos adaugă notificări despre lucruri în care NU e implicat (ex. orice task sau factură nouă din firmă).": "Сотрудник ВСЕГДА получает без всяких отметок уведомления о своих задачах: ему назначили задачу, кто-то прокомментировал или изменил статус его задачи, его задача просрочена. Отметки ниже добавляют уведомления о том, к чему он НЕ причастен (напр. любая новая задача или счёт в компании).",
+  "Nimic bifat: primește doar notificările despre task-urile lui (asignat, comentarii, întârziere). Nu primește nimic despre task-urile, facturile sau proiectele altora.": "Ничего не отмечено: приходят только уведомления о его задачах (назначение, комментарии, просрочка). Ничего о задачах, счетах или проектах других.",
 };
