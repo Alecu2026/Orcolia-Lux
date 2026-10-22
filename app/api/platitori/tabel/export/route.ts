@@ -53,7 +53,7 @@ const SHEETS: Record<SheetKey, { title: string; file: string; headers: string[];
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return new Response("Autentificare necesară.", { status: 401 });
-  if (!can(user, "clients.view")) return new Response("Fără permisiune.", { status: 403 });
+  if (!can(user, "payers.view")) return new Response("Fără permisiune.", { status: 403 });
 
   const sp = new URL(req.url).searchParams;
   const requested = sp.get("sheet") ?? "";

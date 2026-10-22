@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { requireUser } from "@/lib/dal";
+import { requirePermission } from "@/lib/dal";
+import { can } from "@/lib/permissions";
 import { dashboardStats, listTasks, taskViewFilter } from "@/lib/queries/tasks";
 import type { CurrentUser } from "@/lib/dal";
 import DashboardFilters from "@/app/components/DashboardFilters";
@@ -68,9 +69,14 @@ async function StatsSection({
     { label: d.myReview,       value: stats.myReview,       accent: "text-st-confirmed", href: "/tasks?scope=mine&status=REVIEW" },
     { label: d.projectsActive, value: stats.projectsActive, accent: "text-brand",        href: "/projects" },
   ];
+  // Dashboardul arată doar cifrele zonelor la care userul are acces (task-uri, tichete, proiecte) — nu scurge date din pagini interzise.
+  const visibleCards = cards.filter((c) =>
+    can(user, c.href.startsWith("/tickets") ? "tickets.view" : c.href.startsWith("/projects") ? "projects.view" : "tasks.view"),
+  );
+  if (visibleCards.length === 0) return null;
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-      {cards.map((c) => (
+      {visibleCards.map((c) => (
         <Link key={c.label} href={c.href} className="card tap p-3.5 hover:border-brand">
           <p className={`text-2xl font-bold ${c.accent}`}>{c.value}</p>
           <p className="mt-0.5 text-xs leading-tight text-ink-soft">{c.label}</p>
@@ -219,7 +225,7 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<Record<string, string>>;
 }) {
-  const [user, locale] = await Promise.all([requireUser(), getLocaleFromCookie()]);
+  const [user, locale] = await Promise.all([requirePermission("dashboard.view"), getLocaleFromCookie()]);
   const m = getMessages(locale);
   const dateLocale = LOCALE_DATE[locale] ?? "ro-RO";
 
@@ -241,6 +247,7 @@ export default async function DashboardPage({
         <StatsSection user={user} m={m} />
       </Suspense>
 
+      {can(user, "tasks.view") && (
       <div className="mt-6">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-soft">{heading}</h2>
@@ -265,6 +272,7 @@ export default async function DashboardPage({
           />
         </Suspense>
       </div>
+      )}
     </div>
   );
 }

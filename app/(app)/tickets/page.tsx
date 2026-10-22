@@ -1,5 +1,5 @@
 import { requirePermission } from "@/lib/dal";
-import { can } from "@/lib/permissions";
+import { can, canUseAllScope } from "@/lib/permissions";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
@@ -20,7 +20,7 @@ export default async function TicketsPage({
 }: {
   searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; client?: string; title?: string; desc?: string }>;
 }) {
-  const user = await requirePermission("tasks.view");
+  const user = await requirePermission("tickets.view");
   const sp = await searchParams;
   const locale = await getLocaleFromCookie();
   const m = getMessages(locale);
@@ -28,7 +28,7 @@ export default async function TicketsPage({
   // "created" — altfel tab-ul "Create de mine" e mort pentru el (tichet creat, dar asignat
   // implicit altcuiva/unui proiect cu asignat propriu, nu mai apare nicăieri pentru STAFF).
   const scope = (
-    SCOPE_KEYS.includes(sp.scope as typeof SCOPE_KEYS[number]) && !(user.role === "STAFF" && sp.scope === "all")
+    SCOPE_KEYS.includes(sp.scope as typeof SCOPE_KEYS[number]) && !(sp.scope === "all" && !canUseAllScope(user))
       ? sp.scope
       : "mine"
   ) as "mine" | "all" | "created";
@@ -60,7 +60,7 @@ export default async function TicketsPage({
     { key: "all", label: m.common.all },
     { key: "created", label: m.common.createdByMe },
   ] as const;
-  const scopeOptions = SCOPES.filter((s) => (user.role === "STAFF" ? s.key !== "all" : true));
+  const scopeOptions = SCOPES.filter((s) => (canUseAllScope(user) ? true : s.key !== "all"));
 
   return (
     <div className="w-full">

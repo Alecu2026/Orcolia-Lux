@@ -6,7 +6,7 @@ import OneCTable from "@/app/components/OneCTable";
 export const dynamic = "force-dynamic";
 
 export default async function OneCTablePage() {
-  await requirePermission("clients.view");
+  await requirePermission("payers.view");
   return (
     <div className="w-full">
       <Link href="/platitori" className="mb-3 inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink">

@@ -21,7 +21,7 @@ export default async function PayersPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const user = await requirePermission("clients.view");
+  const user = await requirePermission("payers.view");
   const canImport = can(user, "clients.create") && can(user, "clients.edit");
   // Sincronizarea din API creează și facturi, deci cere și permisiunea de creare facturi.
   const canSyncApi = canImport && can(user, "invoices.create");
@@ -79,7 +79,7 @@ export default async function PayersPage({
         userEmail={user.email}
         userId={user.id}
         isAdmin={can(user, "admin")}
-        canDelete={can(user, "clients.delete")}
+        canDelete={can(user, "payers.delete")}
         canEditInvoices={can(user, "invoices.edit")}
       />
     </div>

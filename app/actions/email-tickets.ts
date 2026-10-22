@@ -49,7 +49,7 @@ export type EmailThreadMessage = {
 
 export async function getEmailThreadAction(taskId: string): Promise<EmailThreadMessage[]> {
   const user = await requireUser();
-  if (!can(user, "tasks.view")) return [];
+  if (!(can(user, "tickets.view") || can(user, "tasks.view"))) return [];
 
   const messages = await prisma.emailMessage.findMany({
     where: { taskId },

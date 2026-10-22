@@ -19,7 +19,7 @@ const vol = (n: number | null) => (n == null ? "—" : n.toLocaleString("ro-RO",
  * (Excel/CSV/JSON, mai jos) — vin din aceeași funcție, lib/services/payer-statement.ts.
  */
 export default async function PayerStatementPage({ params }: { params: Promise<{ id: string }> }) {
-  await requirePermission("clients.view");
+  await requirePermission("payers.view");
   const { id } = await params;
   const statement = await getPayerStatement(id);
   if (!statement) notFound();

@@ -14,7 +14,7 @@ export const maxDuration = 60;
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Autentificare necesară." }, { status: 401 });
-  if (!can(user, "clients.view")) return Response.json({ error: "Fără permisiune." }, { status: 403 });
+  if (!can(user, "pbx.view")) return Response.json({ error: "Fără permisiune." }, { status: 403 });
 
   const callId = new URL(req.url).searchParams.get("callId") ?? "";
   if (!callId || callId.length > 120) return Response.json({ error: "Apel invalid." }, { status: 400 });

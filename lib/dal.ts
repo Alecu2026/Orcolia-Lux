@@ -3,7 +3,7 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { prisma } from "./prisma";
 import { getSessionToken, hashToken } from "./session";
-import { can, type PermissionKey } from "./permissions";
+import { can, homePath, type PermissionKey } from "./permissions";
 import { ensureSuperAdminExists } from "./services/super-admin";
 
 export type CurrentUser = {
@@ -117,10 +117,17 @@ export const requireUser = cache(async (): Promise<CurrentUser> => {
   return user;
 });
 
-/** Pagini protejate de permisiune: redirect la /dashboard dacă lipsește. */
+/** Pagini protejate de permisiune: dacă lipsește, redirect la prima pagină la care are acces (nu la /dashboard, care poate fi și ea interzisă). */
 export async function requirePermission(key: PermissionKey): Promise<CurrentUser> {
   const user = await requireUser();
-  if (!can(user, key)) redirect("/dashboard");
+  if (!can(user, key)) redirect(homePath(user));
+  return user;
+}
+
+/** La fel, dar pagina se vede dacă userul are ORICARE dintre permisiuni (ex. Calendar: task-uri sau programări). */
+export async function requireAnyPermission(keys: PermissionKey[]): Promise<CurrentUser> {
+  const user = await requireUser();
+  if (!keys.some((k) => can(user, k))) redirect(homePath(user));
   return user;
 }
 

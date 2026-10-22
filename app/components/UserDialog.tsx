@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createUser, updateUser } from "@/app/actions/users";
-import { ALL_PERMISSION_KEYS, PERMISSION_GROUPS } from "@/lib/permissions";
+import { ALL_PERMISSION_KEYS, PERMISSION_GROUPS, effectivePermissionKeys } from "@/lib/permissions";
 import { NOTIFY_EVENTS } from "@/lib/notify-meta";
 import { useMessages, useT } from "@/lib/i18n/context";
 import { useToast } from "./toast";
@@ -51,8 +51,9 @@ const VIEW_OF: Record<string, string> = (() => {
 const PRESET_VIEW = ALL_PERMISSION_KEYS.filter((k) => k.endsWith(".view"));
 const PRESET_OPERATOR = [
   "tasks.view", "tasks.create", "tasks.edit", "tasks.assign", "tasks.close",
+  "dashboard.view", "tickets.view", "kanban.view", "calendar.view",
   "projects.view", "clients.view", "clients.create", "clients.edit",
-  "invoices.view", "appointments.view", "appointments.manage", "teams.view",
+  "payers.view", "invoices.view", "appointments.view", "appointments.manage", "teams.view",
 ];
 
 function Toggle({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string; disabled?: boolean }) {
@@ -117,7 +118,7 @@ export default function UserDialog({
   const [telegram, setTelegram] = useState(user?.telegramChatId ?? "");
   const [role, setRole] = useState<"ADMIN" | "STAFF">(user?.role ?? "STAFF");
   const [isActive, setIsActive] = useState(user?.isActive ?? true);
-  const [perms, setPerms] = useState<Set<string>>(() => new Set((user?.permissions ?? []).filter((p) => ALL_PERMISSION_KEYS.includes(p as never))));
+  const [perms, setPerms] = useState<Set<string>>(() => new Set(effectivePermissionKeys(user?.permissions ?? []).filter((p) => ALL_PERMISSION_KEYS.includes(p as never))));
 
   // „Toate tipurile”: la administrator = listă goală (inclusiv evenimentele viitoare); la angajat = toate bifate explicit.
   const initialIsAdmin = (user?.role ?? "STAFF") === "ADMIN";

@@ -14,7 +14,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : "Eroare necuno
 
 async function guard() {
   const user = await requireUser();
-  if (!can(user, "clients.edit")) return { ok: false as const, error: "Fără permisiune." };
+  if (!can(user, "pbx.manage")) return { ok: false as const, error: "Fără permisiune." };
   if (DEMO) return { ok: false as const, error: "Mod demo: conectează o bază de date." };
   if (!env.pbx.apiKey) return { ok: false as const, error: "PBX_API_KEY nu este setat (Vercel → Environment Variables)." };
   return { ok: true as const, user };
@@ -66,7 +66,7 @@ export type SimpleResult = { ok: true } | { ok: false; error: string };
 
 export async function saveNotifyCallNoteAction(id: string, note: string): Promise<SimpleResult> {
   const user = await requireUser();
-  if (!can(user, "clients.edit")) return { ok: false, error: "Fără permisiune." };
+  if (!can(user, "pbx.manage")) return { ok: false, error: "Fără permisiune." };
   if (DEMO) return { ok: false, error: "Mod demo: conectează o bază de date." };
   if (!ID_RE.test(id ?? "")) return { ok: false, error: "Rând invalid." };
   const text = (note ?? "").trim().slice(0, 1000);
@@ -76,7 +76,7 @@ export async function saveNotifyCallNoteAction(id: string, note: string): Promis
 
 export async function deleteNotifyCallAction(id: string): Promise<SimpleResult> {
   const user = await requireUser();
-  if (!can(user, "clients.edit")) return { ok: false, error: "Fără permisiune." };
+  if (!can(user, "pbx.manage")) return { ok: false, error: "Fără permisiune." };
   if (DEMO) return { ok: false, error: "Mod demo: conectează o bază de date." };
   if (!ID_RE.test(id ?? "")) return { ok: false, error: "Rând invalid." };
   await prisma.notifyCall.deleteMany({ where: { id } });
@@ -102,7 +102,7 @@ export async function listPbxOperatorsAction(): Promise<OperatorsResult> {
  */
 export async function markNotifyCallsExportedAction(ids: string[]): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
   const user = await requireUser();
-  if (!can(user, "clients.edit")) return { ok: false, error: "Fără permisiune." };
+  if (!can(user, "pbx.manage")) return { ok: false, error: "Fără permisiune." };
   if (DEMO) return { ok: false, error: "Mod demo: conectează o bază de date." };
   const clean = [...new Set((Array.isArray(ids) ? ids : []).filter((x) => typeof x === "string" && ID_RE.test(x)))].slice(0, 5000);
   if (clean.length === 0) return { ok: true, count: 0 };

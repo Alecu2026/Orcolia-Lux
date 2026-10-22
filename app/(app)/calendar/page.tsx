@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { requirePermission } from "@/lib/dal";
+import { can, canAny, canUseAllScope } from "@/lib/permissions";
 import { getUserTimezone } from "@/lib/queries/settings";
 import { tasksDueBetween, taskViewFilter } from "@/lib/queries/tasks";
 import { apptsBetween } from "@/lib/queries/appointments";
@@ -77,7 +78,7 @@ export default async function CalendarPage({
 }: {
   searchParams: Promise<Record<string, string>>;
 }) {
-  const user = await requirePermission("tasks.view");
+  const user = await requirePermission("calendar.view");
   const tz = await getUserTimezone(user.id);
   const sp = await searchParams;
 
@@ -86,13 +87,14 @@ export default async function CalendarPage({
 
   // STAFF vede mereu doar propriile task-uri; ADMIN poate schimba scope din URL
   const scope = (
-    user.role === "STAFF"
+    !canUseAllScope(user)
       ? "mine"
-      : ["all", "mine", "created"].includes(sp.scope ?? "") ? sp.scope : "all"
+      : ["all", "mine", "created"].includes(sp.scope ?? "") ? sp.scope : user.role === "ADMIN" ? "all" : "mine"
   ) as "all" | "mine" | "created";
-  const showTasks = sp.showTasks !== "0";
-  const showTickets = sp.showTickets !== "0";
-  const showAppts = sp.showAppts !== "0";
+  // Calendarul arată doar ce are voie userul să vadă pe paginile respective (task-uri, tichete, programări).
+  const showTasks = sp.showTasks !== "0" && can(user, "tasks.view");
+  const showTickets = sp.showTickets !== "0" && can(user, "tickets.view");
+  const showAppts = sp.showAppts !== "0" && can(user, "appointments.view");
   const assigneeId = sp.assigneeId || undefined;
   const teamId = sp.teamId || undefined;
   const projectId = sp.projectId || undefined;
@@ -154,9 +156,10 @@ export default async function CalendarPage({
       : [],
     showAppts ? apptsBetween({ userId: apptUserId, clientId, from, to }) : [],
     userOptions(),
-    teamOptions(),
-    projectOptions(),
-    clientOptions(user.id),
+    // Listele din filtre arată doar ce are voie userul să vadă pe paginile respective.
+    can(user, "teams.view") ? teamOptions() : [],
+    can(user, "projects.view") ? projectOptions() : [],
+    canAny(user, ["clients.view", "payers.view"]) ? clientOptions(user.id) : [],
     listCategories(),
   ]);
 

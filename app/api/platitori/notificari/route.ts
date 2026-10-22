@@ -16,7 +16,7 @@ export const maxDuration = 60;
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Autentificare necesară." }, { status: 401 });
-  if (!can(user, "clients.view")) return Response.json({ error: "Fără permisiune." }, { status: 403 });
+  if (!can(user, "payers.view")) return Response.json({ error: "Fără permisiune." }, { status: 403 });
 
   const sp = new URL(req.url).searchParams;
 

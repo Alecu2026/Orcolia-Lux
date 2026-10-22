@@ -16,7 +16,7 @@ export default async function PayerNotificationsPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const user = await requirePermission("clients.view");
+  const user = await requirePermission("payers.view");
   const sp = await searchParams;
 
   // Prima încărcare vine de pe server (cu filtrele din URL, dacă sunt); după aceea filtrele/paginile se schimbă pe client.
@@ -51,14 +51,14 @@ export default async function PayerNotificationsPage({
         initial={{ filters, page, perPage, items: res.items, total: res.total }}
         months={months}
         initialTemplates={templates}
-        canSend={can(user, "clients.edit")}
+        canSend={can(user, "payers.notify")}
         emailEnabled={env.smtp.enabled}
         smsEnabled={env.sms.enabled}
         callEnabled={env.voice.enabled}
         userEmail={user.email}
         userId={user.id}
         isAdmin={can(user, "admin")}
-        canDelete={can(user, "clients.delete")}
+        canDelete={can(user, "payers.delete")}
         canEditInvoices={can(user, "invoices.edit")}
       />
     </div>

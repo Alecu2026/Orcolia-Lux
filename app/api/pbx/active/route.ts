@@ -38,7 +38,7 @@ async function liveCalls(): Promise<unknown[]> {
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Autentificare necesară." }, { status: 401 });
-  if (!can(user, "clients.view")) return Response.json({ calls: [] });
+  if (!can(user, "pbx.view")) return Response.json({ calls: [] });
   if (DEMO) return Response.json({ calls: [] });
   return Response.json({ calls: await liveCalls() });
 }

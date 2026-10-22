@@ -33,8 +33,21 @@ export type PermissionKey =
   // Echipe
   | "teams.view"
   | "teams.manage"
-  // Administrare
+  // Pagini (acces la ecran)
   | "dashboard.view"
+  | "tickets.view"
+  | "kanban.view"
+  | "calendar.view"
+  | "map.view"
+  // Plătitori (pagina Plătitori, fișa, decontarea, Notificări plătitori)
+  | "payers.view"
+  | "payers.edit"
+  | "payers.notify"
+  | "payers.delete"
+  // PBX / apeluri
+  | "pbx.view"
+  | "pbx.manage"
+  // Administrare
   | "reports.view"
   | "users.manage"
   | "notifications.receive"
@@ -97,10 +110,34 @@ export const PERMISSION_GROUPS: {
     ],
   },
   {
+    group: "Plătitori",
+    items: [
+      { key: "payers.view", label: "Vizualizare (pagina Plătitori, fișa, decontarea)" },
+      { key: "payers.edit", label: "Editare (date, notițe)" },
+      { key: "payers.notify", label: "Notificări (trimitere SMS/email/apel, șabloane)" },
+      { key: "payers.delete", label: "Ștergere" },
+    ],
+  },
+  {
+    group: "PBX / Apeluri",
+    items: [
+      { key: "pbx.view", label: "Vizualizare (pagina PBX, apeluri, popup apel primit)" },
+      { key: "pbx.manage", label: "Gestionare (autoinformare, registru apeluri)" },
+    ],
+  },
+  {
+    group: "Pagini (acces la ecran)",
+    items: [
+      { key: "dashboard.view", label: "Dashboard" },
+      { key: "tickets.view", label: "Tichete" },
+      { key: "kanban.view", label: "Kanban" },
+      { key: "calendar.view", label: "Calendar" },
+      { key: "map.view", label: "Hartă" },
+    ],
+  },
+  {
     group: "Administrare",
     items: [
-      { key: "dashboard.view", label: "Vizualizare dashboard" },
-      { key: "reports.view", label: "Vizualizare rapoarte" },
       { key: "users.manage", label: "Gestionare utilizatori" },
       { key: "admin", label: "Acces administrativ (tot)" },
     ],
@@ -116,11 +153,68 @@ export type PermissionSubject = {
   permissions: string[];
 };
 
+/**
+ * Marcaj pus pe conturile ale căror permisiuni au fost salvate cu lista nouă (pe pagini). Conturile FĂRĂ marcaj au fost create înainte:
+ * permisiunile noi li se deduc din cele vechi (LEGACY_FALLBACK), deci nimeni nu pierde sau câștigă acces la actualizare. La prima salvare
+ * din fereastra de utilizator, permisiunile devin explicite și apare marcajul.
+ */
+export const PERMISSIONS_V2 = "perm.v2";
+
+/** Permisiune nouă → de ce depindea înainte: cheile vechi (oricare) sau "ANY" (avea oricine). */
+export const LEGACY_FALLBACK: Partial<Record<PermissionKey, PermissionKey[] | "ANY">> = {
+  "dashboard.view": "ANY",
+  "tickets.view": ["tasks.view"],
+  "kanban.view": ["tasks.view"],
+  "calendar.view": ["tasks.view"],
+  "map.view": ["projects.view"],
+  "payers.view": ["clients.view"],
+  "payers.edit": ["clients.edit"],
+  "payers.notify": ["clients.edit"],
+  "payers.delete": ["clients.delete"],
+  "pbx.view": ["clients.view"],
+  "pbx.manage": ["clients.edit"],
+  "tasks.assign": ["tasks.create", "tasks.edit"],
+  "tasks.close": "ANY",
+};
+
 /** Are userul permisiunea cerută? ADMIN sau "admin" => mereu true. */
 export function can(user: PermissionSubject, key: PermissionKey): boolean {
   if (user.role === "ADMIN") return true;
   if (user.permissions.includes("admin")) return true;
-  return user.permissions.includes(key);
+  if (user.permissions.includes(key)) return true;
+  const legacy = LEGACY_FALLBACK[key];
+  if (legacy && !user.permissions.includes(PERMISSIONS_V2)) {
+    return legacy === "ANY" || legacy.some((k) => user.permissions.includes(k));
+  }
+  return false;
+}
+
+/** Permisiunile EFECTIVE ale unui cont (cele deduse din vechile chei, pentru conturile fără marcaj) — le arată fereastra de utilizator. */
+export function effectivePermissionKeys(permissions: string[]): string[] {
+  const out = new Set(permissions.filter((p) => p !== PERMISSIONS_V2));
+  if (!permissions.includes(PERMISSIONS_V2)) {
+    for (const [k] of Object.entries(LEGACY_FALLBACK)) {
+      if (can({ role: "STAFF", permissions }, k as PermissionKey)) out.add(k);
+    }
+  }
+  return [...out];
+}
+
+/** Datele task-urilor (comentarii, istoric, liste) se văd din oricare pagină care le arată. */
+export function canViewTaskData(user: PermissionSubject): boolean {
+  return canAny(user, ["tasks.view", "tickets.view", "kanban.view", "calendar.view"]);
+}
+
+/** Prima pagină la care are acces — ținta redirecționărilor când cea cerută e interzisă (nu mereu /dashboard, care poate fi și ea interzisă). */
+export function homePath(user: PermissionSubject): string {
+  const order: [PermissionKey, string][] = [
+    ["dashboard.view", "/dashboard"], ["tasks.view", "/tasks"], ["tickets.view", "/tickets"], ["appointments.view", "/appointments"],
+    ["projects.view", "/projects"], ["kanban.view", "/kanban"], ["calendar.view", "/calendar"], ["payers.view", "/platitori"],
+    ["clients.view", "/clients"], ["invoices.view", "/invoices"], ["pbx.view", "/pbx"], ["map.view", "/harta"], ["teams.view", "/team"],
+    ["users.manage", "/users"],
+  ];
+  for (const [k, path] of order) if (can(user, k)) return path;
+  return "/notificari";
 }
 
 export function canAny(user: PermissionSubject, keys: PermissionKey[]): boolean {
@@ -156,6 +250,16 @@ export type TaskVisibilitySubject = {
   taskViewTeamIds: string[];
   taskViewMemberIds: string[];
 };
+
+/**
+ * Tab-ul „Toate” (task-urile pe care are voie să le vadă): administratorii, sau un angajat căruia i s-au dat explicit echipe / persoane
+ * vizibile — altfel task-urile acelor persoane n-ar apărea nicăieri în liste (un angajat fără așa ceva vede doar „Ale mele” / „Create de mine”).
+ * Lista rămâne mereu plafonată de regula de vizibilitate (vezi buildWhere în lib/queries/tasks.ts).
+ */
+export function canUseAllScope(user: { role: string; taskViewScope?: string; taskViewTeamIds?: string[]; taskViewMemberIds?: string[] }): boolean {
+  if (user.role === "ADMIN") return true;
+  return user.taskViewScope === "RESTRICTED" && ((user.taskViewTeamIds?.length ?? 0) > 0 || (user.taskViewMemberIds?.length ?? 0) > 0);
+}
 
 export type TaskTeamOwnership = TaskOwnership & {
   teamId: string | null;

@@ -15,21 +15,21 @@ import type { Messages, Locale } from "@/lib/i18n";
 type NavItem = { href: string; labelKey: keyof Messages["nav"]; icon: ReactNode; perm?: string };
 
 const NAV: NavItem[] = [
-  { href: "/dashboard",        labelKey: "dashboard",  icon: gridIcon() },
+  { href: "/dashboard",        labelKey: "dashboard",  icon: gridIcon(),      perm: "dashboard.view" },
   { href: "/tasks",            labelKey: "tasks",       icon: checklistIcon(), perm: "tasks.view" },
-  { href: "/tickets",          labelKey: "tickets",     icon: ticketIcon(),    perm: "tasks.view" },
+  { href: "/tickets",          labelKey: "tickets",     icon: ticketIcon(),    perm: "tickets.view" },
   { href: "/appointments",     labelKey: "dashboard",   icon: apptIcon(),      perm: "appointments.view" },
   { href: "/projects",         labelKey: "projects",    icon: folderIcon(),    perm: "projects.view" },
-  { href: "/kanban",           labelKey: "kanban",      icon: kanbanIcon(),    perm: "tasks.view" },
-  { href: "/calendar",         labelKey: "calendar",    icon: calIcon(),       perm: "tasks.view" },
+  { href: "/kanban",           labelKey: "kanban",      icon: kanbanIcon(),    perm: "kanban.view" },
+  { href: "/calendar",         labelKey: "calendar",    icon: calIcon(),       perm: "calendar.view" },
   { href: "/clients",          labelKey: "clients",     icon: usersIcon(),     perm: "clients.view" },
-  { href: "/platitori",        labelKey: "payers",      icon: invoiceIcon(),   perm: "clients.view" },
-  { href: "/notificari-platitori", labelKey: "payerNotify", icon: bellIcon(),  perm: "clients.view" },
-  { href: "/pbx",              labelKey: "pbx",         icon: phoneIcon(),     perm: "clients.view" },
+  { href: "/platitori",        labelKey: "payers",      icon: invoiceIcon(),   perm: "payers.view" },
+  { href: "/notificari-platitori", labelKey: "payerNotify", icon: bellIcon(),  perm: "payers.view" },
+  { href: "/pbx",              labelKey: "pbx",         icon: phoneIcon(),     perm: "pbx.view" },
   { href: "/invoices",         labelKey: "invoices",    icon: invoiceIcon(),   perm: "invoices.view" },
   { href: "/users",            labelKey: "users",       icon: userIcon(),      perm: "users.manage" },
   { href: "/team",             labelKey: "team",        icon: usersIcon(),     perm: "teams.view" },
-  { href: "/harta",            labelKey: "map",         icon: mapIcon(),       perm: "projects.view" },
+  { href: "/harta",            labelKey: "map",         icon: mapIcon(),       perm: "map.view" },
   { href: "/admin/audit-logs", labelKey: "auditLogs",   icon: shieldIcon(),    perm: "audit.view" },
   { href: "/telegram",         labelKey: "telegram",    icon: sendIcon() },
   { href: "/settings",         labelKey: "settings",    icon: gearIcon() },
@@ -240,7 +240,7 @@ function AppShellInner({
       <CreateMenu />
 
       {/* Popup „Apel primit" (PBX) — doar pentru cine poate vedea clienții */}
-      {perms?.["clients.view"] !== false && <IncomingCallPopup canEdit={perms?.["clients.edit"] !== false} />}
+      {perms?.["pbx.view"] !== false && <IncomingCallPopup canEdit={perms?.["pbx.manage"] !== false} />}
 
       {/* Bottom nav mobil */}
       <BottomNav perms={perms} appointmentsLabel={appointmentsLabel} />

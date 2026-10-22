@@ -34,7 +34,7 @@ const CONCURRENCY = 5;
 
 async function requireSender() {
   const user = await requireUser();
-  if (!can(user, "clients.edit")) return { ok: false as const, error: "Fără permisiune de a trimite notificări." };
+  if (!can(user, "payers.notify")) return { ok: false as const, error: "Fără permisiune de a trimite notificări." };
   if (DEMO) return { ok: false as const, error: "Mod demo: conectează o bază de date." };
   return { ok: true as const, user };
 }
@@ -54,7 +54,7 @@ export type ResolvedTargets =
 /** Toți plătitorii care respectă filtrele (cu steagurile de contact), pentru „Selectează toți cei N din filtru". */
 export async function resolveNotifyFilterAction(rawFilters: unknown): Promise<ResolvedTargets> {
   const user = await requireUser();
-  if (!can(user, "clients.view")) return { ok: false, error: "Fără permisiune." };
+  if (!can(user, "payers.view")) return { ok: false, error: "Fără permisiune." };
   if (DEMO) return { ok: false, error: "Mod demo: conectează o bază de date." };
 
   const filters = sanitizeFilters((rawFilters ?? {}) as Record<string, unknown>);

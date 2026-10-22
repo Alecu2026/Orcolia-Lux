@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/dal";
+import { canUseAllScope } from "@/lib/permissions";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
 import { userOptions } from "@/lib/queries/users";
 import { teamOptions } from "@/lib/queries/teams";
@@ -9,11 +10,11 @@ import TaskKanban from "@/app/components/TaskKanban";
 export const dynamic = "force-dynamic";
 
 export default async function KanbanPage() {
-  const user = await requirePermission("tasks.view");
+  const user = await requirePermission("kanban.view");
 
   const KANBAN_LIMIT = 100;
   // STAFF vede doar task-urile proprii/echipei lui; ADMIN vede tot
-  const kanbanScope = user.role === "STAFF" ? "mine" : "all";
+  const kanbanScope = canUseAllScope(user) ? "all" : "mine";
   const [result, users, teams, projects, categories] = await Promise.all([
     listTasks({ scope: kanbanScope, userId: user.id, teamIds: user.teamIds, ...taskViewFilter(user), page: 1, pageSize: KANBAN_LIMIT }),
     userOptions(),

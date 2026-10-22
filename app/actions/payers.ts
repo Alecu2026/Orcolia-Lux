@@ -17,7 +17,7 @@ export async function updatePayer(
   formData: FormData,
 ): Promise<PayerState> {
   const user = await requireUser();
-  if (!can(user, "clients.edit")) return { error: "Fără permisiune." };
+  if (!can(user, "payers.edit")) return { error: "Fără permisiune." };
   if (DEMO) return { error: "Mod demo: conectează o bază de date." };
 
   const id = String(formData.get("id") ?? "");
@@ -58,7 +58,7 @@ export async function updatePayer(
 
 export async function deletePayer(id: string): Promise<void> {
   const user = await requireUser();
-  if (!can(user, "clients.delete")) return;
+  if (!can(user, "payers.delete")) return;
   if (DEMO) return;
   const c = await prisma.client.findFirst({ where: { id, OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] }, select: { name: true } });
   if (!c) return;
@@ -84,7 +84,7 @@ export type BulkDeleteResult =
  */
 export async function deletePayersBulkAction(ids: string[]): Promise<BulkDeleteResult> {
   const user = await requireUser();
-  if (!can(user, "clients.delete")) return { ok: false, error: "Fără permisiune de ștergere." };
+  if (!can(user, "payers.delete")) return { ok: false, error: "Fără permisiune de ștergere." };
   if (DEMO) return { ok: false, error: "Mod demo: conectează o bază de date." };
   const unique = [...new Set(Array.isArray(ids) ? ids : [])];
   if (unique.length === 0) return { ok: true, deletedIds: [], skipped: { withInvoices: 0, withActivity: 0, activated: 0, missing: 0 } };

@@ -18,7 +18,7 @@ export default async function PayerDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await requirePermission("clients.view");
+  const user = await requirePermission("payers.view");
   const { id } = await params;
 
   const payer = await getPayer(id);
@@ -99,7 +99,7 @@ export default async function PayerDetailPage({
             payerId={payer.id}
             initial={notes}
             legacy={payer.notes}
-            canAdd={can(user, "clients.edit")}
+            canAdd={can(user, "payers.edit")}
             userId={user.id}
             isAdmin={can(user, "admin")}
           />
@@ -108,8 +108,8 @@ export default async function PayerDetailPage({
 
       <PayerActions
         payer={{ id: payer.id, name: payer.name, phone: payer.phone, email: payer.email, notes: payer.notes }}
-        canEdit={can(user, "clients.edit")}
-        canDelete={can(user, "clients.delete")}
+        canEdit={can(user, "payers.edit")}
+        canDelete={can(user, "payers.delete")}
         canAdmin={can(user, "admin")}
       />
 

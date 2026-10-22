@@ -12,7 +12,7 @@ export type PbxEventRow = { id: string; cmd: string | null; receivedAt: string; 
 /** Toate mesajele primite pentru un apel (în ordinea sosirii) — pentru popup-ul cu detaliile apelului. */
 export async function getPbxEventsAction(callId: string): Promise<PbxEventRow[]> {
   const user = await requireUser();
-  if (!can(user, "clients.view")) return [];
+  if (!can(user, "pbx.view")) return [];
   if (DEMO || typeof callId !== "string" || !callId || callId.length > 120) return [];
   const rows = await prisma.pbxEvent.findMany({
     where: { callId },
@@ -37,7 +37,7 @@ export async function savePbxCallNoteAction(
   text: string,
 ): Promise<{ ok: true; note: string } | { ok: false; error: string }> {
   const user = await requireUser();
-  if (!can(user, "clients.edit")) return { ok: false, error: "Fără permisiune." };
+  if (!can(user, "pbx.manage")) return { ok: false, error: "Fără permisiune." };
   if (DEMO) return { ok: false, error: "Mod demo." };
   const note = String(text ?? "").trim().slice(0, 2000);
   if (!note) return { ok: false, error: "Scrie nota." };
@@ -58,7 +58,7 @@ export async function savePbxCallNoteAction(
 /** Datele curente ale unui client potrivit cu un apel (datorie, tichete deschise, ultima notiță). */
 export async function getCallerContextAction(clientId: string): Promise<CallerContext | null> {
   const user = await requireUser();
-  if (!can(user, "clients.view")) return null;
+  if (!can(user, "pbx.view")) return null;
   if (DEMO || !/^[0-9a-f]{24}$/i.test(clientId ?? "")) return null;
   return getCallerContext(clientId);
 }

@@ -26,7 +26,7 @@ function cleanBody(v: unknown): { body: string } | { error: string } {
 
 export async function addPayerNoteAction(clientId: string, text: string): Promise<NoteResult> {
   const user = await requireUser();
-  if (!can(user, "clients.edit")) return { ok: false, error: "Fără permisiune." };
+  if (!can(user, "payers.edit")) return { ok: false, error: "Fără permisiune." };
   if (DEMO) return { ok: false, error: "Mod demo: conectează o bază de date." };
   if (!ID_RE.test(clientId)) return { ok: false, error: "Plătitor invalid." };
   const c = cleanBody(text);
@@ -43,7 +43,7 @@ export async function addPayerNoteAction(clientId: string, text: string): Promis
 /** Autorul sau un administrator poate edita/șterge o notiță. */
 async function ownNote(id: string) {
   const user = await requireUser();
-  if (!can(user, "clients.edit")) return { ok: false as const, error: "Fără permisiune." };
+  if (!can(user, "payers.edit")) return { ok: false as const, error: "Fără permisiune." };
   if (DEMO) return { ok: false as const, error: "Mod demo: conectează o bază de date." };
   if (!ID_RE.test(id)) return { ok: false as const, error: "Notiță invalidă." };
   const note = await prisma.payerNote.findUnique({ where: { id }, select: { userId: true } });

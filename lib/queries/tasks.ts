@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { dayBoundsUtc, dateKeyOf, addDaysToKey, todayKey as getTodayKey, weekKeys } from "../date";
 import type { Prisma, TaskStatus, TaskType, TaskPriority } from "@prisma/client";
+import { canAny, type PermissionSubject } from "../permissions";
 
 export type TaskRow = {
   id: string;
@@ -131,6 +132,8 @@ export type TaskFilter = {
   viewScope?: string;
   viewTeamIds?: string[];
   viewMemberIds?: string[];
+  /** Fără permisiune de a vedea clienții/plătitorii: numele clientului nu se completează pe rânduri (nu scurgem date din pagini interzise). */
+  hideClientNames?: boolean;
   page?: number;
   pageSize?: number;
 };
@@ -139,8 +142,13 @@ const PAGE_SIZE = 20;
 
 /** Extrage din userul curent cele 3 câmpuri de vizibilitate, gata de dat la listTasks/tasksDueBetween
  * (`listTasks({ ...taskViewFilter(user), ...restul filtrelor })`) — un singur loc de întreținut. */
-export function taskViewFilter(user: { taskViewScope: string; taskViewTeamIds: string[]; taskViewMemberIds: string[] }) {
-  return { viewScope: user.taskViewScope, viewTeamIds: user.taskViewTeamIds, viewMemberIds: user.taskViewMemberIds };
+export function taskViewFilter(user: { taskViewScope: string; taskViewTeamIds: string[]; taskViewMemberIds: string[] } & Partial<PermissionSubject>) {
+  return {
+    viewScope: user.taskViewScope,
+    viewTeamIds: user.taskViewTeamIds,
+    viewMemberIds: user.taskViewMemberIds,
+    hideClientNames: user.role && user.permissions ? !canAny({ role: user.role, permissions: user.permissions }, ["clients.view", "payers.view"]) : false,
+  };
 }
 
 /**
@@ -290,7 +298,7 @@ export async function listTasks(
 
   const totalPages = Math.ceil(total / pageSize);
   const hasMore = page < totalPages;
-  return { items: await withClientNames(rows.map(toRow)), hasMore, page, total, totalPages };
+  return { items: filter.hideClientNames ? rows.map(toRow) : await withClientNames(rows.map(toRow)), hasMore, page, total, totalPages };
 }
 
 /**

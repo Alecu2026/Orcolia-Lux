@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
-import { can, canEditTask } from "@/lib/permissions";
+import { can, canAny, canUseAllScope, canEditTask, canViewTask, canViewTaskData } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { zonedToUtc } from "@/lib/date";
 import {
@@ -42,10 +42,19 @@ export type TaskListResult = {
 
 export async function listTasksAction(opts: TaskListOpts): Promise<TaskListResult> {
   const user = await requireUser();
+  // Doar tipurile pe care userul are voie să le vadă (task-uri / tichete), după paginile la care are acces.
+  const allowedTypes = ([
+    ["TASK", canAny(user, ["tasks.view", "kanban.view", "calendar.view"])],
+    ["TICKET", canAny(user, ["tickets.view", "kanban.view", "calendar.view"])],
+  ] as const).filter(([, ok]) => ok).map(([t]) => t as string);
+  const requested = opts.types?.length ? opts.types : ["TASK", "TICKET"];
+  const typesAllowed = requested.filter((t) => allowedTypes.includes(t));
+  if (typesAllowed.length === 0) return { items: [], hasMore: false, page: 1, totalPages: 1 };
+  opts = { ...opts, types: typesAllowed };
   // STAFF nu poate vedea "all" (task-urile tuturor), dar poate comuta pe "created" — altfel
   // tab-ul "Creat de mine" e mort pentru el (vezi și blocarea identică din pagina /tasks).
   const scope = (
-    ["mine","all","created"].includes(opts.scope ?? "") && !(user.role === "STAFF" && opts.scope === "all")
+    ["mine","all","created"].includes(opts.scope ?? "") && !(opts.scope === "all" && !canUseAllScope(user))
       ? opts.scope
       : "mine"
   ) as "mine" | "all" | "created";
@@ -114,6 +123,10 @@ export async function createTaskAction(
 
     const assigneeIds = formData.getAll("assigneeIds").map(String).filter(Boolean);
     const teamIds = formData.getAll("teamIds").map(String).filter(Boolean);
+    // Asignarea altcuiva (sau a unei echipe) cere „Asignare”; își poate lua singur task-ul oricine îl creează.
+    if (!can(user, "tasks.assign") && (teamIds.length > 0 || assigneeIds.some((x) => x !== user.id))) {
+      return { error: "Nu ai permisiunea de asignare." };
+    }
     const [assigneeId = null, ...extraAssigneeIds] = assigneeIds;
     const [teamId = null, ...extraTeamIds] = teamIds;
     const allIds = [...assigneeIds, ...teamIds];
@@ -167,6 +180,10 @@ export async function setTaskStatus(id: string, status: string): Promise<TaskSta
     console.error(`[tasks.action] setTaskStatus: status invalid primit din client: "${status}"`);
     return { error: "Status invalid." };
   }
+  // Finalizarea / anularea cere „Închidere / finalizare”; celelalte schimbări de status rămân deschise (acțiune zilnică).
+  if ((status === "DONE" || status === "CANCELLED") && !can(user, "tasks.close")) {
+    return { error: "Nu ai permisiunea de a închide / finaliza." };
+  }
   const res = await changeTaskStatus(id, user.id, status as TaskStatus);
   if (!res.ok) {
     console.error(`[tasks.action] setTaskStatus: eșuat — ${res.error}`);
@@ -218,7 +235,7 @@ export async function setTaskProgress(id: string, progress: number): Promise<Tas
 /** Istoricul de status (timeline) — lazy, la expandarea unui task. */
 export async function getTaskHistory(id: string): Promise<TaskHistoryRow[]> {
   const user = await requireUser();
-  if (!can(user, "tasks.view")) return [];
+  if (!canViewTaskData(user) || !(await canSeeTaskById(user, id))) return [];
   return taskHistory(id);
 }
 
@@ -233,7 +250,7 @@ export type TaskCommentRow = {
 /** Comentariile unui task — lazy, la expandarea unui task. */
 export async function getTaskComments(id: string): Promise<TaskCommentRow[]> {
   const user = await requireUser();
-  if (!can(user, "tasks.view")) return [];
+  if (!canViewTaskData(user) || !(await canSeeTaskById(user, id))) return [];
   const rows = await listTaskComments(id);
   return rows.map((r) => ({
     id: r.id,
@@ -270,7 +287,7 @@ export async function updateTaskAction(
 
     const existing = await prisma.task.findUnique({
       where: { id },
-      select: { creatorId: true, assigneeId: true, extraAssigneeIds: true },
+      select: { creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true },
     });
     if (!existing) return { error: "Task inexistent." };
     if (!canEditTask(user, existing)) return { error: "Nu ai permisiunea de editare." };
@@ -302,6 +319,11 @@ export async function updateTaskAction(
       : [];
 
     const hasMultiAssign = formData.has("assigneeIds") || formData.has("teamIds");
+    {
+      const nu = hasMultiAssign ? assigneeIds : [String(formData.get("assigneeId") ?? "")].filter(Boolean);
+      const nt = hasMultiAssign ? teamIds : [String(formData.get("teamId") ?? "")].filter(Boolean);
+      if (assignmentChanged(existing, nu, nt) && !can(user, "tasks.assign")) return { error: "Nu ai permisiunea de asignare." };
+    }
 
     const res = await updateTask(id, user.id, {
       title,
@@ -351,6 +373,30 @@ export type TaskFieldPatch = {
 
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
+/** S-a schimbat lista de responsabili (persoane / echipe) față de ce e acum pe task? */
+function assignmentChanged(
+  cur: { assigneeId: string | null; extraAssigneeIds: string[]; teamId: string | null; extraTeamIds: string[] },
+  users: string[],
+  teams: string[],
+): boolean {
+  const cu = new Set([cur.assigneeId, ...cur.extraAssigneeIds].filter((x): x is string => !!x));
+  const ct = new Set([cur.teamId, ...cur.extraTeamIds].filter((x): x is string => !!x));
+  const nu = new Set(users);
+  const nt = new Set(teams);
+  const same = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every((x) => b.has(x));
+  return !(same(cu, nu) && same(ct, nt));
+}
+
+/** Are userul voie să vadă task-ul ăsta (regula de vizibilitate pe echipe/persoane)? Comentariile/istoricul nu se dau pentru task-uri invizibile. */
+async function canSeeTaskById(user: Awaited<ReturnType<typeof requireUser>>, id: string): Promise<boolean> {
+  if (!OBJECT_ID.test(id ?? "")) return false;
+  const t = await prisma.task.findUnique({
+    where: { id },
+    select: { creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true },
+  });
+  return !!t && canViewTask(user, t);
+}
+
 /**
  * Editare rapidă dintr-un singur câmp (celulele editabile din tabelul de task-uri). Modifică DOAR câmpurile primite
  * și respectă aceeași regulă ca editarea completă (canEditTask: permisiune generală sau creator/asignat).
@@ -364,10 +410,15 @@ export async function updateTaskFieldAction(id: string, patch: TaskFieldPatch): 
 
     const existing = await prisma.task.findUnique({
       where: { id },
-      select: { creatorId: true, assigneeId: true, extraAssigneeIds: true },
+      select: { creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true },
     });
     if (!existing) return { error: "Task inexistent." };
     if (!canEditTask(user, existing)) return { error: "Nu ai permisiunea de editare." };
+    if (patch.assigneeIds !== undefined || patch.teamIds !== undefined) {
+      const nu = (patch.assigneeIds ?? []).filter((x) => OBJECT_ID.test(x));
+      const nt = (patch.teamIds ?? []).filter((x) => OBJECT_ID.test(x));
+      if (assignmentChanged(existing, nu, nt) && !can(user, "tasks.assign")) return { error: "Nu ai permisiunea de asignare." };
+    }
 
     const input: Parameters<typeof updateTask>[2] = {};
     if ("title" in patch) input.title = String(patch.title ?? "");
@@ -428,7 +479,7 @@ export async function addAttachmentAction(
   formData: FormData,
 ): Promise<{ ok?: boolean; error?: string; attachment?: AttachmentRow }> {
   const user = await requireUser();
-  if (!can(user, "tasks.view")) return { error: "Nu ai permisiunea." };
+  if (!canViewTaskData(user)) return { error: "Nu ai permisiunea." };
   if (DEMO) return { error: "Mod demo." };
 
   const file = formData.get("file") as File | null;

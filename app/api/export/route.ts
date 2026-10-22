@@ -67,6 +67,7 @@ export async function GET(req: Request) {
 
   // ─── TASKS ────────────────────────────────────────────────────────
   if (entity === "tasks" || entity === "tickets") {
+    if (!can(user, entity === "tickets" ? "tickets.view" : "tasks.view")) return new Response("Fără permisiune.", { status: 403 });
     const type: TaskType[] = entity === "tickets" ? ["TICKET"] : ["TASK"];
     const { items } = await listTasks({
       userId: user.id,
@@ -119,6 +120,7 @@ export async function GET(req: Request) {
 
   // ─── PROJECTS ─────────────────────────────────────────────────────
   if (entity === "projects") {
+    if (!can(user, "projects.view")) return new Response("Fără permisiune.", { status: 403 });
     const where: import("@prisma/client").Prisma.ProjectWhereInput = {};
     const statusParam = sp.get("status") as ProjectStatus | null;
     if (statusParam) where.status = statusParam;
@@ -170,6 +172,7 @@ export async function GET(req: Request) {
 
   // ─── CLIENTS ──────────────────────────────────────────────────────
   if (entity === "clients") {
+    if (!can(user, "clients.view")) return new Response("Fără permisiune.", { status: 403 });
     const { items } = await listClients(user.id, {
       search: sp.get("q") || undefined,
       page: 1,
@@ -191,7 +194,7 @@ export async function GET(req: Request) {
 
   // ─── PAYERS (plătitori Apă-Canal) ─────────────────────────────────
   if (entity === "payers") {
-    if (!can(user, "clients.view")) return new Response("Fără permisiune.", { status: 403 });
+    if (!can(user, "payers.view")) return new Response("Fără permisiune.", { status: 403 });
 
     // Aceleași filtre ca pagina /platitori (vezi buildPayerWhere) — altfel un export lansat
     // cu un filtru activ pe ecran (sector, sold, stradă...) ar întoarce toți plătitorii, nu
@@ -324,7 +327,7 @@ export async function GET(req: Request) {
   // recalculări, total de plată, indice anterior/curent și consumul apă/canal. Asta e suficient pentru
   // reconcilierea de totaluri pe care o fac ei — un rând per perioadă, plus un rând TOTAL.
   if (entity === "payer-statement") {
-    if (!can(user, "clients.view")) return new Response("Fără permisiune.", { status: 403 });
+    if (!can(user, "payers.view")) return new Response("Fără permisiune.", { status: 403 });
     const statement = await getPayerStatement(sp.get("id") ?? "");
     if (!statement) return new Response("Plătitor inexistent.", { status: 404 });
     const { client, rows: stRows, totals } = statement;
@@ -380,6 +383,7 @@ export async function GET(req: Request) {
 
   // ─── APPOINTMENTS ─────────────────────────────────────────────────
   if (entity === "appointments") {
+    if (!can(user, "appointments.view")) return new Response("Fără permisiune.", { status: 403 });
     const view = sp.get("view") ?? "lista";
     const q = sp.get("q")?.trim();
     const statusParam = sp.get("status") as AppointmentStatus | null;

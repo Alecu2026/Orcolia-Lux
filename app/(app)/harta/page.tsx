@@ -7,7 +7,7 @@ import { getMessages } from "@/lib/i18n";
 export const dynamic = "force-dynamic";
 
 export default async function HartaPage() {
-  await requirePermission("projects.view");
+  await requirePermission("map.view");
   const [pins, locale] = await Promise.all([listProjectsWithLocation(), getLocaleFromCookie()]);
   const m = getMessages(locale);
 

@@ -8,6 +8,7 @@ import {
 } from "@/app/actions/users";
 import { useToast } from "./toast";
 import { IconPencil, IconTrash } from "./icons";
+import { effectivePermissionKeys } from "@/lib/permissions";
 import UserDialog, { type UserRow, type Opt } from "./UserDialog";
 import { useMessages } from "@/lib/i18n/context";
 
@@ -138,7 +139,7 @@ export default function UsersManager({
                   {!u.isActive && <span className="ml-2 text-xs text-st-cancelled">{m.users.inactive}</span>}
                 </p>
                 <p className="truncate text-xs text-ink-soft">
-                  {u.email} · {u.role === "ADMIN" ? m.users.adminRole : `${u.permissions.length} ${m.users.permissionsCount}`}
+                  {u.email} · {u.role === "ADMIN" ? m.users.adminRole : `${effectivePermissionKeys(u.permissions).length} ${m.users.permissionsCount}`}
                   {u.telegramChatId ? ` ${m.users.telegramConnected}` : ""}
                 </p>
               </div>

@@ -14,7 +14,7 @@ const TABS = [
 ] as const;
 
 export default async function PbxPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  await requirePermission("clients.view");
+  await requirePermission("pbx.view");
   const tab = (await searchParams).tab === "notificari" ? "notificari" : "apeluri";
   const tabs = (
     <div className="mb-2 flex gap-1.5">
