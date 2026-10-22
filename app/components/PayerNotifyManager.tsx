@@ -29,6 +29,7 @@ import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useToast } from "./toast";
 import PayerNotifyDialog, { type Recipient } from "./PayerNotifyDialog";
 import PayerTemplatesDialog from "./PayerTemplatesDialog";
+import CompactCard, { CompactField } from "./CompactCard";
 import PayerDetailDialog, { type PayerPatch } from "./PayerDetailDialog";
 import PayerBulkDeleteDialog from "./PayerBulkDeleteDialog";
 import { usePayerDataset } from "./usePayerDataset";
@@ -704,7 +705,7 @@ export default function PayerNotifyManager({
           type="button"
           onClick={toggleCards}
           aria-pressed={cards}
-          title={cards ? "Înapoi la tabel" : "Afișează fiecare plătitor ca un card, cu câmpurile unul sub altul (potrivit pentru telefon)"}
+          title={cards ? "Înapoi la tabel" : "Afișează plătitorii într-o coloană mică; apeși pe unul ca să vezi detaliile (potrivit pentru telefon)"}
           className={`tap ml-auto h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
         >
           {cards ? "▦ Tabel" : "📱 Mod telefon"}
@@ -731,66 +732,68 @@ export default function PayerNotifyManager({
 
       {/* ── Tabel (stil 1C) ───────────────────────────────────────────────── */}
       {cards ? (
-        <div className={`flex flex-col gap-2 transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
+        <div className={`flex flex-col gap-1.5 transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
           {pageRows.map((r, i) => {
             const sel = selected.has(r.id);
             const st = r.latestInvoice ? INVOICE_STATUS[r.latestInvoice.status as InvoiceStatusKey] : null;
             const flags = flagsOf(r);
             const recent = notifiedRecently(r.lastNotifiedAt);
             return (
-              <div
+              <CompactCard
                 key={r.id}
-                onClick={() => setDetailRow(r)}
-                className={`card cursor-pointer overflow-hidden ${sel ? "border-brand bg-brand-soft/40" : ""}`}
-              >
-                <div className="flex items-start gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2">
-                  {canSelect && (
+                selected={sel}
+                avatar={r.name.trim().charAt(0).toUpperCase()}
+                leading={
+                  canSelect ? (
                     <input
                       type="checkbox"
                       checked={sel}
-                      onClick={(e) => e.stopPropagation()}
                       onChange={() => toggleRow(i, false)}
-                      className="mt-0.5 size-4 shrink-0 cursor-pointer accent-[var(--color-brand)]"
+                      className="size-4 shrink-0 cursor-pointer accent-[var(--color-brand)]"
                       aria-label={`Selectează ${r.name}`}
                     />
-                  )}
-                  <div className="min-w-0 flex-1 break-words text-[14px] font-semibold leading-snug">{r.name}</div>
+                  ) : undefined
+                }
+                title={r.name}
+                subtitle={
+                  <>
+                    <span>{r.meterSeries ?? r.contract ?? "—"}</span>
+                    {st && <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{st.label}</span>}
+                  </>
+                }
+                trailing={r.latestInvoice ? <span className={`tabular-nums ${r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>{money(r.latestInvoice.grandTotal)}</span> : undefined}
+              >
+                <dl>
+                  <CompactField label="Adresă">{r.consumAddress ?? <Dash />}</CompactField>
+                  <CompactField label="Email">
+                    {r.email ? <span className={flags & 1 ? "" : "text-st-progress"} title={flags & 1 ? undefined : "Adresă invalidă"}>{r.email}</span> : <Dash />}
+                  </CompactField>
+                  <CompactField label="Telefon">
+                    {r.phone ? <span className={`tabular-nums ${flags & 2 ? "" : "text-st-progress"}`} title={flags & 2 ? undefined : "Număr invalid pentru SMS"}>{r.phone}</span> : <Dash />}
+                  </CompactField>
+                  <CompactField label="Factură">{r.latestInvoice?.number ?? <Dash />}</CompactField>
+                  <CompactField label="Scadență">{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</CompactField>
+                  <CompactField label="Portal">{r.activated ? <span className="text-st-done">✓ activ</span> : <span className="text-ink-soft/60">—</span>}</CompactField>
+                  <CompactField label="Facturi">{r.invoiceCount}</CompactField>
+                  <CompactField label="Ultima notificare">
+                    {r.lastNotifiedAt ? <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt)}</span> : <Dash />}
+                  </CompactField>
+                </dl>
+                <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-line)]/60 px-2.5 py-1.5">
+                  <button type="button" onClick={() => setDetailRow(r)} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">Fișa plătitorului</button>
                   {canSend && (
                     <button
                       type="button"
                       disabled={flags === 0}
-                      onClick={(e) => { e.stopPropagation(); openForRow(r); }}
+                      onClick={() => openForRow(r)}
                       title={flags === 0 ? "Fără email/telefon valid" : "Trimite doar acestui plătitor"}
-                      className="tap grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-sm hover:bg-brand-soft disabled:cursor-default disabled:opacity-30"
+                      className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft disabled:cursor-default disabled:opacity-30"
                     >
-                      ✉
+                      ✉ Trimite
                     </button>
                   )}
                 </div>
-                <dl className="divide-y divide-[var(--color-line)] text-[13px] leading-snug">
-                  <CardRow label="Cont / contract">{r.meterSeries ?? r.contract ?? "—"}</CardRow>
-                  <CardRow label="Adresă">{r.consumAddress ?? <Dash />}</CardRow>
-                  <CardRow label="Email">
-                    {r.email ? <span className={flags & 1 ? "" : "text-st-progress"} title={flags & 1 ? undefined : "Adresă invalidă"}>{r.email}</span> : <Dash />}
-                  </CardRow>
-                  <CardRow label="Telefon">
-                    {r.phone ? <span className={`tabular-nums ${flags & 2 ? "" : "text-st-progress"}`} title={flags & 2 ? undefined : "Număr invalid pentru SMS"}>{r.phone}</span> : <Dash />}
-                  </CardRow>
-                  <CardRow label="Factură">{r.latestInvoice?.number ?? <Dash />}</CardRow>
-                  <CardRow label="Scadență">{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</CardRow>
-                  <CardRow label="De achitat">
-                    {r.latestInvoice ? <span className={`tabular-nums ${r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>{money(r.latestInvoice.grandTotal)}</span> : <Dash />}
-                  </CardRow>
-                  <CardRow label="Status">
-                    {st ? <span className={`inline-block rounded-full px-2 text-[11px] font-medium ${st.cls}`}>{st.label}</span> : <Dash />}
-                  </CardRow>
-                  <CardRow label="Portal">{r.activated ? <span className="text-st-done">✓ activ</span> : <span className="text-ink-soft/60">—</span>}</CardRow>
-                  <CardRow label="Facturi">{r.invoiceCount}</CardRow>
-                  <CardRow label="Ultima notificare">
-                    {r.lastNotifiedAt ? <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt)}</span> : <Dash />}
-                  </CardRow>
-                </dl>
-              </div>
+              </CompactCard>
             );
           })}
           {pageRows.length === 0 && !loading && (
@@ -1062,14 +1065,4 @@ function buildPageButtons(current: number, total: number): (number | "…")[] {
     out.push(sorted[i]);
   }
   return out;
-}
-
-/** Un câmp al cardului din modul telefon: eticheta mică deasupra/în stânga, valoarea lizibilă, cu rânduri multiple dacă e lungă. */
-function CardRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[minmax(5.5rem,34%)_1fr] items-start gap-x-3 px-3 py-1.5">
-      <dt className="pt-px text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</dt>
-      <dd className="min-w-0 break-words">{children}</dd>
-    </div>
-  );
 }

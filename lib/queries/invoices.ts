@@ -152,7 +152,11 @@ export async function getInvoice(id: string) {
 
 export async function getInvoiceByToken(token: string) {
   if (DEMO) return null;
-  return prisma.invoice.findUnique({ where: { publicToken: token }, select: FULL_SELECT });
+  // Codul facturii e base64url (litere, cifre, „_" și „-"). Dacă linkul a fost copiat/deschis cu punctuație la capăt
+  // (ex. „…/cod." dintr-un mesaj cu „{link}."), o ignorăm, ca linkul să se deschidă oricum.
+  const clean = token.replace(/[^A-Za-z0-9_-]+$/, "");
+  if (!clean) return null;
+  return prisma.invoice.findUnique({ where: { publicToken: clean }, select: FULL_SELECT });
 }
 
 export type ConsumptionPoint = { label: string; value: number };

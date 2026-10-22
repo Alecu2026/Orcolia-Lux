@@ -35,6 +35,8 @@ export type TaskRow = {
   clientName: string | null;
   creatorName: string;
   createdAt: Date;
+  /** Clientul a scris în conversația tichetului și operatorii n-au citit încă. */
+  chatUnread: boolean;
 };
 
 const TASK_SELECT = {
@@ -65,6 +67,9 @@ const TASK_SELECT = {
   project: { select: { name: true, clientId: true, lat: true, lng: true } },
   category: { select: { name: true, color: true } },
   creator: { select: { name: true } },
+  chatLastMsgAt: true,
+  chatLastSender: true,
+  chatStaffReadAt: true,
 } as const;
 
 function toRow(t: Prisma.TaskGetPayload<{ select: typeof TASK_SELECT }>): TaskRow {
@@ -99,6 +104,7 @@ function toRow(t: Prisma.TaskGetPayload<{ select: typeof TASK_SELECT }>): TaskRo
     clientName: null,
     creatorName: t.creator?.name ?? "Necunoscut",
     createdAt: t.createdAt,
+    chatUnread: t.chatLastSender === "CLIENT" && !!t.chatLastMsgAt && (!t.chatStaffReadAt || t.chatStaffReadAt < t.chatLastMsgAt),
   };
 }
 

@@ -14,6 +14,8 @@ import TaskAttachmentSection from "@/app/components/TaskAttachmentSection";
 import TaskStatusChanger from "@/app/components/TaskStatusChanger";
 import TaskDetailActions from "@/app/components/TaskDetailActions";
 import EmailThread from "@/app/components/EmailThread";
+import TicketChat from "@/app/components/TicketChat";
+import { prisma } from "@/lib/prisma";
 import type { TaskStatus } from "@prisma/client";
 import CloseTicketButton from "@/app/components/CloseTicketButton";
 
@@ -103,6 +105,12 @@ export default async function TaskDetailPage({
   // Acces direct pe URL la un task din afara vizibilității alocate — tratat ca inexistent,
   // nu ca "fără permisiune" (nu dezvăluim nici măcar că task-ul există).
   if (!canViewTask(user, task)) notFound();
+
+  // Conversația cu clientul (doar la tichete): clientul tichetului, ca să arătăm dacă primește emailuri și dacă are cont în portal.
+  const chatClient =
+    task.type === "TICKET" && task.clientId
+      ? await prisma.client.findUnique({ where: { id: task.clientId }, select: { name: true, email: true, portalPasswordHash: true } })
+      : null;
 
   const canDelete = can(user, "tasks.delete");
   const canEdit = canEditTask(user, task);
@@ -343,6 +351,28 @@ export default async function TaskDetailPage({
           )}
         </div>
       </div>
+
+      {/* ── Conversație cu clientul (chat în timp real; răspunsurile ajung și pe emailul clientului) ── */}
+      {task.type === "TICKET" && (
+        <div className="card mb-3 p-4">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <h2 className="text-sm font-bold">💬 Conversație cu clientul{chatClient ? ` — ${chatClient.name}` : ""}</h2>
+            {chatClient && (
+              <p className="text-[11px] text-ink-soft">
+                {chatClient.email ? `Răspunsurile tale ajung și pe email (${chatClient.email}).` : "Clientul nu are email — nu primește notificare pe email."}
+                {!chatClient.portalPasswordHash && " Nu are cont activ în portal, deci nu poate vedea conversația."}
+              </p>
+            )}
+          </div>
+          {task.clientId ? (
+            <TicketChat ticketId={id} viewer="staff" heightClass="h-[min(28rem,60dvh)]" />
+          ) : (
+            <p className="rounded-lg bg-[var(--color-surface-2)] px-3 py-4 text-center text-sm text-ink-soft">
+              Tichetul nu are un client asociat. Asociază un client (editează tichetul) ca să poți purta o conversație cu el.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ── Attachments ───────────────────────────────────── */}
       <div className="mb-3">

@@ -82,6 +82,8 @@ export type Task = {
   creatorName: string;
   createdAt: string | Date;
   description: string | null;
+  /** Mesaj nou de la client în conversația tichetului (necitit de operatori). */
+  chatUnread?: boolean;
 };
 
 export const ST: Record<Status, { label: string; dot: string; badge: string }> = {

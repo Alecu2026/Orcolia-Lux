@@ -18,8 +18,7 @@ export type ApaCanalElementKey =
   | "totalsBox"
   | "atentieBox"
   | "anuntBox"
-  | "contacteBlock"
-  | "scanQrBlock";
+  | "contacteBlock";
 
 export type ApaCanalElementOverride = {
   xMm?: number;
@@ -68,7 +67,6 @@ export const APA_CANAL_ELEMENT_LABELS: Record<ApaCanalElementKey, string> = {
   atentieBox: "Casetă „Atenție”",
   anuntBox: "Casetă „Anunț”",
   contacteBlock: "Bloc Contacte",
-  scanQrBlock: "Bloc „Scanează și achită”",
 };
 
 /** Elemente care au și mărime font + bold editabile (pe lângă poziție/mărime). */
@@ -126,7 +124,6 @@ export const APA_CANAL_LAYOUT_DEFAULTS: Record<ApaCanalElementKey, Required<Pick
   atentieBox: { xMm: 2.2, yMm: 148.5, widthMm: 195.3, heightMm: 29 },
   anuntBox: { xMm: 205.7, yMm: 80.2, widthMm: 88.4, heightMm: 30.4 },
   contacteBlock: { xMm: 205.7, yMm: 115.1, widthMm: 88.4, heightMm: 44.6 },
-  scanQrBlock: { xMm: 205.7, yMm: 163, widthMm: 88.4, heightMm: 30 },
 };
 
 export const MM_TO_PX = 96 / 25.4;

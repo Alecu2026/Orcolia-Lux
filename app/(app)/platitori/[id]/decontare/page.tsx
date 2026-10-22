@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/dal";
 import { getPayerStatement } from "@/lib/services/payer-statement";
 import { INVOICE_STATUS, fmtDate, type InvoiceStatusKey } from "@/app/components/invoice-meta";
 import { IconChevronLeft } from "@/app/components/icons";
+import CompactCard, { CompactField } from "@/app/components/CompactCard";
 
 export const dynamic = "force-dynamic";
 
@@ -120,60 +121,53 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
             </table>
           </div>
 
-          {/* Telefon: un card per lună, câmpurile unul sub altul (fără derulare) */}
-          <div className="flex flex-col gap-2 sm:hidden">
+          {/* Telefon: un rând mic per lună; apeși ca să vezi detaliile, apeși din nou ca să închizi */}
+          <div className="flex flex-col gap-1.5 sm:hidden">
             {rows.map((r) => {
               const st = INVOICE_STATUS[r.status as InvoiceStatusKey];
-              const line = (label: string, value: React.ReactNode, strong = false) => (
-                <div className={`grid grid-cols-[minmax(6rem,40%)_1fr] gap-x-3 px-3 py-1.5 text-[13px] ${strong ? "font-semibold" : ""}`}>
-                  <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</dt>
-                  <dd className="min-w-0 break-words text-right tabular-nums">{value}</dd>
-                </div>
-              );
               return (
-                <div key={r.invoiceId} className="card overflow-hidden">
-                  <div className="flex items-start justify-between gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2">
-                    <div className="min-w-0">
-                      <Link href={`/invoices/${r.invoiceId}/edit`} className="text-[14px] font-semibold text-brand-strong hover:underline">
-                        {r.billingPeriodLabel ?? fmtDate(r.issueDate)}
-                      </Link>
-                      <div className="text-[12px] text-ink-soft">{r.number}</div>
-                    </div>
-                    <span className={`inline-block shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
-                  </div>
-                  <dl className="divide-y divide-[var(--color-line)]">
-                    {line("Index ant.", r.meterPrevReading ?? "—")}
-                    {line("Index curent", r.meterCurrReading ?? "—")}
-                    {line("Apă (m³)", vol(r.apaQty))}
-                    {line("Canal (m³)", vol(r.canalQty))}
-                    {line(`Calculat (${currency})`, nr(r.subtotal, r.currency))}
-                    {line("Sold anterior / regularizare", nr(r.datoriiAvans, r.currency))}
-                    {line("Recalculări", nr(r.recalculari, r.currency))}
-                    {line("Penalități", nr(r.penalitati, r.currency))}
-                    {line("Total de plată", nr(r.grandTotal, r.currency), true)}
+                <CompactCard
+                  key={r.invoiceId}
+                  avatar={(r.billingPeriodLabel ?? "").trim().charAt(0).toUpperCase()}
+                  title={r.billingPeriodLabel ?? fmtDate(r.issueDate)}
+                  subtitle={
+                    <>
+                      <span>{r.number}</span>
+                      <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{st.label}</span>
+                    </>
+                  }
+                  trailing={<span className="font-semibold tabular-nums">{nr(r.grandTotal, r.currency)}</span>}
+                >
+                  <dl>
+                    <CompactField label="Index ant.">{r.meterPrevReading ?? "—"}</CompactField>
+                    <CompactField label="Index curent">{r.meterCurrReading ?? "—"}</CompactField>
+                    <CompactField label="Apă (m³)">{vol(r.apaQty)}</CompactField>
+                    <CompactField label="Canal (m³)">{vol(r.canalQty)}</CompactField>
+                    <CompactField label={`Calculat (${currency})`}>{nr(r.subtotal, r.currency)}</CompactField>
+                    <CompactField label="Sold anterior / regularizare">{nr(r.datoriiAvans, r.currency)}</CompactField>
+                    <CompactField label="Recalculări">{nr(r.recalculari, r.currency)}</CompactField>
+                    <CompactField label="Penalități">{nr(r.penalitati, r.currency)}</CompactField>
                   </dl>
-                </div>
+                  <div className="border-t border-[var(--color-line)]/60 px-2.5 py-1.5">
+                    <Link href={`/invoices/${r.invoiceId}/edit`} className="tap inline-flex h-7 items-center rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft">Deschide factura</Link>
+                  </div>
+                </CompactCard>
               );
             })}
-            <div className="card overflow-hidden border-brand">
-              <div className="bg-brand-soft px-3 py-2 text-[13px] font-bold text-brand-strong">TOTAL</div>
-              <dl className="divide-y divide-[var(--color-line)]">
-                {[
-                  ["Apă (m³)", vol(totals.apaQty)],
-                  ["Canal (m³)", vol(totals.canalQty)],
-                  [`Calculat (${currency})`, nr(totals.subtotal, currency)],
-                  ["Sold anterior / regularizare", nr(totals.datoriiAvans, currency)],
-                  ["Recalculări", nr(totals.recalculari, currency)],
-                  ["Penalități", nr(totals.penalitati, currency)],
-                  ["Total de plată", nr(totals.grandTotal, currency)],
-                ].map(([label, value]) => (
-                  <div key={label} className="grid grid-cols-[minmax(6rem,40%)_1fr] gap-x-3 px-3 py-1.5 text-[13px] font-semibold">
-                    <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</dt>
-                    <dd className="min-w-0 break-words text-right tabular-nums">{value}</dd>
-                  </div>
-                ))}
+            <CompactCard
+              avatar="Σ"
+              title="TOTAL"
+              trailing={<span className="font-bold tabular-nums text-brand-strong">{nr(totals.grandTotal, currency)}</span>}
+            >
+              <dl>
+                <CompactField label="Apă (m³)">{vol(totals.apaQty)}</CompactField>
+                <CompactField label="Canal (m³)">{vol(totals.canalQty)}</CompactField>
+                <CompactField label={`Calculat (${currency})`}>{nr(totals.subtotal, currency)}</CompactField>
+                <CompactField label="Sold anterior / regularizare">{nr(totals.datoriiAvans, currency)}</CompactField>
+                <CompactField label="Recalculări">{nr(totals.recalculari, currency)}</CompactField>
+                <CompactField label="Penalități">{nr(totals.penalitati, currency)}</CompactField>
               </dl>
-            </div>
+            </CompactCard>
           </div>
         </>
       )}

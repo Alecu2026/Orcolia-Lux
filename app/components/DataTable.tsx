@@ -8,6 +8,7 @@ import {
   perPageLabel,
 } from "@/lib/payer-notify";
 import { IconChevronLeft, IconChevronRight } from "./icons";
+import CompactCard, { CompactField } from "./CompactCard";
 
 /**
  * Tabel generic, în stilul paginii Plătitori: toate rândurile vin o dată de pe server, iar filtrele, sortarea
@@ -63,9 +64,9 @@ export type Look = {
 };
 const DEFAULT_LOOK: Look = { density: "compact", font: 11, width: 100, zebra: false, header: "default", text: "default" };
 const DENSITY = {
-  compact: { cell: "py-px", head: "py-1", lh: 14 },
-  normal: { cell: "py-1.5", head: "py-1.5", lh: 16 },
-  roomy: { cell: "py-3", head: "py-2.5", lh: 18 },
+  compact: { cell: "py-px", head: "py-1", px: "px-1.5", lh: 14 },
+  normal: { cell: "py-1.5", head: "py-1.5", px: "px-2", lh: 16 },
+  roomy: { cell: "py-3", head: "py-2.5", px: "px-3", lh: 18 },
 } as const;
 const HEADER_CLS: Record<Look["header"], string> = {
   default: "bg-[var(--color-surface-2)]",
@@ -241,6 +242,14 @@ export default function DataTable<T extends { id: string }>({
   const cardFields = orderedLabeled.filter(isVisible);
   const cardActions = [...fixedStart, ...fixedEnd];
   const sortableCols = labeled.filter((c) => c.sort);
+  // Lățimi explicite pentru FIECARE coloană (colgroup + table-layout: fixed), scalate cu „Lățime celule": așa setarea chiar schimbă tabelul,
+  // indiferent de conținut. Baza = minW, iar la coloanele cu maxW (text lung, tăiat cu „…") media dintre minW și maxW.
+  const colWidths = visibleCols.map((c) => Math.round((c.maxW ? (c.minW + c.maxW) / 2 : c.minW) * look.width / 100));
+  const tableMinWidth = colWidths.reduce((a, b) => a + b, 0);
+  const roomy = look.density === "roomy";
+  // Setările implicite păstrează comportamentul clasic (coloanele își iau lățimea din conținut). Lățimile explicite se aplică doar când
+  // alegi altă lățime sau rânduri spațioase — exact cazurile în care setarea trebuie să se vadă.
+  const fixed = look.width !== 100 || roomy;
 
   /** Mută coloana `from` înaintea coloanei `to` (drag & drop) sau cu un pas (▲▼). */
   function moveCol(from: string, to: string) {
@@ -380,7 +389,7 @@ export default function DataTable<T extends { id: string }>({
           type="button"
           onClick={() => setCardsPref(!cards)}
           className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-          title={cards ? "Înapoi la tabel" : "Afișează fiecare rând ca un card, cu câmpurile unul sub altul (potrivit pentru telefon)"}
+          title={cards ? "Înapoi la tabel" : "Afișează rândurile într-o coloană mică; apeși pe un rând ca să vezi detaliile (potrivit pentru telefon)"}
           aria-pressed={cards}
         >
           {cards ? "▦ Tabel" : "📱 Mod telefon"}
@@ -412,7 +421,7 @@ export default function DataTable<T extends { id: string }>({
                 <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 px-1 text-[11px]">
                   <LookSelect label="Rânduri" value={look.density} onChange={(v) => setLook({ ...look, density: v })} options={[["compact", "Compacte"], ["normal", "Normale"], ["roomy", "Spațioase"]]} />
                   <LookSelect label="Text" value={String(look.font)} onChange={(v) => setLook({ ...look, font: Number(v) as Look["font"] })} options={[["10", "Mic"], ["11", "Normal"], ["13", "Mare"], ["15", "Foarte mare"]]} />
-                  <LookSelect label="Lățime celule" value={String(look.width)} onChange={(v) => setLook({ ...look, width: Number(v) as Look["width"] })} options={[["85", "Înguste"], ["100", "Normale"], ["125", "Late"], ["150", "Foarte late"]]} />
+                  <LookSelect label="Lățime coloane" value={String(look.width)} onChange={(v) => setLook({ ...look, width: Number(v) as Look["width"] })} options={[["85", "Înguste"], ["100", "Normale"], ["125", "Late"], ["150", "Foarte late"]]} />
                   <LookSelect label="Culoare antet" value={look.header} onChange={(v) => setLook({ ...look, header: v })} options={[["default", "Neutru"], ["brand", "Turcoaz"], ["sky", "Albastru"], ["emerald", "Verde"], ["orange", "Portocaliu"], ["violet", "Violet"], ["slate", "Gri închis"]]} />
                   <LookSelect label="Culoare text" value={look.text} onChange={(v) => setLook({ ...look, text: v })} options={[["default", "Implicită"], ["brand", "Turcoaz"], ["sky", "Albastru"], ["emerald", "Verde"], ["violet", "Violet"], ["rose", "Roz"]]} />
                   <label className="flex cursor-pointer items-end gap-1.5 pb-1">
@@ -420,6 +429,9 @@ export default function DataTable<T extends { id: string }>({
                     Rânduri alternate
                   </label>
                 </div>
+                <p className="mt-1.5 px-1 text-[10px] leading-snug text-ink-soft">
+                  Lățimea se aplică tuturor coloanelor; textul care nu încape se taie cu „…”. La „Rânduri spațioase” textul se rupe pe până la 3 rânduri.
+                </p>
               </div>
               <button type="button" onClick={() => { setOrder([]); setVis({}); setLook(DEFAULT_LOOK); }} className="tap mt-2 h-7 w-full cursor-pointer rounded-lg border border-[var(--color-line)] text-[11px] hover:bg-[var(--color-surface-2)]">
                 Resetează coloanele și aspectul
@@ -442,28 +454,42 @@ export default function DataTable<T extends { id: string }>({
       </div>
 
       {cards ? (
-        <div className={`flex flex-col gap-2 ${TEXT_CLS[look.text]}`}>
-          {pageRows.map((r) => (
-            <div
-              key={r.id}
-              onClick={onRowClick ? () => onRowClick(r) : undefined}
-              className={`card overflow-hidden ${onRowClick ? "cursor-pointer active:bg-brand-soft/30" : ""} ${rowClassName?.(r) ?? ""}`}
-            >
-              <dl className="divide-y divide-[var(--color-line)]">
-                {cardFields.map((c) => (
-                  <div key={c.key} className="grid grid-cols-[minmax(5.5rem,34%)_1fr] items-start gap-x-3 px-3 py-1.5 text-[13px] leading-snug">
-                    <dt className="pt-px text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{c.label}</dt>
-                    <dd className={`min-w-0 break-words ${c.right ? "tabular-nums" : ""}`}>{c.render(r)}</dd>
-                  </div>
+        <div className={`flex flex-col gap-1.5 ${TEXT_CLS[look.text]}`}>
+          {pageRows.map((r) => {
+            // Rezumat: primele trei coloane vizibile (titlu + două valori scurte); restul se vede la desfacere.
+            const [c0, c1, c2, ...rest] = cardFields;
+            const initial = String(c0?.sort?.(r) ?? "").trim().charAt(0).toUpperCase();
+            return (
+              <CompactCard
+                key={r.id}
+                avatar={initial}
+                title={c0 ? c0.render(r) : r.id}
+                subtitle={[c1, c2].filter((c): c is Col<T> => !!c).map((c, i) => (
+                  <span key={c.key} className="inline-flex min-w-0 items-center gap-1">
+                    {i > 0 && <span className="text-ink-soft/50">·</span>}
+                    {c.render(r)}
+                  </span>
                 ))}
-              </dl>
-              {cardActions.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-[13px]">
-                  {cardActions.map((c) => <span key={c.key}>{c.render(r)}</span>)}
-                </div>
-              )}
-            </div>
-          ))}
+                className={rowClassName?.(r) ?? ""}
+              >
+                {rest.length > 0 && (
+                  <dl>
+                    {rest.map((c) => <CompactField key={c.key} label={c.label}>{c.render(r)}</CompactField>)}
+                  </dl>
+                )}
+                {(cardActions.length > 0 || onRowClick) && (
+                  <div className="flex flex-wrap items-center gap-2 px-2.5 py-1.5 text-[12px]">
+                    {onRowClick && (
+                      <button type="button" onClick={() => onRowClick(r)} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">
+                        Deschide
+                      </button>
+                    )}
+                    {cardActions.map((c) => <span key={c.key}>{c.render(r)}</span>)}
+                  </div>
+                )}
+              </CompactCard>
+            );
+          })}
           {pageRows.length === 0 && (
             <div className="card p-8 text-center text-ink-soft">
               {activeCount > 0 ? "Nimic cu filtrele acestea." : emptyText}{" "}
@@ -474,15 +500,24 @@ export default function DataTable<T extends { id: string }>({
       ) : (
       <div className="card overflow-auto" style={{ maxHeight: perPage > 50 ? "max(78vh, 890px)" : undefined }}>
         <table
-          className={`w-max min-w-full border-separate border-spacing-0 ${TEXT_CLS[look.text]}`}
-          style={{ fontSize: look.font, lineHeight: `${Math.round(look.font * 1.3) + (look.density === "roomy" ? 4 : look.density === "normal" ? 2 : 0)}px` }}
+          className={`${fixed ? "" : "w-max min-w-full"} border-separate border-spacing-0 ${TEXT_CLS[look.text]}`}
+          style={{
+            ...(fixed ? { tableLayout: "fixed" as const, width: "100%", minWidth: tableMinWidth } : {}),
+            fontSize: look.font,
+            lineHeight: `${Math.round(look.font * 1.3) + (roomy ? 4 : look.density === "normal" ? 2 : 0)}px`,
+          }}
         >
+          {fixed && (
+            <colgroup>
+              {visibleCols.map((c, i) => <col key={c.key} style={{ width: colWidths[i] }} />)}
+            </colgroup>
+          )}
           <thead className={`sticky top-0 z-20 ${HEADER_CLS[look.header]}`}>
             <tr>
               {visibleCols.map((c, ci) => (
                 <th
                   key={c.key}
-                  style={{ minWidth: Math.round(c.minW * look.width / 100) }}
+                  style={fixed ? undefined : { minWidth: Math.round(c.minW * look.width / 100) }}
                   draggable={c.label !== ""}
                   onDragStart={(e) => { setDragKey(c.key); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.key); }}
                   onDragOver={(e) => { if (dragKey && c.label !== "") { e.preventDefault(); setOverKey(c.key); } }}
@@ -490,7 +525,7 @@ export default function DataTable<T extends { id: string }>({
                   onDrop={(e) => { e.preventDefault(); if (dragKey) moveCol(dragKey, c.key); setDragKey(null); setOverKey(null); }}
                   onDragEnd={() => { setDragKey(null); setOverKey(null); }}
                   title={c.label !== "" ? "Trage ca să muți coloana" : undefined}
-                  className={`border-b border-[var(--color-line)] ${HEADER_CLS[look.header]} px-1.5 ${DENSITY[look.density].head} font-semibold ${c.right ? "text-right" : "text-left"} ${c.sticky && ci <= 1 ? "sticky left-0 z-30" : ""} ${c.label !== "" ? "cursor-grab" : ""} ${overKey === c.key && dragKey !== c.key ? "shadow-[inset_3px_0_0_var(--color-brand)]" : ""} ${dragKey === c.key ? "opacity-50" : ""}`}
+                  className={`${fixed ? "overflow-hidden" : ""} border-b border-[var(--color-line)] ${HEADER_CLS[look.header]} ${DENSITY[look.density].px} ${DENSITY[look.density].head} font-semibold leading-tight ${c.right ? "text-right" : "text-left"} ${c.sticky && ci <= 1 ? "sticky left-0 z-30" : ""} ${c.label !== "" ? "cursor-grab" : ""} ${overKey === c.key && dragKey !== c.key ? "shadow-[inset_3px_0_0_var(--color-brand)]" : ""} ${dragKey === c.key ? "opacity-50" : ""}`}
                 >
                   {c.sort ? (
                     <button type="button" onClick={() => toggleSort(c.key)} className="inline-flex cursor-pointer items-center gap-1 font-semibold hover:text-brand">
@@ -512,10 +547,11 @@ export default function DataTable<T extends { id: string }>({
                 {visibleCols.map((c, ci) => (
                   <td
                     key={c.key}
-                    style={c.maxW ? { maxWidth: Math.round(c.maxW * look.width / 100) } : undefined}
-                    className={`border-b border-[var(--color-line)] ${look.zebra && ri % 2 === 1 ? ZEBRA_BG : "bg-[var(--color-surface)]"} px-1.5 ${DENSITY[look.density].cell} ${c.right ? "text-right tabular-nums" : ""} ${c.sticky && ci <= 1 ? "sticky left-0 z-10 font-medium" : ""}`}
+                    style={!fixed && c.maxW ? { maxWidth: Math.round(c.maxW * look.width / 100) } : undefined}
+                    className={`${fixed ? "overflow-hidden" : ""} border-b border-[var(--color-line)] ${look.zebra && ri % 2 === 1 ? ZEBRA_BG : "bg-[var(--color-surface)]"} ${DENSITY[look.density].px} ${DENSITY[look.density].cell} ${fixed && !roomy ? "whitespace-nowrap" : ""} ${c.right ? "text-right tabular-nums" : ""} ${c.sticky && ci <= 1 ? "sticky left-0 z-10 font-medium" : ""}`}
                   >
-                    {c.maxW ? <div className="truncate">{c.render(r)}</div> : c.render(r)}
+                    {/* Rânduri compacte/normale: o singură linie, textul lung se taie cu „…". Spațioase: textul se rupe pe până la 3 rânduri. */}
+                    {c.maxW || roomy ? <div className={roomy ? "line-clamp-3 break-words" : "truncate"}>{c.render(r)}</div> : c.render(r)}
                   </td>
                 ))}
               </tr>

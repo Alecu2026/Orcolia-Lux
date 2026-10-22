@@ -337,6 +337,17 @@ model Task {
   reminderMsgChatId String?
   reminderMsgId     Int?
 
+  // --- Conversație cu clientul (chat din portal ↔ operatori), vezi TicketMessage ---
+  // Ultimul mesaj și cine l-a scris ("CLIENT" | "STAFF"): din ele se deduce „mesaj nou" fără să numărăm mesajele.
+  chatLastMsgAt       DateTime?
+  chatLastSender      String?
+  // Până când a citit fiecare parte conversația (operatorii împart un singur marcaj; clientul are al lui).
+  chatStaffReadAt     DateTime?
+  chatClientReadAt    DateTime?
+  // Ultimul email de „ai primit un mesaj" trimis clientului (evităm o avalanșă de emailuri la mesaje în rafală).
+  chatClientEmailedAt DateTime?
+  ticketMessages      TicketMessage[]
+
   // --- Email → Tichet ---
   // Câmpuri populate când tichetul a fost creat dintr-un email primit
   emailSource       Boolean   @default(false)
@@ -427,6 +438,23 @@ model TaskComment {
   body      String
   source    CreatedFrom @default(WEB)
   createdAt DateTime    @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+// Mesajele conversației unui tichet între client (din portal) și operatori — vizibile ambelor părți.
+// Separat de TaskComment, care rămâne notița INTERNĂ a echipei (clientul nu o vede).
+model TicketMessage {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  taskId     String   @db.ObjectId
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  // CLIENT = clientul din portal; STAFF = operator
+  sender     String
+  userId     String?  @db.ObjectId
+  clientId   String?  @db.ObjectId
+  authorName String
+  body       String
+  createdAt  DateTime @default(now())
 
   @@index([taskId, createdAt])
 }

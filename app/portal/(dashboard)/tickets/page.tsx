@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireClient } from "@/lib/client-dal";
 import { prisma } from "@/lib/prisma";
 import { TASK_STATUS_RO } from "@/lib/telegram";
@@ -21,11 +22,15 @@ const TICKET_STATUS_CLS: Record<string, string> = {
 export default async function PortalTicketsPage() {
   const client = await requireClient();
 
-  const tickets = await prisma.task.findMany({
+  const rows = await prisma.task.findMany({
     where: { clientId: client.id, type: "TICKET" },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, seq: true, title: true, description: true, status: true, createdAt: true },
+    select: {
+      id: true, seq: true, title: true, description: true, status: true, createdAt: true,
+      chatLastMsgAt: true, chatLastSender: true, chatClientReadAt: true,
+    },
   });
+  // cele cu activitate recentă (mesaj nou) primele
+  const tickets = rows.sort((a, b) => (b.chatLastMsgAt ?? b.createdAt).getTime() - (a.chatLastMsgAt ?? a.createdAt).getTime());
 
   return (
     <div className="flex flex-col gap-4">
@@ -47,7 +52,7 @@ export default async function PortalTicketsPage() {
       ) : (
         <div className="flex flex-col gap-2">
           {tickets.map((t) => (
-            <div key={t.id} className="card p-4">
+            <Link key={t.id} href={`/portal/tickets/${t.id}`} className="card block cursor-pointer p-4 hover:border-brand">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm font-semibold">
                   {t.seq ? <span className="text-ink-soft">#{t.seq} · </span> : ""}
@@ -58,8 +63,15 @@ export default async function PortalTicketsPage() {
                 </span>
               </div>
               {t.description && <p className="mt-1.5 whitespace-pre-wrap text-sm text-ink-soft">{t.description}</p>}
-              <p className="mt-2 text-xs text-ink-soft">{fmtDate(t.createdAt)}</p>
-            </div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-xs text-ink-soft">
+                <span>{fmtDate(t.createdAt)}</span>
+                {t.chatLastSender === "STAFF" && (!t.chatClientReadAt || (t.chatLastMsgAt && t.chatClientReadAt < t.chatLastMsgAt)) ? (
+                  <span className="rounded-full bg-brand px-2 py-0.5 font-semibold text-white">● Mesaj nou</span>
+                ) : (
+                  <span className="font-medium text-brand">💬 Deschide conversația →</span>
+                )}
+              </div>
+            </Link>
           ))}
         </div>
       )}

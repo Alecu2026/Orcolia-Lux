@@ -16,6 +16,7 @@ import { IconTrash, IconChevronLeft, IconChevronRight } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
 import ApaCanalJsonImport from "./ApaCanalJsonImport";
 import InvoiceViewButton from "./InvoiceViewButton";
+import CompactCard, { CompactField } from "./CompactCard";
 import { DEFAULT_PER_PAGE, NOTIFY_PER_PAGE, perPageLabel } from "@/lib/payer-notify";
 
 type Row = {
@@ -188,7 +189,7 @@ export default function InvoicesList({
           type="button"
           onClick={toggleCards}
           aria-pressed={cards}
-          title={cards ? "Înapoi la tabel" : "Afișează fiecare factură ca un card, cu câmpurile unul sub altul (potrivit pentru telefon)"}
+          title={cards ? "Înapoi la tabel" : "Afișează facturile într-o coloană mică; apeși pe una ca să vezi detaliile (potrivit pentru telefon)"}
           className={`tap ml-auto h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
         >
           {cards ? "▦ Tabel" : "📱 Mod telefon"}
@@ -209,33 +210,35 @@ export default function InvoicesList({
       </div>
 
       {cards ? (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1.5">
           {rows.map((r) => {
             const st = INVOICE_STATUS[r.status];
             const late = r.status !== "PAID" && r.status !== "CANCELLED" && isPastDate(r.dueDate);
             return (
-              <div key={r.id} className="card overflow-hidden">
-                <div className="flex items-start justify-between gap-2 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2">
-                  <div className="min-w-0">
-                    <div className="text-[14px] font-semibold leading-snug">
-                      {r.number}
-                      {r.kind === "APA_CANAL" && <span className="ml-1.5 rounded bg-sky-100 px-1 text-[10px] font-semibold text-sky-700">Apă-Canal</span>}
-                    </div>
-                    <div className="break-words text-[12px] text-ink-soft">{r.clientName ?? m.invoices.noClient}</div>
-                  </div>
-                  <div className="shrink-0 text-right text-[15px] font-bold tabular-nums">{money(r.grandTotal, r.currency)}</div>
-                </div>
-                <dl className="divide-y divide-[var(--color-line)] text-[13px] leading-snug">
-                  <InvCardRow label="Emisă">{fmtDate(r.issueDate)}</InvCardRow>
-                  <InvCardRow label="Scadență">
+              <CompactCard
+                key={r.id}
+                avatar={(r.clientName ?? r.number).trim().charAt(0).toUpperCase()}
+                title={r.number}
+                subtitle={
+                  <>
+                    <span className="min-w-0 truncate">{r.clientName ?? m.invoices.noClient}</span>
+                    <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{st.label}</span>
+                  </>
+                }
+                trailing={<span className="font-semibold tabular-nums">{money(r.grandTotal, r.currency)}</span>}
+              >
+                <dl>
+                  {r.kind === "APA_CANAL" && <CompactField label="Tip"><span className="rounded bg-sky-100 px-1 text-[10px] font-semibold text-sky-700">Apă-Canal</span></CompactField>}
+                  <CompactField label="Emisă">{fmtDate(r.issueDate)}</CompactField>
+                  <CompactField label="Scadență">
                     <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtDate(r.dueDate)}{late ? " · depășită" : ""}</span>
-                  </InvCardRow>
-                  <InvCardRow label="Achitată">
+                  </CompactField>
+                  <CompactField label="Achitată">
                     {r.status === "PAID" ? (
                       r.paidAt ? <span className="text-st-done">{fmtDate(r.paidAt)}</span> : <span className="text-ink-soft/70">? (data nu s-a înregistrat)</span>
                     ) : <span className="text-ink-soft/60">—</span>}
-                  </InvCardRow>
-                  <InvCardRow label="Status">
+                  </CompactField>
+                  <CompactField label="Status">
                     <select
                       value={r.status}
                       onChange={(e) => changeStatus(r.id, e.target.value as InvoiceStatusKey)}
@@ -246,9 +249,9 @@ export default function InvoicesList({
                         <option key={x} value={x}>{INVOICE_STATUS[x].label}</option>
                       ))}
                     </select>
-                  </InvCardRow>
+                  </CompactField>
                 </dl>
-                <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2">
+                <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--color-line)]/60 px-2.5 py-1.5">
                   <InvoiceViewButton token={r.publicToken} title={`${r.number}${r.clientName ? ` · ${r.clientName}` : ""}`} className={cardBtn} />
                   <Link href={`/invoices/${r.id}/edit`} className={cardBtn}>{m.common.edit}</Link>
                   <button type="button" onClick={() => copyLink(r.publicToken)} className={cardBtn}>
@@ -261,7 +264,7 @@ export default function InvoicesList({
                     <IconTrash className="size-3.5" />
                   </button>
                 </div>
-              </div>
+              </CompactCard>
             );
           })}
           {rows.length === 0 && <div className="card p-8 text-center text-ink-soft">{m.invoices.noInvoices}</div>}
@@ -362,16 +365,7 @@ const btn =
   "tap inline-flex h-5 cursor-pointer items-center rounded border border-[var(--color-line)] px-1.5 text-[10px] leading-none hover:bg-brand-soft";
 
 const cardBtn =
-  "tap inline-flex h-8 cursor-pointer items-center rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 text-[12px] leading-none hover:bg-brand-soft";
-
-function InvCardRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[minmax(5.5rem,34%)_1fr] items-center gap-x-3 px-3 py-1.5">
-      <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</dt>
-      <dd className="min-w-0 break-words">{children}</dd>
-    </div>
-  );
-}
+  "tap inline-flex h-7 cursor-pointer items-center rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] leading-none hover:bg-brand-soft";
 
 /** Scadența a trecut? (în afara componentei, ca randarea să rămână pură). */
 function isPastDate(d: string | Date | null): boolean {

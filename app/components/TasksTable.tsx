@@ -37,6 +37,7 @@ import {
 import { useToast } from "./toast";
 import { IconPencil, IconTrash, IconX } from "./icons";
 import { addDaysToKey, dateKeyOf, formatTime, todayKey, zonedToUtc } from "@/lib/date";
+import TicketChat from "./TicketChat";
 import { useMessages } from "@/lib/i18n/context";
 import type { CategoryLite } from "./types";
 
@@ -336,6 +337,14 @@ export default function TasksTable({
         return <span className={d < 0 && t.status !== "DONE" && t.status !== "CANCELLED" ? "font-semibold text-st-cancelled" : ""}>{d}</span>;
       },
     },
+    ...(ticketMode
+      ? [{
+          key: "chat", label: "💬", minW: 60, sort: (t: Task) => (t.chatUnread ? 1 : 0),
+          render: (t: Task) => (t.chatUnread
+            ? <button type="button" onClick={() => setOpenId(t.id)} className="cursor-pointer rounded-full bg-brand px-1.5 text-[10px] font-semibold text-white" title="Clientul a scris — deschide conversația">● nou</button>
+            : t.clientId ? <span className="text-ink-soft/60" title="Tichet cu client: conversația se deschide din detalii">💬</span> : <span className="text-ink-soft/40">—</span>),
+        } satisfies Col<Task>]
+      : []),
     { key: "creator", label: "Creat de", minW: 100, maxW: 140, sort: (t) => t.creatorName, render: (t) => t.creatorName },
     { key: "created", label: "Creat la", minW: 80, sort: (t) => new Date(t.createdAt).getTime(), render: (t) => dmy(t.createdAt) },
     {
@@ -608,6 +617,14 @@ function TaskDetailDialog({
           <Item label="Categorie" value={t.categoryName ? <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: t.categoryColor ?? "#6366f1" }} />{t.categoryName}</span> : null} />
           {t.description && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{m.tasks.descriptionLabel}</p><p className="whitespace-pre-wrap text-[13px]">{t.description}</p></div>}
         </Box>
+
+        {t.type === "TICKET" && t.clientId && (
+          <Box title="💬 Conversație cu clientul">
+            <div className="p-2">
+              <TicketChat ticketId={t.id} viewer="staff" heightClass="h-72" />
+            </div>
+          </Box>
+        )}
 
         {t.projectLat != null && t.projectLng != null && (
           <Box title={m.tasks.locationLabel}>

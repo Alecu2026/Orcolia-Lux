@@ -741,22 +741,6 @@ export default function ApaCanalInvoicePublic({
               <div className="whitespace-pre-line" style={{ lineHeight: 1.8 }}>{company.apaCanalContactsText}</div>
             </div>
           ))}
-
-          {field("scanQrBlock", {}, () => (
-            <div className="text-center" style={{ fontSize: "2.7mm", width: "100%" }}>
-              <p className="font-semibold" style={{ marginBottom: "1.5mm" }}>Scanează și achită</p>
-              <div className="flex items-center justify-center" style={{ gap: "3mm" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/icons/SpFih6.jpg" alt="Cod QR plată" style={{ width: "20mm", height: "20mm" }} />
-                <div className="flex flex-col items-start" style={{ gap: "2mm" }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/icons/IMG_3987.PNG" alt="mia" className="object-contain" style={{ height: "5mm", width: "20mm" }} />
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/icons/IMG_3988.PNG" alt="Victoriabank" className="object-contain" style={{ height: "5mm", width: "20mm" }} />
-                </div>
-              </div>
-            </div>
-          ))}
         </div>
 
         {(layout?.customImages ?? []).map((img) => (

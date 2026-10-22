@@ -278,8 +278,12 @@ const escapeHtml = (s: string) =>
 function payerNotificationTemplate(d: PayerNotificationEmailData): string {
   const company = d.companyName ? escapeHtml(d.companyName) : "Apă-Canal";
   // Linkurile din mesaj (ex. {link} = factura) devin clicabile; textul a fost deja escapat, deci adresa e sigură în atribut.
+  // Punctuația de după adresă („…{link}." sau „({link})") nu face parte din ea: o scoatem din link și o lăsăm ca text.
   const body = escapeHtml(d.body)
-    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#0d9488;font-weight:600;word-break:break-all">$1</a>')
+    .replace(/https?:\/\/[^\s<]+/g, (m) => {
+      const url = m.replace(/(?:&quot;|&#39;|[.,;:!?)\]}])+$/, "");
+      return `<a href="${url}" style="color:#0d9488;font-weight:600;word-break:break-all">${url}</a>${m.slice(url.length)}`;
+    })
     .replace(/\r?\n/g, "<br>");
   return `<!doctype html>
 <html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
@@ -312,4 +316,62 @@ export async function sendPayerNotificationEmail(d: PayerNotificationEmailData):
     text: d.body,
     html: payerNotificationTemplate(d),
   });
+}
+
+export type TicketMessageEmailData = {
+  to: string;
+  clientName: string;
+  ticketTitle: string;
+  seq: number | null;
+  /** Numele operatorului care a scris. */
+  authorName: string;
+  message: string;
+  /** Linkul spre conversație în portal. */
+  url: string;
+  companyName?: string | null;
+};
+
+/**
+ * Email către client: „ai primit un mesaj nou la tichetul tău" — cu începutul mesajului și un buton spre conversația din portal,
+ * unde poate răspunde. Aruncă eroare la eșec; apelantul decide ce face (conversația se salvează oricum).
+ */
+export async function sendTicketMessageEmail(d: TicketMessageEmailData): Promise<void> {
+  const transporter = getTransporter();
+  if (!transporter) throw new Error("SMTP neconfigurat.");
+  const company = escapeHtml(d.companyName?.trim() || "Apă-Canal");
+  const ref = d.seq != null ? `#${d.seq}` : "";
+  const excerpt = d.message.length > 700 ? `${d.message.slice(0, 700)}…` : d.message;
+  const subject = `Răspuns la tichetul ${ref} ${d.ticketTitle}`.replace(/\s+/g, " ").trim().slice(0, 200);
+  const text = [
+    `Bună ziua, ${d.clientName},`,
+    "",
+    `Ai primit un mesaj nou la tichetul ${ref} „${d.ticketTitle}” de la ${d.authorName}:`,
+    "",
+    excerpt,
+    "",
+    `Poți răspunde direct aici: ${d.url}`,
+  ].join("\n");
+  const html = `<!doctype html>
+<html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+        <tr><td style="background:#0d9488;padding:20px 28px;color:#fff;font-size:19px;font-weight:700">${company}</td></tr>
+        <tr><td style="padding:28px;font-size:15px;line-height:1.6">
+          <p style="margin:0 0 6px">Bună ziua, <b>${escapeHtml(d.clientName)}</b>,</p>
+          <p style="margin:0 0 16px;color:#475569">Ai primit un mesaj nou la tichetul <b>${escapeHtml(ref)} ${escapeHtml(d.ticketTitle)}</b>:</p>
+          <div style="background:#f1f5f9;border-radius:14px;padding:14px 16px;margin:0 0 20px">
+            <div style="font-size:12px;color:#64748b;margin-bottom:4px">${escapeHtml(d.authorName)}</div>
+            <div>${escapeHtml(excerpt).replace(/\r?\n/g, "<br>")}</div>
+          </div>
+          <a href="${escapeHtml(d.url)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:12px">Deschide conversația și răspunde</a>
+        </td></tr>
+        <tr><td style="padding:14px 28px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">
+          Mesaj automat de la ${company}. Răspunde din conversația din portal, nu la acest email.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  await transporter.sendMail({ from: env.smtp.from, to: d.to, subject, text, html });
 }
