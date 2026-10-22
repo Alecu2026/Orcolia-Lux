@@ -14,7 +14,7 @@ export default function PortalRegisterRequestForm() {
 
   return (
     <form action={formAction} className="flex flex-col gap-3">
-      <input name="meterSeries" placeholder="Cont personal" required className={input} />
+      <input name="meterSeries" placeholder="Cont personal sau contract" required className={input} />
       <input name="email" type="email" placeholder="Email" autoComplete="email" required className={input} />
 
       {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}

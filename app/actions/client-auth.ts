@@ -32,14 +32,15 @@ export async function requestClientRegistration(
 ): Promise<ClientAuthState> {
   const meterSeries = String(formData.get("meterSeries") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  if (!meterSeries) return { error: "Introdu contul personal." };
+  if (!meterSeries) return { error: "Introdu contul personal sau contractul." };
   if (!EMAIL_RE.test(email)) return { error: "Email invalid." };
 
-  const client = await prisma.client.findUnique({
-    where: { meterSeries },
+  // „Cont personal" sau contract (plătitorii firme au contract, nu cont personal).
+  const client = await prisma.client.findFirst({
+    where: { OR: [{ meterSeries }, { apaCanalContract: meterSeries }] },
     select: { id: true, name: true, portalPasswordHash: true },
   });
-  if (!client) return { error: "Cont personal negăsit. Verifică numărul de pe factură." };
+  if (!client) return { error: "Cont personal sau contract negăsit. Verifică numărul de pe factură." };
   if (client.portalPasswordHash) {
     return { error: "Acest cont e deja activat. Folosește autentificarea sau „Am uitat parola”." };
   }
@@ -77,8 +78,8 @@ export async function confirmClientRegistration(
   if (newPassword.length < 8) return { error: "Parola: minim 8 caractere." };
   if (newPassword !== confirmPassword) return { error: "Parolele nu coincid." };
 
-  const client = await prisma.client.findUnique({
-    where: { meterSeries },
+  const client = await prisma.client.findFirst({
+    where: { OR: [{ meterSeries }, { apaCanalContract: meterSeries }] },
     select: { id: true, portalPasswordHash: true },
   });
   if (!client) return { error: "Cod incorect sau expirat. Cere un cod nou." };
