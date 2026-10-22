@@ -148,6 +148,8 @@ export const universalVoiceParsedSchema = z.object({
   // Client comun (task/project/invoice)
   clientId: z.string().trim().optional(),
   newClientName: z.string().trim().optional(),
+  // Numele clientului așa cum a fost spus; serverul îl potrivește cu baza de date (nu trimitem AI-ului lista tuturor clienților)
+  clientName: z.string().trim().optional(),
   // Project
   description: z.string().trim().optional(),
   // Client extra

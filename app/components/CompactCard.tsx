@@ -70,17 +70,22 @@ export default function CompactCard({
         {trailing != null && <div className="shrink-0 text-[12px]">{trailing}</div>}
         <span className={`shrink-0 text-[11px] text-ink-soft transition-transform ${open ? "rotate-180" : ""}`} aria-hidden>▾</span>
       </div>
-      {open && children != null && <div className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)]/50">{children}</div>}
+      {open && children != null && (
+        // Partea desfăcută: lista de câmpuri devine un mini-tabel cu chenar (etichetă | valoare), iar butoanele stau separat dedesubt.
+        <div className="space-y-2 border-t border-[var(--color-line)] bg-[var(--color-surface-2)]/40 p-2 [&>dl]:overflow-hidden [&>dl]:rounded-lg [&>dl]:border [&>dl]:border-[var(--color-line)] [&>dl]:bg-[var(--color-surface)] [&>div]:border-0! [&>div]:px-0! [&>div]:py-0!">
+          {children}
+        </div>
+      )}
     </div>
   );
 }
 
-/** Un câmp din partea desfăcută: eticheta mică în stânga, valoarea în dreapta (poate avea mai multe rânduri). */
+/** Un câmp din partea desfăcută: etichetă (pe fundal diferit, în coloana ei) | valoare, cu linii între rânduri — ușor de parcurs cu ochii. */
 export function CompactField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[minmax(5rem,32%)_1fr] items-start gap-x-2 border-b border-[var(--color-line)]/60 px-2.5 py-1 text-[12px] leading-snug last:border-b-0">
-      <dt className="pt-px text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</dt>
-      <dd className="min-w-0 break-words">{children}</dd>
+    <div className="grid grid-cols-[minmax(5.25rem,36%)_1fr] border-b border-[var(--color-line)] text-[12px] leading-snug last:border-b-0">
+      <dt className="flex items-center border-r border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{label}</dt>
+      <dd className="min-w-0 break-words px-2.5 py-1.5">{children}</dd>
     </div>
   );
 }
