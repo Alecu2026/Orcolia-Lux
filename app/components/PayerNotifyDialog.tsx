@@ -26,6 +26,8 @@ import Link from "next/link";
 import { useToast } from "./toast";
 import { IconX } from "./icons";
 import VoicePicker from "./VoicePicker";
+import { useLocale, useT } from "@/lib/i18n/context";
+import { dateTag } from "@/lib/i18n/t";
 
 export type Recipient = { id: string; flags: number };
 
@@ -40,8 +42,6 @@ const TEST_PHONE_KEY = "payer-notify-test-phone";
 
 const inputCls =
   "w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
-
-const nf = (n: number) => n.toLocaleString("ro-RO");
 
 function readTestPhone(): string {
   try {
@@ -91,6 +91,9 @@ export default function PayerNotifyDialog({
   onSelectFailed: (ids: string[]) => void;
 }) {
   const toast = useToast();
+  const tr = useT();
+  const tag = dateTag(useLocale());
+  const nf = (n: number) => n.toLocaleString(tag);
   const emailCount = useMemo(() => recipients.filter((r) => r.flags & 1).length, [recipients]);
   const smsCount = useMemo(() => recipients.filter((r) => r.flags & 2).length, [recipients]);
   const canEmail = emailEnabled && emailCount > 0;
@@ -170,12 +173,12 @@ export default function PayerNotifyDialog({
   function saveAsTemplate() {
     const name = tplName.trim();
     if (!name) return;
-    if (!emailBody.trim() && !smsBody.trim() && !callBody.trim()) { setFormError("Scrie întâi un mesaj pe care să-l salvezi."); return; }
+    if (!emailBody.trim() && !smsBody.trim() && !callBody.trim()) { setFormError(tr("Scrie întâi un mesaj pe care să-l salvezi.")); return; }
     onSaveTemplate({ name, subject, email: emailBody, sms: smsBody, call: callBody, voice });
     setSavingTpl(false);
     setTplName("");
     setFormError(null);
-    toast.success("Șablon salvat.");
+    toast.success(tr("Șablon salvat."));
   }
 
   function insertToken(token: string) {
@@ -194,13 +197,13 @@ export default function PayerNotifyDialog({
   }
 
   function validate(): string | null {
-    if (!useEmail && !useSms && !useCall) return "Alege cel puțin un canal (email, SMS sau apel).";
-    if (useCall && !callBody.trim()) return "Scrie mesajul apelului.";
+    if (!useEmail && !useSms && !useCall) return tr("Alege cel puțin un canal (email, SMS sau apel).");
+    if (useCall && !callBody.trim()) return tr("Scrie mesajul apelului.");
     if (useEmail) {
-      if (!subject.trim()) return "Scrie subiectul emailului.";
-      if (!emailBody.trim()) return "Scrie mesajul emailului.";
+      if (!subject.trim()) return tr("Scrie subiectul emailului.");
+      if (!emailBody.trim()) return tr("Scrie mesajul emailului.");
     }
-    if (useSms && !smsBody.trim()) return "Scrie mesajul SMS.";
+    if (useSms && !smsBody.trim()) return tr("Scrie mesajul SMS.");
     return null;
   }
 
@@ -223,7 +226,7 @@ export default function PayerNotifyDialog({
       if (res.ok) toast.success(res.message);
       else toast.error(res.error);
     } catch {
-      toast.error("Nu am putut trimite testul. Încearcă din nou.");
+      toast.error(tr("Nu am putut trimite testul. Încearcă din nou."));
     } finally {
       setTesting(false);
     }
@@ -296,7 +299,7 @@ export default function PayerNotifyDialog({
       } catch {
         // Fără reîncercare automată: lotul poate fi deja plecat. „Reia" retrimite același lot cu aceeași
         // campanie, iar serverul omite destinatarii deja marcați ca trimiși în ea.
-        setRunError("Conexiune întreruptă în timpul trimiterii. Verifică conexiunea și apasă „Reia”.");
+        setRunError(tr("Conexiune întreruptă în timpul trimiterii. Verifică conexiunea și apasă „Reia”."));
         setResumeAt(i);
         setPhase("done");
         return;
@@ -317,16 +320,16 @@ export default function PayerNotifyDialog({
       <div className="card max-h-[94dvh] w-full max-w-3xl overflow-auto rounded-b-none rounded-t-2xl p-5 sm:rounded-2xl">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold">Trimite notificare</h2>
+            <h2 className="text-base font-bold">{tr("Trimite notificare")}</h2>
             <p className="text-xs text-ink-soft">
-              {nf(total)} {total === 1 ? "destinatar" : "destinatari"} · {nf(emailCount)} cu email valid · {nf(smsCount)} cu telefon valid
+              {nf(total)} {total === 1 ? tr("destinatar") : tr("destinatari")} · {tr("{n} cu email valid", { n: nf(emailCount) })} · {tr("{n} cu telefon valid", { n: nf(smsCount) })}
             </p>
           </div>
           <button
             onClick={onClose}
             disabled={sending}
             className="tap grid size-9 shrink-0 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
-            aria-label="Închide"
+            aria-label={tr("Închide")}
           >
             <IconX className="size-4" />
           </button>
@@ -341,7 +344,7 @@ export default function PayerNotifyDialog({
                 icon="✉"
                 checked={useEmail}
                 disabled={!canEmail}
-                hint={!emailEnabled ? "SMTP neconfigurat" : emailCount === 0 ? "nimeni nu are email" : `${nf(emailCount)} destinatari`}
+                hint={!emailEnabled ? tr("SMTP neconfigurat") : emailCount === 0 ? tr("nimeni nu are email") : `${nf(emailCount)} ${tr("destinatari")}`}
                 onChange={setUseEmail}
               />
               <ChannelToggle
@@ -349,22 +352,22 @@ export default function PayerNotifyDialog({
                 icon="💬"
                 checked={useSms}
                 disabled={!canSms}
-                hint={!smsEnabled ? "SMS neconfigurat" : smsCount === 0 ? "nimeni nu are telefon" : `${nf(smsCount)} destinatari`}
+                hint={!smsEnabled ? tr("SMS neconfigurat") : smsCount === 0 ? tr("nimeni nu are telefon") : `${nf(smsCount)} ${tr("destinatari")}`}
                 onChange={setUseSms}
               />
               <ChannelToggle
-                label="Apel"
+                label={tr("Apel")}
                 icon="📞"
                 checked={useCall}
                 disabled={!canCall}
-                hint={!callEnabled ? "Apel neconfigurat" : smsCount === 0 ? "nimeni nu are telefon" : `${nf(smsCount)} destinatari`}
+                hint={!callEnabled ? tr("Apel neconfigurat") : smsCount === 0 ? tr("nimeni nu are telefon") : `${nf(smsCount)} ${tr("destinatari")}`}
                 onChange={setUseCall}
               />
             </div>
 
             {/* Șabloane */}
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs font-semibold text-ink-soft">Șablon:</span>
+              <span className="text-xs font-semibold text-ink-soft">{tr("Șablon:")}</span>
               {templates.map((t) => (
                 <button key={t.id} type="button" onClick={() => applyPreset(t)} className="tap h-7 rounded-full border border-brand/40 bg-brand/5 px-3 text-xs text-brand hover:bg-brand-soft">
                   {t.name}
@@ -372,7 +375,7 @@ export default function PayerNotifyDialog({
               ))}
               {NOTIFY_PRESETS.map((p) => (
                 <button key={p.key} type="button" onClick={() => applyPreset(p)} className="tap h-7 rounded-full border border-[var(--color-line)] px-3 text-xs hover:border-brand hover:bg-brand-soft">
-                  {p.label}
+                  {tr(p.label)}
                 </button>
               ))}
               {savingTpl ? (
@@ -381,7 +384,7 @@ export default function PayerNotifyDialog({
                     value={tplName}
                     onChange={(e) => setTplName(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); saveAsTemplate(); } if (e.key === "Escape") setSavingTpl(false); }}
-                    placeholder="Nume șablon"
+                    placeholder={tr("Nume șablon")}
                     maxLength={60}
                     autoFocus
                     className="h-7 w-32 rounded-lg border border-brand bg-[var(--color-surface)] px-2 text-xs outline-none"
@@ -390,16 +393,16 @@ export default function PayerNotifyDialog({
                 </span>
               ) : (
                 <button type="button" onClick={() => setSavingTpl(true)} className="tap ml-auto h-7 rounded-full px-2 text-xs text-ink-soft underline hover:text-brand">
-                  + Salvează ca șablon
+                  + {tr("Salvează ca șablon")}
                 </button>
               )}
             </div>
 
             {/* Variabile */}
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs font-semibold text-ink-soft">Inserează:</span>
+              <span className="text-xs font-semibold text-ink-soft">{tr("Inserează:")}</span>
               {NOTIFY_TOKENS.map((t) => (
-                <button key={t.key} type="button" onClick={() => insertToken(t.key)} title={t.label} className="tap h-7 rounded-md bg-[var(--color-surface-2)] px-2 font-mono text-[11px] hover:bg-brand-soft">
+                <button key={t.key} type="button" onClick={() => insertToken(t.key)} title={tr(t.label)} className="tap h-7 rounded-md bg-[var(--color-surface-2)] px-2 font-mono text-[11px] hover:bg-brand-soft">
                   {`{${t.key}}`}
                 </button>
               ))}
@@ -407,17 +410,17 @@ export default function PayerNotifyDialog({
 
             {useEmail && (
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-ink-soft">Email — subiect</label>
+                <label className="text-xs font-semibold text-ink-soft">{tr("Email — subiect")}</label>
                 <input
                   ref={subjectRef}
                   value={subject}
                   maxLength={NOTIFY_MAX_SUBJECT}
                   onFocus={() => (lastField.current = "subject")}
                   onChange={(e) => setSubject(e.target.value)}
-                  placeholder="Subiectul emailului"
+                  placeholder={tr("Subiectul emailului")}
                   className={`${inputCls} h-11`}
                 />
-                <label className="text-xs font-semibold text-ink-soft">Email — mesaj</label>
+                <label className="text-xs font-semibold text-ink-soft">{tr("Email — mesaj")}</label>
                 <textarea
                   ref={emailRef}
                   value={emailBody}
@@ -425,7 +428,7 @@ export default function PayerNotifyDialog({
                   onFocus={() => (lastField.current = "email")}
                   onChange={(e) => setEmailBody(e.target.value)}
                   rows={6}
-                  placeholder="Scrie mesajul… folosește {nume}, {suma} etc."
+                  placeholder={tr("Scrie mesajul… folosește {nume}, {suma} etc.", { nume: "{nume}", suma: "{suma}" })}
                   className={`${inputCls} py-2.5`}
                 />
               </div>
@@ -433,7 +436,7 @@ export default function PayerNotifyDialog({
 
             {useSms && (
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-ink-soft">SMS — mesaj</label>
+                <label className="text-xs font-semibold text-ink-soft">{tr("SMS — mesaj")}</label>
                 <textarea
                   ref={smsRef}
                   value={smsBody}
@@ -441,16 +444,16 @@ export default function PayerNotifyDialog({
                   onFocus={() => (lastField.current = "sms")}
                   onChange={(e) => setSmsBody(e.target.value)}
                   rows={3}
-                  placeholder="Mesaj scurt… folosește {nume}, {suma} etc."
+                  placeholder={tr("Mesaj scurt… folosește {nume}, {suma} etc.", { nume: "{nume}", suma: "{suma}" })}
                   className={`${inputCls} py-2.5`}
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-soft">
                   <label className="flex cursor-pointer items-center gap-2">
                     <input type="checkbox" checked={ascii} onChange={(e) => setAscii(e.target.checked)} className="size-4 accent-brand" />
-                    Fără diacritice (încap mai multe caractere într-un SMS)
+                    {tr("Fără diacritice (încap mai multe caractere într-un SMS)")}
                   </label>
                   <span className={sms.segments > 1 ? "font-semibold text-st-progress" : ""}>
-                    {sms.length} caractere · {sms.segments} {sms.segments === 1 ? "SMS" : "SMS-uri"}{sms.unicode ? " (Unicode: 70/SMS)" : ""}
+                    {sms.length} {tr("caractere")} · {sms.segments} {sms.segments === 1 ? "SMS" : tr("SMS-uri")}{sms.unicode ? ` (${tr("Unicode: 70/SMS")})` : ""}
                   </span>
                 </div>
               </div>
@@ -458,7 +461,7 @@ export default function PayerNotifyDialog({
 
             {useCall && (
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-ink-soft">Apel — mesajul pe care îl spune robotul</label>
+                <label className="text-xs font-semibold text-ink-soft">{tr("Apel — mesajul pe care îl spune robotul")}</label>
                 <textarea
                   ref={callRef}
                   value={callBody}
@@ -466,7 +469,7 @@ export default function PayerNotifyDialog({
                   onFocus={() => (lastField.current = "call")}
                   onChange={(e) => setCallBody(e.target.value)}
                   rows={4}
-                  placeholder="Ce spune vocea… ex. Bună ziua, {nume}. Aveți de achitat {suma}…"
+                  placeholder={tr("Ce spune vocea… ex. Bună ziua, {nume}. Aveți de achitat {suma}…", { nume: "{nume}", suma: "{suma}" })}
                   className={`${inputCls} py-2.5`}
                 />
                 <VoicePicker voice={voice} text={renderedCall} onChange={setVoice} />
@@ -477,16 +480,16 @@ export default function PayerNotifyDialog({
             {/* Previzualizare */}
             {(useEmail || useSms) && (
               <div className="rounded-xl border border-dashed border-[var(--color-line)] p-3">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Previzualizare · {previewName}</p>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Previzualizare")} · {previewName}</p>
                 {useEmail && (
                   <div className="mb-2 rounded-lg bg-[var(--color-surface-2)] p-3 text-sm">
-                    <p className="font-semibold">{renderTemplate(subject, previewVars) || <span className="text-ink-soft">(fără subiect)</span>}</p>
-                    <p className="mt-1 whitespace-pre-wrap text-[13px]">{renderTemplate(emailBody, previewVars) || <span className="text-ink-soft">(mesaj gol)</span>}</p>
+                    <p className="font-semibold">{renderTemplate(subject, previewVars) || <span className="text-ink-soft">{tr("(fără subiect)")}</span>}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-[13px]">{renderTemplate(emailBody, previewVars) || <span className="text-ink-soft">{tr("(mesaj gol)")}</span>}</p>
                   </div>
                 )}
                 {useSms && (
                   <div className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-brand px-3 py-2 text-[13px] text-white">
-                    {renderedSms || "(mesaj gol)"}
+                    {renderedSms || tr("(mesaj gol)")}
                   </div>
                 )}
               </div>
@@ -494,14 +497,14 @@ export default function PayerNotifyDialog({
 
             {/* Test */}
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-[var(--color-surface-2)] p-3 text-xs">
-              <span className="font-semibold">Test înainte de trimitere:</span>
-              {useEmail && <span className="text-ink-soft">email la {userEmail}</span>}
+              <span className="font-semibold">{tr("Test înainte de trimitere:")}</span>
+              {useEmail && <span className="text-ink-soft">{tr("email la")} {userEmail}</span>}
               {(useSms || useCall) && (
                 <input
                   value={testPhone}
                   onChange={(e) => setTestPhone(e.target.value)}
                   inputMode="tel"
-                  placeholder="Telefon test (069…)"
+                  placeholder={tr("Telefon test (069…)")}
                   className="h-8 w-40 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs outline-none focus:border-brand"
                 />
               )}
@@ -511,17 +514,17 @@ export default function PayerNotifyDialog({
                 disabled={testing || (!useEmail && !useSms && !useCall)}
                 className="tap ml-auto h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 font-medium hover:bg-brand-soft disabled:opacity-50"
               >
-                {testing ? "Se trimite…" : "Trimite test"}
+                {testing ? tr("Se trimite…") : tr("Trimite test")}
               </button>
             </div>
 
             {formError && <p className="text-sm text-st-cancelled">{formError}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={onClose} className="tap h-11 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]">
-                Anulează
+                {tr("Anulează")}
               </button>
               <button type="button" onClick={goConfirm} className="tap h-11 rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong">
-                Continuă
+                {tr("Continuă")}
               </button>
             </div>
           </div>
@@ -530,35 +533,35 @@ export default function PayerNotifyDialog({
         {phase === "confirm" && (
           <div className="flex flex-col gap-4">
             <div className="rounded-xl border border-st-progress/30 bg-st-progress/10 p-4 text-sm">
-              <p className="font-semibold">Confirmă trimiterea</p>
+              <p className="font-semibold">{tr("Confirmă trimiterea")}</p>
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 {useEmail && (
                   <li>
-                    <b>{nf(emailCount)}</b> emailuri
-                    {total - emailCount > 0 && <span className="text-ink-soft"> ({nf(total - emailCount)} fără email valid vor fi omiși)</span>}
+                    <b>{nf(emailCount)}</b> {tr("emailuri")}
+                    {total - emailCount > 0 && <span className="text-ink-soft"> ({tr("{n} fără email valid vor fi omiși", { n: nf(total - emailCount) })})</span>}
                   </li>
                 )}
                 {useSms && (
                   <li>
-                    <b>{nf(smsCount)}</b> SMS-uri × {sms.segments || 1} {sms.segments > 1 ? "segmente" : "segment"}
-                    {total - smsCount > 0 && <span className="text-ink-soft"> ({nf(total - smsCount)} fără telefon valid vor fi omiși)</span>}
+                    <b>{nf(smsCount)}</b> {tr("SMS-uri")} × {sms.segments || 1} {sms.segments > 1 ? tr("segmente") : tr("segment")}
+                    {total - smsCount > 0 && <span className="text-ink-soft"> ({tr("{n} fără telefon valid vor fi omiși", { n: nf(total - smsCount) })})</span>}
                   </li>
                 )}
                 {useCall && (
                   <li>
-                    <b>{nf(smsCount)}</b> {smsCount === 1 ? "apel" : "apeluri"} trimise <b>acum</b> la gateway-ul de apeluri (robotul sună plătitorul și spune mesajul). Gateway-ul confirmă doar primirea cererii, nu și că apelul a avut loc.
-                    {total - smsCount > 0 && <span className="text-ink-soft"> ({nf(total - smsCount)} fără telefon valid vor fi omiși)</span>}
+                    {tr("{n} apeluri trimise acum la gateway-ul de apeluri (robotul sună plătitorul și spune mesajul). Gateway-ul confirmă doar primirea cererii, nu și că apelul a avut loc.", { n: nf(smsCount) })}
+                    {total - smsCount > 0 && <span className="text-ink-soft"> ({tr("{n} fără telefon valid vor fi omiși", { n: nf(total - smsCount) })})</span>}
                   </li>
                 )}
               </ul>
-              <p className="mt-2 text-xs text-ink-soft">Mesajele trimise nu pot fi retrase. SMS-urile se taxează de furnizor.</p>
+              <p className="mt-2 text-xs text-ink-soft">{tr("Mesajele trimise nu pot fi retrase. SMS-urile se taxează de furnizor.")}</p>
             </div>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setPhase("compose")} className="tap h-11 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]">
-                Înapoi
+                {tr("Înapoi")}
               </button>
               <button type="button" onClick={() => run(0)} className="tap h-11 rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong">
-                Da, trimite acum
+                {tr("Da, trimite acum")}
               </button>
             </div>
           </div>
@@ -569,7 +572,7 @@ export default function PayerNotifyDialog({
             <div>
               <div className="mb-1 flex items-center justify-between text-sm">
                 <span className="font-semibold">
-                  {sending ? "Se trimite…" : runError ? "Trimitere întreruptă" : stopped ? "Oprit" : "Gata"}
+                  {sending ? tr("Se trimite…") : runError ? tr("Trimitere întreruptă") : stopped ? tr("Oprit") : tr("Gata")}
                 </span>
                 <span className="tabular-nums text-ink-soft">{nf(processed)} / {nf(total)} ({pct}%)</span>
               </div>
@@ -581,17 +584,17 @@ export default function PayerNotifyDialog({
             <div className="grid gap-2 sm:grid-cols-2">
               {useEmail && <StatCard title="✉ Email" s={emailStats} />}
               {useSms && <StatCard title="💬 SMS" s={smsStats} />}
-              {useCall && <StatCard title="📞 Apel" s={callStats} sentLabel="Trimise la gateway" />}
+              {useCall && <StatCard title={`📞 ${tr("Apel")}`} s={callStats} sentLabel={tr("Trimise la gateway")} />}
             </div>
 
             {useCall && !sending && (callStats.sent > 0 || callStats.failed > 0) && (
               <div className="rounded-xl border border-[var(--color-line)] p-3 text-sm">
-                <p className="font-semibold">📞 {nf(callStats.sent)} {callStats.sent === 1 ? "apel trimis" : "apeluri trimise"} la gateway{callStats.failed > 0 ? ` · ${nf(callStats.failed)} respinse` : ""}</p>
+                <p className="font-semibold">📞 {tr("{n} apeluri trimise la gateway", { n: nf(callStats.sent) })}{callStats.failed > 0 ? ` · ${tr("{n} respinse", { n: nf(callStats.failed) })}` : ""}</p>
                 <p className="mt-1 text-xs text-ink-soft">
-                  Gateway-ul confirmă doar că a primit cererea. Dacă nu sună nimeni, verifică la cei care îl administrează dacă tokenul și formatul cererii sunt corecte.
-                  {callStats.failed > 0 ? " Cele respinse rămân în registru și pot fi exportate pentru autoinformarea PBX." : ""}
+                  {tr("Gateway-ul confirmă doar că a primit cererea. Dacă nu sună nimeni, verifică la cei care îl administrează dacă tokenul și formatul cererii sunt corecte.")}
+                  {callStats.failed > 0 ? ` ${tr("Cele respinse rămân în registru și pot fi exportate pentru autoinformarea PBX.")}` : ""}
                 </p>
-                <Link href="/pbx?tab=notificari" className="tap mt-2 inline-flex h-9 cursor-pointer items-center rounded-lg border border-[var(--color-line)] px-4 text-xs font-semibold hover:bg-brand-soft">Deschide registrul de apeluri →</Link>
+                <Link href="/pbx?tab=notificari" className="tap mt-2 inline-flex h-9 cursor-pointer items-center rounded-lg border border-[var(--color-line)] px-4 text-xs font-semibold hover:bg-brand-soft">{tr("Deschide registrul de apeluri →")}</Link>
               </div>
             )}
 
@@ -599,11 +602,11 @@ export default function PayerNotifyDialog({
 
             {failures.length > 0 && (
               <details className="rounded-xl border border-[var(--color-line)] p-3 text-sm" open={failures.length <= 8}>
-                <summary className="cursor-pointer font-semibold text-st-cancelled">Eșuate ({nf(failures.length)})</summary>
+                <summary className="cursor-pointer font-semibold text-st-cancelled">{tr("Eșuate")} ({nf(failures.length)})</summary>
                 <ul className="mt-2 max-h-48 space-y-1 overflow-auto text-xs">
                   {failures.map((f, i) => (
                     <li key={i}>
-                      <b>{f.name}</b> · {f.channel} · <span className="text-ink-soft">{f.detail}</span>
+                      <b>{f.name}</b> · {tr(f.channel)} · <span className="text-ink-soft">{f.detail}</span>
                     </li>
                   ))}
                 </ul>
@@ -613,22 +616,22 @@ export default function PayerNotifyDialog({
             <div className="flex flex-wrap justify-end gap-2">
               {sending ? (
                 <button type="button" onClick={() => (stopRef.current = true)} className="tap h-11 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium hover:bg-[var(--color-surface-2)]">
-                  Oprește după lotul curent
+                  {tr("Oprește după lotul curent")}
                 </button>
               ) : (
                 <>
                   {failedIds.length > 0 && (
                     <button type="button" onClick={() => onSelectFailed(failedIds)} className="tap h-11 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium hover:bg-[var(--color-surface-2)]">
-                      Selectează doar cei eșuați ({nf(failedIds.length)})
+                      {tr("Selectează doar cei eșuați")} ({nf(failedIds.length)})
                     </button>
                   )}
                   {resumeAt !== null && (
                     <button type="button" onClick={() => run(resumeAt)} className="tap h-11 rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong">
-                      Reia
+                      {tr("Reia")}
                     </button>
                   )}
                   <button type="button" onClick={onClose} className="tap h-11 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium hover:bg-[var(--color-surface-2)]">
-                    Închide
+                    {tr("Închide")}
                   </button>
                 </>
               )}
@@ -671,14 +674,17 @@ function ChannelToggle({
   );
 }
 
-function StatCard({ title, s, sentLabel = "Trimise" }: { title: string; s: Channel; sentLabel?: string }) {
+function StatCard({ title, s, sentLabel }: { title: string; s: Channel; sentLabel?: string }) {
+  const tr = useT();
+  const tag = dateTag(useLocale());
+  const nf = (n: number) => n.toLocaleString(tag);
   return (
     <div className="rounded-xl border border-[var(--color-line)] p-3 text-sm">
       <p className="mb-1 font-semibold">{title}</p>
       <p className="flex flex-wrap gap-x-4 text-xs">
-        <span className="text-st-done">{sentLabel}: <b>{nf(s.sent)}</b></span>
-        <span className={s.failed ? "text-st-cancelled" : "text-ink-soft"}>Eșuate: <b>{nf(s.failed)}</b></span>
-        <span className="text-ink-soft">Omise: <b>{nf(s.skipped)}</b></span>
+        <span className="text-st-done">{sentLabel ?? tr("Trimise")}: <b>{nf(s.sent)}</b></span>
+        <span className={s.failed ? "text-st-cancelled" : "text-ink-soft"}>{tr("Eșuate")}: <b>{nf(s.failed)}</b></span>
+        <span className="text-ink-soft">{tr("Omise")}: <b>{nf(s.skipped)}</b></span>
       </p>
     </div>
   );

@@ -15,6 +15,7 @@ import {
 } from "@/lib/payer-notify";
 import { IconX } from "./icons";
 import VoicePicker from "./VoicePicker";
+import { useT } from "@/lib/i18n/context";
 
 type Field = "subject" | "email" | "sms" | "call";
 const EMPTY_DRAFT: PayerTemplateDraft = { name: "", subject: "", email: "", sms: "", call: "", voice: DEFAULT_VOICE };
@@ -39,6 +40,7 @@ export default function PayerTemplatesDialog({
   onDelete: (id: string) => void;
   onClose: () => void;
 }) {
+  const tr = useT();
   // null = doar lista; "new" = formular gol; altfel formular pentru șablonul editat
   const [editing, setEditing] = useState<PayerTemplate | "new" | null>(null);
   const [seed, setSeed] = useState<PayerTemplateDraft | null>(null);
@@ -57,14 +59,14 @@ export default function PayerTemplatesDialog({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="card max-h-[92dvh] w-full max-w-2xl overflow-auto rounded-b-none rounded-t-2xl p-5 sm:rounded-2xl">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 className="text-base font-bold">{editing ? (editing === "new" ? "Șablon nou" : "Editează șablonul") : "Șabloane de mesaje"}</h2>
+          <h2 className="text-base font-bold">{editing ? (editing === "new" ? tr("Șablon nou") : tr("Editează șablonul")) : tr("Șabloane de mesaje")}</h2>
           <div className="flex items-center gap-2">
             {!editing && (
               <button type="button" onClick={() => openNew()} className="tap h-8 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">
-                + Șablon nou
+                + {tr("Șablon nou")}
               </button>
             )}
-            <button onClick={onClose} className="tap grid size-8 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide">
+            <button onClick={onClose} className="tap grid size-8 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={tr("Închide")}>
               <IconX className="size-4" />
             </button>
           </div>
@@ -84,10 +86,10 @@ export default function PayerTemplatesDialog({
         ) : (
           <div className="flex flex-col gap-4">
             <section>
-              <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Șabloanele tale ({templates.length})</h3>
+              <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Șabloanele tale")} ({templates.length})</h3>
               {templates.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-[var(--color-line)] p-4 text-center text-sm text-ink-soft">
-                  Încă nu ai șabloane. Apasă „+ Șablon nou” sau pornește de la unul predefinit de mai jos.
+                  {tr("Încă nu ai șabloane. Apasă „+ Șablon nou” sau pornește de la unul predefinit de mai jos.")}
                 </p>
               ) : (
                 <ul className="flex flex-col gap-1.5">
@@ -107,18 +109,18 @@ export default function PayerTemplatesDialog({
                         {confirmId === t.id ? (
                           <>
                             <button type="button" onClick={() => { setConfirmId(null); onDelete(t.id); }} className="tap h-7 rounded-md bg-st-cancelled px-2.5 text-[11px] font-semibold text-white">
-                              Șterge
+                              {tr("Șterge")}
                             </button>
                             <button type="button" onClick={() => setConfirmId(null)} className="tap h-7 rounded-md border border-[var(--color-line)] px-2.5 text-[11px]">
-                              Nu
+                              {tr("Nu")}
                             </button>
                           </>
                         ) : (
                           <>
-                            <button type="button" disabled={pending} onClick={() => openEdit(t)} title="Editează" className="tap grid size-7 place-items-center rounded-md border border-[var(--color-line)] text-xs hover:bg-brand-soft disabled:opacity-40">
+                            <button type="button" disabled={pending} onClick={() => openEdit(t)} title={tr("Editează")} className="tap grid size-7 place-items-center rounded-md border border-[var(--color-line)] text-xs hover:bg-brand-soft disabled:opacity-40">
                               ✎
                             </button>
-                            <button type="button" disabled={pending} onClick={() => setConfirmId(t.id)} title="Șterge" className="tap grid size-7 place-items-center rounded-md border border-[var(--color-line)] text-xs text-st-cancelled hover:bg-[var(--color-surface-2)] disabled:opacity-40">
+                            <button type="button" disabled={pending} onClick={() => setConfirmId(t.id)} title={tr("Șterge")} className="tap grid size-7 place-items-center rounded-md border border-[var(--color-line)] text-xs text-st-cancelled hover:bg-[var(--color-surface-2)] disabled:opacity-40">
                               🗑
                             </button>
                           </>
@@ -131,16 +133,16 @@ export default function PayerTemplatesDialog({
             </section>
 
             <section>
-              <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Predefinite (pornește de la ele)</h3>
+              <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Predefinite (pornește de la ele)")}</h3>
               <div className="flex flex-wrap gap-1.5">
                 {NOTIFY_PRESETS.map((p) => (
                   <button
                     key={p.key}
                     type="button"
-                    onClick={() => openNew({ name: p.label, subject: p.subject, email: p.email, sms: p.sms, call: p.call, voice: DEFAULT_VOICE })}
+                    onClick={() => openNew({ name: tr(p.label), subject: p.subject, email: p.email, sms: p.sms, call: p.call, voice: DEFAULT_VOICE })}
                     className="tap h-7 rounded-full border border-[var(--color-line)] px-3 text-xs hover:border-brand hover:bg-brand-soft"
                   >
-                    {p.label}
+                    {tr(p.label)}
                   </button>
                 ))}
               </div>
@@ -161,6 +163,7 @@ function TemplateForm({
   onSave: (d: PayerTemplateDraft) => void;
   onCancel: () => void;
 }) {
+  const tr = useT();
   const [d, setD] = useState(seed);
   const [err, setErr] = useState<string | null>(null);
   const last = useRef<Field>("email");
@@ -185,8 +188,8 @@ function TemplateForm({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!d.name.trim()) return setErr("Dă un nume șablonului.");
-    if (!d.email.trim() && !d.sms.trim() && !d.call.trim()) return setErr("Scrie măcar un mesaj: email, SMS sau apel.");
+    if (!d.name.trim()) return setErr(tr("Dă un nume șablonului."));
+    if (!d.email.trim() && !d.sms.trim() && !d.call.trim()) return setErr(tr("Scrie măcar un mesaj: email, SMS sau apel."));
     onSave({ ...d, name: d.name.trim(), subject: d.subject.trim() });
   }
 
@@ -196,14 +199,14 @@ function TemplateForm({
         value={d.name}
         maxLength={NOTIFY_MAX_TEMPLATE_NAME}
         onChange={(e) => setD({ ...d, name: e.target.value })}
-        placeholder="Nume șablon *"
+        placeholder={tr("Nume șablon *")}
         autoFocus
         className={`${inputCls} h-10`}
       />
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-xs font-semibold text-ink-soft">Inserează:</span>
+        <span className="text-xs font-semibold text-ink-soft">{tr("Inserează:")}</span>
         {NOTIFY_TOKENS.map((t) => (
-          <button key={t.key} type="button" onClick={() => insert(t.key)} title={t.label} className="tap h-6 rounded-md bg-[var(--color-surface-2)] px-2 font-mono text-[11px] hover:bg-brand-soft">
+          <button key={t.key} type="button" onClick={() => insert(t.key)} title={tr(t.label)} className="tap h-6 rounded-md bg-[var(--color-surface-2)] px-2 font-mono text-[11px] hover:bg-brand-soft">
             {`{${t.key}}`}
           </button>
         ))}
@@ -214,7 +217,7 @@ function TemplateForm({
         maxLength={NOTIFY_MAX_SUBJECT}
         onFocus={() => (last.current = "subject")}
         onChange={(e) => setD({ ...d, subject: e.target.value })}
-        placeholder="Email — subiect"
+        placeholder={tr("Email — subiect")}
         className={`${inputCls} h-10`}
       />
       <textarea
@@ -224,7 +227,7 @@ function TemplateForm({
         onFocus={() => (last.current = "email")}
         onChange={(e) => setD({ ...d, email: e.target.value })}
         rows={6}
-        placeholder="Email — mesaj"
+        placeholder={tr("Email — mesaj")}
         className={`${inputCls} py-2`}
       />
       <textarea
@@ -234,11 +237,11 @@ function TemplateForm({
         onFocus={() => (last.current = "sms")}
         onChange={(e) => setD({ ...d, sms: e.target.value })}
         rows={3}
-        placeholder="SMS — mesaj (scurt)"
+        placeholder={tr("SMS — mesaj (scurt)")}
         className={`${inputCls} py-2`}
       />
       <div className="rounded-lg border border-[var(--color-line)] p-2.5">
-        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">📞 Apel — mesaj vorbit</p>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">📞 {tr("Apel — mesaj vorbit")}</p>
         <textarea
           ref={callRef}
           value={d.call}
@@ -246,7 +249,7 @@ function TemplateForm({
           onFocus={() => (last.current = "call")}
           onChange={(e) => setD({ ...d, call: e.target.value })}
           rows={4}
-          placeholder="Textul pe care îl citește vocea… ex. Bună ziua, {nume}. Aveți de achitat {suma}…"
+          placeholder={tr("Textul pe care îl citește vocea… ex. Bună ziua, {nume}. Aveți de achitat {suma}…", { nume: "{nume}", suma: "{suma}" })}
           className={`${inputCls} mb-2 py-2`}
         />
         <VoicePicker voice={d.voice} text={d.call} onChange={(voice) => setD({ ...d, voice })} compact />
@@ -254,10 +257,10 @@ function TemplateForm({
       {err && <p className="text-sm text-st-cancelled">{err}</p>}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancel} className="tap h-10 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]">
-          Înapoi
+          {tr("Înapoi")}
         </button>
         <button type="submit" className="tap h-10 rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong">
-          Salvează
+          {tr("Salvează")}
         </button>
       </div>
     </form>

@@ -27,6 +27,8 @@ import { resolveNotifyFilterAction, type RecipientResult } from "@/app/actions/p
 import { INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatusKey } from "./invoice-meta";
 import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useToast } from "./toast";
+import { useLocale, useT } from "@/lib/i18n/context";
+import { dateTag } from "@/lib/i18n/t";
 import PayerNotifyDialog, { type Recipient } from "./PayerNotifyDialog";
 import PayerTemplatesDialog from "./PayerTemplatesDialog";
 import CompactCard, { CompactField } from "./CompactCard";
@@ -42,13 +44,6 @@ import {
 import type { PayerTemplate, PayerTemplateDraft } from "@/lib/payer-notify";
 
 type Page = { items: PayerRow[]; total: number };
-
-const LUNI = ["ianuarie", "februarie", "martie", "aprilie", "mai", "iunie", "iulie", "august", "septembrie", "octombrie", "noiembrie", "decembrie"];
-const monthLabel = (m: string) => `${LUNI[Number(m.slice(5, 7)) - 1] ?? m.slice(5, 7)} ${m.slice(0, 4)}`;
-const nf = (n: number) => n.toLocaleString("ro-RO");
-const money = (n: number) => n.toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtDay = (iso: string) =>
-  new Date(iso).toLocaleDateString("ro-RO", { timeZone: "Europe/Bucharest", day: "2-digit", month: "2-digit", year: "numeric" });
 
 // Aceleași clase ca filtrele din Task-uri: câmpul cu valoare aleasă capătă fundal/chenar colorat.
 const fld = (val: string) =>
@@ -129,6 +124,13 @@ export default function PayerNotifyManager({
   nameFixCount?: number;
 }) {
   const toast = useToast();
+  const t = useT();
+  const tag = dateTag(useLocale());
+  const nf = (n: number) => n.toLocaleString(tag);
+  const money = (n: number) => n.toLocaleString(tag, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmtDay = (iso: string) =>
+    new Date(iso).toLocaleDateString(tag, { timeZone: "Europe/Bucharest", day: "2-digit", month: "2-digit", year: "numeric" });
+  const monthLabel = (m: string) => new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1).toLocaleDateString(tag, { month: "long", year: "numeric" });
   const canSend = canSendProp && !browseOnly;
   const canSelect = canSend || canDelete;
   const [deleting, setDeleting] = useState(false);
@@ -185,34 +187,34 @@ export default function PayerNotifyManager({
 
   function createTemplate(d: PayerTemplateDraft) {
     const tmp = `tmp-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    setTemplates((t) => [{ id: tmp, ...d }, ...t]);
+    setTemplates((ts) => [{ id: tmp, ...d }, ...ts]);
     createPayerTemplateAction(d)
       .then((res) => {
-        if (res.ok) setTemplates((t) => t.map((x) => (x.id === tmp ? res.template : x)));
-        else { setTemplates((t) => t.filter((x) => x.id !== tmp)); toast.error(res.error); }
+        if (res.ok) setTemplates((ts) => ts.map((x) => (x.id === tmp ? res.template : x)));
+        else { setTemplates((ts) => ts.filter((x) => x.id !== tmp)); toast.error(res.error); }
       })
-      .catch(() => { setTemplates((t) => t.filter((x) => x.id !== tmp)); toast.error("Nu am putut salva șablonul."); });
+      .catch(() => { setTemplates((ts) => ts.filter((x) => x.id !== tmp)); toast.error(t("Nu am putut salva șablonul.")); });
   }
 
   function updateTemplate(id: string, d: PayerTemplateDraft) {
     const prev = templates.find((x) => x.id === id);
-    setTemplates((t) => t.map((x) => (x.id === id ? { id, ...d } : x)));
+    setTemplates((ts) => ts.map((x) => (x.id === id ? { id, ...d } : x)));
     const revert = (msg: string) => {
-      if (prev) setTemplates((t) => t.map((x) => (x.id === id ? prev : x)));
+      if (prev) setTemplates((ts) => ts.map((x) => (x.id === id ? prev : x)));
       toast.error(msg);
     };
     updatePayerTemplateAction(id, d)
       .then((res) => { if (!res.ok) revert(res.error); })
-      .catch(() => revert("Nu am putut salva modificarea."));
+      .catch(() => revert(t("Nu am putut salva modificarea.")));
   }
 
   function deleteTemplate(id: string) {
     const prevList = templates;
-    setTemplates((t) => t.filter((x) => x.id !== id));
+    setTemplates((ts) => ts.filter((x) => x.id !== id));
     const revert = (msg: string) => { setTemplates(prevList); toast.error(msg); };
     deletePayerTemplateAction(id)
       .then((res) => { if (!res.ok) revert(res.error); })
-      .catch(() => revert("Nu am putut șterge șablonul."));
+      .catch(() => revert(t("Nu am putut șterge șablonul.")));
   }
 
   const [compose, setCompose] = useState<{ recipients: Recipient[]; previewRow: PayerRow | null } | null>(null);
@@ -311,7 +313,7 @@ export default function PayerNotifyManager({
     fetch(`/api/platitori/notificari?${key}`, { signal: ctl.signal })
       .then(async (r) => {
         const j = await r.json();
-        if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
+        if (!r.ok) throw new Error(j.error ?? t("Eroare la încărcare."));
         return j as Page;
       })
       .then((j) => {
@@ -339,7 +341,7 @@ export default function PayerNotifyManager({
     void refreshDataset();
     cache.current.clear();
     forceReload.current = true;
-    setReloadTick((t) => t + 1);
+    setReloadTick((n) => n + 1);
   }, [refreshDataset]);
 
   function setFilter(patch: Partial<NotifyFilters>) {
@@ -354,7 +356,7 @@ export default function PayerNotifyManager({
   }
 
   function clearAll() {
-    Object.values(debounce.current).forEach((t) => clearTimeout(t));
+    Object.values(debounce.current).forEach((h) => clearTimeout(h));
     setFilters(EMPTY_FILTERS);
     setDraft({ q: "", street: "", minDebt: "", maxDebt: "" });
     setPage(1);
@@ -405,8 +407,8 @@ export default function PayerNotifyManager({
       setSelected(new Map(capped.map((r) => [r.id, flagsOf(r)] as [string, number])));
       toast.success(
         localList.length > capped.length
-          ? `Am selectat primii ${nf(capped.length)} din ${nf(localList.length)} (limita unei trimiteri).`
-          : `${nf(capped.length)} plătitori selectați.`,
+          ? t("Am selectat primii {n} din {total} (limita unei trimiteri).", { n: nf(capped.length), total: nf(localList.length) })
+          : t("{n} plătitori selectați.", { n: nf(capped.length) }),
       );
       return;
     }
@@ -419,11 +421,11 @@ export default function PayerNotifyManager({
       setSelected(new Map(res.contacts));
       toast.success(
         res.truncated
-          ? `Am selectat primii ${nf(res.contacts.length)} din ${nf(res.total)} (limita unei trimiteri).`
-          : `${nf(res.contacts.length)} plătitori selectați.`,
+          ? t("Am selectat primii {n} din {total} (limita unei trimiteri).", { n: nf(res.contacts.length), total: nf(res.total) })
+          : t("{n} plătitori selectați.", { n: nf(res.contacts.length) }),
       );
     } catch {
-      if (token === resolveToken.current) toast.error("Nu am putut selecta lista. Încearcă din nou.");
+      if (token === resolveToken.current) toast.error(t("Nu am putut selecta lista. Încearcă din nou."));
     } finally {
       if (token === resolveToken.current) setResolving(false);
     }
@@ -452,7 +454,7 @@ export default function PayerNotifyManager({
       setData((d) => ({ ...d, items: d.items.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
       patchRow(id, patch);
     },
-    [patchRow],
+    [patchRow, setDetailRow],
   );
   // Actualizare optimistă: imediat ce un lot a plecat, „Ultima notificare" se vede în tabel, fără reîncărcare.
   const onSent = useCallback((results: RecipientResult[]) => {
@@ -486,12 +488,12 @@ export default function PayerNotifyManager({
     <div>
       {!browseOnly && !emailEnabled && !smsEnabled && (
         <div className="mb-3 rounded-xl border border-st-progress/30 bg-st-progress/10 px-4 py-3 text-sm text-st-progress">
-          Niciun canal de trimitere nu este configurat. Setează <b>SMTP_*</b> pentru email și <b>TWILIO_*</b> sau <b>SMS_HTTP_URL</b> pentru SMS (vezi .env.example).
+          {t("Niciun canal de trimitere nu este configurat. Setează SMTP_* pentru email și TWILIO_* sau SMS_HTTP_URL pentru SMS (vezi .env.example).")}
         </div>
       )}
       {!browseOnly && (emailEnabled !== smsEnabled) && (
         <p className="mb-3 text-xs text-ink-soft">
-          {emailEnabled ? "SMS-ul nu este configurat — poți trimite doar email." : "Emailul nu este configurat — poți trimite doar SMS."}
+          {emailEnabled ? t("SMS-ul nu este configurat — poți trimite doar email.") : t("Emailul nu este configurat — poți trimite doar SMS.")}
         </p>
       )}
 
@@ -503,8 +505,8 @@ export default function PayerNotifyManager({
             filters.nameFix ? "border-brand bg-brand-soft text-brand-strong" : "border-st-progress/30 bg-st-progress/10 text-st-progress"
           }`}
         >
-          <span><b>{nf(nameFixCount)} nume</b> conțin un caracter „?” — litere românești (Ș/Ț) pe care exportul original nu le putea reprezenta.</span>
-          <span className="shrink-0 font-medium underline">{filters.nameFix ? "Arată pe toți" : "Arată-le"}</span>
+          <span>{t("{n} nume conțin un caracter „?” — litere românești (Ș/Ț) pe care exportul original nu le putea reprezenta.", { n: nf(nameFixCount) })}</span>
+          <span className="shrink-0 font-medium underline">{filters.nameFix ? t("Arată pe toți") : t("Arată-le")}</span>
         </button>
       )}
 
@@ -513,89 +515,89 @@ export default function PayerNotifyManager({
         <input
           value={draft.q}
           onChange={(e) => onText("q", e.target.value)}
-          placeholder="Caută nume, cont, contract, email, telefon…"
+          placeholder={t("Caută nume, cont, contract, email, telefon…")}
           className={`${txtFld(draft.q)} min-w-48 flex-1`}
-          aria-label="Căutare"
+          aria-label={t("Căutare")}
         />
         <input
           value={draft.street}
           onChange={(e) => onText("street", e.target.value)}
-          placeholder="Stradă / adresă…"
+          placeholder={t("Stradă / adresă…")}
           className={`${txtFld(draft.street)} w-44`}
-          aria-label="Adresă"
+          aria-label={t("Adresă")}
         />
-        <select value={filters.month} onChange={(e) => setFilter({ month: e.target.value })} className={fld(filters.month)} aria-label="Luna facturii">
-          <option value="">Luna facturii: ultima</option>
+        <select value={filters.month} onChange={(e) => setFilter({ month: e.target.value })} className={fld(filters.month)} aria-label={t("Luna facturii")}>
+          <option value="">{t("Luna facturii: ultima")}</option>
           {months.map((m) => (
-            <option key={m.month} value={m.month}>Factura pe {monthLabel(m.month)} ({nf(m.count)})</option>
+            <option key={m.month} value={m.month}>{t("Factura pe {month}", { month: monthLabel(m.month) })} ({nf(m.count)})</option>
           ))}
         </select>
-        <select value={filters.contact} onChange={(e) => setFilter({ contact: e.target.value as NotifyFilters["contact"] })} className={fld(filters.contact)} aria-label="Date de contact">
-          <option value="">Contact: toți</option>
-          {CONTACT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <select value={filters.contact} onChange={(e) => setFilter({ contact: e.target.value as NotifyFilters["contact"] })} className={fld(filters.contact)} aria-label={t("Date de contact")}>
+          <option value="">{t("Contact: toți")}</option>
+          {CONTACT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
         </select>
-        <select value={filters.debt} onChange={(e) => setFilter({ debt: e.target.value as NotifyFilters["debt"] })} className={fld(filters.debt)} aria-label="Datorie">
-          <option value="">Sold: toate</option>
-          <option value="has">Cu datorie</option>
-          <option value="none">Fără datorie</option>
+        <select value={filters.debt} onChange={(e) => setFilter({ debt: e.target.value as NotifyFilters["debt"] })} className={fld(filters.debt)} aria-label={t("Datorie")}>
+          <option value="">{t("Sold: toate")}</option>
+          <option value="has">{t("Cu datorie")}</option>
+          <option value="none">{t("Fără datorie")}</option>
         </select>
         <input
           value={draft.minDebt}
           onChange={(e) => onText("minDebt", e.target.value)}
           inputMode="decimal"
-          placeholder="Sold de la"
+          placeholder={t("Sold de la")}
           className={`${txtFld(draft.minDebt)} w-24`}
-          aria-label="Sold minim"
+          aria-label={t("Sold minim")}
         />
         <input
           value={draft.maxDebt}
           onChange={(e) => onText("maxDebt", e.target.value)}
           inputMode="decimal"
-          placeholder="până la"
+          placeholder={t("până la")}
           className={`${txtFld(draft.maxDebt)} w-24`}
-          aria-label="Sold maxim"
+          aria-label={t("Sold maxim")}
         />
-        <select value={filters.invoiceStatus} onChange={(e) => setFilter({ invoiceStatus: e.target.value })} className={fld(filters.invoiceStatus)} aria-label="Status factură">
-          <option value="">Status factură</option>
-          {INVOICE_STATUS_LIST.map((s) => <option key={s} value={s}>{INVOICE_STATUS[s].label}</option>)}
+        <select value={filters.invoiceStatus} onChange={(e) => setFilter({ invoiceStatus: e.target.value })} className={fld(filters.invoiceStatus)} aria-label={t("Status factură")}>
+          <option value="">{t("Status factură")}</option>
+          {INVOICE_STATUS_LIST.map((s) => <option key={s} value={s}>{t(INVOICE_STATUS[s].label)}</option>)}
         </select>
-        <select value={filters.notified} onChange={(e) => setFilter({ notified: e.target.value as NotifyFilters["notified"] })} className={fld(filters.notified)} aria-label="Ultima notificare">
-          <option value="">Notificat: oricând</option>
-          {NOTIFIED_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <select value={filters.notified} onChange={(e) => setFilter({ notified: e.target.value as NotifyFilters["notified"] })} className={fld(filters.notified)} aria-label={t("Ultima notificare")}>
+          <option value="">{t("Notificat: oricând")}</option>
+          {NOTIFIED_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
         </select>
-        <select value={filters.invoices} onChange={(e) => setFilter({ invoices: e.target.value as NotifyFilters["invoices"] })} className={fld(filters.invoices)} aria-label="Facturi">
-          <option value="">Facturi: toate</option>
-          <option value="none">Fără nicio factură</option>
+        <select value={filters.invoices} onChange={(e) => setFilter({ invoices: e.target.value as NotifyFilters["invoices"] })} className={fld(filters.invoices)} aria-label={t("Facturi")}>
+          <option value="">{t("Facturi: toate")}</option>
+          <option value="none">{t("Fără nicio factură")}</option>
         </select>
-        <select value={filters.kind} onChange={(e) => setFilter({ kind: e.target.value as NotifyFilters["kind"] })} className={fld(filters.kind)} aria-label="Tip plătitor">
-          <option value="">Tip: toți</option>
-          <option value="person">Persoane fizice</option>
-          <option value="company">Firme / instituții</option>
+        <select value={filters.kind} onChange={(e) => setFilter({ kind: e.target.value as NotifyFilters["kind"] })} className={fld(filters.kind)} aria-label={t("Tip plătitor")}>
+          <option value="">{t("Tip: toți")}</option>
+          <option value="person">{t("Persoane fizice")}</option>
+          <option value="company">{t("Firme / instituții")}</option>
         </select>
-        <select value={filters.sector} onChange={(e) => setFilter({ sector: e.target.value as NotifyFilters["sector"] })} className={fld(filters.sector)} aria-label="Sector">
-          <option value="">Toate sectoarele</option>
-          <option value="privat">Sector privat</option>
-          <option value="comunal">Sector comunal</option>
+        <select value={filters.sector} onChange={(e) => setFilter({ sector: e.target.value as NotifyFilters["sector"] })} className={fld(filters.sector)} aria-label={t("Sector")}>
+          <option value="">{t("Toate sectoarele")}</option>
+          <option value="privat">{t("Sector privat")}</option>
+          <option value="comunal">{t("Sector comunal")}</option>
         </select>
-        <select value={filters.account} onChange={(e) => setFilter({ account: e.target.value as NotifyFilters["account"] })} className={fld(filters.account)} aria-label="Cont portal">
-          <option value="">Cont portal: toate</option>
-          <option value="activated">Activat</option>
-          <option value="pending">Neactivat</option>
+        <select value={filters.account} onChange={(e) => setFilter({ account: e.target.value as NotifyFilters["account"] })} className={fld(filters.account)} aria-label={t("Cont portal")}>
+          <option value="">{t("Cont portal: toate")}</option>
+          <option value="activated">{t("Activat")}</option>
+          <option value="pending">{t("Neactivat")}</option>
         </select>
         <input
           type="date"
           value={filters.installedFrom}
           onChange={(e) => setFilter({ installedFrom: e.target.value })}
-          title="Contor instalat după data"
-          aria-label="Contor instalat după data"
+          title={t("Contor instalat după data")}
+          aria-label={t("Contor instalat după data")}
           className={txtFld(filters.installedFrom)}
         />
-        <select value={filters.sort} onChange={(e) => setFilter({ sort: e.target.value as NotifyFilters["sort"] })} className={fld(filters.sort)} aria-label="Sortare">
-          <option value="">Sortare: nume (A-Z)</option>
-          <option value="debtDesc">Sold: descrescător</option>
-          <option value="debtAsc">Sold: crescător</option>
-          <option value="installDesc">Instalare: recente</option>
-          <option value="installAsc">Instalare: vechi</option>
+        <select value={filters.sort} onChange={(e) => setFilter({ sort: e.target.value as NotifyFilters["sort"] })} className={fld(filters.sort)} aria-label={t("Sortare")}>
+          <option value="">{t("Sortare: nume (A-Z)")}</option>
+          <option value="debtDesc">{t("Sold: descrescător")}</option>
+          <option value="debtAsc">{t("Sold: crescător")}</option>
+          <option value="installDesc">{t("Instalare: recente")}</option>
+          <option value="installAsc">{t("Instalare: vechi")}</option>
         </select>
         {(active > 0 || filters.sort) && (
           <button
@@ -603,7 +605,7 @@ export default function PayerNotifyManager({
             onClick={clearAll}
             className="tap h-7 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]"
           >
-            Resetează filtrele{active > 0 ? ` (${active})` : ""}
+            {t("Resetează filtrele")}{active > 0 ? ` (${active})` : ""}
           </button>
         )}
       </div>
@@ -615,7 +617,7 @@ export default function PayerNotifyManager({
             <ExportButton
               entity="payers"
               params={{ ...Object.fromEntries(Object.entries(sanitizeFilters(filters)).filter(([, v]) => v)) }}
-              label="Export (cu filtrele)"
+              label={t("Export (cu filtrele)")}
               className="tap inline-flex h-6 items-center gap-1 rounded-full border border-[var(--color-line)] px-2.5 text-[11px] hover:border-brand hover:bg-brand-soft"
             />
           </span>
@@ -625,9 +627,9 @@ export default function PayerNotifyManager({
             type="button"
             onClick={() => setTplOpen(true)}
             className="tap ml-auto h-6 rounded-full border border-[var(--color-line)] px-3 hover:border-brand hover:bg-brand-soft"
-            title="Creează, editează sau șterge șabloanele de mesaje"
+            title={t("Creează, editează sau șterge șabloanele de mesaje")}
           >
-            📝 Șabloane{templates.length ? ` (${templates.length})` : ""}
+            📝 {t("Șabloane")}{templates.length ? ` (${templates.length})` : ""}
           </button>
         )}
       </div>
@@ -637,10 +639,10 @@ export default function PayerNotifyManager({
         <div className={`mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs ${selCount ? "border-brand bg-brand/10" : "border-[var(--color-line)] bg-[var(--color-surface-2)]"}`}>
           {selCount > 0 ? (
             <span className="font-semibold text-brand">
-              {nf(selCount)} selectați {canSend && <span className="font-normal text-ink-soft">· {nf(selEmail)} cu email · {nf(selPhone)} cu telefon</span>}
+              {t("{n} selectați", { n: nf(selCount) })} {canSend && <span className="font-normal text-ink-soft">· {t("{n} cu email", { n: nf(selEmail) })} · {t("{n} cu telefon", { n: nf(selPhone) })}</span>}
             </span>
           ) : (
-            <span className="text-ink-soft">Bifează plătitorii (Shift = interval) sau selectează-i pe toți din filtru. Click pe un rând = datele lui.</span>
+            <span className="text-ink-soft">{t("Bifează plătitorii (Shift = interval) sau selectează-i pe toți din filtru. Click pe un rând = datele lui.")}</span>
           )}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {view.total > 0 && (
@@ -650,12 +652,12 @@ export default function PayerNotifyManager({
                 disabled={resolving}
                 className="tap h-7 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-60"
               >
-                {resolving ? "Se selectează…" : (view.total > pageRows.length ? `Selectează toți cei ${nf(view.total)} din filtru (toate paginile)` : `Selectează toți cei ${nf(view.total)} din filtru`)}
+                {resolving ? t("Se selectează…") : (view.total > pageRows.length ? t("Selectează toți cei {n} din filtru (toate paginile)", { n: nf(view.total) }) : t("Selectează toți cei {n} din filtru", { n: nf(view.total) }))}
               </button>
             )}
             {selCount > 0 && (
               <button type="button" onClick={() => setSelected(new Map())} className="tap h-7 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] hover:bg-[var(--color-surface-2)]">
-                Golește selecția
+                {t("Golește selecția")}
               </button>
             )}
             {canDelete && (
@@ -664,9 +666,9 @@ export default function PayerNotifyManager({
                 onClick={() => setDeleting(true)}
                 disabled={selCount === 0}
                 className="tap h-7 rounded-lg border border-st-cancelled/40 px-3 text-[11px] font-semibold text-st-cancelled hover:bg-st-cancelled/10 disabled:opacity-40"
-                title="Șterge plătitorii selectați (doar cei fără facturi etc.)"
+                title={t("Șterge plătitorii selectați (doar cei fără facturi etc.)")}
               >
-                🗑 Șterge selectați{selCount ? ` (${nf(selCount)})` : ""}
+                🗑 {t("Șterge selectați")}{selCount ? ` (${nf(selCount)})` : ""}
               </button>
             )}
             {canSend && (
@@ -676,7 +678,7 @@ export default function PayerNotifyManager({
                 disabled={selCount === 0}
                 className="tap h-7 rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:opacity-40"
               >
-                ✉ Trimite notificare{selCount ? ` (${nf(selCount)})` : ""}
+                ✉ {t("Trimite notificare")}{selCount ? ` (${nf(selCount)})` : ""}
               </button>
             )}
           </div>
@@ -685,40 +687,40 @@ export default function PayerNotifyManager({
 
       {/* ── Sumar + rânduri pe pagină ─────────────────────────────────────── */}
       <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-        <span><b>{nf(view.total)}</b> plătitori{active > 0 ? " (filtrat)" : ""}</span>
-        {view.total > 0 && <span className="text-ink-soft">afișați {nf(from)}–{nf(to)} din {nf(view.total)}{totalPages > 1 ? ` · pagina ${page}/${totalPages}` : ""}</span>}
-        {loading && <span className="text-ink-soft">se încarcă…</span>}
+        <span><b>{nf(view.total)}</b> {t("plătitori")}{active > 0 ? ` ${t("(filtrat)")}` : ""}</span>
+        {view.total > 0 && <span className="text-ink-soft">{t("afișați {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(view.total) })}{totalPages > 1 ? ` · ${t("pagina {cur}/{pages}", { cur: page, pages: totalPages })}` : ""}</span>}
+        {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}
         {ds.rows ? (
           <button
             type="button"
             onClick={() => void ds.refresh()}
             disabled={ds.loading}
-            title="Lista e ținută în memorie și filtrată instant în browser. Apasă ca să o reîncarci de pe server."
+            title={t("Lista e ținută în memorie și filtrată instant în browser. Apasă ca să o reîncarci de pe server.")}
             className="tap cursor-pointer text-ink-soft hover:text-brand disabled:cursor-default"
           >
-            ⚡ local{ds.loading ? " · se reîmprospătează…" : ds.loadedAt ? ` · ${agoLabel(new Date(ds.loadedAt).toISOString())}` : ""} ↻
+            ⚡ {t("local")}{ds.loading ? ` · ${t("se reîmprospătează…")}` : ds.loadedAt ? ` · ${agoLabel(new Date(ds.loadedAt).toISOString(), t)}` : ""} ↻
           </button>
         ) : ds.loading ? (
-          <span className="text-ink-soft">se încarcă lista completă…</span>
+          <span className="text-ink-soft">{t("se încarcă lista completă…")}</span>
         ) : null}
         <button
           type="button"
           onClick={toggleCards}
           aria-pressed={cards}
-          title={cards ? "Înapoi la tabel" : "Afișează plătitorii într-o coloană mică; apeși pe unul ca să vezi detaliile (potrivit pentru telefon)"}
+          title={cards ? t("Înapoi la tabel") : t("Afișează plătitorii într-o coloană mică; apeși pe unul ca să vezi detaliile (potrivit pentru telefon)")}
           className={`tap ml-auto h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
         >
-          {cards ? "▦ Tabel" : "📱 Mod telefon"}
+          {cards ? `▦ ${t("Tabel")}` : `📱 ${t("Mod telefon")}`}
         </button>
         <label className="flex items-center gap-1.5 text-xs text-ink-soft">
-          Afișează
+          {t("Afișează")}
           <select
             value={perPage}
             onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
             className={fld(perPage === DEFAULT_PER_PAGE ? "" : "x")}
-            aria-label="Rânduri pe pagină"
+            aria-label={t("Rânduri pe pagină")}
           >
-            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n)}</option>)}
+            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
           </select>
         </label>
       </div>
@@ -726,7 +728,7 @@ export default function PayerNotifyManager({
       {error && (
         <p className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
           {error}
-          <button type="button" onClick={reload} className="tap shrink-0 font-semibold underline">Reîncearcă</button>
+          <button type="button" onClick={reload} className="tap shrink-0 font-semibold underline">{t("Reîncearcă")}</button>
         </p>
       )}
 
@@ -750,7 +752,7 @@ export default function PayerNotifyManager({
                       checked={sel}
                       onChange={() => toggleRow(i, false)}
                       className="size-4 shrink-0 cursor-pointer accent-[var(--color-brand)]"
-                      aria-label={`Selectează ${r.name}`}
+                      aria-label={`${t("Selectează")} ${r.name}`}
                     />
                   ) : undefined
                 }
@@ -758,38 +760,38 @@ export default function PayerNotifyManager({
                 subtitle={
                   <>
                     <span>{r.meterSeries ?? r.contract ?? "—"}</span>
-                    {st && <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{st.label}</span>}
+                    {st && <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{t(st.label)}</span>}
                   </>
                 }
                 trailing={r.latestInvoice ? <span className={`tabular-nums ${r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>{money(r.latestInvoice.grandTotal)}</span> : undefined}
               >
                 <dl>
-                  <CompactField label="Adresă">{r.consumAddress ?? <Dash />}</CompactField>
-                  <CompactField label="Email">
-                    {r.email ? <span className={flags & 1 ? "" : "text-st-progress"} title={flags & 1 ? undefined : "Adresă invalidă"}>{r.email}</span> : <Dash />}
+                  <CompactField label={t("Adresă")}>{r.consumAddress ?? <Dash />}</CompactField>
+                  <CompactField label={t("Email")}>
+                    {r.email ? <span className={flags & 1 ? "" : "text-st-progress"} title={flags & 1 ? undefined : t("Adresă invalidă")}>{r.email}</span> : <Dash />}
                   </CompactField>
-                  <CompactField label="Telefon">
-                    {r.phone ? <span className={`tabular-nums ${flags & 2 ? "" : "text-st-progress"}`} title={flags & 2 ? undefined : "Număr invalid pentru SMS"}>{r.phone}</span> : <Dash />}
+                  <CompactField label={t("Telefon")}>
+                    {r.phone ? <span className={`tabular-nums ${flags & 2 ? "" : "text-st-progress"}`} title={flags & 2 ? undefined : t("Număr invalid pentru SMS")}>{r.phone}</span> : <Dash />}
                   </CompactField>
-                  <CompactField label="Factură">{r.latestInvoice?.number ?? <Dash />}</CompactField>
-                  <CompactField label="Scadență">{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</CompactField>
-                  <CompactField label="Portal">{r.activated ? <span className="text-st-done">✓ activ</span> : <span className="text-ink-soft/60">—</span>}</CompactField>
-                  <CompactField label="Facturi">{r.invoiceCount}</CompactField>
-                  <CompactField label="Ultima notificare">
-                    {r.lastNotifiedAt ? <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt)}</span> : <Dash />}
+                  <CompactField label={t("Factură")}>{r.latestInvoice?.number ?? <Dash />}</CompactField>
+                  <CompactField label={t("Scadență")}>{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</CompactField>
+                  <CompactField label={t("Portal")}>{r.activated ? <span className="text-st-done">✓ {t("activ")}</span> : <span className="text-ink-soft/60">—</span>}</CompactField>
+                  <CompactField label={t("Facturi")}>{r.invoiceCount}</CompactField>
+                  <CompactField label={t("Ultima notificare")}>
+                    {r.lastNotifiedAt ? <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt, t)}</span> : <Dash />}
                   </CompactField>
                 </dl>
                 <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-line)]/60 px-2.5 py-1.5">
-                  <button type="button" onClick={() => setDetailRow(r)} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">Fișa plătitorului</button>
+                  <button type="button" onClick={() => setDetailRow(r)} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">{t("Fișa plătitorului")}</button>
                   {canSend && (
                     <button
                       type="button"
                       disabled={flags === 0}
                       onClick={() => openForRow(r)}
-                      title={flags === 0 ? "Fără email/telefon valid" : "Trimite doar acestui plătitor"}
+                      title={flags === 0 ? t("Fără email/telefon valid") : t("Trimite doar acestui plătitor")}
                       className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft disabled:cursor-default disabled:opacity-30"
                     >
-                      ✉ Trimite
+                      ✉ {t("Trimite")}
                     </button>
                   )}
                 </div>
@@ -798,8 +800,8 @@ export default function PayerNotifyManager({
           })}
           {pageRows.length === 0 && !loading && (
             <div className="card p-8 text-center text-ink-soft">
-              Niciun plătitor cu filtrele acestea.{" "}
-              {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">Resetează filtrele</button>}
+              {t("Niciun plătitor cu filtrele acestea.")}{" "}
+              {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">{t("Resetează filtrele")}</button>}
             </div>
           )}
         </div>
@@ -816,28 +818,28 @@ export default function PayerNotifyManager({
                     checked={allOnPage}
                     onChange={togglePage}
                     className="size-3 accent-[var(--color-brand)]"
-                    aria-label="Selectează pagina"
+                    aria-label={t("Selectează pagina")}
                   />
                 </th>
               )}
               <Th sticky={canSelect ? "left-7" : "left-0"} minW={190}>
-                <button type="button" onClick={() => setFilter({ sort: "" })} className="font-semibold hover:text-brand">Plătitor</button>
+                <button type="button" onClick={() => setFilter({ sort: "" })} className="font-semibold hover:text-brand">{t("Plătitor")}</button>
               </Th>
-              <Th minW={95}>Cont / contract</Th>
-              <Th minW={160}>Adresă</Th>
-              <Th minW={160}>Email</Th>
-              <Th minW={95}>Telefon</Th>
-              <Th minW={80}>Factură</Th>
-              <Th minW={70}>Scadență</Th>
+              <Th minW={95}>{t("Cont / contract")}</Th>
+              <Th minW={160}>{t("Adresă")}</Th>
+              <Th minW={160}>{t("Email")}</Th>
+              <Th minW={95}>{t("Telefon")}</Th>
+              <Th minW={80}>{t("Factură")}</Th>
+              <Th minW={70}>{t("Scadență")}</Th>
               <Th minW={80} right>
                 <button type="button" onClick={() => sortToggle("debtDesc", "debtAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-                  De achitat <span className="text-[10px] text-ink-soft">{arrow("debtDesc", "debtAsc")}</span>
+                  {t("De achitat")} <span className="text-[10px] text-ink-soft">{arrow("debtDesc", "debtAsc")}</span>
                 </button>
               </Th>
-              <Th minW={65}>Status</Th>
-              <Th minW={50}>Portal</Th>
-              <Th minW={45} right>Facturi</Th>
-              <Th minW={95}>Ultima notificare</Th>
+              <Th minW={65}>{t("Status")}</Th>
+              <Th minW={50}>{t("Portal")}</Th>
+              <Th minW={45} right>{t("Facturi")}</Th>
+              <Th minW={95}>{t("Ultima notificare")}</Th>
               {canSend && <Th minW={32}> </Th>}
             </tr>
           </thead>
@@ -859,9 +861,9 @@ export default function PayerNotifyManager({
                       className={`sticky left-0 z-10 cursor-pointer border-b border-[var(--color-line)] px-1.5 py-px ${bg}`}
                       onClick={(e) => { e.stopPropagation(); toggleRow(i, e.shiftKey); }}
                       onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
-                      title="Bifează (Shift = interval)"
+                      title={t("Bifează (Shift = interval)")}
                     >
-                      <input type="checkbox" checked={sel} readOnly tabIndex={-1} className="pointer-events-none block size-3 accent-[var(--color-brand)]" aria-label={`Selectează ${r.name}`} />
+                      <input type="checkbox" checked={sel} readOnly tabIndex={-1} className="pointer-events-none block size-3 accent-[var(--color-brand)]" aria-label={`${t("Selectează")} ${r.name}`} />
                     </td>
                   )}
                   <td className={`sticky ${canSelect ? "left-7" : "left-0"} z-10 border-b border-[var(--color-line)] px-1.5 py-px font-medium ${bg}`} style={{ maxWidth: 220 }}>
@@ -873,12 +875,12 @@ export default function PayerNotifyManager({
                   </td>
                   <td className="border-b border-[var(--color-line)] px-1.5 py-px" style={{ maxWidth: 190 }}>
                     {r.email ? (
-                      <div className={`truncate ${flags & 1 ? "" : "text-st-progress"}`} title={flags & 1 ? r.email : `Adresă invalidă: ${r.email}`}>{r.email}</div>
+                      <div className={`truncate ${flags & 1 ? "" : "text-st-progress"}`} title={flags & 1 ? r.email : `${t("Adresă invalidă")}: ${r.email}`}>{r.email}</div>
                     ) : <Dash />}
                   </td>
                   <td className="border-b border-[var(--color-line)] px-1.5 py-px tabular-nums">
                     {r.phone ? (
-                      <span className={flags & 2 ? "" : "text-st-progress"} title={flags & 2 ? undefined : "Număr invalid pentru SMS"}>{r.phone}</span>
+                      <span className={flags & 2 ? "" : "text-st-progress"} title={flags & 2 ? undefined : t("Număr invalid pentru SMS")}>{r.phone}</span>
                     ) : <Dash />}
                   </td>
                   <td className="border-b border-[var(--color-line)] px-1.5 py-px">{r.latestInvoice?.number ?? <Dash />}</td>
@@ -887,15 +889,15 @@ export default function PayerNotifyManager({
                     {r.latestInvoice ? money(r.latestInvoice.grandTotal) : <Dash />}
                   </td>
                   <td className="border-b border-[var(--color-line)] px-1.5 py-px">
-                    {st ? <span className={`inline-block rounded-full px-1.5 text-[10px] leading-[14px] font-medium ${st.cls}`}>{st.label}</span> : <Dash />}
+                    {st ? <span className={`inline-block rounded-full px-1.5 text-[10px] leading-[14px] font-medium ${st.cls}`}>{t(st.label)}</span> : <Dash />}
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px" title={r.activated ? "Cont portal activat" : "Cont portal neactivat"}>
-                    {r.activated ? <span className="text-st-done">✓ activ</span> : <span className="text-ink-soft/60">—</span>}
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px" title={r.activated ? t("Cont portal activat") : t("Cont portal neactivat")}>
+                    {r.activated ? <span className="text-st-done">✓ {t("activ")}</span> : <span className="text-ink-soft/60">—</span>}
                   </td>
                   <td className="border-b border-[var(--color-line)] px-1.5 py-px text-right tabular-nums text-ink-soft">{r.invoiceCount}</td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px whitespace-nowrap" title={r.lastNotifiedAt ? new Date(r.lastNotifiedAt).toLocaleString("ro-RO") : "Niciodată notificat"}>
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px whitespace-nowrap" title={r.lastNotifiedAt ? new Date(r.lastNotifiedAt).toLocaleString(tag) : t("Niciodată notificat")}>
                     {r.lastNotifiedAt ? (
-                      <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt)}</span>
+                      <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt, t)}</span>
                     ) : <Dash />}
                   </td>
                   {canSend && (
@@ -904,7 +906,7 @@ export default function PayerNotifyManager({
                         type="button"
                         disabled={flags === 0}
                         onClick={(e) => { e.stopPropagation(); openForRow(r); }}
-                        title={flags === 0 ? "Fără email/telefon valid" : "Trimite doar acestui plătitor"}
+                        title={flags === 0 ? t("Fără email/telefon valid") : t("Trimite doar acestui plătitor")}
                         className="tap grid size-4 place-items-center rounded border text-[9px] leading-none border-[var(--color-line)] hover:bg-brand-soft disabled:opacity-30"
                       >
                         ✉
@@ -917,8 +919,8 @@ export default function PayerNotifyManager({
             {pageRows.length === 0 && !loading && (
               <tr>
                 <td colSpan={colCount} className="p-8 text-center text-ink-soft">
-                  Niciun plătitor cu filtrele acestea.{" "}
-                  {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">Resetează filtrele</button>}
+                  {t("Niciun plătitor cu filtrele acestea.")}{" "}
+                  {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">{t("Resetează filtrele")}</button>}
                 </td>
               </tr>
             )}
@@ -934,7 +936,7 @@ export default function PayerNotifyManager({
             disabled={page <= 1}
             onClick={() => setPage(page - 1)}
             className="tap grid size-7 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
-            aria-label="Pagina anterioară"
+            aria-label={t("Pagina anterioară")}
           >
             <IconChevronLeft className="size-4" />
           </button>
@@ -957,7 +959,7 @@ export default function PayerNotifyManager({
             disabled={page >= totalPages}
             onClick={() => setPage(page + 1)}
             className="tap grid size-7 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
-            aria-label="Pagina următoare"
+            aria-label={t("Pagina următoare")}
           >
             <IconChevronRight className="size-4" />
           </button>
@@ -1007,7 +1009,7 @@ export default function PayerNotifyManager({
       {compose && (
         <PayerNotifyDialog
           recipients={compose.recipients}
-          previewName={compose.previewRow?.name ?? "Ion Popescu (exemplu)"}
+          previewName={compose.previewRow?.name ?? t("Ion Popescu (exemplu)")}
           previewVars={compose.previewRow ? rowVars(compose.previewRow) : SAMPLE_VARS}
           emailEnabled={emailEnabled}
           smsEnabled={smsEnabled}

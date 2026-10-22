@@ -14,7 +14,8 @@ import { APPT_STATUSES, ApptStatusDropdown, apptLabel } from "./AppointmentItem"
 import { useToast } from "./toast";
 import { IconMail, IconSend, IconTrash, IconX } from "./icons";
 import { humanDay } from "@/lib/date";
-import { useMessages } from "@/lib/i18n/context";
+import { useLocale, useMessages, useT } from "@/lib/i18n/context";
+import { dateTag } from "@/lib/i18n/t";
 import type { ApptStatus, ApptVM, CategoryLite, QuickDefaults } from "./types";
 
 const iconBtn =
@@ -44,6 +45,8 @@ export default function AppointmentsTable({
 }) {
   const toast = useToast();
   const m = useMessages();
+  const t = useT();
+  const locale = useLocale();
   const [rows, setRows] = useState(items);
   useEffect(() => setRows(items), [items]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -85,7 +88,7 @@ export default function AppointmentsTable({
     fd.set("dateKey", dateKey);
     fd.set("time", time);
     rescheduleAppointment(undefined, fd)
-      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } else toast.success("Reprogramat."); })
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } else toast.success(t("Reprogramat.")); })
       .catch(() => { setRows(prev); toast.error(m.common.error); });
   }
 
@@ -108,26 +111,26 @@ export default function AppointmentsTable({
   const columns: Col<ApptVM>[] = [
     {
       key: "open", label: "", minW: 28,
-      render: (a) => <button type="button" onClick={() => setDetail(a.id)} title="Deschide detaliile" className="cursor-pointer rounded px-0.5 font-semibold text-brand hover:bg-brand-soft/60">↗</button>,
+      render: (a) => <button type="button" onClick={() => setDetail(a.id)} title={t("Deschide detaliile")} className="cursor-pointer rounded px-0.5 font-semibold text-brand hover:bg-brand-soft/60">↗</button>,
     },
-    { key: "date", label: "Data", minW: 100, sticky: true, sort: (a) => `${a.dateKey} ${a.time}`, render: (a) => dateEditor(a, <span className={a.dateKey === today ? "font-semibold text-brand" : ""}>{dmy(a.dateKey)}</span>) },
-    { key: "time", label: "Ora", minW: 95, sort: (a) => a.time, render: (a) => dateEditor(a, <span className="font-mono">{a.time}–{a.endTime}</span>) },
+    { key: "date", label: t("Data"), minW: 100, sticky: true, sort: (a) => `${a.dateKey} ${a.time}`, render: (a) => dateEditor(a, <span className={a.dateKey === today ? "font-semibold text-brand" : ""}>{dmy(a.dateKey)}</span>) },
+    { key: "time", label: t("Ora"), minW: 95, sort: (a) => a.time, render: (a) => dateEditor(a, <span className="font-mono">{a.time}–{a.endTime}</span>) },
     {
-      key: "day", label: "Ziua", minW: 80, defaultHidden: true, sort: (a) => a.dateKey,
-      render: (a) => <span className="capitalize">{new Date(`${a.dateKey}T12:00:00`).toLocaleDateString("ro-RO", { weekday: "long" })}</span>,
+      key: "day", label: t("Ziua"), minW: 80, defaultHidden: true, sort: (a) => a.dateKey,
+      render: (a) => <span className="capitalize">{new Date(`${a.dateKey}T12:00:00`).toLocaleDateString(dateTag(locale), { weekday: "long" })}</span>,
     },
     {
-      key: "dur", label: "Durată", minW: 70, right: true, defaultHidden: true,
+      key: "dur", label: t("Durată"), minW: 70, right: true, defaultHidden: true,
       sort: (a) => { const [h1, m1] = a.time.split(":").map(Number); const [h2, m2] = a.endTime.split(":").map(Number); return h2 * 60 + m2 - (h1 * 60 + m1); },
-      render: (a) => { const [h1, m1] = a.time.split(":").map(Number); const [h2, m2] = a.endTime.split(":").map(Number); return `${h2 * 60 + m2 - (h1 * 60 + m1)} min`; },
+      render: (a) => { const [h1, m1] = a.time.split(":").map(Number); const [h2, m2] = a.endTime.split(":").map(Number); return `${h2 * 60 + m2 - (h1 * 60 + m1)} ${t("min")}`; },
     },
-    { key: "client", label: "Client", minW: 180, maxW: 240, sort: (a) => a.clientName, render: (a) => <span title={a.clientName}>{a.clientName}</span> },
+    { key: "client", label: t("Client"), minW: 180, maxW: 240, sort: (a) => a.clientName, render: (a) => <span title={a.clientName}>{a.clientName}</span> },
     {
-      key: "title", label: "Descriere", minW: 200, maxW: 300,
+      key: "title", label: t("Descriere"), minW: 200, maxW: 300,
       render: (a) => <EditableText value={a.title} allowEmpty disabled={!canManage} onSave={(v) => patchAppt(a, { title: v }, { title: v })} display={a.title ? <span title={a.title}>{a.title}</span> : undefined} />,
     },
     {
-      key: "cat", label: "Categorie", minW: 120, sort: (a) => a.categoryName,
+      key: "cat", label: t("Categorie"), minW: 120, sort: (a) => a.categoryName,
       render: (a) => (
         <EditableSelect
           value={categories.find((c) => c.name === a.categoryName)?.id ?? ""}
@@ -142,14 +145,14 @@ export default function AppointmentsTable({
       ),
     },
     {
-      key: "status", label: "Status", minW: 100, sort: (a) => apptLabel(a.status, m),
+      key: "status", label: t("Status"), minW: 100, sort: (a) => apptLabel(a.status, m),
       render: (a) => (
         <div className="origin-left scale-90" onClick={(e) => e.stopPropagation()}>
           <ApptStatusDropdown status={a.status} pending={busy === a.id} onChange={(s) => change(a.id, s)} />
         </div>
       ),
     },
-    { key: "rem", label: "Remindere", minW: 70, render: (a) => (a.remEmail || a.remTelegram ? <span className="inline-flex items-center gap-1 text-ink-soft">{a.remEmail && <IconMail className="size-3" />}{a.remTelegram && <IconSend className="size-3" />}</span> : dash) },
+    { key: "rem", label: t("Remindere"), minW: 70, render: (a) => (a.remEmail || a.remTelegram ? <span className="inline-flex items-center gap-1 text-ink-soft">{a.remEmail && <IconMail className="size-3" />}{a.remTelegram && <IconSend className="size-3" />}</span> : dash) },
     {
       key: "act", label: "", minW: 40,
       render: (a) => (
@@ -164,16 +167,16 @@ export default function AppointmentsTable({
     const tomorrow = quickDefaults.tomorrow;
     return [
       {
-        kind: "text", key: "q", label: "Caută", grow: true, placeholder: m.appts.searchPlaceholder,
+        kind: "text", key: "q", label: t("Caută"), grow: true, placeholder: m.appts.searchPlaceholder,
         test: (a, v) => a.clientName.toLowerCase().includes(v) || a.title.toLowerCase().includes(v),
       },
       {
-        kind: "select", key: "period", label: "Perioadă: toate",
+        kind: "select", key: "period", label: t("Perioadă: toate"),
         options: [
           { value: "today", label: m.appts.viewToday },
           { value: "tomorrow", label: m.appts.viewTomorrow },
-          { value: "future", label: "De azi încolo" },
-          { value: "past", label: "Trecute" },
+          { value: "future", label: t("De azi încolo") },
+          { value: "past", label: t("Trecute") },
         ],
         test: (a, v) => (v === "today" ? a.dateKey === today : v === "tomorrow" ? a.dateKey === tomorrow : v === "future" ? a.dateKey >= today : a.dateKey < today),
       },
@@ -189,15 +192,15 @@ export default function AppointmentsTable({
             test: (a: ApptVM, v: string) => a.categoryName === v,
           }]
         : []),
-      { kind: "date", key: "from", label: "De la data", test: (a, v) => a.dateKey >= v },
-      { kind: "date", key: "to", label: "Până la data", test: (a, v) => a.dateKey <= v },
+      { kind: "date", key: "from", label: t("De la data"), test: (a, v) => a.dateKey >= v },
+      { kind: "date", key: "to", label: t("Până la data"), test: (a, v) => a.dateKey <= v },
       {
-        kind: "select", key: "rem", label: "Remindere: toate",
-        options: [{ value: "any", label: "Cu remindere" }, { value: "none", label: "Fără remindere" }],
+        kind: "select", key: "rem", label: t("Remindere: toate"),
+        options: [{ value: "any", label: t("Cu remindere") }, { value: "none", label: t("Fără remindere") }],
         test: (a, v) => (v === "any" ? a.remEmail || a.remTelegram : !a.remEmail && !a.remTelegram),
       },
     ];
-  }, [m, categories, today, quickDefaults.tomorrow]);
+  }, [m, t, categories, today, quickDefaults.tomorrow]);
 
   const current = detail ? rows.find((r) => r.id === detail) ?? null : null;
 
@@ -210,7 +213,7 @@ export default function AppointmentsTable({
         columns={columns}
         filters={filters}
         defaultSort={{ key: "date", dir: "desc" }}
-        noun="programări"
+        noun={t("programări")}
         emptyText={m.appts.noAppts}
         toolbar={
           <>
@@ -233,14 +236,14 @@ export default function AppointmentsTable({
               </button>
             </div>
             <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
-              <Link href={`/calendar?date=${current.dateKey}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">Vezi în calendar →</Link>
+              <Link href={`/calendar?date=${current.dateKey}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">{t("Vezi în calendar →")}</Link>
               <button type="button" onClick={() => remove(current.id)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium text-st-cancelled hover:bg-[var(--color-surface-2)]">🗑 {m.common.delete}</button>
             </div>
             <div className="divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)] text-sm">
-              <Row label="Status"><ApptStatusDropdown status={current.status} pending={busy === current.id} onChange={(s) => change(current.id, s)} /></Row>
-              <Row label="Categorie">{current.categoryName ?? "—"}</Row>
-              <Row label="Remindere">{current.remEmail || current.remTelegram ? `${current.remEmail ? "email " : ""}${current.remTelegram ? "telegram" : ""}` : "—"}</Row>
-              {current.title && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">Descriere</p><p className="whitespace-pre-wrap text-[13px]">{current.title}</p></div>}
+              <Row label={t("Status")}><ApptStatusDropdown status={current.status} pending={busy === current.id} onChange={(s) => change(current.id, s)} /></Row>
+              <Row label={t("Categorie")}>{current.categoryName ?? "—"}</Row>
+              <Row label={t("Remindere")}>{current.remEmail || current.remTelegram ? `${current.remEmail ? "email " : ""}${current.remTelegram ? "telegram" : ""}` : "—"}</Row>
+              {current.title && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{t("Descriere")}</p><p className="whitespace-pre-wrap text-[13px]">{current.title}</p></div>}
             </div>
           </div>
         </div>

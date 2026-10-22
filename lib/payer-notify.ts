@@ -42,7 +42,8 @@ export const EMPTY_FILTERS: NotifyFilters = {
 /** „Toate" = o pagină cât toată lista (plafon de siguranță; sunt ~19.000 de plătitori). */
 export const PER_PAGE_ALL = 25_000;
 export const NOTIFY_PER_PAGE = [20, 50, 100, 200, 500, 1000, PER_PAGE_ALL] as const;
-export const perPageLabel = (n: number) => (n === PER_PAGE_ALL ? "Toate" : `${n} / pagină`);
+export const perPageLabel = (n: number, t?: (ro: string, v?: Record<string, string | number>) => string) =>
+  t ? (n === PER_PAGE_ALL ? t("Toate") : t("{n} / pagină", { n })) : n === PER_PAGE_ALL ? "Toate" : `${n} / pagină`;
 export const DEFAULT_PER_PAGE = 50;
 
 export const CONTACT_OPTIONS: { value: NotifyFilters["contact"]; label: string }[] = [
@@ -274,14 +275,14 @@ export function smsInfo(text: string): { length: number; segments: number; unico
 }
 
 /** „acum 3 zile" / „azi" pentru coloana „Ultima notificare". */
-export function agoLabel(d: string | Date | null): string {
+export function agoLabel(d: string | Date | null, t: (ro: string, v?: Record<string, string | number>) => string = (ro, v) => (v ? ro.replace(/\{(\w+)\}/g, (m, k: string) => String(v[k] ?? m)) : ro)): string {
   if (!d) return "";
   const days = Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000);
-  if (days <= 0) return "azi";
-  if (days === 1) return "ieri";
-  if (days < 31) return `acum ${days} zile`;
+  if (days <= 0) return t("azi");
+  if (days === 1) return t("ieri");
+  if (days < 31) return t("acum {n} zile", { n: days });
   const months = Math.floor(days / 30);
-  return months < 12 ? `acum ${months} luni` : `acum ${Math.floor(months / 12)} ani`;
+  return months < 12 ? t("acum {n} luni", { n: months }) : t("acum {n} ani", { n: Math.floor(months / 12) });
 }
 
 // ── Limite comune (client + server) ────────────────────────────────────────────────────────────

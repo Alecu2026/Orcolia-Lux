@@ -9,6 +9,7 @@ import {
 } from "@/lib/payer-notify";
 import { IconChevronLeft, IconChevronRight } from "./icons";
 import CompactCard, { CompactField } from "./CompactCard";
+import { useT } from "@/lib/i18n/context";
 
 /**
  * Tabel generic, în stilul paginii Plătitori: toate rândurile vin o dată de pe server, iar filtrele, sortarea
@@ -124,8 +125,8 @@ export default function DataTable<T extends { id: string }>({
   onRowClick,
   toolbar,
   summaryExtra,
-  noun = "elemente",
-  emptyText = "Nimic de afișat.",
+  noun,
+  emptyText,
   rowClassName,
   presetValues,
 }: {
@@ -146,6 +147,7 @@ export default function DataTable<T extends { id: string }>({
   /** Filtre din URL (ex. ?proj=…) — dacă există, înlocuiesc filtrele salvate la deschidere. */
   presetValues?: Record<string, string | undefined>;
 }) {
+  const t = useT();
   const [values, setValues] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [perPage, setPerPage] = useState(DEFAULT_PER_PAGE);
@@ -357,29 +359,29 @@ export default function DataTable<T extends { id: string }>({
         )}
         {(activeCount > 0 || sortedByUser) && (
           <button type="button" onClick={clearAll} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]">
-            Resetează filtrele{activeCount > 0 ? ` (${activeCount})` : ""}
+            {t("Resetează filtrele")}{activeCount > 0 ? ` (${activeCount})` : ""}
           </button>
         )}
         {toolbar && <div className="ml-auto flex flex-wrap items-center gap-1.5">{toolbar}</div>}
       </div>
 
       <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-        <span><b>{nf(total)}</b> {noun}{activeCount > 0 ? " (filtrat)" : ""}</span>
-        {total > 0 && <span className="text-ink-soft">afișați {nf(from)}–{nf(to)} din {nf(total)}{totalPages > 1 ? ` · pagina ${curPage}/${totalPages}` : ""}</span>}
+        <span><b>{nf(total)}</b> {noun ?? t("elemente")}{activeCount > 0 ? ` ${t("(filtrat)")}` : ""}</span>
+        {total > 0 && <span className="text-ink-soft">{t("afișați {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(total) })}{totalPages > 1 ? ` · ${t("pagina {cur}/{pages}", { cur: curPage, pages: totalPages })}` : ""}</span>}
         {summaryExtra?.(filtered)}
         {cards && sortableCols.length > 0 && (
           <label className="flex items-center gap-1 text-xs text-ink-soft">
-            Sortare
+            {t("Sortare")}
             <select
               value={sortKey}
               onChange={(e) => { setSortKey(e.target.value); setSortDir("asc"); setPage(1); }}
               className={fld(sortedByUser ? "x" : "")}
-              aria-label="Sortare"
+              aria-label={t("Sortare")}
             >
               {!sortableCols.some((c) => c.key === sortKey) && <option value="">—</option>}
               {sortableCols.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
-            <button type="button" onClick={() => { setSortDir((d) => (d === "asc" ? "desc" : "asc")); setPage(1); }} className="tap h-7 w-7 cursor-pointer rounded-lg border border-[var(--color-line)] text-[11px] hover:bg-[var(--color-surface-2)]" aria-label="Direcția sortării" title={sortDir === "asc" ? "Crescător" : "Descrescător"}>
+            <button type="button" onClick={() => { setSortDir((d) => (d === "asc" ? "desc" : "asc")); setPage(1); }} className="tap h-7 w-7 cursor-pointer rounded-lg border border-[var(--color-line)] text-[11px] hover:bg-[var(--color-surface-2)]" aria-label={t("Direcția sortării")} title={sortDir === "asc" ? t("Crescător") : t("Descrescător")}>
               {sortDir === "asc" ? "▲" : "▼"}
             </button>
           </label>
@@ -389,66 +391,66 @@ export default function DataTable<T extends { id: string }>({
           type="button"
           onClick={() => setCardsPref(!cards)}
           className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-          title={cards ? "Înapoi la tabel" : "Afișează rândurile într-o coloană mică; apeși pe un rând ca să vezi detaliile (potrivit pentru telefon)"}
+          title={cards ? t("Înapoi la tabel") : t("Afișează rândurile într-o coloană mică; apeși pe un rând ca să vezi detaliile (potrivit pentru telefon)")}
           aria-pressed={cards}
         >
-          {cards ? "▦ Tabel" : "📱 Mod telefon"}
+          {cards ? `▦ ${t("Tabel")}` : `📱 ${t("Mod telefon")}`}
         </button>
         <div ref={colsBox} className="relative">
           <button
             type="button"
             onClick={() => setColsOpen((o) => !o)}
             className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${order.length || Object.keys(vis).length || JSON.stringify(look) !== JSON.stringify(DEFAULT_LOOK) ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-            title="Alege și ordonează coloanele"
+            title={t("Alege și ordonează coloanele")}
           >
-            ⚙ Coloane
+            ⚙ {t("Coloane")}
           </button>
           {colsOpen && (
             <div className="absolute right-0 top-full z-50 mt-1 w-72 max-w-[calc(100vw-1.5rem)] rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-2 shadow-xl">
-              <p className="mb-1 px-1 text-[10px] text-ink-soft">Bifează ce vrei să vezi; mută cu ▲▼ sau trage antetele din tabel.</p>
+              <p className="mb-1 px-1 text-[10px] text-ink-soft">{t("Bifează ce vrei să vezi; mută cu ▲▼ sau trage antetele din tabel.")}</p>
               <ul className="max-h-56 overflow-auto">
                 {orderedLabeled.map((c, i) => (
                   <li key={c.key} className="flex items-center gap-1.5 rounded px-1 py-0.5 text-[12px] hover:bg-[var(--color-surface-2)]">
                     <input type="checkbox" checked={isVisible(c)} onChange={(e) => setVis((v) => ({ ...v, [c.key]: e.target.checked }))} className="size-3.5 cursor-pointer accent-[var(--color-brand)]" />
-                    <span className="min-w-0 flex-1 truncate">{c.label}{c.defaultHidden ? <span className="ml-1 text-[10px] text-ink-soft">(în plus)</span> : null}</span>
+                    <span className="min-w-0 flex-1 truncate">{c.label}{c.defaultHidden ? <span className="ml-1 text-[10px] text-ink-soft">{t("(în plus)")}</span> : null}</span>
                     <button type="button" disabled={i === 0} onClick={() => stepCol(c.key, -1)} className="grid size-5 cursor-pointer place-items-center rounded text-[10px] hover:bg-brand-soft disabled:opacity-30" aria-label="Mai sus">▲</button>
                     <button type="button" disabled={i === orderedLabeled.length - 1} onClick={() => stepCol(c.key, 1)} className="grid size-5 cursor-pointer place-items-center rounded text-[10px] hover:bg-brand-soft disabled:opacity-30" aria-label="Mai jos">▼</button>
                   </li>
                 ))}
               </ul>
               <div className="mt-2 border-t border-[var(--color-line)] pt-2">
-                <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Aspect</p>
+                <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{t("Aspect")}</p>
                 <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 px-1 text-[11px]">
-                  <LookSelect label="Rânduri" value={look.density} onChange={(v) => setLook({ ...look, density: v })} options={[["compact", "Compacte"], ["normal", "Normale"], ["roomy", "Spațioase"]]} />
-                  <LookSelect label="Text" value={String(look.font)} onChange={(v) => setLook({ ...look, font: Number(v) as Look["font"] })} options={[["10", "Mic"], ["11", "Normal"], ["13", "Mare"], ["15", "Foarte mare"]]} />
-                  <LookSelect label="Lățime coloane" value={String(look.width)} onChange={(v) => setLook({ ...look, width: Number(v) as Look["width"] })} options={[["85", "Înguste"], ["100", "Normale"], ["125", "Late"], ["150", "Foarte late"]]} />
-                  <LookSelect label="Culoare antet" value={look.header} onChange={(v) => setLook({ ...look, header: v })} options={[["default", "Neutru"], ["brand", "Turcoaz"], ["sky", "Albastru"], ["emerald", "Verde"], ["orange", "Portocaliu"], ["violet", "Violet"], ["slate", "Gri închis"]]} />
-                  <LookSelect label="Culoare text" value={look.text} onChange={(v) => setLook({ ...look, text: v })} options={[["default", "Implicită"], ["brand", "Turcoaz"], ["sky", "Albastru"], ["emerald", "Verde"], ["violet", "Violet"], ["rose", "Roz"]]} />
+                  <LookSelect label={t("Rânduri")} value={look.density} onChange={(v) => setLook({ ...look, density: v })} options={[["compact", t("Compacte")], ["normal", t("Normale")], ["roomy", t("Spațioase")]]} />
+                  <LookSelect label={t("Text")} value={String(look.font)} onChange={(v) => setLook({ ...look, font: Number(v) as Look["font"] })} options={[["10", t("Mic")], ["11", t("Normal")], ["13", t("Mare")], ["15", t("Foarte mare")]]} />
+                  <LookSelect label={t("Lățime coloane")} value={String(look.width)} onChange={(v) => setLook({ ...look, width: Number(v) as Look["width"] })} options={[["85", t("Înguste")], ["100", t("Normale")], ["125", t("Late")], ["150", t("Foarte late")]]} />
+                  <LookSelect label={t("Culoare antet")} value={look.header} onChange={(v) => setLook({ ...look, header: v })} options={[["default", t("Neutru")], ["brand", t("Turcoaz")], ["sky", t("Albastru")], ["emerald", t("Verde")], ["orange", t("Portocaliu")], ["violet", t("Violet")], ["slate", t("Gri închis")]]} />
+                  <LookSelect label={t("Culoare text")} value={look.text} onChange={(v) => setLook({ ...look, text: v })} options={[["default", t("Implicită")], ["brand", t("Turcoaz")], ["sky", t("Albastru")], ["emerald", t("Verde")], ["violet", t("Violet")], ["rose", t("Roz")]]} />
                   <label className="flex cursor-pointer items-end gap-1.5 pb-1">
                     <input type="checkbox" checked={look.zebra} onChange={(e) => setLook({ ...look, zebra: e.target.checked })} className="size-3.5 cursor-pointer accent-[var(--color-brand)]" />
-                    Rânduri alternate
+                    {t("Rânduri alternate")}
                   </label>
                 </div>
                 <p className="mt-1.5 px-1 text-[10px] leading-snug text-ink-soft">
-                  Lățimea se aplică tuturor coloanelor; textul care nu încape se taie cu „…”. La „Rânduri spațioase” textul se rupe pe până la 3 rânduri.
+                  {t("Lățimea se aplică tuturor coloanelor; textul care nu încape se taie cu „…”. La „Rânduri spațioase” textul se rupe pe până la 3 rânduri.")}
                 </p>
               </div>
               <button type="button" onClick={() => { setOrder([]); setVis({}); setLook(DEFAULT_LOOK); }} className="tap mt-2 h-7 w-full cursor-pointer rounded-lg border border-[var(--color-line)] text-[11px] hover:bg-[var(--color-surface-2)]">
-                Resetează coloanele și aspectul
+                {t("Resetează coloanele și aspectul")}
               </button>
             </div>
           )}
         </div>
         </div>
         <label className="flex items-center gap-1.5 text-xs text-ink-soft">
-          Afișează
+          {t("Afișează")}
           <select
             value={perPage}
             onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
             className={fld(perPage === DEFAULT_PER_PAGE ? "" : "x")}
-            aria-label="Rânduri pe pagină"
+            aria-label={t("Rânduri pe pagină")}
           >
-            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n)}</option>)}
+            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
           </select>
         </label>
       </div>
@@ -481,7 +483,7 @@ export default function DataTable<T extends { id: string }>({
                   <div className="flex flex-wrap items-center gap-2 px-2.5 py-1.5 text-[12px]">
                     {onRowClick && (
                       <button type="button" onClick={() => onRowClick(r)} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">
-                        Deschide
+                        {t("Deschide")}
                       </button>
                     )}
                     {cardActions.map((c) => <span key={c.key}>{c.render(r)}</span>)}
@@ -492,8 +494,8 @@ export default function DataTable<T extends { id: string }>({
           })}
           {pageRows.length === 0 && (
             <div className="card p-8 text-center text-ink-soft">
-              {activeCount > 0 ? "Nimic cu filtrele acestea." : emptyText}{" "}
-              {activeCount > 0 && <button type="button" onClick={clearAll} className="cursor-pointer font-semibold text-brand underline">Resetează filtrele</button>}
+              {activeCount > 0 ? t("Nimic cu filtrele acestea.") : (emptyText ?? t("Nimic de afișat."))}{" "}
+              {activeCount > 0 && <button type="button" onClick={clearAll} className="cursor-pointer font-semibold text-brand underline">{t("Resetează filtrele")}</button>}
             </div>
           )}
         </div>
@@ -524,7 +526,7 @@ export default function DataTable<T extends { id: string }>({
                   onDragLeave={() => setOverKey((k) => (k === c.key ? null : k))}
                   onDrop={(e) => { e.preventDefault(); if (dragKey) moveCol(dragKey, c.key); setDragKey(null); setOverKey(null); }}
                   onDragEnd={() => { setDragKey(null); setOverKey(null); }}
-                  title={c.label !== "" ? "Trage ca să muți coloana" : undefined}
+                  title={c.label !== "" ? t("Trage ca să muți coloana") : undefined}
                   className={`${fixed ? "overflow-hidden" : ""} border-b border-[var(--color-line)] ${HEADER_CLS[look.header]} ${DENSITY[look.density].px} ${DENSITY[look.density].head} font-semibold leading-tight ${c.right ? "text-right" : "text-left"} ${c.sticky && ci <= 1 ? "sticky left-0 z-30" : ""} ${c.label !== "" ? "cursor-grab" : ""} ${overKey === c.key && dragKey !== c.key ? "shadow-[inset_3px_0_0_var(--color-brand)]" : ""} ${dragKey === c.key ? "opacity-50" : ""}`}
                 >
                   {c.sort ? (
@@ -559,8 +561,8 @@ export default function DataTable<T extends { id: string }>({
             {pageRows.length === 0 && (
               <tr>
                 <td colSpan={visibleCols.length} className="p-8 text-center text-ink-soft">
-                  {activeCount > 0 ? "Nimic cu filtrele acestea." : emptyText}{" "}
-                  {activeCount > 0 && <button type="button" onClick={clearAll} className="cursor-pointer font-semibold text-brand underline">Resetează filtrele</button>}
+                  {activeCount > 0 ? t("Nimic cu filtrele acestea.") : (emptyText ?? t("Nimic de afișat."))}{" "}
+                  {activeCount > 0 && <button type="button" onClick={clearAll} className="cursor-pointer font-semibold text-brand underline">{t("Resetează filtrele")}</button>}
                 </td>
               </tr>
             )}
@@ -571,7 +573,7 @@ export default function DataTable<T extends { id: string }>({
 
       {total > 0 && totalPages > 1 && (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1">
-          <button disabled={curPage <= 1} onClick={() => setPage(curPage - 1)} className="tap grid size-7 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40" aria-label="Pagina anterioară">
+          <button disabled={curPage <= 1} onClick={() => setPage(curPage - 1)} className="tap grid size-7 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40" aria-label={t("Pagina anterioară")}>
             <IconChevronLeft className="size-4" />
           </button>
           {buildPageButtons(curPage, totalPages).map((b, i) =>
@@ -583,7 +585,7 @@ export default function DataTable<T extends { id: string }>({
               </button>
             ),
           )}
-          <button disabled={curPage >= totalPages} onClick={() => setPage(curPage + 1)} className="tap grid size-7 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40" aria-label="Pagina următoare">
+          <button disabled={curPage >= totalPages} onClick={() => setPage(curPage + 1)} className="tap grid size-7 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40" aria-label={t("Pagina următoare")}>
             <IconChevronRight className="size-4" />
           </button>
         </div>

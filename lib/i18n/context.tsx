@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 import type { Messages, Locale } from "./index";
+import { makeT, type TFn } from "./t";
 
 type I18nCtx = { messages: Messages; locale: Locale };
 
@@ -35,4 +36,10 @@ export function useMessages(): Messages {
 
 export function useLocale(): Locale {
   return useI18n().locale;
+}
+
+/** Traducere pentru componentele de client: `const t = useT(); t("Caută")` (vezi lib/i18n/t.ts). */
+export function useT(): TFn {
+  const locale = useLocale();
+  return useMemo(() => makeT(locale), [locale]);
 }
