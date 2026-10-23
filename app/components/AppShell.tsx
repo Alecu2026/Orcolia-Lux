@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/actions/auth";
@@ -11,6 +11,37 @@ import LanguageSwitcher from "./LanguageSwitcher";
 import IncomingCallPopup from "./IncomingCallPopup";
 import { I18nProvider, useMessages } from "@/lib/i18n/context";
 import type { Messages, Locale } from "@/lib/i18n";
+
+/**
+ * Navigare „optimistă": la click, elementul apăsat devine activ și titlul se schimbă pe loc (nu după ce vine răspunsul serverului), iar sus apare
+ * o bară de progres. `from` = ruta de pe care s-a plecat; când ruta se schimbă, starea devine nevalidă singură (fără efecte).
+ */
+type Pending = { href: string; from: string } | null;
+const NavPending = createContext<{ pending: Pending; go: (href: string, from: string) => void }>({ pending: null, go: () => {} });
+
+/** Link de meniu: prefetch ușor în fundal (până la scheletul paginii) și prefetch COMPLET la intenție (mouse deasupra / atingere), ca la click conținutul să fie deja adus. */
+function NavLink({ href, className, children, onClick }: { href: string; className: string; children: ReactNode; onClick?: () => void }) {
+  const [intent, setIntent] = useState(false);
+  const path = usePathname();
+  const { go } = useContext(NavPending);
+  return (
+    <Link
+      href={href}
+      prefetch={intent ? true : null}
+      onMouseEnter={() => setIntent(true)}
+      onTouchStart={() => setIntent(true)}
+      onFocus={() => setIntent(true)}
+      onClick={() => {
+        countHit(href);
+        go(href, path);
+        onClick?.();
+      }}
+      className={className}
+    >
+      {children}
+    </Link>
+  );
+}
 
 type NavItem = { href: string; labelKey: keyof Messages["nav"]; icon: ReactNode; perm?: string };
 
@@ -35,6 +66,65 @@ const NAV: NavItem[] = [
   { href: "/settings",         labelKey: "settings",    icon: gearIcon() },
 ];
 
+/**
+ * Încălzire: după ce pagina curentă s-a liniștit, aducem în avans (pe rând, cu pauză) paginile principale din meniu — conținutul lor complet, nu doar scheletul.
+ * Valabil 60 s în browser (vezi staleTimes); la click pe una din ele pagina apare instant. Nu rulează pe date mobile economisite / conexiuni lente.
+ */
+const HITS_KEY = "nav-hits";
+function readHits(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(HITS_KEY) ?? "{}") as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+function countHit(href: string) {
+  try {
+    const h = readHits();
+    h[href] = (h[href] ?? 0) + 1;
+    localStorage.setItem(HITS_KEY, JSON.stringify(h));
+  } catch {}
+}
+
+function NavWarmup({ hrefs }: { hrefs: string[] }) {
+  const path = usePathname();
+  const key = hrefs.join(",");
+  const [count, setCount] = useState(0);
+  const [list, setList] = useState<string[]>([]);
+  useEffect(() => {
+    const conn = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    if (conn?.saveData || (conn?.effectiveType && /^(slow-2g|2g|3g)$/.test(conn.effectiveType))) return;
+    // Paginile folosite cel mai des (numărate din meniu, pe acest dispozitiv) primele; la egalitate, ordinea din meniu.
+    const hits = readHits();
+    const ranked = key
+      .split(",")
+      .filter((h) => h && h !== path && !path.startsWith(`${h}/`))
+      .map((h, idx) => ({ h, idx }))
+      .sort((x, y) => (hits[y.h] ?? 0) - (hits[x.h] ?? 0) || x.idx - y.idx)
+      .slice(0, 6)
+      .map((x) => x.h);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setList(ranked);
+    setCount(0);
+    let i = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const next = () => {
+      if (document.visibilityState === "visible") setCount(++i);
+      if (i < ranked.length) timer = setTimeout(next, 600);
+    };
+    timer = setTimeout(next, 2500);
+    return () => clearTimeout(timer);
+  }, [key, path]);
+  // Link-uri invizibile cu prefetch complet: Next aduce conținutul paginii când link-ul „apare" pe ecran (1 px, transparent, fără interacțiune).
+  return (
+    <>
+      {list.slice(0, count).map((h) => (
+        <Link key={h} href={h} prefetch aria-hidden tabIndex={-1} style={{ position: "fixed", left: 0, top: 0, width: 1, height: 1, opacity: 0, pointerEvents: "none" }} />
+      ))}
+    </>
+  );
+}
+
 function visibleNav(items: NavItem[], perms?: Record<string, boolean>): NavItem[] {
   return items.filter((n) => !n.perm || perms?.[n.perm] !== false);
 }
@@ -50,7 +140,9 @@ function NavList({
   items?: NavItem[];
   appointmentsLabel?: string;
 }) {
-  const path = usePathname();
+  const realPath = usePathname();
+  const { pending } = useContext(NavPending);
+  const path = pending && pending.from === realPath ? pending.href : realPath;
   const m = useMessages();
   return (
     <nav className="flex flex-col gap-1">
@@ -58,10 +150,9 @@ function NavList({
         const active = path === item.href || path.startsWith(`${item.href}/`);
         const label = m.nav[item.labelKey];
         return (
-          <Link
+          <NavLink
             key={item.href}
             href={item.href}
-            prefetch={false}
             onClick={onNavigate}
             className={`tap flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${
               active
@@ -71,7 +162,7 @@ function NavList({
           >
             <span className="grid size-5 place-items-center">{item.icon}</span>
             {label}
-          </Link>
+          </NavLink>
         );
       })}
     </nav>
@@ -149,7 +240,9 @@ function AppShellInner({
   children: ReactNode;
 }) {
   const [drawer, setDrawer] = useState(false);
-  const path = usePathname();
+  const realPath = usePathname();
+  const [pending, setPending] = useState<Pending>(null);
+  const path = pending && pending.from === realPath ? pending.href : realPath;
   const m = useMessages();
 
   // La navigare (mai ales din meniul mobil), poziția de scroll a paginii anterioare rămâne —
@@ -158,13 +251,16 @@ function AppShellInner({
   // încarcă progresiv. Resetăm explicit la fiecare schimbare de rută.
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [path]);
+  }, [realPath]);
   const current = NAV.find((n) => path.startsWith(n.href))
     ? m.nav[NAV.find((n) => path.startsWith(n.href))!.labelKey]
     : m.nav.dashboard;
 
   return (
     <ToastProvider>
+      <NavPending.Provider value={{ pending, go: (href, from) => (href === from ? setPending(null) : setPending({ href, from })) }}>
+      {pending && pending.from === realPath && <div className="nav-progress" aria-hidden />}
+      <NavWarmup hrefs={visibleNav(NAV, perms).map((n) => n.href)} />
       <div className="lg:grid lg:grid-cols-[260px_1fr]">
         {/* Sidebar desktop */}
         <aside className="sticky top-0 hidden h-dvh flex-col border-r border-[var(--color-line)] bg-[var(--color-surface)] p-4 lg:flex">
@@ -207,7 +303,6 @@ function AppShellInner({
               <VoiceTaskButton />
               <Link
                 href="/notificari"
-                prefetch={false}
                 className="tap relative grid size-11 place-items-center rounded-xl bg-[var(--color-surface-2)] text-ink hover:bg-brand-soft"
                 aria-label={m.notifications.title}
               >
@@ -240,12 +335,15 @@ function AppShellInner({
 
       {/* Bottom nav mobil */}
       <BottomNav perms={perms} appointmentsLabel={appointmentsLabel} />
+      </NavPending.Provider>
     </ToastProvider>
   );
 }
 
 function BottomNav({ perms, appointmentsLabel }: { perms?: Record<string, boolean>; appointmentsLabel?: string }) {
-  const path = usePathname();
+  const realPath = usePathname();
+  const { pending } = useContext(NavPending);
+  const path = pending && pending.from === realPath ? pending.href : realPath;
   const m = useMessages();
   const items = visibleNav(NAV, perms).slice(0, 5);
   return (
@@ -254,17 +352,16 @@ function BottomNav({ perms, appointmentsLabel }: { perms?: Record<string, boolea
         const active = path.startsWith(item.href);
         const label = m.nav[item.labelKey];
         return (
-          <Link
+          <NavLink
             key={item.href}
             href={item.href}
-            prefetch={false}
             className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[11px] ${
               active ? "text-brand" : "text-ink-soft"
             }`}
           >
             <span className="grid size-5 place-items-center">{item.icon}</span>
             {label}
-          </Link>
+          </NavLink>
         );
       })}
     </nav>

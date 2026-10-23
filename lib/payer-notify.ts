@@ -317,7 +317,25 @@ export const NOTIFY_MAX_NOTE = 2_000;
 
 
 export type SnapInvoice = NonNullable<PayerRow["latestInvoice"]>;
-export type SnapRow = PayerRow & { sector: string | null; _h: string };
+/**
+ * Un plătitor în motorul local. Câmpurile cu „_" sunt PRE-CALCULATE o singură dată la decodare, ca fiecare schimbare de filtru să fie doar o
+ * trecere simplă prin 19.000 de rânduri cu comparații pe numere (fără parsare de date, fără șiruri): _h = text de căutare, _he/_hp = are email /
+ * telefon, _nm = ultima notificare (ms, 0 = niciodată), _st = sector (0 necunoscut, 1 privat, 2 comunal), _dk = soldul facturii afișate (NaN = fără factură).
+ */
+export type SnapRow = PayerRow & { sector: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number };
+
+const SECTOR_CODE = (s: string | null): 0 | 1 | 2 => (s === "Sector privat" ? 1 : s === "Sector comunal" ? 2 : 0);
+
+/** Recalculează câmpurile derivate după o modificare locală a rândului (nume/telefon/email/ultima notificare). */
+export function refreshDerived<T extends SnapRow>(r: T): T {
+  r._h = [r.name, r.meterSeries, r.contract, r.email, r.phone].filter(Boolean).join("\n").toLowerCase();
+  r._he = r.email != null && r.email !== "";
+  r._hp = r.phone != null && r.phone !== "";
+  r._nm = r.lastNotifiedAt ? new Date(r.lastNotifiedAt).getTime() : 0;
+  r._st = SECTOR_CODE(r.sector);
+  r._dk = r.latestInvoice ? r.latestInvoice.grandTotal : NaN;
+  return r;
+}
 
 /** Un plătitor în snapshot, ca tuplu (mai puțin JSON): vezi encodarea în getPayerSnapshot (lib/queries/payers.ts). */
 export type SnapTuple = [
@@ -354,6 +372,11 @@ export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[
     installedAt: t[15],
     sector: t[16],
     _h: [t[1], t[2], t[3], t[4], t[5]].filter(Boolean).join("\n").toLowerCase(),
+    _he: t[4] != null && t[4] !== "",
+    _hp: t[5] != null && t[5] !== "",
+    _nm: t[14] ?? 0,
+    _st: SECTOR_CODE(t[16]),
+    _dk: t[8] == null ? NaN : (t[10] ?? 0),
   }));
   if (!presorted) rows.sort((a, b) => collatorRo.compare(a.name, b.name)); // o singură dată; filtrarea păstrează ordinea
   return rows;
@@ -367,85 +390,121 @@ export function decodeMonth(tuples: MonthTuple[]): Map<string, SnapInvoice> {
 
 const SECTOR_NAME = { privat: "Sector privat", comunal: "Sector comunal" } as const;
 
+/** Rândurile unei luni (cu factura acelei luni în loc de ultima), construite O DATĂ per hartă de luni și refolosite la fiecare filtru. */
+const monthRowsCache = new WeakMap<Map<string, SnapInvoice>, WeakMap<SnapRow[], SnapRow[]>>();
+function rowsForMonth(rows: SnapRow[], monthMap: Map<string, SnapInvoice>): SnapRow[] {
+  let perRows = monthRowsCache.get(monthMap);
+  if (!perRows) monthRowsCache.set(monthMap, (perRows = new WeakMap()));
+  let out = perRows.get(rows);
+  if (!out) {
+    out = [];
+    for (const r of rows) {
+      const inv = monthMap.get(r.id);
+      if (inv) out.push({ ...r, latestInvoice: inv, _dk: inv.grandTotal });
+    }
+    perRows.set(rows, out);
+  }
+  return out;
+}
+
+/**
+ * Ordinea sortată (indici) după sold sau data instalării, calculată o dată per set de rânduri — nu la fiecare schimbare de filtru.
+ * Stabilă: la egalitate rămâne ordinea alfabetică. Fără factură / fără dată → la final, indiferent de direcție.
+ */
+const orderCache = new WeakMap<SnapRow[], Map<string, Uint32Array>>();
+function orderFor(rows: SnapRow[], sort: "debtDesc" | "debtAsc" | "installDesc" | "installAsc"): Uint32Array {
+  let m = orderCache.get(rows);
+  if (!m) orderCache.set(rows, (m = new Map()));
+  let ord = m.get(sort);
+  if (!ord) {
+    const idx = Array.from({ length: rows.length }, (_, k) => k);
+    if (sort === "debtDesc" || sort === "debtAsc") {
+      const mul = sort === "debtAsc" ? 1 : -1;
+      idx.sort((a, b) => {
+        const x = rows[a]._dk, y = rows[b]._dk;
+        const xn = Number.isNaN(x), yn = Number.isNaN(y);
+        if (xn && yn) return a - b;
+        if (xn) return 1;
+        if (yn) return -1;
+        return (x - y) * mul || a - b;
+      });
+    } else {
+      const dir = sort === "installAsc" ? 1 : -1;
+      idx.sort((a, b) => {
+        const x = rows[a].installedAt ?? "", y = rows[b].installedAt ?? "";
+        if (!x && !y) return a - b;
+        if (!x) return 1;
+        if (!y) return -1;
+        return (x < y ? -1 : x > y ? 1 : 0) * dir || a - b;
+      });
+    }
+    ord = Uint32Array.from(idx);
+    m.set(sort, ord);
+  }
+  return ord;
+}
+
 /**
  * Aceeași semantică ca filtrele de pe server (buildPayerWhere / matchesMonthInvoice), dar în memorie.
  * Cu `month`, suma/statusul sunt ale facturii acelei luni (`monthMap`); fără, ale ultimei facturi.
+ * O singură trecere cu comparații pe câmpuri pre-calculate (vezi SnapRow) și ordine de sortare pre-calculate: milisecunde la 19.000 de rânduri.
  */
-export function filterSnapshot(rows: SnapRow[], f: NotifyFilters, monthMap: Map<string, SnapInvoice> | null): SnapRow[] {
+export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: Map<string, SnapInvoice> | null): SnapRow[] {
+  const rows = f.month ? (monthMap ? rowsForMonth(allRows, monthMap) : []) : allRows;
   const q = f.q.trim().toLowerCase();
   const street = f.street.trim().toLowerCase();
-  const min = f.minDebt === "" ? null : Number(f.minDebt);
-  const max = f.maxDebt === "" ? null : Number(f.maxDebt);
+  const min = f.minDebt === "" ? NaN : Number(f.minDebt);
+  const max = f.maxDebt === "" ? NaN : Number(f.maxDebt);
+  const hasMin = !Number.isNaN(min), hasMax = !Number.isNaN(max);
   const now = Date.now();
   const d7 = now - 7 * 86_400_000;
   const d30 = now - 30 * 86_400_000;
+  const sectorCode = f.sector === "privat" ? 1 : f.sector === "comunal" ? 2 : 0;
+  const order = f.sort === "debtDesc" || f.sort === "debtAsc" || f.sort === "installDesc" || f.sort === "installAsc" ? orderFor(rows, f.sort) : null;
+  const wantStatus = f.invoiceStatus;
+  const money = f.debt !== "" || hasMin || hasMax || wantStatus !== "";
   const out: SnapRow[] = [];
 
-  for (const r of rows) {
+  for (let k = 0, n = rows.length; k < n; k++) {
+    const r = order ? rows[order[k]] : rows[k];
     if (q && !r._h.includes(q)) continue;
     if (street && !(r.consumAddress ?? "").toLowerCase().includes(street)) continue;
-    if (f.account === "activated" && !r.activated) continue;
-    if (f.account === "pending" && r.activated) continue;
-    if (f.sector && r.sector !== SECTOR_NAME[f.sector]) continue;
-    if (f.kind === "person" && r.meterSeries == null) continue;
-    if (f.kind === "company" && r.meterSeries != null) continue;
+    if (f.account === "activated" ? !r.activated : f.account === "pending" ? r.activated : false) continue;
+    if (sectorCode && r._st !== sectorCode) continue;
+    if (f.kind === "person" ? r.meterSeries == null : f.kind === "company" ? r.meterSeries != null : false) continue;
     if (f.nameFix && !r.name.includes("?")) continue;
 
-    const he = r.email != null && r.email !== "";
-    const hp = r.phone != null && r.phone !== "";
     switch (f.contact) {
-      case "email": if (!he) continue; break;
-      case "phone": if (!hp) continue; break;
-      case "both": if (!(he && hp)) continue; break;
-      case "any": if (!(he || hp)) continue; break;
-      case "noemail": if (he) continue; break;
-      case "nophone": if (hp) continue; break;
-      case "none": if (he || hp) continue; break;
+      case "email": if (!r._he) continue; break;
+      case "phone": if (!r._hp) continue; break;
+      case "both": if (!(r._he && r._hp)) continue; break;
+      case "any": if (!(r._he || r._hp)) continue; break;
+      case "noemail": if (r._he) continue; break;
+      case "nophone": if (r._hp) continue; break;
+      case "none": if (r._he || r._hp) continue; break;
     }
 
-    if (f.notified) {
-      const t = r.lastNotifiedAt ? new Date(r.lastNotifiedAt).getTime() : null;
-      if (f.notified === "never" && t != null) continue;
-      if (f.notified === "7d" && !(t != null && t >= d7)) continue;
-      if (f.notified === "30d" && !(t != null && t >= d30)) continue;
-      if (f.notified === "not7d" && t != null && t >= d7) continue;
-      if (f.notified === "not30d" && t != null && t >= d30) continue;
+    switch (f.notified) {
+      case "never": if (r._nm !== 0) continue; break;
+      case "7d": if (!(r._nm >= d7 && r._nm !== 0)) continue; break;
+      case "30d": if (!(r._nm >= d30 && r._nm !== 0)) continue; break;
+      case "not7d": if (r._nm !== 0 && r._nm >= d7) continue; break;
+      case "not30d": if (r._nm !== 0 && r._nm >= d30) continue; break;
     }
 
     if (f.installedFrom && !(r.installedAt && r.installedAt >= f.installedFrom)) continue;
     if (f.invoices === "none" && r.latestInvoice) continue;
 
-    const inv = f.month ? (monthMap?.get(r.id) ?? null) : r.latestInvoice;
-    if (f.month && !inv) continue;
-    if (f.invoiceStatus && inv?.status !== f.invoiceStatus) continue;
-    if (f.debt === "has" && !(inv && inv.grandTotal > 0)) continue;
-    if (f.debt === "none" && !(inv && inv.grandTotal <= 0)) continue;
-    if (min != null && !(inv && inv.grandTotal >= min)) continue;
-    if (max != null && !(inv && inv.grandTotal <= max)) continue;
-
-    out.push(f.month ? { ...r, latestInvoice: inv } : r);
-  }
-
-  if (f.sort === "debtDesc" || f.sort === "debtAsc") {
-    const mul = f.sort === "debtAsc" ? 1 : -1;
-    out.sort((a, b) => {
-      const x = a.latestInvoice?.grandTotal;
-      const y = b.latestInvoice?.grandTotal;
-      if (x == null && y == null) return 0;
-      if (x == null) return 1;
-      if (y == null) return -1;
-      return (x - y) * mul;
-    });
-  } else if (f.sort === "installDesc" || f.sort === "installAsc") {
-    const dir = f.sort === "installAsc" ? 1 : -1;
-    out.sort((a, b) => {
-      const x = a.installedAt ?? "";
-      const y = b.installedAt ?? "";
-      if (!x && !y) return 0;
-      if (!x) return 1; // fără dată → la final, indiferent de direcție
-      if (!y) return -1;
-      return (x < y ? -1 : x > y ? 1 : 0) * dir;
-    });
+    if (money) {
+      const inv = r.latestInvoice;
+      if (wantStatus && inv?.status !== wantStatus) continue;
+      const t = r._dk;
+      if (f.debt === "has" && !(inv && t > 0)) continue;
+      if (f.debt === "none" && !(inv && t <= 0)) continue;
+      if (hasMin && !(inv && t >= min)) continue;
+      if (hasMax && !(inv && t <= max)) continue;
+    }
+    out.push(r);
   }
   return out;
 }

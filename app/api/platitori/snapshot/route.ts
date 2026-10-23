@@ -22,12 +22,16 @@ export async function GET(req: Request) {
   try {
     const snap = await getPayerSnap();
     const etag = `"${month ? `${snap.version}-${month}` : snap.version}"`;
-    // private: conține date personale; no-cache = browserul păstrează copia, dar o validează (ETag) la fiecare folosire.
-    const base = { ETag: etag, "Cache-Control": "private, no-cache", Vary: "Accept-Encoding, Cookie" };
+    // private: conține date personale. max-age scurt: răspunsul preîncărcat din HTML (<link rel=preload>) se poate folosi și când hidratarea
+    // durează (telefoane lente) fără o a doua descărcare; cererile cu If-None-Match (cele ale aplicației) ocolesc oricum acest cache și validează.
+    const base = { ETag: etag, "Cache-Control": "private, max-age=15, must-revalidate", Vary: "Accept-Encoding" };
     if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: base });
 
     if (month) {
-      const { tuples } = await getMonthSlice(month);
+      const { gz, tuples } = await getMonthSlice(month);
+      if (/\bgzip\b/i.test(req.headers.get("accept-encoding") ?? "")) {
+        return new Response(new Uint8Array(gz), { headers: { ...base, "Content-Type": "application/json", "Content-Encoding": "gzip", "Content-Length": String(gz.length) } });
+      }
       return Response.json({ month, rows: tuples }, { headers: base });
     }
     if (/\bgzip\b/i.test(req.headers.get("accept-encoding") ?? "")) {

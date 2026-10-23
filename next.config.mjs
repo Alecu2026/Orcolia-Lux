@@ -2,6 +2,11 @@
 const nextConfig = {
   /* config options here */
   reactCompiler: true,
+  // Navigare instant: paginile (dinamice) vizitate sau prefetch-uite la intenție se păstrează în browser 30 s / 60 s; acțiunile de server
+  // care schimbă date (revalidatePath) golesc singure acest cache, deci nu apar date vechi după o modificare.
+  experimental: {
+    staleTimes: { dynamic: 30, static: 60 },
+  },
   // Parser MIME pentru emailurile primite (IMAP): se încarcă din node_modules, nu se împachetează în bundle.
   serverExternalPackages: ["mailparser"],
   // playwright-core loads browsers.json + other data files at runtime via a

@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { preload } from "react-dom";
 import { requirePermission } from "@/lib/dal";
+import { PAYERS_PP_COOKIE, PAYERS_V_COOKIE } from "@/lib/payer-prefs";
 import { can } from "@/lib/permissions";
 import { env } from "@/lib/env";
 import ImportButton from "@/app/components/ImportButton";
@@ -28,14 +31,20 @@ export default async function PayersPage({
 
   // "status" e cheia veche (link-uri salvate) pentru "account".
   const filters = sanitizeFilters({ ...sp, account: sp.account ?? sp.status });
-  const perPage = normalizePerPageClient(sp.perPage);
+  const jar = await cookies();
+  // Fără ?perPage= în adresă, se folosește ultima alegere a utilizatorului (cookie): „Toate" apare complet din prima afișare.
+  const perPage = normalizePerPageClient(sp.perPage ?? jar.get(PAYERS_PP_COOKIE)?.value);
   // Prima încărcare: cel mult 100 de rânduri de pe server (pentru „Toate" lista completă vine apoi din snapshot-ul local).
   const ssrPerPage = Math.min(perPage, 100);
   // Din cache-ul zilnic (memorie → baza de date), fără interogări grele la fiecare deschidere — vezi lib/services/payer-cache.ts.
-  const { items, total, page, months, nameFixCount } = await timed(
+  const { items, total, page, months, nameFixCount, version } = await timed(
     "platitori/cache",
     ssrPayerPage(filters, Math.max(1, Math.floor(Number(sp.page)) || 1), ssrPerPage),
   );
+
+  // Prima vizită (sau lista s-a schimbat): browserul începe descărcarea listei complete chiar de la primirea HTML-ului, în paralel cu încărcarea JS —
+  // nu abia după hidratare. Dacă are deja versiunea curentă (cookie), nu cerem nimic.
+  if (!version || jar.get(PAYERS_V_COOKIE)?.value !== version) preload("/api/platitori/snapshot", { as: "fetch", crossOrigin: "anonymous" });
 
   return (
     <div className="w-full">

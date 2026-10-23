@@ -6,6 +6,7 @@ import { getCompanySettings } from "@/lib/queries/company";
 import AppShell from "@/app/components/AppShell";
 import PWARegister from "@/app/components/PWARegister";
 import OpenInApp from "@/app/components/OpenInApp";
+import PayersPrefetch from "@/app/components/PayersPrefetch";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
 
@@ -57,6 +58,7 @@ export default async function AppLayout({
       {children}
       <PWARegister unread={unread} />
       <OpenInApp />
+      {perms["payers.view"] && <PayersPrefetch />}
     </AppShell>
   );
 }

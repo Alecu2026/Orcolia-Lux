@@ -132,3 +132,21 @@ body {
     background-size: 1.15em 1.15em;
   }
 }
+
+
+/* Bara de progres de sus, vizibilă imediat la click pe un element de meniu (vezi NavPending în AppShell). */
+.nav-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 70;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--color-brand), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: nav-progress 0.9s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes nav-progress {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
+}

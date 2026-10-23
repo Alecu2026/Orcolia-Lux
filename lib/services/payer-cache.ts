@@ -61,7 +61,7 @@ let localHardDirtyAt = 0;
 let localSoftDirtyAt = 0;
 let building: Promise<PayerSnap> | null = null;
 let rebuildScheduled = false;
-const monthCache = new Map<string, { tuples: MonthTuple[]; map: Map<string, SnapInvoice> }>();
+const monthCache = new Map<string, { gz: Buffer; tuples: MonthTuple[]; map: Map<string, SnapInvoice> }>();
 
 function toSnap(a: Artifact, gz: Buffer, version: string): PayerSnap {
   const rows = decodeSnapshot(a.rows, true);
@@ -205,17 +205,38 @@ export async function invalidatePayers(opts: { soft?: boolean } = {}): Promise<v
   scheduleRebuild(soft ? SOFT_DELAY_MS : HARD_DELAY_MS, soft ? "modificare minoră" : "după modificare");
 }
 
-// ── Facturile unei luni (filtrul „Luna facturii"): cerute la nevoie, ținute în memorie până la următoarea reconstruire ──
-export async function getMonthSlice(month: string): Promise<{ tuples: MonthTuple[]; map: Map<string, SnapInvoice> }> {
+// ── Facturile unei luni (filtrul „Luna facturii"): 3 niveluri ca la lista principală — memorie, baza de date (valabil cât timp lista principală
+//    are aceeași versiune), apoi citire din facturi. Servite comprimat; browserul le aduce în avans, deci alegerea unei luni e instant. ──
+export async function getMonthSlice(month: string): Promise<{ gz: Buffer; tuples: MonthTuple[]; map: Map<string, SnapInvoice> }> {
   const snap = await getPayerSnap(); // asigură că L1 e la zi (și golește monthCache dacă s-a reconstruit)
-  void snap;
-  let hit = monthCache.get(month);
-  if (!hit) {
-    const tuples = await getPayerMonthSlice(month);
-    hit = { tuples, map: decodeMonth(tuples) };
-    monthCache.set(month, hit);
+  const hit = monthCache.get(month);
+  if (hit) return hit;
+  const rowId = `m:${month}`;
+  let tuples: MonthTuple[] | null = null;
+  let gz: Buffer | null = null;
+  try {
+    const row = await prisma.payerCacheEntry.findUnique({ where: { id: rowId }, select: { version: true, gz: true } });
+    if (row && row.version === snap.version) {
+      gz = Buffer.from(row.gz);
+      tuples = (JSON.parse(gunzipSync(gz).toString("utf8")) as { rows: MonthTuple[] }).rows;
+    }
+  } catch (e) {
+    console.error("[payer-cache] felia lunii din baza de date e ilizibilă:", e);
   }
-  return hit;
+  if (!tuples || !gz) {
+    tuples = await getPayerMonthSlice(month);
+    gz = gzipSync(Buffer.from(JSON.stringify({ month, rows: tuples }), "utf8"), { level: 6 });
+    try {
+      const data = { version: snap.version, builtAt: new Date(), rows: tuples.length, gz: Uint8Array.from(gz) };
+      const upd = await prisma.payerCacheEntry.updateMany({ where: { id: rowId }, data });
+      if (upd.count === 0) await prisma.payerCacheEntry.create({ data: { id: rowId, ...data } });
+    } catch (e) {
+      console.error("[payer-cache] nu am putut salva felia lunii:", e);
+    }
+  }
+  const entry = { gz, tuples, map: decodeMonth(tuples) };
+  monthCache.set(month, entry);
+  return entry;
 }
 
 function toPayerRow(r: SnapRow): PayerRow {
@@ -226,13 +247,13 @@ function toPayerRow(r: SnapRow): PayerRow {
 }
 
 /** Filtrare + sortare + paginare pe server, tot din memorie (aceeași funcție ca motorul local din browser): fără interogări în baza de date. */
-export async function listPayersFromSnap(filters: NotifyFilters, page: number, perPage: number): Promise<{ items: PayerRow[]; total: number; page: number; months: PayerSnap["months"]; nameFixCount: number }> {
+export async function listPayersFromSnap(filters: NotifyFilters, page: number, perPage: number): Promise<{ items: PayerRow[]; total: number; page: number; months: PayerSnap["months"]; nameFixCount: number; version: string | null }> {
   const snap = await getPayerSnap();
   const monthMap = filters.month ? (await getMonthSlice(filters.month)).map : null;
   const list = filterSnapshot(snap.rows, filters, monthMap);
   const pages = Math.max(1, Math.ceil(list.length / perPage));
   const p = Math.min(Math.max(1, page), pages);
-  return { items: list.slice((p - 1) * perPage, p * perPage).map(toPayerRow), total: list.length, page: p, months: snap.months, nameFixCount: snap.nameFixCount };
+  return { items: list.slice((p - 1) * perPage, p * perPage).map(toPayerRow), total: list.length, page: p, months: snap.months, nameFixCount: snap.nameFixCount, version: snap.version };
 }
 
 /**
@@ -254,6 +275,6 @@ export async function ssrPayerPage(filters: NotifyFilters, page: number, perPage
       p = last;
       res = await listPayers({ ...opts, page: p });
     }
-    return { items: res.items, total: res.total, page: p, months, nameFixCount };
+    return { items: res.items, total: res.total, page: p, months, nameFixCount, version: null as string | null };
   }
 }

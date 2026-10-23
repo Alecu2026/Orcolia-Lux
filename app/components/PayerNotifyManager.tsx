@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { PayerRow } from "@/lib/queries/payers";
 import {
   CONTACT_OPTIONS,
@@ -9,6 +9,7 @@ import {
   NOTIFIED_OPTIONS,
   NOTIFY_MAX_RECIPIENTS,
   NOTIFY_PER_PAGE,
+  PER_PAGE_ALL,
   perPageLabel,
   agoLabel,
   buildVars,
@@ -35,6 +36,7 @@ import CompactCard, { CompactField } from "./CompactCard";
 import PayerDetailDialog, { type PayerPatch } from "./PayerDetailDialog";
 import PayerBulkDeleteDialog from "./PayerBulkDeleteDialog";
 import VirtualList from "./VirtualList";
+import { PAYERS_PP_COOKIE } from "@/lib/payer-prefs";
 import { usePayerDataset } from "./usePayerDataset";
 import ExportButton from "./ExportButton";
 import {
@@ -235,22 +237,29 @@ export default function PayerNotifyManager({
 
   // ── Motor local: toți plătitorii în memorie, filtrați/sortați/paginați în JS (instant). Până se încarcă setul
   //    (sau cât timp se încarcă o lună nouă), se folosește interogarea clasică pe server de mai jos. ──
-  const ds = usePayerDataset(ready);
-  const monthMap = filters.month ? (ds.monthMaps.get(filters.month) ?? null) : null;
-  const useLocal = !!ds.rows && (!filters.month || !!monthMap);
+  const ds = usePayerDataset(ready, months.slice(0, 3).map((x) => x.month));
+  // Controalele (liste, câmpuri) se actualizează imediat; lista de 19.000 de rânduri se recalculează în randarea următoare (amânată), deci
+  // un select nu „se agață" cât timp se filtrează/sortează.
+  const listFilters = useDeferredValue(filters);
+  const monthMap = listFilters.month ? (ds.monthMaps.get(listFilters.month) ?? null) : null;
+  const useLocal = !!ds.rows && (!listFilters.month || !!monthMap);
   // Cu lista completă în browser, orice dimensiune de pagină (inclusiv „Toate") e instant; până atunci serverul dă cel mult 200 de rânduri.
   const perPage = useLocal ? wantPerPage : Math.min(wantPerPage, SERVER_MAX_ROWS);
   const key = queryKey(filters, page, perPage);
   const localList = useMemo(
-    () => (useLocal && ds.rows ? filterSnapshot(ds.rows, sanitizeFilters(filters), monthMap) : null),
+    () => (useLocal && ds.rows ? filterSnapshot(ds.rows, sanitizeFilters(listFilters), monthMap) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [useLocal, ds.rows, ds.version, filters, monthMap],
+    [useLocal, ds.rows, ds.version, listFilters, monthMap],
   );
   const view: Page = useMemo(
     () => (localList ? { items: localList.slice((page - 1) * perPage, page * perPage), total: localList.length } : data),
     [localList, page, perPage, data],
   );
-  const totalPages = Math.max(1, Math.ceil(view.total / perPage));
+  // „Toate" ales, dar lista completă încă n-a ajuns în browser: arătăm deja totalul și primele rânduri (restul sunt rânduri goale care se umplu
+  // singure când sosește lista) — utilizatorul vede „toți cei 19.000" din prima, nu o pagină de 200.
+  const showAll = !useLocal && wantPerPage >= PER_PAGE_ALL && page === 1 && view.total > view.items.length;
+  const uiPerPage = showAll ? view.total : perPage;
+  const totalPages = Math.max(1, Math.ceil(view.total / uiPerPage));
   const ensureMonth = ds.ensureMonth;
   useEffect(() => {
     if (filters.month && ds.rows) ensureMonth(filters.month);
@@ -310,6 +319,7 @@ export default function PayerNotifyManager({
     try {
       if (empty && wantPerPage === DEFAULT_PER_PAGE) localStorage.removeItem(STORAGE_KEY);
       else localStorage.setItem(STORAGE_KEY, JSON.stringify({ f, perPage: wantPerPage }));
+      document.cookie = `${PAYERS_PP_COOKIE}=${wantPerPage}; path=/; max-age=31536000; samesite=lax`; // pentru randarea pe server (vezi /platitori)
     } catch {}
     const usp = filtersToParams(f);
     if (page > 1) usp.set("page", String(page));
@@ -385,7 +395,8 @@ export default function PayerNotifyManager({
   function onText(k: TextKey, value: string) {
     setDraft((d) => ({ ...d, [k]: value }));
     clearTimeout(debounce.current[k]);
-    debounce.current[k] = setTimeout(() => setFilter({ [k]: value.trim() } as Partial<NotifyFilters>), 350);
+    // Cu lista completă în browser filtrarea e ieftină: aplicăm aproape imediat; pe server (lista încă nu e adusă) păstrăm pauza mai lungă.
+    debounce.current[k] = setTimeout(() => setFilter({ [k]: value.trim() } as Partial<NotifyFilters>), ds.rows ? 120 : 350);
   }
 
   function clearAll() {
@@ -402,7 +413,8 @@ export default function PayerNotifyManager({
   const pageRows = view.items;
 
   // ── Virtualizare: din cele (până la 19.000) de rânduri ale paginii se desenează doar cele din zona vizibilă ──
-  const virtualTable = !cards && pageRows.length > VIRTUAL_MIN;
+  const rowCount = showAll ? view.total : pageRows.length;
+  const virtualTable = !cards && rowCount > VIRTUAL_MIN;
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollRaf = useRef(0);
   const [vScroll, setVScroll] = useState({ top: 0, h: 800 });
@@ -428,12 +440,19 @@ export default function PayerNotifyManager({
     });
   }
   const winStart = virtualTable ? Math.max(0, Math.floor(vScroll.top / ROW_H) - 12) : 0;
-  const winEnd = virtualTable ? Math.min(pageRows.length, Math.ceil((vScroll.top + vScroll.h) / ROW_H) + 12) : pageRows.length;
-  const winRows = virtualTable ? pageRows.slice(winStart, winEnd) : pageRows;
+  const winEnd = virtualTable ? Math.min(rowCount, Math.ceil((vScroll.top + vScroll.h) / ROW_H) + 12) : pageRows.length;
+  const winRows = virtualTable ? pageRows.slice(winStart, Math.min(winEnd, pageRows.length)) : pageRows;
   /** Carduri (mod telefon): listă virtualizată cu înălțimi variabile (cardurile se desfac la atingere). */
   function renderRows(rows: PayerRow[], fn: (r: PayerRow, i: number) => React.ReactNode) {
-    if (rows.length <= VIRTUAL_MIN) return rows.map(fn);
-    return <VirtualList count={rows.length} itemKey={(i) => rows[i].id} render={(i) => fn(rows[i], i)} />;
+    const n = showAll ? view.total : rows.length;
+    if (n <= VIRTUAL_MIN) return rows.map(fn);
+    return (
+      <VirtualList
+        count={n}
+        itemKey={(i) => (rows[i] ? rows[i].id : `sk-${i}`)}
+        render={(i) => (rows[i] ? fn(rows[i], i) : <div className="h-11 animate-pulse rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)]" />)}
+      />
+    );
   }
   const allOnPage = pageRows.length > 0 && pageRows.every((r) => selected.has(r.id));
   const someOnPage = pageRows.some((r) => selected.has(r.id));
@@ -551,8 +570,8 @@ export default function PayerNotifyManager({
     filters.sort === up ? "▲" : filters.sort === down ? "▼" : "↕";
 
   const pageButtons = buildPageButtons(page, totalPages);
-  const from = view.total === 0 ? 0 : (page - 1) * perPage + 1;
-  const to = Math.min(page * perPage, view.total);
+  const from = view.total === 0 ? 0 : (page - 1) * uiPerPage + 1;
+  const to = Math.min(page * uiPerPage, view.total);
   const colCount = 12 + (canSelect ? 1 : 0) + (canSend ? 1 : 0);
 
   return (
@@ -881,7 +900,7 @@ export default function PayerNotifyManager({
         ref={scrollRef}
         onScroll={virtualTable ? onTableScroll : undefined}
         className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}
-        style={{ maxHeight: pageRows.length > 50 ? "max(78vh, 890px)" : undefined }}
+        style={{ maxHeight: rowCount > 50 ? "max(78vh, 890px)" : undefined }}
       >
         <table className="min-w-full table-fixed border-separate border-spacing-0 text-[11px] leading-[14px]" style={{ width: COL_W.reduce((a, b) => a + b, 0) + (canSelect ? 28 : 0) + (canSend ? 32 : 0) }}>
           <colgroup>
@@ -1004,9 +1023,15 @@ export default function PayerNotifyManager({
                 </tr>
               );
             })}
-            {winEnd < pageRows.length && (
+            {winEnd > pageRows.length && winStart < winEnd &&
+              Array.from({ length: winEnd - Math.max(winStart, pageRows.length) }, (_, k) => (
+                <tr key={`sk-${Math.max(winStart, pageRows.length) + k}`} aria-hidden style={{ height: ROW_H }}>
+                  <td colSpan={colCount} className="border-b border-[var(--color-line)] px-2 text-ink-soft/40">…</td>
+                </tr>
+              ))}
+            {winEnd < rowCount && (
               <tr aria-hidden>
-                <td colSpan={colCount} style={{ height: (pageRows.length - winEnd) * ROW_H, padding: 0, border: 0 }} />
+                <td colSpan={colCount} style={{ height: (rowCount - winEnd) * ROW_H, padding: 0, border: 0 }} />
               </tr>
             )}
             {pageRows.length === 0 && !loading && (
