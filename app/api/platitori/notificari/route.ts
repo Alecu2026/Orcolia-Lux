@@ -4,6 +4,7 @@ import { getPayer, getPayerInvoices, listPayers, normalizePerPage } from "@/lib/
 import { prisma } from "@/lib/prisma";
 import { filtersToListOpts, listPayerNotes } from "@/lib/queries/payer-notify";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
+import { listPayersFromSnap } from "@/lib/services/payer-cache";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -60,6 +61,13 @@ export async function GET(req: Request) {
   const perPage = Math.min(1000, normalizePerPage(normalizePerPageClient(sp.get("perPage"))));
 
   try {
+    // Din cache-ul zilnic, filtrat în memorie (milisecunde); dacă nu se poate, revine la interogarea în baza de date.
+    try {
+      const fast = await listPayersFromSnap(filters, page, perPage);
+      return Response.json({ items: fast.items, total: fast.total, page: fast.page, perPage });
+    } catch (e) {
+      console.error("[notificari-platitori] cache indisponibil, citesc din baza de date:", e);
+    }
     const res = await listPayers({ ...filtersToListOpts(filters), page, perPage });
     return Response.json({
       items: res.items,

@@ -69,6 +69,19 @@ Pe Vercel plan **Hobby** cron-urile pot rula cel mult o dată pe zi (de aceea `v
 
 Cron-ul de apeluri automate **nu mai există**: apelurile pleacă direct din aplicație, la „Trimite”.
 
+## 4b. Lista de plătitori (/platitori) — cache zilnic
+
+Lista (~19.000 de plătitori) nu se mai citește din baza de date la fiecare deschidere. Un singur rând din colecția `PayerCacheEntry`
+(comprimat gzip, ~1 MB) ține toți plătitorii, partajat între toate instanțele serverului; fiecare proces îl ține și în memorie.
+
+- **Se reface:** o dată pe zi (cron-ul zilnic și sincronizarea 1C din cron/butonul din Plătitori), la orice modificare a datelor
+  (editare plătitor, factură, activare cont, import) și când lipsește. Modificările minore („ultima notificare") se reîmprospătează
+  în fundal, fără ca cititorii să aștepte. Versiunea mai veche de 24 h se servește imediat și se reface în fundal.
+- **Nu cere migrare:** colecția se creează la prima scriere; după `git pull` rulează doar `npm ci` (face `prisma generate`), build și restart.
+  Dacă `prisma generate` n-a rulat, pagina folosește automat interogările vechi.
+- **Browserul:** primește lista comprimată, cu ETag (a doua deschidere = 304, fără descărcare) și o ține în IndexedDB.
+- **Resetare manuală:** ștergi rândul `PayerCacheEntry` din MongoDB sau apeși ↻ lângă „⚡ local" în Plătitori.
+
 ## 5. nginx (exemplu)
 
 ```nginx

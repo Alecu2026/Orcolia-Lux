@@ -2,8 +2,8 @@ import { requirePermission } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { env } from "@/lib/env";
 import { timed } from "@/lib/timing";
-import { listPayers, listPayerMonths, normalizePerPage } from "@/lib/queries/payers";
-import { filtersToListOpts, listPayerTemplates } from "@/lib/queries/payer-notify";
+import { ssrPayerPage } from "@/lib/services/payer-cache";
+import { listPayerTemplates } from "@/lib/queries/payer-notify";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
 import PayerNotifyManager from "@/app/components/PayerNotifyManager";
 
@@ -24,20 +24,10 @@ export default async function PayerNotificationsPage({
   const perPage = normalizePerPageClient(sp.perPage);
   // Prima încărcare: cel mult 100 de rânduri de pe server (pentru „Toate" lista completă vine apoi din snapshot-ul local).
   const ssrPerPage = Math.min(perPage, 100);
-  const opts = { ...filtersToListOpts(filters), perPage: normalizePerPage(ssrPerPage) };
-  let page = Math.max(1, Math.floor(Number(sp.page)) || 1);
-
-  const [first, months, templates] = await Promise.all([
-    timed("notificari/listPayers", listPayers({ ...opts, page })),
-    timed("notificari/listPayerMonths", listPayerMonths()),
+  const [{ items, total, page, months }, templates] = await Promise.all([
+    timed("notificari/cache", ssrPayerPage(filters, Math.max(1, Math.floor(Number(sp.page)) || 1), ssrPerPage)),
     timed("notificari/listPayerTemplates", listPayerTemplates()),
   ]);
-  let res = first;
-  const lastPage = Math.max(1, Math.ceil(first.total / ssrPerPage));
-  if (page > lastPage) {
-    page = lastPage;
-    res = await listPayers({ ...opts, page });
-  }
 
   return (
     <div className="w-full">
@@ -48,7 +38,7 @@ export default async function PayerNotificationsPage({
         </p>
       </div>
       <PayerNotifyManager
-        initial={{ filters, page, perPage, items: res.items, total: res.total }}
+        initial={{ filters, page, perPage, items, total }}
         months={months}
         initialTemplates={templates}
         canSend={can(user, "payers.notify")}

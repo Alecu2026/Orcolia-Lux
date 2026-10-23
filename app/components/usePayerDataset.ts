@@ -11,8 +11,8 @@ import {
 } from "@/lib/payer-notify";
 
 const IDB_NAME = "payers-cache";
-const IDB_KEY = "snapshot-v1";
-const FRESH_MS = 60_000; // sub un minut de la ultima descărcare nu mai cerem din nou
+const IDB_KEY = "snapshot-v2";
+const FRESH_MS = 20_000; // sub 20 s de la ultima verificare nu mai întrebăm serverul (altfel o cerere condiționată: 304 dacă nu s-a schimbat nimic)
 const STALE_REFRESH_MS = 5 * 60_000; // la revenirea în filă, dacă datele sunt mai vechi de 5 minute, le reîmprospătăm discret
 
 // ── IndexedDB (cache local, ca la următoarea deschidere lista să apară instant) ──
@@ -50,7 +50,18 @@ async function idbSet(key: string, value: unknown): Promise<void> {
   }
 }
 
-type Stored = { at: number; rows: SnapTuple[] };
+type Stored = { at: number; etag: string | null; sorted: boolean; rows: SnapTuple[] };
+
+/** Rulează după prima afișare (nu blochează primul rând vizibil cu descărcarea/decodarea a ~19.000 de plătitori). */
+function whenIdle(fn: () => void): () => void {
+  const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
+  if (w.requestIdleCallback) {
+    const id = w.requestIdleCallback(fn, { timeout: 1500 });
+    return () => w.cancelIdleCallback?.(id);
+  }
+  const id = setTimeout(fn, 250);
+  return () => clearTimeout(id);
+}
 
 /**
  * Toți plătitorii în memoria browserului. Prima dată vin de pe server într-o singură cerere (compactă), apoi
@@ -66,12 +77,13 @@ export function usePayerDataset(enabled: boolean) {
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
   const loadedAtRef = useRef<number | null>(null);
   const inflight = useRef<Promise<void> | null>(null);
+  const etagRef = useRef<string | null>(null); // versiunea pe care o avem (cererea următoare e condiționată: 304 = nimic nou)
 
   const [monthMaps, setMonthMaps] = useState<Map<string, Map<string, SnapInvoice>>>(new Map());
   const monthLoading = useRef(new Set<string>());
 
-  const apply = useCallback((tuples: SnapTuple[], at: number) => {
-    const decoded = decodeSnapshot(tuples);
+  const apply = useCallback((tuples: SnapTuple[], at: number, presorted = false) => {
+    const decoded = decodeSnapshot(tuples, presorted);
     rowsRef.current = decoded;
     setRows(decoded);
     loadedAtRef.current = at;
@@ -85,12 +97,21 @@ export function usePayerDataset(enabled: boolean) {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/platitori/snapshot");
+        const res = await fetch("/api/platitori/snapshot", { headers: etagRef.current ? { "If-None-Match": etagRef.current } : undefined });
+        if (res.status === 304) {
+          // Aceeași versiune ca cea din memorie: nimic de descărcat sau de decodat.
+          const at = Date.now();
+          loadedAtRef.current = at;
+          setLoadedAt(at);
+          return;
+        }
         const j = await res.json();
         if (!res.ok) throw new Error(j.error ?? "Eroare la încărcare.");
         const at = Date.now();
-        apply(j.rows as SnapTuple[], at);
-        void idbSet(IDB_KEY, { at, rows: j.rows } satisfies Stored);
+        const etag = res.headers.get("etag");
+        etagRef.current = etag;
+        apply(j.rows as SnapTuple[], at, j.sorted === true);
+        void idbSet(IDB_KEY, { at, etag, sorted: j.sorted === true, rows: j.rows } satisfies Stored);
       } catch (e) {
         // Dacă avem deja date (din cache local) le păstrăm; altfel UI-ul cade pe interogarea clasică pe server.
         setError(e instanceof Error ? e.message : "Eroare la încărcare.");
@@ -107,14 +128,20 @@ export function usePayerDataset(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     let alive = true;
-    (async () => {
-      const stored = await idbGet<Stored>(IDB_KEY);
-      if (!alive) return;
-      if (stored?.rows?.length) apply(stored.rows, stored.at);
-      if (!stored || Date.now() - stored.at > FRESH_MS) await fetchFresh();
-    })();
+    const cancel = whenIdle(() => {
+      void (async () => {
+        const stored = await idbGet<Stored>(IDB_KEY);
+        if (!alive) return;
+        if (stored?.rows?.length) {
+          etagRef.current = stored.etag;
+          apply(stored.rows, stored.at, stored.sorted);
+        }
+        if (!stored || Date.now() - stored.at > FRESH_MS) await fetchFresh();
+      })();
+    });
     return () => {
       alive = false;
+      cancel();
     };
   }, [enabled, apply, fetchFresh]);
 

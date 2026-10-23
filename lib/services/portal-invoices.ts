@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { getCompanySettings } from "@/lib/queries/company";
 import { refreshClientInvoiceSnapshot } from "@/lib/services/invoices";
+import { invalidatePayers } from "@/lib/services/payer-cache";
 
 // Fallback DOAR dacă firma n-a completat niciodată tariful în Setări (apaCanalTarifApa/Canal
 // rămân 0) — altfel, prima factură auto-generată respectă tariful curent salvat, la fel ca
@@ -134,4 +135,5 @@ export async function generateFirstApaCanalInvoice(clientId: string): Promise<vo
   });
 
   await refreshClientInvoiceSnapshot(client.id);
+  await invalidatePayers();
 }

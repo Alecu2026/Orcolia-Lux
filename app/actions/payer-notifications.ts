@@ -1,5 +1,6 @@
 "use server";
 
+import { invalidatePayers } from "@/lib/services/payer-cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
@@ -296,6 +297,8 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
           .catch((e) => console.error("[notify] lastNotifiedAt:", e))
       : null,
   ]);
+
+  if (notifiedIds.size) await invalidatePayers({ soft: true });
 
   if (input.index === 0) {
     const channels = [email.enabled ? "email" : null, sms.enabled ? "SMS" : null, call.enabled ? "apel" : null].filter(Boolean).join(" + ");

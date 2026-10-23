@@ -1101,3 +1101,20 @@ model PbxEvent {
   @@index([callId, receivedAt])
   @@index([receivedAt])
 }
+
+/// Cache durabil, partajat între toate instanțele serverului, pentru lista de plătitori (/platitori): un singur rând
+/// (id fix "snapshot") cu toți plătitorii ca JSON comprimat. Se reconstruiește o dată pe zi (cron) și când se modifică datele
+/// (dirtyAt > builtAt) — vezi lib/services/payer-cache.ts. Fără id ObjectId ca să nu fie nevoie de upsert/index unic.
+model PayerCacheEntry {
+  id       String    @id @map("_id")
+  /// se schimbă la fiecare reconstruire; folosit ca ETag
+  version  String
+  builtAt  DateTime
+  /// ultima modificare a datelor care intră în snapshot; > builtAt = snapshot depășit (cititorii așteaptă reconstruirea)
+  dirtyAt  DateTime?
+  /// modificări minore (ex. „ultima notificare"): se reconstruiește în fundal, iar cititorii primesc varianta existentă
+  softDirtyAt DateTime?
+  rows     Int
+  /// {"v":2,"at":ms,"sorted":true,"rows":[tupluri],"months":[...]} comprimat gzip
+  gz       Bytes
+}

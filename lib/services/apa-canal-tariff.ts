@@ -1,6 +1,7 @@
 import "server-only";
 import type { prisma as PrismaInstance } from "../prisma";
 import { refreshClientInvoiceSnapshot } from "./invoices";
+import { invalidatePayers } from "./payer-cache";
 
 // Tipul EXACT al clientului extins din lib/prisma.ts (nu PrismaClient brut — vezi explicația
 // din apa-canal-import.ts despre de ce Pick<PrismaClient, ...> nu se potrivește structural).
@@ -169,6 +170,7 @@ export async function applyTariffUpdatePlan(
   // refreshClientInvoiceSnapshot folosește propriul import al lui `prisma` (lib/prisma.ts),
   // nu parametrul de mai sus — ia doar clientId.
   for (const clientId of touchedClientIds) await refreshClientInvoiceSnapshot(clientId);
+  if (touchedClientIds.size) await invalidatePayers();
 
   return { invoicesUpdated, itemsUpdated };
 }

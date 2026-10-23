@@ -1,5 +1,6 @@
 "use server";
 
+import { invalidatePayers } from "@/lib/services/payer-cache";
 import { revalidatePath, updateTag } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser, type CurrentUser } from "@/lib/dal";
@@ -136,6 +137,7 @@ export async function updateClient(
       notes: d.notes || null,
     },
   });
+  await invalidatePayers();
   await logAudit(actor(user), {
     action: "client.update",
     module: "Clients",
@@ -155,6 +157,7 @@ export async function deleteClient(id: string): Promise<void> {
   if (DEMO) return;
   const c = await prisma.client.findFirst({ where: { id }, select: { name: true } });
   await prisma.client.deleteMany({ where: { id } });
+  await invalidatePayers();
   await logAudit(actor(user), { action: "client.delete", module: "Clients", objectId: id, objectName: c?.name ?? null });
   revalidatePath("/clients");
   updateTag("clients");
@@ -194,6 +197,7 @@ export async function updateClientFieldAction(id: string, patch: ClientFieldPatc
   if (Object.keys(data).length === 0) return { ok: true, id };
 
   await prisma.client.update({ where: { id }, data });
+  await invalidatePayers();
   await logAudit(actor(user), {
     action: "client.update",
     module: "Clients",

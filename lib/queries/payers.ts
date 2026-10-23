@@ -94,7 +94,8 @@ export function monthRange(month: string): { gte: Date; lt: Date } {
 
 /** Lunile în care există facturi Apă-Canal, cu numărul de facturi — pentru lista "Luna facturii". */
 // Scanează toate facturile Apă-Canal doar ca să afle ce luni există, iar lista se schimbă rar (la importul din 1C): o ținem 10 minute.
-const monthsCached = cachedAsync(10 * 60_000, async (): Promise<{ month: string; count: number }[]> => {
+export async function loadPayerMonths(): Promise<{ month: string; count: number }[]> {
+  if (DEMO) return [];
   const res = (await prisma.invoice.aggregateRaw({
     pipeline: [
       { $match: { kind: "APA_CANAL" } },
@@ -104,7 +105,8 @@ const monthsCached = cachedAsync(10 * 60_000, async (): Promise<{ month: string;
     options: { allowDiskUse: true },
   })) as unknown as { _id: string; n: number }[];
   return res.filter((r) => r._id).map((r) => ({ month: r._id, count: r.n }));
-});
+}
+const monthsCached = cachedAsync(10 * 60_000, loadPayerMonths);
 export async function listPayerMonths(): Promise<{ month: string; count: number }[]> {
   if (DEMO) return [];
   return monthsCached();

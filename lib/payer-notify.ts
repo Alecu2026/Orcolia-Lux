@@ -330,9 +330,12 @@ export type SnapTuple = [
 export type MonthTuple = [clientId: string, number: string, status: string, total: number, currency: string, dueMs: number | null];
 
 const collatorRo = new Intl.Collator("ro");
+/** Sortarea după nume folosită peste tot (aceeași ordine pe server și în browser). */
+export const sortTuplesByName = (tuples: SnapTuple[]): SnapTuple[] => tuples.sort((a, b) => collatorRo.compare(a[1], b[1]));
 const iso = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString());
 
-export function decodeSnapshot(tuples: SnapTuple[]): SnapRow[] {
+/** `presorted`: serverul a sortat deja tuplurile după nume (vezi lib/services/payer-cache.ts) — nu mai sortăm încă o dată pe client/pe server. */
+export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[] {
   const rows: SnapRow[] = tuples.map((t) => ({
     id: t[0],
     name: t[1],
@@ -352,7 +355,7 @@ export function decodeSnapshot(tuples: SnapTuple[]): SnapRow[] {
     sector: t[16],
     _h: [t[1], t[2], t[3], t[4], t[5]].filter(Boolean).join("\n").toLowerCase(),
   }));
-  rows.sort((a, b) => collatorRo.compare(a.name, b.name)); // o singură dată; filtrarea păstrează ordinea
+  if (!presorted) rows.sort((a, b) => collatorRo.compare(a.name, b.name)); // o singură dată; filtrarea păstrează ordinea
   return rows;
 }
 

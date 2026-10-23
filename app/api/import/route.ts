@@ -11,6 +11,7 @@ import {
 } from "@/lib/import-utils";
 import { createTask } from "@/lib/services/tasks";
 import { createAppointment } from "@/lib/services/appointments";
+import { invalidatePayers } from "@/lib/services/payer-cache";
 import { DEFAULT_TZ, zonedToUtc } from "@/lib/date";
 import type { Prisma } from "@prisma/client";
 
@@ -612,6 +613,7 @@ export async function POST(req: Request) {
       }
     }
 
+    if (result.imported > 0) await invalidatePayers();
     return Response.json(result);
   }
 

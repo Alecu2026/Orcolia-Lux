@@ -7,6 +7,7 @@ import { requireUser, type CurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { createInvoice, updateInvoice, refreshClientInvoiceSnapshot, type ApaCanalInput } from "@/lib/services/invoices";
+import { invalidatePayers } from "@/lib/services/payer-cache";
 import { getSettings } from "@/lib/queries/settings";
 import { logAudit } from "@/lib/services/audit";
 import { notifyUsers, observerRecipients } from "@/lib/services/notifications";
@@ -160,6 +161,7 @@ export async function saveInvoice(payload: InvoicePayload): Promise<InvoiceActio
   if (previousClient?.clientId && previousClient.clientId !== payload.clientId) {
     await refreshClientInvoiceSnapshot(previousClient.clientId);
   }
+  await invalidatePayers();
   if (status === "SENT") {
     notifyClientEmail(res.id!);
     const clientChanged = !!previousClient?.clientId && previousClient.clientId !== payload.clientId;
@@ -224,6 +226,7 @@ export async function setInvoiceStatus(
   const paidAt = status === "PAID" ? (before?.paidAt ?? new Date()) : null;
   await prisma.invoice.update({ where: { id }, data: { status: status as InvoiceStatus, paidAt } });
   await refreshClientInvoiceSnapshot(before?.clientId);
+  await invalidatePayers();
   await logAudit(actor(user), {
     action: "invoice.status_change",
     module: "Invoices",
@@ -246,6 +249,7 @@ export async function deleteInvoice(id: string): Promise<void> {
   await prisma.invoiceItem.deleteMany({ where: { invoiceId: id } });
   await prisma.invoice.delete({ where: { id } }).catch(() => {});
   await refreshClientInvoiceSnapshot(inv?.clientId);
+  await invalidatePayers();
   await logAudit(actor(user), { action: "invoice.delete", module: "Invoices", objectId: id, objectName: inv?.number ?? null });
   revalidatePath("/invoices");
 }

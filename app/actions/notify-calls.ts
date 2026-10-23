@@ -1,5 +1,6 @@
 "use server";
 
+import { invalidatePayers } from "@/lib/services/payer-cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
@@ -59,6 +60,7 @@ export async function dialNotifyCallAction(id: string, operator: string): Promis
       })
       .catch((e) => console.error("[notify] jurnal apel:", e)),
   ]);
+  await invalidatePayers({ soft: true });
   return { ok: true, callId, dialedAt: now.toISOString(), operator: op };
 }
 

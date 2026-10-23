@@ -1,5 +1,6 @@
 "use server";
 
+import { invalidatePayers } from "@/lib/services/payer-cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
@@ -96,6 +97,7 @@ export async function confirmClientRegistration(
     where: { id: client.id },
     data: { email, portalPasswordHash, portalActivatedAt: now, portalLastLoginAt: now },
   });
+  await invalidatePayers();
 
   // Best-effort — dacă generarea eșuează, activarea contului tot reușește; clientul poate
   // primi factura ulterior, manual, din partea staff-ului.
@@ -180,6 +182,7 @@ export async function resetClientPasswordWithCode(
 
   const portalPasswordHash = await hashPassword(newPassword);
   await prisma.client.update({ where: { id: client.id }, data: { portalPasswordHash } });
+  await invalidatePayers();
   await prisma.clientSession.deleteMany({ where: { clientId: client.id } }); // deloghează toate dispozitivele
 
   redirect("/portal/login?reset=1");

@@ -7,6 +7,7 @@ import { can } from "@/lib/permissions";
 import { clientSchema } from "@/lib/validation";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
+import { invalidatePayers } from "@/lib/services/payer-cache";
 
 export type PayerState = { ok?: boolean; error?: string } | undefined;
 
@@ -53,6 +54,7 @@ export async function updatePayer(
   await logAudit(actor(user), { action: "client.update", module: "Payers", objectId: id, objectName: d.name });
   revalidatePath(`/platitori/${id}`);
   revalidatePath("/platitori");
+  await invalidatePayers();
   return { ok: true };
 }
 
@@ -65,6 +67,7 @@ export async function deletePayer(id: string): Promise<void> {
   // Cascade (schema): șterge și facturile/sesiunile/codurile legate de acest client.
   await prisma.payerNote.deleteMany({ where: { clientId: id } });
   await prisma.client.delete({ where: { id } });
+  await invalidatePayers();
   await logAudit(actor(user), { action: "client.delete", module: "Payers", objectId: id, objectName: c.name });
   revalidatePath("/platitori");
 }
@@ -126,6 +129,7 @@ export async function deletePayersBulkAction(ids: string[]): Promise<BulkDeleteR
       oldValue: deletable.slice(0, 5).map((p) => p.name).join(", ") + (deletable.length > 5 ? "…" : ""),
     });
     revalidatePath("/platitori");
+    await invalidatePayers();
   }
   return { ok: true, deletedIds: delIds, skipped };
 }
@@ -148,4 +152,5 @@ export async function resetPayerPortalAccess(id: string): Promise<void> {
   await prisma.clientSession.deleteMany({ where: { clientId: id } });
   await logAudit(actor(user), { action: "client.portal_reset", module: "Payers", objectId: id, objectName: c.name });
   revalidatePath(`/platitori/${id}`);
+  await invalidatePayers();
 }

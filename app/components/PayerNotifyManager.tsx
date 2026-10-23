@@ -83,6 +83,15 @@ function queryKey(f: NotifyFilters, page: number, perPage: number): string {
 
 type TextKey = "q" | "street" | "minDebt" | "maxDebt";
 
+/**
+ * Câte rânduri se desenează cel mult o dată. „Toate"/1000 de plătitori deodată înseamnă sute de mii de noduri DOM (măsurat: 343.000 de noduri
+ * și 220 MB pe telefon → fila se blochează/pică, iar alegerea se salva în localStorage și se reaplica la fiecare deschidere).
+ * Restul se vede prin paginare/filtre; exportul și selecția „toți din filtru" lucrează pe tot setul, nu pe rândurile desenate.
+ */
+const MAX_TABLE_ROWS = 500;
+const MAX_CARD_ROWS = 100;
+const BOOT_GUARD_MS = 120_000;
+
 export default function PayerNotifyManager({
   initial,
   months,
@@ -136,6 +145,7 @@ export default function PayerNotifyManager({
   const [deleting, setDeleting] = useState(false);
   const BASE_PATH = basePath;
   const STORAGE_KEY = `filters:${basePath}`;
+  const BOOT_KEY = `boot:${basePath}`;
 
   // ── Stare: filtrele sunt locale (schimbarea lor e instantanee în UI), datele vin de pe server ──
   const [filters, setFilters] = useState<NotifyFilters>(initial.filters);
@@ -143,7 +153,7 @@ export default function PayerNotifyManager({
     q: initial.filters.q, street: initial.filters.street, minDebt: initial.filters.minDebt, maxDebt: initial.filters.maxDebt,
   });
   const [page, setPage] = useState(initial.page);
-  const [perPage, setPerPage] = useState(initial.perPage);
+  const [wantPerPage, setPerPage] = useState(initial.perPage); // ce a ales utilizatorul (se salvează); `perPage` = cât desenăm de fapt
   const [data, setData] = useState<Page>({ items: initial.items, total: initial.total });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,9 +180,14 @@ export default function PayerNotifyManager({
   const [cardsPref, setCardsPref] = useState<boolean | null>(null);
   const [narrow, setNarrow] = useState(false);
   const cards = cardsPref ?? narrow;
+  const perPage = Math.min(wantPerPage, cards ? MAX_CARD_ROWS : MAX_TABLE_ROWS);
+  // Telefoane cu memorie puțină (≤ 2 GB): fără setul complet în browser — filtrarea merge pe server, tot din cache (milisecunde).
+  const [localOk, setLocalOk] = useState(true);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setNarrow(window.matchMedia("(max-width: 639px)").matches);
+    const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+    if (mem != null && mem <= 2) setLocalOk(false);
     try {
       const v = localStorage.getItem("payer-notify-view");
       if (v === "cards" || v === "table") setCardsPref(v === "cards");
@@ -224,7 +239,7 @@ export default function PayerNotifyManager({
 
   // ── Motor local: toți plătitorii în memorie, filtrați/sortați/paginați în JS (instant). Până se încarcă setul
   //    (sau cât timp se încarcă o lună nouă), se folosește interogarea clasică pe server de mai jos. ──
-  const ds = usePayerDataset(ready);
+  const ds = usePayerDataset(ready && localOk);
   const monthMap = filters.month ? (ds.monthMaps.get(filters.month) ?? null) : null;
   const useLocal = !!ds.rows && (!filters.month || !!monthMap);
   const localList = useMemo(
@@ -249,12 +264,21 @@ export default function PayerNotifyManager({
   // Restaurează filtrele salvate (doar dacă URL-ul nu are propriile filtre) — ca în Task-uri.
   useEffect(() => {
     const urlEmpty = countActiveFilters(initial.filters) === 0 && !initial.filters.sort && initial.page === 1;
-    if (urlEmpty) {
+    // Dacă încărcarea anterioară nu s-a terminat (fila a pierit / s-a blocat), NU mai reaplicăm filtrele salvate — altfel ar bloca la nesfârșit.
+    let interrupted = false;
+    try {
+      const b = Number(localStorage.getItem(BOOT_KEY) ?? 0);
+      interrupted = b > 0 && Date.now() - b < BOOT_GUARD_MS;
+      localStorage.setItem(BOOT_KEY, String(Date.now()));
+      if (interrupted) localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+    if (interrupted) toast.info(t("Încărcarea anterioară nu s-a terminat, deci filtrele salvate au fost resetate."));
+    if (urlEmpty && !interrupted) {
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as { f?: unknown; perPage?: unknown } | null;
         if (saved) {
           const f = sanitizeFilters((saved.f ?? {}) as Record<string, unknown>);
-          const pp = normalizePerPageClient(saved.perPage);
+          const pp = Math.min(normalizePerPageClient(saved.perPage), window.matchMedia("(max-width: 639px)").matches ? MAX_CARD_ROWS : MAX_TABLE_ROWS);
           if (countActiveFilters(f) > 0 || f.sort) {
             // Citire din localStorage după hidratare (serverul nu o poate face) — același tipar ca în TasksManager.
             // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -269,21 +293,28 @@ export default function PayerNotifyManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Prima afișare s-a terminat fără blocaj → ridicăm protecția (dacă fila se blochează, rAF nu mai rulează și semnalul rămâne).
+  useEffect(() => {
+    if (!ready) return;
+    const id = requestAnimationFrame(() => requestAnimationFrame(() => { try { localStorage.removeItem(BOOT_KEY); } catch {} }));
+    return () => cancelAnimationFrame(id);
+  }, [ready, BOOT_KEY]);
+
   // Salvează filtrele + sincronizează URL-ul (link de partajat), fără navigare.
   useEffect(() => {
     if (!ready) return;
     const f = sanitizeFilters(filters);
     const empty = countActiveFilters(f) === 0 && !f.sort;
     try {
-      if (empty && perPage === DEFAULT_PER_PAGE) localStorage.removeItem(STORAGE_KEY);
-      else localStorage.setItem(STORAGE_KEY, JSON.stringify({ f, perPage }));
+      if (empty && wantPerPage === DEFAULT_PER_PAGE) localStorage.removeItem(STORAGE_KEY);
+      else localStorage.setItem(STORAGE_KEY, JSON.stringify({ f, perPage: wantPerPage }));
     } catch {}
     const usp = filtersToParams(f);
     if (page > 1) usp.set("page", String(page));
-    if (perPage !== DEFAULT_PER_PAGE) usp.set("perPage", String(perPage));
+    if (wantPerPage !== DEFAULT_PER_PAGE) usp.set("perPage", String(wantPerPage));
     const qs = usp.toString();
     window.history.replaceState(null, "", `${BASE_PATH}${qs ? `?${qs}` : ""}`);
-  }, [filters, page, perPage, ready, BASE_PATH, STORAGE_KEY]);
+  }, [filters, page, wantPerPage, ready, BASE_PATH, STORAGE_KEY]);
 
   // Încărcarea datelor: răspuns instant din cache (dacă am mai văzut pagina), apoi reîmprospătare de pe server;
   // o cerere nouă anulează pe cea veche, deci filtrarea rapidă nu se „îneacă" în răspunsuri vechi.
@@ -720,7 +751,7 @@ export default function PayerNotifyManager({
             className={fld(perPage === DEFAULT_PER_PAGE ? "" : "x")}
             aria-label={t("Rânduri pe pagină")}
           >
-            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
+            {NOTIFY_PER_PAGE.filter((n) => n <= (cards ? MAX_CARD_ROWS : MAX_TABLE_ROWS)).map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
           </select>
         </label>
       </div>

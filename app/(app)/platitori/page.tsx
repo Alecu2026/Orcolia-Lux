@@ -6,8 +6,7 @@ import ImportButton from "@/app/components/ImportButton";
 import ApaCanalApiSync from "@/app/components/ApaCanalApiSync";
 import PayerNotifyManager from "@/app/components/PayerNotifyManager";
 import { timed } from "@/lib/timing";
-import { listPayers, listPayerMonths, countPayersNeedingNameFix, normalizePerPage } from "@/lib/queries/payers";
-import { filtersToListOpts } from "@/lib/queries/payer-notify";
+import { ssrPayerPage } from "@/lib/services/payer-cache";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
 
 export const dynamic = "force-dynamic";
@@ -32,20 +31,11 @@ export default async function PayersPage({
   const perPage = normalizePerPageClient(sp.perPage);
   // Prima încărcare: cel mult 100 de rânduri de pe server (pentru „Toate" lista completă vine apoi din snapshot-ul local).
   const ssrPerPage = Math.min(perPage, 100);
-  const opts = { ...filtersToListOpts(filters), perPage: normalizePerPage(ssrPerPage) };
-  let page = Math.max(1, Math.floor(Number(sp.page)) || 1);
-
-  const [first, months, nameFixCount] = await Promise.all([
-    timed("platitori/listPayers", listPayers({ ...opts, page })),
-    timed("platitori/listPayerMonths", listPayerMonths()),
-    timed("platitori/countNameFix", countPayersNeedingNameFix()),
-  ]);
-  let res = first;
-  const lastPage = Math.max(1, Math.ceil(first.total / ssrPerPage));
-  if (page > lastPage) {
-    page = lastPage;
-    res = await listPayers({ ...opts, page });
-  }
+  // Din cache-ul zilnic (memorie → baza de date), fără interogări grele la fiecare deschidere — vezi lib/services/payer-cache.ts.
+  const { items, total, page, months, nameFixCount } = await timed(
+    "platitori/cache",
+    ssrPayerPage(filters, Math.max(1, Math.floor(Number(sp.page)) || 1), ssrPerPage),
+  );
 
   return (
     <div className="w-full">
@@ -69,7 +59,7 @@ export default async function PayersPage({
         basePath="/platitori"
         browseOnly
         nameFixCount={nameFixCount}
-        initial={{ filters, page, perPage, items: res.items, total: res.total }}
+        initial={{ filters, page, perPage, items, total }}
         months={months}
         initialTemplates={[]}
         canSend={false}
