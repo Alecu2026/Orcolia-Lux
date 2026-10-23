@@ -232,6 +232,26 @@ export async function setTaskProgress(id: string, progress: number): Promise<Tas
   return { ok: true };
 }
 
+/**
+ * Rândul unui task așa cum îl arată lista curentă (același scop, aceleași drepturi de vizualizare): folosit de tabel după o editare/creare,
+ * ca să preia câmpurile derivate (numele clientului prin proiect etc.) FĂRĂ să reîncarce toată lista. `null` = nu (mai) aparține listei;
+ * `undefined` = nu s-a putut afla (tabelul își păstrează starea locală).
+ */
+export async function getTaskRowAction(id: string, scope: string, kind: "TASK" | "TICKET"): Promise<TaskRow | null | undefined> {
+  try {
+    const user = await requireUser();
+    if (!OBJECT_ID.test(id ?? "")) return null;
+    const type: TaskType = kind === "TICKET" ? "TICKET" : "TASK";
+    if (!can(user, type === "TICKET" ? "tickets.view" : "tasks.view")) return null;
+    const sc = (["mine", "all", "created"].includes(scope) && !(scope === "all" && !canUseAllScope(user)) ? scope : "mine") as "mine" | "all" | "created";
+    const { items } = await listTasks({ scope: sc, userId: user.id, teamIds: user.teamIds, ...taskViewFilter(user), types: [type], id, page: 1, pageSize: 1 });
+    return items[0] ?? null;
+  } catch (e) {
+    console.error("[tasks.action] getTaskRowAction: eșuat", e);
+    return undefined;
+  }
+}
+
 /** Istoricul de status (timeline) — lazy, la expandarea unui task. */
 export async function getTaskHistory(id: string): Promise<TaskHistoryRow[]> {
   const user = await requireUser();

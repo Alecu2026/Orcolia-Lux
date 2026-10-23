@@ -92,6 +92,18 @@ se reface în fundal (~8 s); importurile și sincronizarea 1C o reconstruiesc co
   (cu cache scurt pe rezultate), iar „Toate" aduce cel mult 1000 de rânduri odată. Se vede în log la reconstruire (`[invoice-cache] reconstruit …: server`).
 - **Index nou** `Invoice(status, createdAt)`: se creează la `npm run db:push`; ajută doar modul „server".
 
+## 4d. Task-uri și tichete (/tasks, /tickets) — liste mari
+
+- **Până la 1.500 de rânduri** în lista curentă („Ale mele" / „Toate" / „Create de mine") pagina trimite totul în HTML, ca înainte; filtrarea, sortarea și
+  paginarea rulează oricum în browser.
+- **Peste 1.500** (`TASK_SNAPSHOT_MIN`, implicit 1500) HTML-ul conține doar cele mai noi 100 de rânduri + totalul (se vede imediat), iar restul vine din
+  `/api/tasks/dataset`: toată lista compactă (tupluri + dicționar de nume), gzip, cu ETag; browserul o ține în IndexedDB și confirmă cu serverul la fiecare
+  deschidere (304 = nimic de descărcat). 20.000 de task-uri ≈ 1 MB pe fir.
+- **Proaspătă mereu:** la fiecare cerere serverul verifică o amprentă ieftină (număr + ultima modificare), deci o modificare apare imediat, pe orice instanță.
+  Memoria serverului ține cel mult 16 liste (câte una per tip / scop / vizibilitate) și le reface după 2 minute chiar și fără modificări (nume redenumite).
+- Editările din tabel (status, prioritate, proiect…) se văd instant (optimist); serverul răspunde cu un singur rând, nu cu toată lista.
+- Fără modificări de schemă și fără alte configurări.
+
 ## 5. nginx (exemplu)
 
 ```nginx

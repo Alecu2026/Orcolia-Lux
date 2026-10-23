@@ -1,6 +1,6 @@
 import { requirePermission } from "@/lib/dal";
 import { can, canUseAllScope } from "@/lib/permissions";
-import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
+import { listTasksForPage, taskViewFilter } from "@/lib/queries/tasks";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
 import { userOptions } from "@/lib/queries/users";
@@ -39,16 +39,16 @@ export default async function TasksPage({
 
   // Toate task-urile din „scope" odată; filtrarea/sortarea/paginarea rulează în browser (vezi TasksTable / DataTable).
   const [result, users, teams, projects, clients, categories, quietHoursSettings] = await Promise.all([
-    listTasks({
-      scope,
-      userId: user.id,
-      teamIds: user.teamIds,
-      ...taskViewFilter(user),
-      types: ["TASK"],
-      sort: "default",
-      page: 1,
-      pageSize: 9999,
-    }),
+    listTasksForPage(
+      {
+        scope,
+        userId: user.id,
+        teamIds: user.teamIds,
+        ...taskViewFilter(user),
+        types: ["TASK"],
+      },
+      initialOpenId,
+    ),
     userOptions(),
     teamOptions(),
     projectOptions(),
@@ -68,6 +68,7 @@ export default async function TasksPage({
     <div className="w-full">
       <TasksTable
         items={result.items}
+        dataset={result.dataset ? { total: result.total } : undefined}
         scope={scope}
         users={users}
         teams={teams}

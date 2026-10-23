@@ -463,4 +463,5 @@ export const RU: Record<string, string> = {
   "Cu 10 minute înainte": "За 10 минут",
   "Export": "Экспорт",
   "Încărcarea anterioară nu s-a terminat, deci filtrele salvate au fost resetate.": "Предыдущая загрузка не завершилась, поэтому сохранённые фильтры сброшены.",
+  "Se încarcă lista completă… filtrele se aplică imediat ce e gata.": "Загружается полный список… фильтры применятся, как только он будет готов.",
 };

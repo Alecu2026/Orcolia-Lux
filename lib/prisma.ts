@@ -1,5 +1,8 @@
 import "server-only";
 import { PrismaClient } from "@prisma/client";
+import { bumpTaskEpoch } from "./task-epoch";
+
+const TASK_WRITES = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert", "delete", "deleteMany"]);
 
 /**
  * Singleton Prisma — evită epuizarea conexiunilor în dev (HMR re-execută modulele).
@@ -19,6 +22,14 @@ function createClient() {
   // fără super-admin, fără nicio cale de auto-recuperare din interiorul aplicației.
   return base.$extends({
     query: {
+      // Orice scriere în Task marchează lista completă din memorie ca depășită (vezi lib/task-epoch.ts).
+      task: {
+        async $allOperations({ operation, args, query }) {
+          const result = await query(args);
+          if (TASK_WRITES.has(operation)) bumpTaskEpoch();
+          return result;
+        },
+      },
       user: {
         async create({ args, query }) {
           const count = await base.user.count();

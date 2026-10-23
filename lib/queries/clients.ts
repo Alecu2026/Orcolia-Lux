@@ -3,6 +3,7 @@ import { unstable_cache } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { DEMO, demoClients } from "../demo";
+import { clientNamesFor } from "./client-names";
 
 export type ClientListItem = {
   id: string;
@@ -132,16 +133,24 @@ export async function searchClients(_userId: string, q: string, limit = 8) {
 export const crmClientOptions = unstable_cache(
   async (): Promise<{ id: string; name: string }[]> => {
     if (DEMO) return [];
-    const [crm, tasks, projects] = await Promise.all([
+    // `distinct` din Prisma aduce TOATE documentele și le deduplică în memorie (secunde la zeci de mii de task-uri): grupăm în baza de date.
+    const distinctClientIds = async (model: "task" | "project"): Promise<string[]> => {
+      const res = (await (prisma[model] as unknown as { aggregateRaw: (a: unknown) => Promise<unknown> }).aggregateRaw({
+        pipeline: [{ $match: { clientId: { $ne: null } } }, { $group: { _id: "$clientId" } }],
+        options: { allowDiskUse: true },
+      })) as unknown as { _id: { $oid?: string } | string }[];
+      return res.map((r) => (typeof r._id === "string" ? r._id : r._id?.$oid)).filter((x): x is string => !!x);
+    };
+    const [crm, taskIds, projectIds] = await Promise.all([
       prisma.client.findMany({ where: CRM_CLIENT_WHERE, select: { id: true, name: true } }),
-      prisma.task.findMany({ where: { clientId: { not: null } }, select: { clientId: true }, distinct: ["clientId"] }),
-      prisma.project.findMany({ where: { clientId: { not: null } }, select: { clientId: true }, distinct: ["clientId"] }),
+      distinctClientIds("task"),
+      distinctClientIds("project"),
     ]);
     const have = new Set(crm.map((c) => c.id));
-    const extraIds = [...new Set([...tasks, ...projects].map((r) => r.clientId!).filter((id) => !have.has(id)))];
-    const extra = extraIds.length
-      ? await prisma.client.findMany({ where: { id: { in: extraIds } }, select: { id: true, name: true } })
-      : [];
+    const extraIds = [...new Set([...taskIds, ...projectIds].filter((id) => !have.has(id)))];
+    // clienții legați de task-uri / proiecte dar în afara CRM-ului (de ex. plătitori): `id in [mii]` e lent, deci din harta numelor (vezi client-names.ts)
+    const extraNames = await clientNamesFor(extraIds);
+    const extra = [...extraNames].map(([id, name]) => ({ id, name }));
     return [...crm, ...extra].sort((a, b) => a.name.localeCompare(b.name, "ro"));
   },
   ["crm-client-options"],

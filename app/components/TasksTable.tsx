@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
+  getTaskRowAction,
   setTaskStatus,
   setTaskProgress,
   updateTaskFieldAction,
@@ -14,6 +14,7 @@ import {
   addTaskCommentAction,
 } from "@/app/actions/tasks";
 import DataTable, { type Col, type Filter } from "./DataTable";
+import { useTaskDataset } from "./useTaskDataset";
 import { DateTimePick, EditableSelect, EditableText, MultiPick, PopEditor } from "./InlineCells";
 import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
@@ -55,6 +56,47 @@ const GROUPS: Record<string, Status[]> = {
   "g:closed": ["DONE", "CANCELLED"],
 };
 
+/**
+ * Date derivate pe rând, calculate o singură dată (rândurile sunt obiecte stabile; la o editare se înlocuiește doar rândul modificat):
+ * textul de căutare în litere mici și ziua termenului. Fără ele, fiecare tastă din căutare ar reface zeci de mii de toLowerCase/Intl.
+ */
+type Derived = { hay: string; due: string | null };
+const derivedCache = new WeakMap<Task, Derived>();
+function derivedOf(t: Task): Derived {
+  let d = derivedCache.get(t);
+  if (!d) {
+    d = {
+      hay: [t.title, t.description, t.projectName, t.clientName, t.assigneeName, t.teamName, t.creatorName].map((x) => (x ?? "").toLowerCase()).join("\n"),
+      due: t.dueAt ? dateKeyOf(new Date(t.dueAt), TZ) : null,
+    };
+    derivedCache.set(t, d);
+  }
+  return d;
+}
+
+const nowMs = () => Date.now();
+/** Cât timp o modificare locală „bate" lista completă sosită de pe server (care ar fi putut fi construită înainte ca modificarea să se salveze). */
+const LOCAL_WINS_MS = 20_000;
+type Touched = Map<string, { at: number; gone: boolean }>;
+
+/** Lista completă tocmai sosită + rândurile modificate / create / șterse local în ultimele secunde (ele rămân așa cum le vede utilizatorul). */
+function mergeLocal(incoming: Task[], cur: Task[], touched: Touched): Task[] {
+  const now = nowMs();
+  const live = [...touched].filter(([, v]) => now - v.at < LOCAL_WINS_MS);
+  if (live.length === 0) return incoming;
+  const curById = new Map(cur.map((r) => [r.id, r]));
+  const inIncoming = new Set(incoming.map((r) => r.id));
+  const keep = new Map(live);
+  const out: Task[] = [];
+  for (const r of incoming) {
+    const t = keep.get(r.id);
+    if (!t) out.push(r);
+    else if (!t.gone) out.push(curById.get(r.id) ?? r);
+  }
+  const added = live.filter(([id, v]) => !v.gone && !inIncoming.has(id) && curById.has(id)).map(([id]) => curById.get(id)!);
+  return added.length ? [...added, ...out] : out;
+}
+
 const iconBtn =
   "tap grid size-5 cursor-pointer place-items-center rounded border border-[var(--color-line)] hover:bg-brand-soft";
 const topBtn =
@@ -92,6 +134,7 @@ export default function TasksTable({
   createLabel,
   ticketMode = false,
   presetValues,
+  dataset,
 }: {
   items: Task[];
   scope: string;
@@ -118,16 +161,49 @@ export default function TasksTable({
   createLabel?: string;
   ticketMode?: boolean;
   presetValues?: Record<string, string | undefined>;
+  /** Lista e mare: `items` conține doar cele mai noi rânduri, iar restul vine din /api/tasks/dataset (vezi useTaskDataset). `total` = câte sunt în total. */
+  dataset?: { total: number };
 }) {
-  const router = useRouter();
   const toast = useToast();
   const m = useMessages();
   const [rows, setRows] = useState(items);
-  useEffect(() => setRows(items), [items]);
+  // Câte acțiuni sunt în curs: răspunsul de reîmprospătare al unui rând se aplică doar când nu mai așteaptă nimic (altfel ar anula o modificare mai nouă).
+  const inflight = useRef(0);
+  const touched = useRef<Touched>(new Map());
+  const touch = (id: string, gone = false) => { touched.current.set(id, { at: nowMs(), gone }); };
+  // Listă nouă de pe server (ex. după o reîncărcare) → o preluăm; fără efect, direct la randare (modelul recomandat de React).
+  const [seenItems, setSeenItems] = useState(items);
+  // Lista completă (când pagina a primit doar primele rânduri): înlocuiește rândurile din HTML imediat ce e gata.
+  const ds = useTaskDataset({ enabled: !!dataset, kind: ticketMode ? "TICKET" : "TASK", scope, userId });
+  const [seenDs, setSeenDs] = useState<typeof ds.rows>(null);
+  if (ds.rows && ds.rows !== seenDs) {
+    const incoming = ds.rows as Task[];
+    setSeenDs(ds.rows);
+    setRows((cur) => mergeLocal(incoming, cur, touched.current));
+  }
+  if (items !== seenItems) { setSeenItems(items); if (!(dataset && ds.rows)) setRows(items); }
   const [openId, setOpenId] = useState<string | null>(initialOpenId ?? null);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [createType, setCreateType] = useState<"TASK" | "TICKET" | "WORK_ORDER" | null>(initialCreate ?? null);
   const [statusPending, setStatusPending] = useState<string | null>(null);
+
+  /**
+   * Preia de pe server DOAR rândul modificat/creat (câmpuri derivate: clientul proiectului, numele noi etc.), în loc să reîncarce toată lista.
+   * Dacă rândul nu mai aparține listei (alt responsabil, alt scop), dispare din tabel — la fel ca după o reîncărcare completă.
+   */
+  function reconcile(id: string) {
+    getTaskRowAction(id, scope, ticketMode ? "TICKET" : "TASK")
+      .then((row) => {
+        if (row === undefined || inflight.current > 0) return;
+        touch(id, !row);
+        setRows((cur) => {
+          const has = cur.some((x) => x.id === id);
+          if (!row) return has ? cur.filter((x) => x.id !== id) : cur;
+          return has ? cur.map((x) => (x.id === id ? row : x)) : [row, ...cur];
+        });
+      })
+      .catch(() => {});
+  }
 
   const canEditRow = (t: Task) =>
     canEdit || (!!userId && (t.creatorId === userId || t.assigneeId === userId || t.extraAssigneeIds.includes(userId)));
@@ -136,27 +212,36 @@ export default function TasksTable({
     const prev = rows;
     if (prev.find((t) => t.id === id)?.status === next) return;
     setStatusPending(id);
+    inflight.current++;
+    touch(id);
     setRows((cur) => cur.map((t) => (t.id === id ? { ...t, status: next } : t))); // optimist
     setTaskStatus(id, next)
       .then((res) => {
         if (res?.error) { setRows(prev); toast.error(res.error); }
         else toast.success(`Status: ${m.status[next]}`);
       })
-      .finally(() => setStatusPending((cur) => (cur === id ? null : cur)));
+      .catch(() => { setRows(prev); toast.error(m.common.error); })
+      .finally(() => { inflight.current--; setStatusPending((cur) => (cur === id ? null : cur)); });
   }
 
   function changeProgress(id: string, progress: number) {
     const prev = rows;
+    inflight.current++;
+    touch(id);
     setRows((cur) => cur.map((t) => (t.id === id ? { ...t, progress } : t)));
-    setTaskProgress(id, progress).then((res) => {
-      if (res?.error) { setRows(prev); toast.error(res.error); }
-      else toast.success(`Progres: ${progress}%`);
-    });
+    setTaskProgress(id, progress)
+      .then((res) => {
+        if (res?.error) { setRows(prev); toast.error(res.error); }
+        else toast.success(`Progres: ${progress}%`);
+      })
+      .catch(() => { setRows(prev); toast.error(m.common.error); })
+      .finally(() => { inflight.current--; });
   }
 
   function remove(id: string) {
     if (!confirm(m.tasks.deleteConfirm)) return;
     const prev = rows;
+    touch(id, true);
     setRows((cur) => cur.filter((t) => t.id !== id));
     setOpenId((o) => (o === id ? null : o));
     deleteTask(id).then(() => toast.success(m.tasks.deleted)).catch(() => { setRows(prev); toast.error(m.tasks.deleteFailed); });
@@ -165,13 +250,16 @@ export default function TasksTable({
   /** Editare dintr-un câmp: se schimbă imediat în tabel (optimist), serverul confirmă; la eșec revenim + mesaj. */
   function patchTask(t: Task, patch: TaskFieldPatch, optimistic: Partial<Task>) {
     const prev = rows;
+    inflight.current++;
+    touch(t.id);
     setRows((cur) => cur.map((x) => (x.id === t.id ? { ...x, ...optimistic } : x)));
     updateTaskFieldAction(t.id, patch)
       .then((res) => {
         if (res?.error) { setRows(prev); toast.error(res.error); }
-        else router.refresh(); // reconciliază câmpurile derivate (ex. clientul proiectului)
+        else { inflight.current--; reconcile(t.id); inflight.current++; } // reconciliază câmpurile derivate (ex. clientul proiectului) doar pe acest rând
       })
-      .catch(() => { setRows(prev); toast.error(m.common.error); });
+      .catch(() => { setRows(prev); toast.error(m.common.error); })
+      .finally(() => { inflight.current--; });
   }
 
   const nameIn = (list: Opt[], id: string) => list.find((o) => o.id === id)?.name ?? null;
@@ -360,14 +448,14 @@ export default function TasksTable({
 
   const filters = useMemo<Filter<Task>[]>(() => {
     const today = todayKey(TZ);
-    const dueKey = (t: Task) => (t.dueAt ? dateKeyOf(new Date(t.dueAt), TZ) : null);
+    const dueKey = (t: Task) => derivedOf(t).due;
     return [
       {
         kind: "text", key: "q", label: "Caută", grow: true, placeholder: m.tasks.searchPlaceholder,
         test: (t, v) => {
           const seq = v.match(/^#?(\d+)$/);
           if (seq && t.seq === Number(seq[1])) return true;
-          return [t.title, t.description, t.projectName, t.clientName, t.assigneeName, t.teamName, t.creatorName].some((x) => (x ?? "").toLowerCase().includes(v));
+          return derivedOf(t).hay.includes(v);
         },
       },
       {
@@ -437,6 +525,12 @@ export default function TasksTable({
           ))}
         </div>
       )}
+      {dataset && ds.error && !ds.rows && (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-st-cancelled/40 bg-st-cancelled/5 px-3 py-1.5 text-xs">
+          <span>Nu am putut încărca toată lista ({dataset.total.toLocaleString("ro-RO")}); se văd doar cele mai noi rânduri.</span>
+          <button type="button" onClick={() => window.location.reload()} className="cursor-pointer rounded border border-[var(--color-line)] px-2 py-0.5 font-semibold hover:bg-[var(--color-surface-2)]">Reîncarcă</button>
+        </div>
+      )}
       <DataTable
         storageKey={`tasks:${basePath}:${scope}`}
         rows={rows}
@@ -444,6 +538,7 @@ export default function TasksTable({
         filters={filters}
         defaultSort={{ key: "created", dir: "desc" }}
         presetValues={presetValues}
+        pending={dataset && !ds.rows && !ds.error ? { total: dataset.total } : undefined}
         noun={ticketMode ? "tichete" : "task-uri"}
         emptyText={m.tasks.noTasks}
         rowClassName={(t) => (overdue(t) ? "bg-st-cancelled/5" : "")}
@@ -492,7 +587,7 @@ export default function TasksTable({
           initialDescription={initialDescription}
           onClose={() => setCreateType(null)}
           onCreated={(id) => {
-            router.refresh(); // noul task apare în tabel
+            reconcile(id); // noul task apare în tabel (doar rândul lui, nu toată lista)
             setOpenId(id); // și se deschide direct (se afișează când sosește în listă)
           }}
         />
@@ -508,9 +603,10 @@ export default function TasksTable({
           quietHoursEnabled={quietHoursEnabled}
           onClose={() => setEditTask(null)}
           onSaved={(updated) => {
+            touch(updated.id);
             setRows((cur) => cur.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
             setEditTask(null);
-            router.refresh();
+            reconcile(updated.id);
           }}
         />
       )}

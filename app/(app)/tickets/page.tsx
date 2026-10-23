@@ -1,6 +1,6 @@
 import { requirePermission } from "@/lib/dal";
 import { can, canUseAllScope } from "@/lib/permissions";
-import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
+import { listTasksForPage, taskViewFilter } from "@/lib/queries/tasks";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
 import { userOptions } from "@/lib/queries/users";
@@ -38,16 +38,16 @@ export default async function TicketsPage({
 
   // Toate tichetele din „scope" odată; filtrarea/sortarea/paginarea (inclusiv Active/Noi/Închise) rulează în browser.
   const [result, users, teams, projects, clients, categories] = await Promise.all([
-    listTasks({
-      scope,
-      userId: user.id,
-      teamIds: user.teamIds,
-      ...taskViewFilter(user),
-      types: ["TICKET"],
-      sort: "default",
-      page: 1,
-      pageSize: 9999,
-    }),
+    listTasksForPage(
+      {
+        scope,
+        userId: user.id,
+        teamIds: user.teamIds,
+        ...taskViewFilter(user),
+        types: ["TICKET"],
+      },
+      initialOpenId,
+    ),
     userOptions(),
     teamOptions(),
     projectOptions(),
@@ -66,6 +66,7 @@ export default async function TicketsPage({
     <div className="w-full">
       <TasksTable
         items={result.items}
+        dataset={result.dataset ? { total: result.total } : undefined}
         scope={scope}
         users={users}
         teams={teams}

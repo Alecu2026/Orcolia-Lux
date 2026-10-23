@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DEFAULT_PER_PAGE,
   NOTIFY_PER_PAGE,
@@ -9,6 +9,7 @@ import {
 } from "@/lib/payer-notify";
 import { IconChevronLeft, IconChevronRight } from "./icons";
 import CompactCard, { CompactField } from "./CompactCard";
+import VirtualList from "./VirtualList";
 import { useT } from "@/lib/i18n/context";
 
 /**
@@ -116,6 +117,38 @@ const txtFld = (val: string) =>
 
 const nf = (n: number) => n.toLocaleString("ro-RO");
 
+/** Peste atâtea rânduri pe pagină, în DOM stau doar rândurile din zona vizibilă (restul = un spațiu gol de înălțime potrivită). */
+const VIRT_MIN = 80;
+/** Rânduri randate în plus, deasupra și dedesubt, ca derularea rapidă să nu arate goluri. */
+const VIRT_OVER = 14;
+/** Înălțimea estimată a unui rând până se măsoară (compact / normal / spațios). */
+const ROW_EST = { compact: 20, normal: 32, roomy: 56 } as const;
+
+/**
+ * Selector de filtru memoizat: la o listă de mii de opțiuni (clienți, proiecte) React nu mai recompară toate `<option>` la fiecare
+ * randare a tabelului (derulare, scriere în alt câmp, editare inline) — doar când se schimbă efectiv opțiunile sau valoarea.
+ */
+const FilterSelect = memo(function FilterSelect({
+  fkey,
+  label,
+  options,
+  value,
+  onPick,
+}: {
+  fkey: string;
+  label: string;
+  options: { value: string; label: string }[];
+  value: string;
+  onPick: (key: string, value: string) => void;
+}) {
+  return (
+    <select value={value} onChange={(e) => onPick(fkey, e.target.value)} className={fld(value)} aria-label={label}>
+      <option value="">{label}</option>
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+});
+
 export default function DataTable<T extends { id: string }>({
   storageKey,
   rows,
@@ -129,6 +162,7 @@ export default function DataTable<T extends { id: string }>({
   emptyText,
   rowClassName,
   presetValues,
+  pending,
 }: {
   storageKey: string;
   rows: T[];
@@ -146,6 +180,11 @@ export default function DataTable<T extends { id: string }>({
   rowClassName?: (r: T) => string;
   /** Filtre din URL (ex. ?proj=…) — dacă există, înlocuiesc filtrele salvate la deschidere. */
   presetValues?: Record<string, string | undefined>;
+  /**
+   * Lista completă încă se încarcă și `rows` conține doar primele rânduri: cât timp sunt filtre active nu arătăm rezultate parțiale
+   * (ar părea greșite), ci un mesaj; numărătoarea afișează totalul real.
+   */
+  pending?: { total: number };
 }) {
   const t = useT();
   const [values, setValues] = useState<Record<string, string>>({});
@@ -169,6 +208,11 @@ export default function DataTable<T extends { id: string }>({
   const [overKey, setOverKey] = useState<string | null>(null);
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const colsBox = useRef<HTMLDivElement>(null);
+  const scrollBox = useRef<HTMLDivElement>(null);
+  const scrollRaf = useRef(0);
+  // Fereastra de randare a tabelului: poziția de derulare (rotunjită la câteva rânduri, ca să nu randăm la fiecare pixel), înălțimea vizibilă și înălțimea măsurată a unui rând.
+  const [vwin, setVwin] = useState({ top: 0, h: 720 });
+  const [rowH, setRowH] = useState<number>(ROW_EST.compact);
   const STORAGE = `dt:${storageKey}`;
 
   // Restaurează filtrele/sortarea/numărul de rânduri salvate (după hidratare — serverul nu are localStorage).
@@ -229,6 +273,17 @@ export default function DataTable<T extends { id: string }>({
     return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
   }, [colsOpen]);
 
+  // Înălțimea zonei vizibile a tabelului (pentru fereastra de randare).
+  useEffect(() => {
+    const el = scrollBox.current;
+    if (!el) return;
+    const upd = () => setVwin((v) => (v.h === el.clientHeight || el.clientHeight === 0 ? v : { ...v, h: el.clientHeight }));
+    upd();
+    const obs = new ResizeObserver(upd);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [cards]);
+
   // Coloanele cu etichetă (reordonabile/ascunse) + cele fixe (fără etichetă: butoane/acțiuni) rămase la început/sfârșit.
   const firstLabeled = columns.findIndex((c) => c.label !== "");
   const fixedStart = columns.filter((c, i) => c.label === "" && i < firstLabeled);
@@ -279,11 +334,22 @@ export default function DataTable<T extends { id: string }>({
     });
     setPage(1);
   }
+  // Variantă stabilă pentru selectoarele memoizate (folosește doar setteri, deci nu are dependențe).
+  const pickFilter = useCallback((key: string, value: string) => {
+    setValues((v) => {
+      const next = { ...v };
+      if (value) next[key] = value;
+      else delete next[key];
+      return next;
+    });
+    setDraft((d) => ({ ...d, [key]: value }));
+    setPage(1);
+  }, []);
 
   function onText(key: string, value: string) {
     setDraft((d) => ({ ...d, [key]: value }));
     clearTimeout(timers.current[key]);
-    timers.current[key] = setTimeout(() => setValue(key, value.trim()), 200);
+    timers.current[key] = setTimeout(() => setValue(key, value.trim()), 120);
   }
 
   function clearAll() {
@@ -301,48 +367,86 @@ export default function DataTable<T extends { id: string }>({
     setPage(1);
   }
 
-  // ── Filtrare + sortare, în memorie ──
+  // ── Sortare (o singură dată) + filtrare, în memorie ──
+  // Sortarea depinde doar de rânduri și de cheia/direcția aleasă (nu de identitatea `columns`, recreată la fiecare randare): cheile se calculează
+  // o dată per rând, apoi se sortează indicii. Filtrarea rulează apoi pe lista deja sortată, deci scrisul în căutare nu mai sortează nimic.
+  // `useDeferredValue`: câmpurile (selectoare, text) răspund imediat, iar lista se recalculează imediat după, fără să blocheze scrierea.
+  const sortSpec = useDeferredValue(`${sortKey}|${sortDir}`);
+  const sortedRows = useMemo(() => {
+    const sepAt = sortSpec.lastIndexOf("|");
+    const key = sortSpec.slice(0, sepAt);
+    const col = columns.find((c) => c.key === key && c.sort);
+    if (!col?.sort) return rows;
+    const dir = sortSpec.slice(sepAt + 1) === "asc" ? 1 : -1;
+    const n = rows.length;
+    const keys: (string | number | null | undefined)[] = new Array(n);
+    for (let i = 0; i < n; i++) keys[i] = col.sort(rows[i]);
+    const idx = new Array<number>(n);
+    for (let i = 0; i < n; i++) idx[i] = i;
+    idx.sort((a, b) => {
+      const x = keys[a];
+      const y = keys[b];
+      const xe = x == null || x === "";
+      const ye = y == null || y === "";
+      if (xe && ye) return 0;
+      if (xe) return 1; // fără valoare → la final, indiferent de direcție
+      if (ye) return -1;
+      if (typeof x === "number" && typeof y === "number") return (x - y) * dir;
+      return collator.compare(String(x), String(y)) * dir;
+    });
+    return idx.map((i) => rows[i]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, sortSpec]);
+  const dvalues = useDeferredValue(values);
   const filtered = useMemo(() => {
     const active = filters
-      .map((f) => ({ f, v: f.kind === "text" ? (values[f.key] ?? "").toLowerCase() : (values[f.key] ?? "") }))
+      .map((f) => ({ f, v: f.kind === "text" ? (dvalues[f.key] ?? "").toLowerCase() : (dvalues[f.key] ?? "") }))
       .filter((x) => x.v);
-    let out = active.length ? rows.filter((r) => active.every(({ f, v }) => f.test(r, v))) : rows;
-    const col = columns.find((c) => c.key === sortKey && c.sort);
-    if (col?.sort) {
-      const dir = sortDir === "asc" ? 1 : -1;
-      out = [...out].sort((a, b) => {
-        const x = col.sort!(a);
-        const y = col.sort!(b);
-        const xe = x == null || x === "";
-        const ye = y == null || y === "";
-        if (xe && ye) return 0;
-        if (xe) return 1; // fără valoare → la final, indiferent de direcție
-        if (ye) return -1;
-        if (typeof x === "number" && typeof y === "number") return (x - y) * dir;
-        return collator.compare(String(x), String(y)) * dir;
-      });
-    }
-    return out;
-  }, [rows, filters, values, columns, sortKey, sortDir]);
+    return active.length ? sortedRows.filter((r) => active.every(({ f, v }) => f.test(r, v))) : sortedRows;
+  }, [sortedRows, filters, dvalues]);
 
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   const curPage = Math.min(page, totalPages);
   const pageRows = filtered.slice((curPage - 1) * perPage, curPage * perPage);
+  const virt = !cards && pageRows.length > VIRT_MIN;
+  const winStart = virt ? Math.min(Math.max(0, Math.floor(vwin.top / rowH) - VIRT_OVER), Math.max(0, pageRows.length - 1)) : 0;
+  const winEnd = virt ? Math.min(pageRows.length, Math.ceil((vwin.top + vwin.h) / rowH) + VIRT_OVER) : pageRows.length;
+  const shownRows = virt ? pageRows.slice(winStart, winEnd) : pageRows;
   const from = total === 0 ? 0 : (curPage - 1) * perPage + 1;
   const to = Math.min(curPage * perPage, total);
   const activeCount = Object.keys(draft).filter((k) => draft[k]).length;
+  const hideRows = !!pending && activeCount > 0;
   const sortedByUser = sortKey !== (defaultSort?.key ?? "") || sortDir !== (defaultSort?.dir ?? "asc");
+
+  // Înălțimea reală a unui rând = media celor randate (aspectul — densitate, font — o schimbă); se măsoară după fiecare mutare a ferestrei.
+  useEffect(() => {
+    if (!virt) return;
+    const id = requestAnimationFrame(() => {
+      const trs = scrollBox.current?.querySelectorAll<HTMLElement>("tbody tr[data-vr]");
+      if (!trs || trs.length === 0) return;
+      let sum = 0;
+      const n = Math.min(trs.length, 12);
+      for (let i = 0; i < n; i++) sum += trs[i].getBoundingClientRect().height;
+      const avg = sum / n;
+      if (avg > 4) setRowH((cur) => (Math.abs(cur - avg) > 0.4 ? avg : cur));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [virt, winStart, look.density, look.font, look.width]);
+
+  // Filtru/sortare/pagină noi → înapoi sus (altfel poziția veche ar cădea într-o listă mai scurtă).
+  const resetKey = `${curPage}|${perPage}|${sortSpec}|${JSON.stringify(dvalues)}`;
+  useEffect(() => {
+    if (scrollBox.current) scrollBox.current.scrollTop = 0; // declanșează onScroll → fereastra revine sus
+  }, [resetKey]);
+
 
   return (
     <div>
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
         {filters.map((f) =>
           f.kind === "select" ? (
-            <select key={f.key} value={values[f.key] ?? ""} onChange={(e) => { setValue(f.key, e.target.value); setDraft((d) => ({ ...d, [f.key]: e.target.value })); }} className={fld(values[f.key] ?? "")} aria-label={f.label}>
-              <option value="">{f.label}</option>
-              {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <FilterSelect key={f.key} fkey={f.key} label={f.label} options={f.options} value={values[f.key] ?? ""} onPick={pickFilter} />
           ) : f.kind === "date" ? (
             <input key={f.key} type="date" value={values[f.key] ?? ""} onChange={(e) => { setValue(f.key, e.target.value); setDraft((d) => ({ ...d, [f.key]: e.target.value })); }} title={f.label} aria-label={f.label} className={txtFld(values[f.key] ?? "")} />
           ) : (
@@ -366,8 +470,9 @@ export default function DataTable<T extends { id: string }>({
       </div>
 
       <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-        <span><b>{nf(total)}</b> {noun ?? t("elemente")}{activeCount > 0 ? ` ${t("(filtrat)")}` : ""}</span>
-        {total > 0 && <span className="text-ink-soft">{t("afișați {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(total) })}{totalPages > 1 ? ` · ${t("pagina {cur}/{pages}", { cur: curPage, pages: totalPages })}` : ""}</span>}
+        <span><b>{nf(pending && activeCount === 0 ? pending.total : total)}</b> {noun ?? t("elemente")}{activeCount > 0 ? ` ${t("(filtrat)")}` : ""}</span>
+        {pending && <span className="animate-pulse text-ink-soft">{t("se încarcă lista completă…")}</span>}
+        {total > 0 && !hideRows && <span className="text-ink-soft">{t("afișați {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(total) })}{totalPages > 1 ? ` · ${t("pagina {cur}/{pages}", { cur: curPage, pages: totalPages })}` : ""}</span>}
         {summaryExtra?.(filtered)}
         {cards && sortableCols.length > 0 && (
           <label className="flex items-center gap-1 text-xs text-ink-soft">
@@ -455,9 +560,12 @@ export default function DataTable<T extends { id: string }>({
         </label>
       </div>
 
-      {cards ? (
+      {hideRows ? (
+        <div className="card animate-pulse p-8 text-center text-ink-soft">{t("Se încarcă lista completă… filtrele se aplică imediat ce e gata.")}</div>
+      ) : cards ? (
         <div className={`flex flex-col gap-1.5 ${TEXT_CLS[look.text]}`}>
-          {pageRows.map((r) => {
+          {(() => {
+            const renderCard = (r: T) => {
             // Rezumat: primele trei coloane vizibile (titlu + două valori scurte); restul se vede la desfacere.
             const [c0, c1, c2, ...rest] = cardFields;
             const initial = String(c0?.sort?.(r) ?? "").trim().charAt(0).toUpperCase();
@@ -491,7 +599,12 @@ export default function DataTable<T extends { id: string }>({
                 )}
               </CompactCard>
             );
-          })}
+            };
+            // Multe carduri (de ex. „Toate”): doar cele din zona vizibilă există în DOM.
+            return pageRows.length > 60
+              ? <VirtualList count={pageRows.length} itemKey={(i) => pageRows[i].id} render={(i) => renderCard(pageRows[i])} estimate={52} />
+              : pageRows.map(renderCard);
+          })()}
           {pageRows.length === 0 && (
             <div className="card p-8 text-center text-ink-soft">
               {activeCount > 0 ? t("Nimic cu filtrele acestea.") : (emptyText ?? t("Nimic de afișat."))}{" "}
@@ -500,7 +613,21 @@ export default function DataTable<T extends { id: string }>({
           )}
         </div>
       ) : (
-      <div className="card overflow-auto" style={{ maxHeight: perPage > 50 ? "max(78vh, 890px)" : undefined }}>
+      <div
+        ref={scrollBox}
+        className="card overflow-auto"
+        style={{ maxHeight: perPage > 50 ? "max(78vh, 890px)" : undefined }}
+        onScroll={virt ? (e) => {
+          const top = e.currentTarget.scrollTop;
+          if (scrollRaf.current) return;
+          scrollRaf.current = requestAnimationFrame(() => {
+            scrollRaf.current = 0;
+            // rotunjit la 6 rânduri: nu randăm din nou la fiecare pixel derulat
+            const q = Math.floor(top / (rowH * 6)) * rowH * 6;
+            setVwin((v) => (v.top === q ? v : { ...v, top: q }));
+          });
+        } : undefined}
+      >
         <table
           className={`${fixed ? "" : "w-max min-w-full"} border-separate border-spacing-0 ${TEXT_CLS[look.text]}`}
           style={{
@@ -540,9 +667,15 @@ export default function DataTable<T extends { id: string }>({
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((r, ri) => (
+            {virt && winStart > 0 && (
+              <tr aria-hidden="true"><td colSpan={visibleCols.length} style={{ height: winStart * rowH, padding: 0, border: 0 }} /></tr>
+            )}
+            {shownRows.map((r, rj) => {
+              const ri = winStart + rj;
+              return (
               <tr
                 key={r.id}
+                data-vr=""
                 onClick={onRowClick ? () => onRowClick(r) : undefined}
                 className={`${onRowClick ? "cursor-pointer" : ""} hover:bg-brand-soft/30 ${rowClassName?.(r) ?? ""}`}
               >
@@ -557,7 +690,11 @@ export default function DataTable<T extends { id: string }>({
                   </td>
                 ))}
               </tr>
-            ))}
+              );
+            })}
+            {virt && winEnd < pageRows.length && (
+              <tr aria-hidden="true"><td colSpan={visibleCols.length} style={{ height: (pageRows.length - winEnd) * rowH, padding: 0, border: 0 }} /></tr>
+            )}
             {pageRows.length === 0 && (
               <tr>
                 <td colSpan={visibleCols.length} className="p-8 text-center text-ink-soft">
@@ -571,7 +708,7 @@ export default function DataTable<T extends { id: string }>({
       </div>
       )}
 
-      {total > 0 && totalPages > 1 && (
+      {total > 0 && totalPages > 1 && !hideRows && (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1">
           <button disabled={curPage <= 1} onClick={() => setPage(curPage - 1)} className="tap grid size-7 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40" aria-label={t("Pagina anterioară")}>
             <IconChevronLeft className="size-4" />

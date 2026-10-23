@@ -4,6 +4,8 @@ import { DEMO } from "../demo";
 import { dayBoundsUtc, dateKeyOf, addDaysToKey, todayKey as getTodayKey, weekKeys } from "../date";
 import type { Prisma, TaskStatus, TaskType, TaskPriority } from "@prisma/client";
 import { canAny, type PermissionSubject } from "../permissions";
+import { allClientNames, clientNamesFor } from "./client-names";
+import { TASK_PRIORITY_LIST, TASK_STATUS_LIST, type TaskNames, type TaskTuple } from "../task-dataset";
 
 export type TaskRow = {
   id: string;
@@ -62,12 +64,8 @@ const TASK_SELECT = {
   extraTeamIds: true,
   assignmentSettingsJson: true,
   bypassQuietHours: true,
-  assignee: { select: { name: true } },
-  team: { select: { name: true } },
-  // project.client NOT selected — clientName not displayed in list; clientId is denormalized
-  project: { select: { name: true, clientId: true, lat: true, lng: true } },
-  category: { select: { name: true, color: true } },
-  creator: { select: { name: true } },
+  // Fără selecturi pe relații (assignee/team/project/category/creator): fiecare devine un $in separat pe MongoDB, lent la mii de rânduri.
+  // Numele se completează din hărți mici păstrate în memorie (vezi taskLookups).
   fromName: true,
   fromEmail: true,
   chatLastMsgAt: true,
@@ -87,7 +85,64 @@ export function ticketCreatorName(t: { type: string; fromName?: string | null; f
   return t.creator?.name ?? "Necunoscut";
 }
 
-function toRow(t: Prisma.TaskGetPayload<{ select: typeof TASK_SELECT }>): TaskRow {
+/**
+ * Hărți id → nume pentru utilizatori, echipe, proiecte (și cele arhivate, cu coordonate) și categorii. Sunt mici (sute de rânduri) și se schimbă rar,
+ * deci stau în memorie ~20 s; un id necunoscut (de ex. proiect abia creat) forțează o singură reîncărcare, ca numele să nu lipsească.
+ */
+type Lookups = {
+  at: number;
+  users: Map<string, string>;
+  teams: Map<string, string>;
+  projects: Map<string, { name: string; clientId: string | null; lat: number | null; lng: number | null }>;
+  categories: Map<string, { name: string; color: string | null }>;
+};
+const LOOKUP_TTL_MS = 20_000;
+const lkg = globalThis as unknown as { __taskLookups?: Lookups; __taskLookupsP?: Promise<Lookups> };
+
+async function loadLookups(): Promise<Lookups> {
+  const [users, teams, projects, categories] = await Promise.all([
+    prisma.user.findMany({ select: { id: true, name: true } }),
+    prisma.team.findMany({ select: { id: true, name: true } }),
+    prisma.project.findMany({ select: { id: true, name: true, clientId: true, lat: true, lng: true } }),
+    prisma.category.findMany({ select: { id: true, name: true, color: true } }),
+  ]);
+  return {
+    at: Date.now(),
+    users: new Map(users.map((u) => [u.id, u.name])),
+    teams: new Map(teams.map((t) => [t.id, t.name])),
+    projects: new Map(projects.map((p) => [p.id, { name: p.name, clientId: p.clientId ?? null, lat: p.lat ?? null, lng: p.lng ?? null }])),
+    categories: new Map(categories.map((c) => [c.id, { name: c.name, color: c.color ?? null }])),
+  };
+}
+
+/** Un singur calcul în zbor (single-flight); `force` ocolește memoria. */
+async function taskLookups(force = false): Promise<Lookups> {
+  const cur = lkg.__taskLookups;
+  if (!force && cur && Date.now() - cur.at < LOOKUP_TTL_MS) return cur;
+  if (!lkg.__taskLookupsP) {
+    lkg.__taskLookupsP = loadLookups()
+      .then((l) => { lkg.__taskLookups = l; return l; })
+      .finally(() => { lkg.__taskLookupsP = undefined; });
+  }
+  return lkg.__taskLookupsP;
+}
+
+type TaskDbRow = Prisma.TaskGetPayload<{ select: typeof TASK_SELECT }>;
+
+function lookupsMissing(rows: TaskDbRow[], l: Lookups): boolean {
+  for (const t of rows) {
+    if (t.creatorId && !l.users.has(t.creatorId)) return true;
+    if (t.assigneeId && !l.users.has(t.assigneeId)) return true;
+    if (t.teamId && !l.teams.has(t.teamId)) return true;
+    if (t.projectId && !l.projects.has(t.projectId)) return true;
+    if (t.categoryId && !l.categories.has(t.categoryId)) return true;
+  }
+  return false;
+}
+
+function toRow(t: TaskDbRow, l: Lookups): TaskRow {
+  const project = t.projectId ? l.projects.get(t.projectId) : undefined;
+  const category = t.categoryId ? l.categories.get(t.categoryId) : undefined;
   return {
     id: t.id,
     seq: t.seq ?? null,
@@ -103,21 +158,21 @@ function toRow(t: Prisma.TaskGetPayload<{ select: typeof TASK_SELECT }>): TaskRo
     assigneeId: t.assigneeId,
     teamId: t.teamId,
     projectId: t.projectId,
-    clientId: t.clientId ?? t.project?.clientId ?? null,
+    clientId: t.clientId ?? project?.clientId ?? null,
     categoryId: t.categoryId ?? null,
-    categoryName: t.category?.name ?? null,
-    categoryColor: t.category?.color ?? null,
+    categoryName: category?.name ?? null,
+    categoryColor: category?.color ?? null,
     extraAssigneeIds: t.extraAssigneeIds ?? [],
     extraTeamIds: t.extraTeamIds ?? [],
     assignmentSettingsJson: t.assignmentSettingsJson ?? null,
     bypassQuietHours: t.bypassQuietHours ?? false,
-    assigneeName: t.assignee?.name ?? null,
-    teamName: t.team?.name ?? null,
-    projectName: t.project?.name ?? null,
-    projectLat: t.project?.lat ?? null,
-    projectLng: t.project?.lng ?? null,
+    assigneeName: t.assigneeId ? l.users.get(t.assigneeId) ?? null : null,
+    teamName: t.teamId ? l.teams.get(t.teamId) ?? null : null,
+    projectName: project?.name ?? null,
+    projectLat: project?.lat ?? null,
+    projectLng: project?.lng ?? null,
     clientName: null,
-    creatorName: ticketCreatorName(t),
+    creatorName: ticketCreatorName({ type: t.type, fromName: t.fromName, fromEmail: t.fromEmail, creator: l.users.has(t.creatorId) ? { name: l.users.get(t.creatorId)! } : null }),
     createdAt: t.createdAt,
     chatUnread: t.chatLastSender === "CLIENT" && !!t.chatLastMsgAt && (!t.chatStaffReadAt || t.chatStaffReadAt < t.chatLastMsgAt),
   };
@@ -136,8 +191,10 @@ export type TaskFilter = {
   assigneeId?: string;
   teamId?: string;
   dueBefore?: Date;
+  /** Un singur task (pentru reîmprospătarea unui rând după editare). */
+  id?: string;
   dueRange?: "overdue" | "today" | "tomorrow" | "week" | "month";
-  sort?: "default" | "dueAsc" | "dueDesc";
+  sort?: "default" | "dueAsc" | "dueDesc" | "newest";
   search?: string;
   userId: string;
   teamIds?: string[];
@@ -215,6 +272,7 @@ function buildWhere(filter: TaskFilter): Prisma.TaskWhereInput {
     });
   }
 
+  if (filter.id) where.id = filter.id;
   if (filter.teamId) where.teamId = filter.teamId;
   if (filter.statuses?.length) where.status = { in: filter.statuses };
   else if (filter.status) where.status = filter.status;
@@ -297,7 +355,9 @@ export async function listTasks(
       ? [{ dueAt: "asc" }, { createdAt: "desc" }]
       : filter.sort === "dueDesc"
         ? [{ dueAt: "desc" }, { createdAt: "desc" }]
-        : [{ status: "asc" }, { createdAt: "desc" }];
+        : filter.sort === "newest"
+          ? [{ createdAt: "desc" }]
+          : [{ status: "asc" }, { createdAt: "desc" }];
 
   const skip = (page - 1) * pageSize;
   let rows: Awaited<ReturnType<typeof prisma.task.findMany<{ where: Prisma.TaskWhereInput; select: typeof TASK_SELECT }>>>;
@@ -331,7 +391,10 @@ export async function listTasks(
 
   const totalPages = Math.ceil(total / pageSize);
   const hasMore = page < totalPages;
-  return { items: filter.hideClientNames ? rows.map(toRow) : await withClientNames(rows.map(toRow)), hasMore, page, total, totalPages };
+  let lk = await taskLookups();
+  if (lookupsMissing(rows, lk)) lk = await taskLookups(true);
+  const items = rows.map((r) => toRow(r, lk));
+  return { items: filter.hideClientNames ? items : await withClientNames(items), hasMore, page, total, totalPages };
 }
 
 /**
@@ -341,12 +404,130 @@ export async function listTasks(
 async function withClientNames(items: TaskRow[]): Promise<TaskRow[]> {
   const ids = [...new Set(items.map((r) => r.clientId).filter((x): x is string => !!x))];
   if (ids.length === 0) return items;
-  const names = new Map<string, string>();
-  for (let i = 0; i < ids.length; i += 200) {
-    const rows = await prisma.client.findMany({ where: { id: { in: ids.slice(i, i + 200) } }, select: { id: true, name: true } });
-    for (const c of rows) names.set(c.id, c.name);
-  }
+  const names = await clientNamesFor(ids);
   return items.map((r) => (r.clientId ? { ...r, clientName: names.get(r.clientId) ?? null } : r));
+}
+
+/** Peste atâtea task-uri într-o listă, pagina nu mai primește totul în HTML: vin doar primele rânduri, iar restul ca set compact (vezi lib/task-dataset.ts). */
+const rawMin = process.env.TASK_SNAPSHOT_MIN?.trim();
+export const TASK_DATASET_MIN = Math.min(9999, Math.max(0, rawMin && Number.isFinite(Number(rawMin)) ? Number(rawMin) : 1500));
+/** Câte rânduri (cele mai noi) intră direct în HTML când lista e mare. */
+export const TASK_HEAD_ROWS = 100;
+/** Limita de siguranță a setului complet. */
+const TASK_DATASET_CAP = 100_000;
+
+/**
+ * Datele paginii /tasks și /tickets. Lista mică (≤ TASK_DATASET_MIN): toate rândurile, ca până acum. Lista mare: doar cele mai noi
+ * `TASK_HEAD_ROWS` rânduri + totalul; restul îl aduce browserul din /api/tasks/dataset (gzip, ETag, IndexedDB).
+ * `openId` (deschis din link, ex. ?open=…) intră mereu în rânduri, chiar dacă e mai vechi.
+ */
+export async function listTasksForPage(
+  filter: Omit<TaskFilter, "page" | "pageSize" | "sort">,
+  openId?: string,
+): Promise<{ items: TaskRow[]; total: number; dataset: boolean }> {
+  const head = await listTasks({ ...filter, sort: "newest", page: 1, pageSize: TASK_HEAD_ROWS });
+  let items = head.items;
+  const dataset = head.total > TASK_DATASET_MIN;
+  if (!dataset && head.total > items.length) {
+    items = (await listTasks({ ...filter, sort: "newest", page: 1, pageSize: 9999 })).items;
+  }
+  if (dataset && openId && /^[0-9a-f]{24}$/i.test(openId) && !items.some((t) => t.id === openId)) {
+    const one = await listTasks({ ...filter, id: openId, page: 1, pageSize: 1 });
+    items = [...items, ...one.items];
+  }
+  return { items, total: head.total, dataset };
+}
+
+/** „Amprenta" colecției pentru o listă: numărul de rânduri + ultima modificare. Se schimbă la orice creare / modificare / ștergere. */
+export type TaskStamp = { count: number; max: number };
+export async function taskListStamp(filter: TaskFilter): Promise<TaskStamp> {
+  const agg = await prisma.task.aggregate({ where: buildWhere(filter), _count: { _all: true }, _max: { updatedAt: true } });
+  return { count: agg._count._all, max: agg._max.updatedAt ? agg._max.updatedAt.getTime() : 0 };
+}
+
+/** Un rând din baza de date → tuplul compact (fără nume: ele vin separat, vezi `encodeTaskNames`). */
+function toTuple(t: TaskDbRow): TaskTuple {
+  return [
+    t.id,
+    t.seq ?? null,
+    t.type,
+    t.title,
+    t.description ?? null,
+    Math.max(0, TASK_STATUS_LIST.indexOf(t.status)),
+    Math.max(0, TASK_PRIORITY_LIST.indexOf(t.priority)),
+    t.progress,
+    t.dueAt ? t.dueAt.getTime() : null,
+    t.reminderIntervalMinutes ?? null,
+    t.creatorId,
+    t.assigneeId ?? null,
+    t.teamId ?? null,
+    t.projectId ?? null,
+    t.clientId ?? null,
+    t.categoryId ?? null,
+    t.extraAssigneeIds ?? [],
+    t.extraTeamIds ?? [],
+    t.assignmentSettingsJson ?? null,
+    t.bypassQuietHours ? 1 : 0,
+    t.createdAt.getTime(),
+    t.chatLastSender === "CLIENT" && !!t.chatLastMsgAt && (!t.chatStaffReadAt || t.chatStaffReadAt < t.chatLastMsgAt) ? 1 : 0,
+    t.type === "TICKET" ? (t.fromName || t.fromEmail || "").trim() : "",
+  ];
+}
+
+/** Toate rândurile listei, ca tupluri (cele mai noi primele). */
+export async function loadTaskTuples(filter: TaskFilter): Promise<TaskTuple[]> {
+  const rows = await prisma.task.findMany({ where: buildWhere(filter), select: TASK_SELECT, orderBy: [{ createdAt: "desc" }], take: TASK_DATASET_CAP });
+  return rows.map(toTuple);
+}
+
+/**
+ * Doar rândurile modificate / create de la `sinceMs` încoace (inclusiv). `null` = sunt prea multe ca să merite (se reconstruiește tot).
+ * Un fragment mic în loc de toată lista: ~zeci de ms în loc de câteva secunde la zeci de mii de rânduri.
+ */
+export async function loadChangedTaskTuples(filter: TaskFilter, sinceMs: number, limit: number): Promise<TaskTuple[] | null> {
+  const where: Prisma.TaskWhereInput = { AND: [buildWhere(filter), { updatedAt: { gte: new Date(sinceMs) } }] };
+  const rows = await prisma.task.findMany({ where, select: TASK_SELECT, take: limit + 1 });
+  if (rows.length > limit) return null;
+  return rows.map(toTuple);
+}
+
+/** Dicționarul de nume pentru id-urile folosite de tupluri (utilizatori, echipe, proiecte, categorii, clienți). Mic: câteva sute de intrări. */
+export async function encodeTaskNames(tuples: TaskTuple[], hideClientNames: boolean): Promise<TaskNames> {
+  let lk = await taskLookups();
+  const missing = (): boolean => {
+    for (const r of tuples) {
+      if (r[10] && !lk.users.has(r[10])) return true;
+      if (r[11] && !lk.users.has(r[11])) return true;
+      if (r[12] && !lk.teams.has(r[12])) return true;
+      if (r[13] && !lk.projects.has(r[13])) return true;
+      if (r[15] && !lk.categories.has(r[15])) return true;
+    }
+    return false;
+  };
+  if (missing()) lk = await taskLookups(true);
+
+  const names: TaskNames = { u: {}, t: {}, p: {}, c: {}, k: {} };
+  const clientIds = new Set<string>();
+  for (const r of tuples) {
+    if (!(r[10] in names.u)) { const n = lk.users.get(r[10]); if (n != null) names.u[r[10]] = n; }
+    if (r[11] && !(r[11] in names.u)) { const n = lk.users.get(r[11]); if (n != null) names.u[r[11]] = n; }
+    if (r[12] && !(r[12] in names.t)) { const n = lk.teams.get(r[12]); if (n != null) names.t[r[12]] = n; }
+    if (r[13] && !(r[13] in names.p)) {
+      const p = lk.projects.get(r[13]);
+      if (p) names.p[r[13]] = [p.name, p.clientId, p.lat, p.lng];
+    }
+    if (r[15] && !(r[15] in names.c)) {
+      const c = lk.categories.get(r[15]);
+      if (c) names.c[r[15]] = [c.name, c.color];
+    }
+    const cid = r[14] ?? (r[13] ? lk.projects.get(r[13])?.clientId : null) ?? null;
+    if (cid) clientIds.add(cid);
+  }
+  if (!hideClientNames && clientIds.size > 0) {
+    const all = await allClientNames();
+    for (const id of clientIds) { const n = all.get(id); if (n != null) names.k[id] = n; }
+  }
+  return names;
 }
 
 export type CalendarTask = {
@@ -440,7 +621,11 @@ export async function getTask(id: string) {
     where: { id },
     select: {
       ...TASK_SELECT,
-      // Detail view needs client name via project (not stored in list TASK_SELECT)
+      // Detaliul unui singur task păstrează relațiile (un singur rând, nu costă); lista folosește hărți (vezi taskLookups)
+      assignee: { select: { name: true } },
+      team: { select: { name: true } },
+      category: { select: { name: true, color: true } },
+      creator: { select: { name: true } },
       project: { select: { name: true, clientId: true, lat: true, lng: true, address: true, client: { select: { name: true } } } },
       description: true,
       createdFrom: true,
