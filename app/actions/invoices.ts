@@ -8,6 +8,7 @@ import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { createInvoice, updateInvoice, refreshClientInvoiceSnapshot, type ApaCanalInput } from "@/lib/services/invoices";
 import { invalidatePayers } from "@/lib/services/payer-cache";
+import { invalidateInvoices, syncInvoiceToCache } from "@/lib/services/invoice-cache";
 import { getSettings } from "@/lib/queries/settings";
 import { logAudit } from "@/lib/services/audit";
 import { notifyUsers, observerRecipients } from "@/lib/services/notifications";
@@ -227,6 +228,8 @@ export async function setInvoiceStatus(
   await prisma.invoice.update({ where: { id }, data: { status: status as InvoiceStatus, paidAt } });
   await refreshClientInvoiceSnapshot(before?.clientId);
   await invalidatePayers();
+  await syncInvoiceToCache(id);
+  await invalidateInvoices({ soft: true });
   await logAudit(actor(user), {
     action: "invoice.status_change",
     module: "Invoices",
@@ -250,6 +253,8 @@ export async function deleteInvoice(id: string): Promise<void> {
   await prisma.invoice.delete({ where: { id } }).catch(() => {});
   await refreshClientInvoiceSnapshot(inv?.clientId);
   await invalidatePayers();
+  await syncInvoiceToCache(id);
+  await invalidateInvoices({ soft: true });
   await logAudit(actor(user), { action: "invoice.delete", module: "Invoices", objectId: id, objectName: inv?.number ?? null });
   revalidatePath("/invoices");
 }

@@ -351,8 +351,12 @@ export default function PayerNotifyManager({
     abortRef.current?.abort();
     const ctl = new AbortController();
     abortRef.current = ctl;
-    setLoading(true);
     setError(null);
+    // Cât timp lista completă încă se încarcă local, nu pornim imediat o cerere de pagină care oricum ar fi anulată peste câteva zeci de ms.
+    const wait = !ds.rows && reloadTick === 0 ? 350 : 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const run = () => {
+    setLoading(true);
     fetch(`/api/platitori/notificari?${key}`, { signal: ctl.signal })
       .then(async (r) => {
         const j = await r.json();
@@ -375,7 +379,13 @@ export default function PayerNotifyManager({
         setError(e.message);
         setLoading(false);
       });
-    return () => ctl.abort();
+    };
+    if (wait) timer = setTimeout(run, wait);
+    else run();
+    return () => {
+      if (timer) clearTimeout(timer);
+      ctl.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, ready, reloadTick, useLocal]);
 

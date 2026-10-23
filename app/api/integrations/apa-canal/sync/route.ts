@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { revalidateTag } from "next/cache";
 import { rebuildPayerSnap } from "@/lib/services/payer-cache";
+import { rebuildInvoiceSnap } from "@/lib/services/invoice-cache";
 import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { logAudit } from "@/lib/services/audit";
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
 
     revalidateTag("clients", { expire: 0 });
     await rebuildPayerSnap("sincronizare 1C").catch((e) => console.error("[payer-cache] după sincronizare:", e));
+    await rebuildInvoiceSnap("sincronizare 1C").catch((e) => console.error("[invoice-cache] după sincronizare 1C:", e));
     const msg = `Sincronizat: ${applied.clientsCreated} clienți noi, ${applied.clientsUpdated} actualizați, ${applied.invoicesCreated} facturi noi, ${applied.invoicesUpdated} facturi actualizate.`;
     await recordSync(true, msg, { wrote: true, contentHash: createHash("sha256").update(buf).digest("hex") });
     await logAudit(

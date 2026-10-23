@@ -583,6 +583,8 @@ model Invoice {
   items InvoiceItem[]
 
   @@index([status])
+  // Lista de facturi (mod „server", fără snapshot): filtru pe status + cele mai noi primele, fără sortare în memorie
+  @@index([status, createdAt])
   @@index([clientId])
   // Ultima factură pe client (snapshot-ul de plătitori): sortare după client + dată fără sortare în memorie
   @@index([clientId, issueDate])

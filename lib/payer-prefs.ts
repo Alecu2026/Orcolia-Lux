@@ -3,3 +3,7 @@
 export const PAYERS_PP_COOKIE = "payers-pp";
 /** Versiunea listei pe care o are deja browserul (în IndexedDB): dacă e cea curentă, serverul nu mai cere descărcarea ei din nou. */
 export const PAYERS_V_COOKIE = "payers-v";
+
+/** La fel pentru /invoices: câte pe pagină (inclusiv „Toate") și versiunea listei de facturi din IndexedDB. */
+export const INVOICES_PS_COOKIE = "invoices-ps";
+export const INVOICES_V_COOKIE = "invoices-v";

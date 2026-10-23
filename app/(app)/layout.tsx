@@ -58,7 +58,7 @@ export default async function AppLayout({
       {children}
       <PWARegister unread={unread} />
       <OpenInApp />
-      {perms["payers.view"] && <PayersPrefetch />}
+      {(perms["payers.view"] || perms["invoices.view"]) && <PayersPrefetch payers={perms["payers.view"]} invoices={perms["invoices.view"]} />}
     </AppShell>
   );
 }

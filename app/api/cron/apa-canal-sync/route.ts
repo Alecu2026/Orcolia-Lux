@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { revalidateTag } from "next/cache";
 import { rebuildPayerSnap } from "@/lib/services/payer-cache";
+import { rebuildInvoiceSnap } from "@/lib/services/invoice-cache";
 import { env } from "@/lib/env";
 import { logAudit } from "@/lib/services/audit";
 import { importApaCanalBuffer } from "@/lib/services/apa-canal-import";
@@ -46,6 +47,7 @@ async function run(req: Request) {
     revalidateTag("clients", { expire: 0 });
     // Cache-ul zilnic al listei de plătitori se reface acum, ca prima deschidere de dimineață să fie instantanee.
     await rebuildPayerSnap("cron 1C").catch((e) => console.error("[payer-cache] după cron:", e));
+    await rebuildInvoiceSnap("cron 1C").catch((e) => console.error("[invoice-cache] după cron 1C:", e));
     const msg = `Automat: ${applied.clientsCreated} clienți noi, ${applied.clientsUpdated} actualizați, ${applied.invoicesCreated} facturi noi, ${applied.invoicesUpdated} actualizate (din ${plan.stats.documenteTotale} abonați).`;
     await recordSync(true, msg, { wrote: true, contentHash: hash });
     await logAudit(

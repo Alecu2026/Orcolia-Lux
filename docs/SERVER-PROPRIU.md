@@ -82,6 +82,16 @@ Lista (~19.000 de plătitori) nu se mai citește din baza de date la fiecare des
 - **Browserul:** primește lista comprimată, cu ETag (a doua deschidere = 304, fără descărcare) și o ține în IndexedDB.
 - **Resetare manuală:** ștergi rândul `PayerCacheEntry` din MongoDB sau apeși ↻ lângă „⚡ local" în Plătitori.
 
+## 4c. Lista de facturi (/invoices) — același cache
+
+Aceeași schemă ca la plătitori (rândul `inv:snapshot` din `PayerCacheEntry`): toate facturile ca tupluri compacte, comprimat gzip, cu ETag; browserul le ține în
+IndexedDB și filtrează/paginează local (instant). O factură creată / editată / schimbată / ștearsă se pune direct în memoria serverului, iar varianta comprimată
+se reface în fundal (~8 s); importurile și sincronizarea 1C o reconstruiesc complet.
+
+- **Peste 150.000 de facturi** (`INVOICE_SNAPSHOT_MAX`, implicit 150000) lista NU se mai trimite în browser: modul „server" — paginare/filtrare în baza de date
+  (cu cache scurt pe rezultate), iar „Toate" aduce cel mult 1000 de rânduri odată. Se vede în log la reconstruire (`[invoice-cache] reconstruit …: server`).
+- **Index nou** `Invoice(status, createdAt)`: se creează la `npm run db:push`; ajută doar modul „server".
+
 ## 5. nginx (exemplu)
 
 ```nginx

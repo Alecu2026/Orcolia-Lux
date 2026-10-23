@@ -1,5 +1,6 @@
 import { revalidateTag } from "next/cache";
 import { rebuildPayerSnap } from "@/lib/services/payer-cache";
+import { rebuildInvoiceSnap } from "@/lib/services/invoice-cache";
 import { del } from "@vercel/blob";
 import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
   // ține lista veche până la următoarea vizită "max").
   revalidateTag("clients", { expire: 0 });
   await rebuildPayerSnap("import 1C").catch((e) => console.error("[payer-cache] după import:", e));
+  await rebuildInvoiceSnap("import 1C").catch((e) => console.error("[invoice-cache] după import 1C:", e));
 
   await logAudit(
     { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },

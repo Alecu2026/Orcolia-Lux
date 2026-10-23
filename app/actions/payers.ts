@@ -8,6 +8,7 @@ import { clientSchema } from "@/lib/validation";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
 import { invalidatePayers } from "@/lib/services/payer-cache";
+import { invalidateInvoices } from "@/lib/services/invoice-cache";
 
 export type PayerState = { ok?: boolean; error?: string } | undefined;
 
@@ -55,6 +56,7 @@ export async function updatePayer(
   revalidatePath(`/platitori/${id}`);
   revalidatePath("/platitori");
   await invalidatePayers();
+  await invalidateInvoices({ soft: true }); // numele clientului se vede în lista de facturi
   return { ok: true };
 }
 
@@ -68,6 +70,7 @@ export async function deletePayer(id: string): Promise<void> {
   await prisma.payerNote.deleteMany({ where: { clientId: id } });
   await prisma.client.delete({ where: { id } });
   await invalidatePayers();
+  await invalidateInvoices({ soft: true });
   await logAudit(actor(user), { action: "client.delete", module: "Payers", objectId: id, objectName: c.name });
   revalidatePath("/platitori");
 }

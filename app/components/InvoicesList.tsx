@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { setInvoiceStatus, deleteInvoice } from "@/app/actions/invoices";
 import {
   INVOICE_STATUS,
@@ -17,54 +16,61 @@ import { useMessages } from "@/lib/i18n/context";
 import ApaCanalJsonImport from "./ApaCanalJsonImport";
 import InvoiceViewButton from "./InvoiceViewButton";
 import CompactCard, { CompactField } from "./CompactCard";
-import { DEFAULT_PER_PAGE, NOTIFY_PER_PAGE, perPageLabel } from "@/lib/payer-notify";
+import VirtualList from "./VirtualList";
+import { useInvoiceDataset } from "./useInvoiceDataset";
 import { buildPageButtons } from "@/lib/page-buttons";
+import { perPageLabel } from "@/lib/payer-notify";
+import { INVOICES_PS_COOKIE } from "@/lib/payer-prefs";
+import { INVOICE_ALL, INVOICE_DEFAULT_PER_PAGE, INVOICE_PER_PAGE, filterInvoices, type InvoiceListItem, type InvRow } from "@/lib/invoice-list";
 
-type Row = {
-  id: string;
-  number: string;
-  status: InvoiceStatusKey;
-  kind: "STANDARD" | "APA_CANAL";
-  issueDate: string | Date;
-  dueDate: string | Date | null;
-  paidAt?: string | Date | null;
-  grandTotal: number;
-  currency: string;
-  clientName: string | null;
-  publicToken: string;
-};
+/** Peste atâtea rânduri se desenează doar cele vizibile (virtualizare), ca la plătitori. */
+const VIRTUAL_MIN = 80;
+const ROW_H = 28;
+/** Cât timp lista completă nu e în browser (sau e în modul „server"), serverul dă pagini de cel mult atâtea rânduri. */
+const SERVER_MAX_SNAPSHOT_MODE = 200;
+const SERVER_MAX_SERVER_MODE = 1000;
+/** Lățimile coloanelor tabelului (px): număr, client, emisă, scadență, achitată, sumă, status, acțiuni. */
+const COL_W = [150, 230, 92, 92, 92, 105, 105, 270];
+
+type Page = { items: InvRow[]; total: number; totalPages: number };
+
+const fromItem = (i: InvoiceListItem): InvRow => ({
+  id: i.id, number: i.number, status: i.status, kind: i.kind, issueMs: Date.parse(i.issueDate), dueMs: i.dueDate ? Date.parse(i.dueDate) : null,
+  paidMs: i.paidAt ? Date.parse(i.paidAt) : null, grandTotal: i.grandTotal, currency: i.currency, clientName: i.clientName, publicToken: i.publicToken, _x: null, _h: "",
+});
+
+/** Momentul curent (în afara componentei, ca randarea să rămână pură). */
+function nowMs(): number {
+  return Date.now();
+}
+
+const fmtMs = (ms: number | null) => (ms == null ? "—" : fmtDate(new Date(ms)));
 
 export default function InvoicesList({
-  items,
-  page,
-  total,
-  totalPages,
-  perPage = DEFAULT_PER_PAGE,
-  status,
-  q,
+  initial,
+  mode: initialMode,
   origin,
   canImportApaCanal = false,
 }: {
-  items: Row[];
-  page: number;
-  /** Câte facturi sunt în total (cu filtrele curente) și câte pagini înseamnă. */
-  total: number;
-  totalPages: number;
-  perPage?: number;
-  status: string;
-  q: string;
+  initial: { items: InvoiceListItem[]; page: number; total: number; totalPages: number; perPage: number; status: string; q: string };
+  /** "snapshot": toate facturile se pot ține în browser; "server": prea multe, pagini de pe server. */
+  mode: "snapshot" | "server";
   origin: string;
   canImportApaCanal?: boolean;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const m = useMessages();
-  const [rows, setRows] = useState(items);
-  useEffect(() => setRows(items), [items]);
-  const [search, setSearch] = useState(q);
-  const [copied, setCopied] = useState<string | null>(null);
+
+  // ── Filtrele sunt locale (schimbarea lor e instantanee în UI); adresa se sincronizează fără navigare ──
+  const [status, setStatus] = useState(initial.status);
+  const [q, setQ] = useState(initial.q);
+  const [search, setSearch] = useState(initial.q);
+  const [page, setPage] = useState(initial.page);
+  const [wantPerPage, setWantPerPage] = useState(initial.perPage);
   const [goto, setGoto] = useState("");
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Mod telefon: fiecare factură devine un card. `cardsPref` = alegerea utilizatorului; null = automat (carduri pe ecrane înguste).
   const [cardsPref, setCardsPref] = useState<boolean | null>(null);
   const [narrow, setNarrow] = useState(false);
@@ -83,32 +89,127 @@ export default function InvoicesList({
     try { localStorage.setItem("invoices-view", next ? "cards" : "table"); } catch {}
   }
 
-  function navigate(params: Record<string, string | number>) {
-    const sp = new URLSearchParams();
-    const merged = { status, q, page, ps: perPage, ...params };
-    if (merged.status) sp.set("status", String(merged.status));
-    if (merged.q) sp.set("q", String(merged.q));
-    if (merged.page && Number(merged.page) > 1) sp.set("page", String(merged.page));
-    if (Number(merged.ps) !== DEFAULT_PER_PAGE) sp.set("ps", String(merged.ps));
-    router.push(`/invoices${sp.toString() ? `?${sp}` : ""}`);
-  }
+  // ── Motor local (toate facturile în browser) sau pagini de pe server ──
+  const ds = useInvoiceDataset(true);
+  const mode = ds.mode ?? initialMode;
+  const useLocal = !!ds.rows;
+  const perPage = useLocal ? wantPerPage : Math.min(wantPerPage, mode === "server" ? SERVER_MAX_SERVER_MODE : SERVER_MAX_SNAPSHOT_MODE);
+  // Controalele se actualizează imediat; lista (zeci de mii de rânduri) se recalculează în randarea următoare (amânată).
+  const listFilters = useDeferredValue({ status, q });
+  const localList = useMemo(
+    () => (ds.rows ? filterInvoices(ds.rows, listFilters) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ds.rows, ds.version, listFilters],
+  );
+
+  const [data, setData] = useState<Page>(() => ({ items: initial.items.map(fromItem), total: initial.total, totalPages: initial.totalPages }));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cache = useRef(new Map<string, Page>());
+  const abortRef = useRef<AbortController | null>(null);
+  const key = `${status}|${q.trim().toLowerCase()}|${page}|${perPage}`;
+  // Pagina primită de la server are cel mult 100 de rânduri (vezi page.tsx); pentru alt număr de rânduri aducem pagina potrivită.
+  const initialKey = useRef(`${initial.status}|${initial.q.trim().toLowerCase()}|${initial.page}|${Math.min(initial.perPage, 100)}`);
+  const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    if (search === q) return;
-    timer.current = setTimeout(() => navigate({ q: search, page: 1 }), 300);
+    if (useLocal) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    const hit = cache.current.get(key);
+    if (hit) setData(hit);
+    if (!hit && key === initialKey.current && reloadTick === 0) return; // prima pagină vine deja de la server
+    if (hit && reloadTick === 0) return;
+    abortRef.current?.abort();
+    const ctl = new AbortController();
+    abortRef.current = ctl;
+    setError(null);
+    const sp = new URLSearchParams({ status, q, page: String(page), ps: String(perPage) });
+    // Cât timp lista completă încă se încarcă local (IndexedDB / rețea), nu pornim imediat o cerere de pagină care oricum ar fi anulată peste câteva zeci de ms.
+    const wait = mode === "snapshot" && !ds.rows && reloadTick === 0 ? 350 : 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const run = () => {
+    setLoading(true);
+    fetch(`/api/invoices/list?${sp}`, { signal: ctl.signal })
+      .then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error ?? m.common.error);
+        return j as { items: InvoiceListItem[]; total: number; totalPages: number; page: number };
+      })
+      .then((j) => {
+        const next: Page = { items: j.items.map(fromItem), total: j.total, totalPages: j.totalPages };
+        cache.current.set(key, next);
+        if (cache.current.size > 40) cache.current.delete(cache.current.keys().next().value!);
+        setData(next);
+        setLoading(false);
+        if (j.page !== page) setPage(j.page);
+      })
+      .catch((e: Error) => {
+        if (e.name === "AbortError") return;
+        setError(e.message);
+        setLoading(false);
+      });
+    };
+    if (wait) timer = setTimeout(run, wait);
+    else run();
     return () => {
-      if (timer.current) clearTimeout(timer.current);
+      if (timer) clearTimeout(timer);
+      ctl.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [key, useLocal, reloadTick]);
+
+  const view: Page = useMemo(
+    () => (localList ? { items: localList.slice((page - 1) * perPage, page * perPage), total: localList.length, totalPages: Math.max(1, Math.ceil(localList.length / perPage)) } : data),
+    [localList, page, perPage, data],
+  );
+  const totalPages = Math.max(1, Math.ceil(view.total / perPage));
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (localList && page > totalPages) setPage(totalPages);
+  }, [localList, page, totalPages]);
+  const rows = view.items;
+
+  // Adresa (link de partajat) fără navigare; alegerea „câte pe pagină" se ține și într-un cookie, pentru randarea pe server.
+  useEffect(() => {
+    const sp = new URLSearchParams();
+    if (status) sp.set("status", status);
+    if (q) sp.set("q", q);
+    if (page > 1) sp.set("page", String(page));
+    if (wantPerPage !== INVOICE_DEFAULT_PER_PAGE) sp.set("ps", String(wantPerPage));
+    window.history.replaceState(null, "", `/invoices${sp.toString() ? `?${sp}` : ""}`);
+    try { document.cookie = `${INVOICES_PS_COOKIE}=${wantPerPage}; path=/; max-age=31536000; samesite=lax`; } catch {}
+  }, [status, q, page, wantPerPage]);
+
+  function onSearch(v: string) {
+    setSearch(v);
+    if (debounce.current) clearTimeout(debounce.current);
+    debounce.current = setTimeout(() => { setQ(v.trim()); setPage(1); }, ds.rows ? 120 : 300);
+  }
+  function setStatusFilter(s: string) { setStatus(s); setPage(1); }
+  function resetFilters() {
+    if (debounce.current) clearTimeout(debounce.current);
+    setSearch(""); setQ(""); setStatus(""); setPage(1);
+  }
+
+  // ── Acțiuni pe rând: optimist (se vede pe loc), la eșec revenim ──
+  const patchEverywhere = useCallback((id: string, patch: Partial<InvRow>) => {
+    ds.patchInvoice(id, patch);
+    setData((d) => ({ ...d, items: d.items.map((r) => (r.id === id ? { ...r, ...patch } : r)) }));
+    cache.current.clear();
+  }, [ds]);
 
   function changeStatus(id: string, s: InvoiceStatusKey) {
-    const prev = rows;
-    setRows((cur) => cur.map((r) => (r.id === id ? { ...r, status: s, paidAt: s === "PAID" ? (r.paidAt ?? new Date().toISOString()) : null } : r)));
+    const row = rows.find((r) => r.id === id);
+    if (!row) return;
+    const prev = { status: row.status, paidMs: row.paidMs };
+    patchEverywhere(id, { status: s, paidMs: s === "PAID" ? (row.paidMs ?? nowMs()) : null });
     setInvoiceStatus(id, s).then((res) => {
       if (!res.ok) {
-        setRows(prev);
+        patchEverywhere(id, prev);
         toast.error(res.error ?? m.common.error);
       } else {
         toast.success(`Status: ${INVOICE_STATUS[s].label}`);
@@ -118,12 +219,16 @@ export default function InvoicesList({
 
   function remove(id: string) {
     if (!confirm(m.invoices.deleteConfirm)) return;
-    const prev = rows;
-    setRows((cur) => cur.filter((r) => r.id !== id));
+    const prevRows = ds.snapshotRows();
+    const prevData = data;
+    ds.removeInvoice(id);
+    setData((d) => ({ ...d, items: d.items.filter((r) => r.id !== id), total: Math.max(0, d.total - 1) }));
+    cache.current.clear();
     deleteInvoice(id)
       .then(() => toast.success(m.invoices.deleted))
       .catch(() => {
-        setRows(prev);
+        if (prevRows) ds.restoreRows(prevRows);
+        setData(prevData);
         toast.error(m.invoices.deleteFailed);
       });
   }
@@ -139,14 +244,48 @@ export default function InvoicesList({
     }
   }
 
-  const pageTotal = rows.reduce((sum, r) => sum + (r.status === "CANCELLED" ? 0 : r.grandTotal), 0);
+  const pageTotal = useMemo(() => rows.reduce((sum, r) => sum + (r.status === "CANCELLED" ? 0 : r.grandTotal), 0), [rows]);
+
+  // ── Virtualizare (tabel: înălțime fixă de rând; carduri: înălțime variabilă) ──
+  const virtualTable = !cards && rows.length > VIRTUAL_MIN;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRaf = useRef(0);
+  const [vScroll, setVScroll] = useState({ top: 0, h: 800 });
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !virtualTable) return;
+    const upd = () => setVScroll((s) => (s.h === el.clientHeight ? s : { ...s, h: el.clientHeight }));
+    upd();
+    const obs = new ResizeObserver(upd);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [virtualTable]);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [status, q, page, perPage, cards]);
+  function onTableScroll(e: React.UIEvent<HTMLDivElement>) {
+    const top = e.currentTarget.scrollTop;
+    if (scrollRaf.current) return;
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = 0;
+      setVScroll((s) => (s.top === top ? s : { ...s, top }));
+    });
+  }
+  const winStart = virtualTable ? Math.max(0, Math.floor(vScroll.top / ROW_H) - 12) : 0;
+  const winEnd = virtualTable ? Math.min(rows.length, Math.ceil((vScroll.top + vScroll.h) / ROW_H) + 12) : rows.length;
+  const winRows = virtualTable ? rows.slice(winStart, winEnd) : rows;
+  const renderRows = (list: InvRow[], fn: (r: InvRow) => React.ReactNode) =>
+    list.length <= VIRTUAL_MIN ? list.map(fn) : <VirtualList count={list.length} itemKey={(i) => list[i].id} render={(i) => fn(list[i])} estimate={46} />;
+
+  const from = view.total === 0 ? 0 : (page - 1) * perPage + 1;
+  const to = Math.min(page * perPage, view.total);
 
   return (
     <>
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
         <input
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => onSearch(e.target.value)}
           placeholder={m.invoices.searchPlaceholder}
           className={`h-7 min-w-48 flex-1 rounded-lg border px-2 text-[11px] outline-none focus:border-brand ${
             search ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)]"
@@ -154,7 +293,7 @@ export default function InvoicesList({
         />
         <select
           value={status}
-          onChange={(e) => navigate({ status: e.target.value, page: 1 })}
+          onChange={(e) => setStatusFilter(e.target.value)}
           className={`h-7 appearance-none sel-arrow rounded-lg border pl-1.5 pr-6 text-[11px] outline-none focus:border-brand ${
             status ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)]"
           }`}
@@ -165,10 +304,10 @@ export default function InvoicesList({
             <option key={s} value={s}>{INVOICE_STATUS[s].label}</option>
           ))}
         </select>
-        {(status || q) && (
+        {(status || q || search) && (
           <button
             type="button"
-            onClick={() => { setSearch(""); navigate({ status: "", q: "", page: 1 }); }}
+            onClick={resetFilters}
             className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]"
           >
             Resetează filtrele
@@ -189,10 +328,12 @@ export default function InvoicesList({
 
       <div className="mb-1 flex flex-wrap items-center gap-x-3 text-xs">
         <span>
-          <b>{total.toLocaleString("ro-RO")}</b> facturi
-          {total > 0 && <span className="text-ink-soft"> · afișate {((page - 1) * perPage + 1).toLocaleString("ro-RO")}–{((page - 1) * perPage + rows.length).toLocaleString("ro-RO")} · pagina {page}/{totalPages}</span>}
+          <b>{view.total.toLocaleString("ro-RO")}</b> facturi
+          {view.total > 0 && <span className="text-ink-soft"> · afișate {from.toLocaleString("ro-RO")}–{to.toLocaleString("ro-RO")} · pagina {page}/{totalPages}</span>}
         </span>
         <span className="text-ink-soft">Σ pagină: <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
+        {loading && <span className="text-ink-soft">se încarcă…</span>}
+        {ds.rows && <span className="text-ink-soft" title="Lista e ținută în memorie și filtrată instant în browser.">⚡ local</span>}
         <button
           type="button"
           onClick={toggleCards}
@@ -205,23 +346,29 @@ export default function InvoicesList({
         <label className="flex items-center gap-1.5 text-xs text-ink-soft">
           Afișează
           <select
-            value={perPage}
-            onChange={(e) => navigate({ ps: Number(e.target.value), page: 1 })}
+            value={wantPerPage}
+            onChange={(e) => { setWantPerPage(Number(e.target.value)); setPage(1); }}
             className={`h-7 appearance-none sel-arrow rounded-lg border pl-1.5 pr-6 text-[11px] outline-none focus:border-brand ${
-              perPage === DEFAULT_PER_PAGE ? "border-[var(--color-line)] bg-[var(--color-surface)] text-ink" : "border-brand bg-brand/10 font-semibold text-brand"
+              wantPerPage === INVOICE_DEFAULT_PER_PAGE ? "border-[var(--color-line)] bg-[var(--color-surface)] text-ink" : "border-brand bg-brand/10 font-semibold text-brand"
             }`}
             aria-label="Câte pe pagină"
           >
-            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n)}</option>)}
+            {INVOICE_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n === INVOICE_ALL ? 25_000 : n)}</option>)}
           </select>
         </label>
       </div>
+      {error && (
+        <p className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
+          {error}
+          <button type="button" onClick={() => setReloadTick((n) => n + 1)} className="tap shrink-0 font-semibold underline">Reîncearcă</button>
+        </p>
+      )}
 
       {cards ? (
-        <div className="flex flex-col gap-1.5">
-          {rows.map((r) => {
+        <div className={`flex flex-col gap-1.5 transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
+          {renderRows(rows, (r) => {
             const st = INVOICE_STATUS[r.status];
-            const late = r.status !== "PAID" && r.status !== "CANCELLED" && isPastDate(r.dueDate);
+            const late = r.status !== "PAID" && r.status !== "CANCELLED" && isPast(r.dueMs);
             return (
               <CompactCard
                 key={r.id}
@@ -237,13 +384,13 @@ export default function InvoicesList({
               >
                 <dl>
                   {r.kind === "APA_CANAL" && <CompactField label="Tip"><span className="rounded bg-sky-100 px-1 text-[10px] font-semibold text-sky-700">Apă-Canal</span></CompactField>}
-                  <CompactField label="Emisă">{fmtDate(r.issueDate)}</CompactField>
+                  <CompactField label="Emisă">{fmtMs(r.issueMs)}</CompactField>
                   <CompactField label="Scadență">
-                    <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtDate(r.dueDate)}{late ? " · depășită" : ""}</span>
+                    <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtMs(r.dueMs)}{late ? " · depășită" : ""}</span>
                   </CompactField>
                   <CompactField label="Achitată">
                     {r.status === "PAID" ? (
-                      r.paidAt ? <span className="text-st-done">{fmtDate(r.paidAt)}</span> : <span className="text-ink-soft/70">? (data nu s-a înregistrat)</span>
+                      r.paidMs ? <span className="text-st-done">{fmtMs(r.paidMs)}</span> : <span className="text-ink-soft/70">? (data nu s-a înregistrat)</span>
                     ) : <span className="text-ink-soft/60">—</span>}
                   </CompactField>
                   <CompactField label="Status">
@@ -275,44 +422,55 @@ export default function InvoicesList({
               </CompactCard>
             );
           })}
-          {rows.length === 0 && <div className="card p-8 text-center text-ink-soft">{m.invoices.noInvoices}</div>}
+          {rows.length === 0 && !loading && <div className="card p-8 text-center text-ink-soft">{m.invoices.noInvoices}</div>}
         </div>
       ) : (
-      <div className="card overflow-auto">
-        <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] leading-[14px]">
-          <thead className="bg-[var(--color-surface-2)]">
+      <div
+        ref={scrollRef}
+        onScroll={virtualTable ? onTableScroll : undefined}
+        className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}
+        style={{ maxHeight: rows.length > 50 ? "max(78vh, 890px)" : undefined }}
+      >
+        <table className="min-w-full table-fixed border-separate border-spacing-0 text-[11px] leading-[14px]" style={{ width: COL_W.reduce((a, b) => a + b, 0) }}>
+          <colgroup>{COL_W.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+          <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
             <tr>
-              <Th minW={120}>Număr</Th>
-              <Th minW={200}>Client</Th>
-              <Th minW={80}>Emisă</Th>
-              <Th minW={80}>Scadență</Th>
-              <Th minW={80}>Achitată</Th>
-              <Th minW={90} right>Sumă</Th>
-              <Th minW={95}>Status</Th>
-              <Th minW={250}>Acțiuni</Th>
+              <Th>Număr</Th>
+              <Th>Client</Th>
+              <Th>Emisă</Th>
+              <Th>Scadență</Th>
+              <Th>Achitată</Th>
+              <Th right>Sumă</Th>
+              <Th>Status</Th>
+              <Th>Acțiuni</Th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {winStart > 0 && (
+              <tr aria-hidden>
+                <td colSpan={8} style={{ height: winStart * ROW_H, padding: 0, border: 0 }} />
+              </tr>
+            )}
+            {winRows.map((r) => {
               const st = INVOICE_STATUS[r.status];
-              const late = r.status !== "PAID" && r.status !== "CANCELLED" && isPastDate(r.dueDate);
+              const late = r.status !== "PAID" && r.status !== "CANCELLED" && isPast(r.dueMs);
               const cell = "border-b border-[var(--color-line)] px-1.5 py-[2px]";
               return (
-                <tr key={r.id} className="hover:bg-brand-soft/30">
+                <tr key={r.id} style={{ height: ROW_H }} className="hover:bg-brand-soft/30">
                   <td className={`${cell} whitespace-nowrap font-semibold`}>
                     {r.number}
                     {r.kind === "APA_CANAL" && (
                       <span className="ml-1.5 rounded bg-sky-100 px-1 text-[9px] font-semibold text-sky-700">Apă-Canal</span>
                     )}
                   </td>
-                  <td className={cell} style={{ maxWidth: 260 }}>
+                  <td className={cell}>
                     <div className="truncate" title={r.clientName ?? ""}>{r.clientName ?? <span className="text-ink-soft/60">{m.invoices.noClient}</span>}</div>
                   </td>
-                  <td className={`${cell} whitespace-nowrap`}>{fmtDate(r.issueDate)}</td>
-                  <td className={`${cell} whitespace-nowrap ${late ? "font-semibold text-st-cancelled" : ""}`} title={late ? "Scadența a trecut" : undefined}>{fmtDate(r.dueDate)}</td>
+                  <td className={`${cell} whitespace-nowrap`}>{fmtMs(r.issueMs)}</td>
+                  <td className={`${cell} whitespace-nowrap ${late ? "font-semibold text-st-cancelled" : ""}`} title={late ? "Scadența a trecut" : undefined}>{fmtMs(r.dueMs)}</td>
                   <td className={`${cell} whitespace-nowrap`}>
                     {r.status === "PAID" ? (
-                      r.paidAt ? <span className="text-st-done">{fmtDate(r.paidAt)}</span> : <span className="text-ink-soft/70" title="Marcată plătită, dar data nu s-a înregistrat">?</span>
+                      r.paidMs ? <span className="text-st-done">{fmtMs(r.paidMs)}</span> : <span className="text-ink-soft/70" title="Marcată plătită, dar data nu s-a înregistrat">?</span>
                     ) : <span className="text-ink-soft/60">—</span>}
                   </td>
                   <td className={`${cell} whitespace-nowrap text-right font-semibold tabular-nums`}>{money(r.grandTotal, r.currency)}</td>
@@ -346,7 +504,12 @@ export default function InvoicesList({
                 </tr>
               );
             })}
-            {rows.length === 0 && (
+            {winEnd < rows.length && (
+              <tr aria-hidden>
+                <td colSpan={8} style={{ height: (rows.length - winEnd) * ROW_H, padding: 0, border: 0 }} />
+              </tr>
+            )}
+            {rows.length === 0 && !loading && (
               <tr><td colSpan={8} className="p-8 text-center text-ink-soft">{m.invoices.noInvoices}</td></tr>
             )}
           </tbody>
@@ -358,7 +521,7 @@ export default function InvoicesList({
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1">
           <button
             disabled={page <= 1}
-            onClick={() => navigate({ page: page - 1 })}
+            onClick={() => setPage(page - 1)}
             className="tap grid size-7 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40"
             aria-label={m.common.previous}
           >
@@ -370,7 +533,7 @@ export default function InvoicesList({
             ) : (
               <button
                 key={b}
-                onClick={() => navigate({ page: b })}
+                onClick={() => setPage(b)}
                 aria-current={b === page ? "page" : undefined}
                 className={`tap h-7 min-w-[28px] cursor-pointer rounded-lg px-2 text-xs font-medium ${b === page ? "bg-brand text-white" : "border border-[var(--color-line)] text-ink hover:bg-[var(--color-surface-2)]"}`}
               >
@@ -380,7 +543,7 @@ export default function InvoicesList({
           )}
           <button
             disabled={page >= totalPages}
-            onClick={() => navigate({ page: page + 1 })}
+            onClick={() => setPage(page + 1)}
             className="tap grid size-7 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40"
             aria-label={m.common.next}
           >
@@ -394,7 +557,7 @@ export default function InvoicesList({
               const n = Math.floor(Number(goto));
               if (!Number.isFinite(n) || n < 1) return;
               setGoto("");
-              navigate({ page: Math.min(n, totalPages) });
+              setPage(Math.min(n, totalPages));
             }}
           >
             Mergi la
@@ -422,16 +585,13 @@ const cardBtn =
   "tap inline-flex h-7 cursor-pointer items-center rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] leading-none hover:bg-brand-soft";
 
 /** Scadența a trecut? (în afara componentei, ca randarea să rămână pură). */
-function isPastDate(d: string | Date | null): boolean {
-  return !!d && new Date(d).getTime() < Date.now();
+function isPast(ms: number | null): boolean {
+  return ms != null && ms < Date.now();
 }
 
-function Th({ children, minW, right }: { children: React.ReactNode; minW: number; right?: boolean }) {
+function Th({ children, right }: { children: React.ReactNode; right?: boolean }) {
   return (
-    <th
-      style={{ minWidth: minW }}
-      className={`border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1 font-semibold ${right ? "text-right" : "text-left"}`}
-    >
+    <th className={`border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1 font-semibold ${right ? "text-right" : "text-left"}`}>
       {children}
     </th>
   );
