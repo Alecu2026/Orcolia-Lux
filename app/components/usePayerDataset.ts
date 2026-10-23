@@ -56,10 +56,10 @@ type Stored = { at: number; etag: string | null; sorted: boolean; rows: SnapTupl
 function whenIdle(fn: () => void): () => void {
   const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
   if (w.requestIdleCallback) {
-    const id = w.requestIdleCallback(fn, { timeout: 1500 });
+    const id = w.requestIdleCallback(fn, { timeout: 250 });
     return () => w.cancelIdleCallback?.(id);
   }
-  const id = setTimeout(fn, 250);
+  const id = setTimeout(fn, 100);
   return () => clearTimeout(id);
 }
 

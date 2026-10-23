@@ -34,6 +34,7 @@ import PayerTemplatesDialog from "./PayerTemplatesDialog";
 import CompactCard, { CompactField } from "./CompactCard";
 import PayerDetailDialog, { type PayerPatch } from "./PayerDetailDialog";
 import PayerBulkDeleteDialog from "./PayerBulkDeleteDialog";
+import VirtualList from "./VirtualList";
 import { usePayerDataset } from "./usePayerDataset";
 import ExportButton from "./ExportButton";
 import {
@@ -84,12 +85,14 @@ function queryKey(f: NotifyFilters, page: number, perPage: number): string {
 type TextKey = "q" | "street" | "minDebt" | "maxDebt";
 
 /**
- * Câte rânduri se desenează cel mult o dată. „Toate"/1000 de plătitori deodată înseamnă sute de mii de noduri DOM (măsurat: 343.000 de noduri
- * și 220 MB pe telefon → fila se blochează/pică, iar alegerea se salva în localStorage și se reaplica la fiecare deschidere).
- * Restul se vede prin paginare/filtre; exportul și selecția „toți din filtru" lucrează pe tot setul, nu pe rândurile desenate.
+ * „Toate" înseamnă 19.000 de rânduri în memorie, dar în DOM stau doar cele vizibile (virtualizare): fără ea, desenarea tuturor era
+ * sute de mii de noduri (măsurat: 343.000 de noduri și 220 MB pe telefon → fila pica, iar alegerea salvată se reaplica la fiecare deschidere).
  */
-const MAX_TABLE_ROWS = 500;
-const MAX_CARD_ROWS = 100;
+/** Lățimile coloanelor tabelului (px): plătitor, cont, adresă, email, telefon, factură, scadență, de achitat, status, portal, facturi, ultima notificare. */
+const COL_W = [200, 100, 190, 190, 100, 85, 80, 90, 72, 58, 52, 110];
+const SERVER_MAX_ROWS = 200; // doar cât timp lista completă nu e încă în browser (răspunsul vine de pe server)
+const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
+const ROW_H = 24; // înălțimea fixă a unui rând de tabel (necesară virtualizării)
 const BOOT_GUARD_MS = 120_000;
 
 export default function PayerNotifyManager({
@@ -180,14 +183,9 @@ export default function PayerNotifyManager({
   const [cardsPref, setCardsPref] = useState<boolean | null>(null);
   const [narrow, setNarrow] = useState(false);
   const cards = cardsPref ?? narrow;
-  const perPage = Math.min(wantPerPage, cards ? MAX_CARD_ROWS : MAX_TABLE_ROWS);
-  // Telefoane cu memorie puțină (≤ 2 GB): fără setul complet în browser — filtrarea merge pe server, tot din cache (milisecunde).
-  const [localOk, setLocalOk] = useState(true);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setNarrow(window.matchMedia("(max-width: 639px)").matches);
-    const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
-    if (mem != null && mem <= 2) setLocalOk(false);
     try {
       const v = localStorage.getItem("payer-notify-view");
       if (v === "cards" || v === "table") setCardsPref(v === "cards");
@@ -235,21 +233,23 @@ export default function PayerNotifyManager({
   const [compose, setCompose] = useState<{ recipients: Recipient[]; previewRow: PayerRow | null } | null>(null);
   const sentSomething = useRef(false);
 
-  const key = queryKey(filters, page, perPage);
-
   // ── Motor local: toți plătitorii în memorie, filtrați/sortați/paginați în JS (instant). Până se încarcă setul
   //    (sau cât timp se încarcă o lună nouă), se folosește interogarea clasică pe server de mai jos. ──
-  const ds = usePayerDataset(ready && localOk);
+  const ds = usePayerDataset(ready);
   const monthMap = filters.month ? (ds.monthMaps.get(filters.month) ?? null) : null;
   const useLocal = !!ds.rows && (!filters.month || !!monthMap);
+  // Cu lista completă în browser, orice dimensiune de pagină (inclusiv „Toate") e instant; până atunci serverul dă cel mult 200 de rânduri.
+  const perPage = useLocal ? wantPerPage : Math.min(wantPerPage, SERVER_MAX_ROWS);
+  const key = queryKey(filters, page, perPage);
   const localList = useMemo(
     () => (useLocal && ds.rows ? filterSnapshot(ds.rows, sanitizeFilters(filters), monthMap) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [useLocal, ds.rows, ds.version, filters, monthMap],
   );
-  const view: Page = localList
-    ? { items: localList.slice((page - 1) * perPage, page * perPage), total: localList.length }
-    : data;
+  const view: Page = useMemo(
+    () => (localList ? { items: localList.slice((page - 1) * perPage, page * perPage), total: localList.length } : data),
+    [localList, page, perPage, data],
+  );
   const totalPages = Math.max(1, Math.ceil(view.total / perPage));
   const ensureMonth = ds.ensureMonth;
   useEffect(() => {
@@ -271,6 +271,8 @@ export default function PayerNotifyManager({
       interrupted = b > 0 && Date.now() - b < BOOT_GUARD_MS;
       localStorage.setItem(BOOT_KEY, String(Date.now()));
       if (interrupted) localStorage.removeItem(STORAGE_KEY);
+      // Reîncărcare / navigare normală în timpul încărcării (ex. actualizarea aplicației) NU e o blocare: ridicăm semnalul. O fila care pică nu apucă să o facă.
+      window.addEventListener("pagehide", () => { try { localStorage.removeItem(BOOT_KEY); } catch {} }, { once: true });
     } catch {}
     if (interrupted) toast.info(t("Încărcarea anterioară nu s-a terminat, deci filtrele salvate au fost resetate."));
     if (urlEmpty && !interrupted) {
@@ -278,7 +280,7 @@ export default function PayerNotifyManager({
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as { f?: unknown; perPage?: unknown } | null;
         if (saved) {
           const f = sanitizeFilters((saved.f ?? {}) as Record<string, unknown>);
-          const pp = Math.min(normalizePerPageClient(saved.perPage), window.matchMedia("(max-width: 639px)").matches ? MAX_CARD_ROWS : MAX_TABLE_ROWS);
+          const pp = normalizePerPageClient(saved.perPage);
           if (countActiveFilters(f) > 0 || f.sort) {
             // Citire din localStorage după hidratare (serverul nu o poate face) — același tipar ca în TasksManager.
             // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -398,6 +400,41 @@ export default function PayerNotifyManager({
 
   // ── Selecție ──
   const pageRows = view.items;
+
+  // ── Virtualizare: din cele (până la 19.000) de rânduri ale paginii se desenează doar cele din zona vizibilă ──
+  const virtualTable = !cards && pageRows.length > VIRTUAL_MIN;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRaf = useRef(0);
+  const [vScroll, setVScroll] = useState({ top: 0, h: 800 });
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !virtualTable) return;
+    const upd = () => setVScroll((s) => (s.h === el.clientHeight ? s : { ...s, h: el.clientHeight }));
+    upd();
+    const obs = new ResizeObserver(upd);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [virtualTable]);
+  // Alt filtru / altă pagină / altă sortare → tabelul revine sus (evenimentul de scroll actualizează poziția).
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [filters, page, perPage, cards]);
+  function onTableScroll(e: React.UIEvent<HTMLDivElement>) {
+    const top = e.currentTarget.scrollTop;
+    if (scrollRaf.current) return;
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = 0;
+      setVScroll((s) => (s.top === top ? s : { ...s, top }));
+    });
+  }
+  const winStart = virtualTable ? Math.max(0, Math.floor(vScroll.top / ROW_H) - 12) : 0;
+  const winEnd = virtualTable ? Math.min(pageRows.length, Math.ceil((vScroll.top + vScroll.h) / ROW_H) + 12) : pageRows.length;
+  const winRows = virtualTable ? pageRows.slice(winStart, winEnd) : pageRows;
+  /** Carduri (mod telefon): listă virtualizată cu înălțimi variabile (cardurile se desfac la atingere). */
+  function renderRows(rows: PayerRow[], fn: (r: PayerRow, i: number) => React.ReactNode) {
+    if (rows.length <= VIRTUAL_MIN) return rows.map(fn);
+    return <VirtualList count={rows.length} itemKey={(i) => rows[i].id} render={(i) => fn(rows[i], i)} />;
+  }
   const allOnPage = pageRows.length > 0 && pageRows.every((r) => selected.has(r.id));
   const someOnPage = pageRows.some((r) => selected.has(r.id));
   const headerCheck = useRef<HTMLInputElement>(null);
@@ -408,11 +445,14 @@ export default function PayerNotifyManager({
   function toggleRow(i: number, shift: boolean) {
     const row = pageRows[i];
     if (!row) return;
+    // Ultimul rând bifat se citește ACUM: funcția de mai jos rulează mai târziu, când `lastClicked` a fost deja mutat pe rândul curent
+    // (din cauza asta, Shift+click bifa doar rândul apăsat, nu și intervalul).
+    const last = lastClicked.current;
     setSelected((prev) => {
       const next = new Map(prev);
       const on = !prev.has(row.id);
-      const from = shift && lastClicked.current !== null ? Math.min(lastClicked.current, i) : i;
-      const to = shift && lastClicked.current !== null ? Math.max(lastClicked.current, i) : i;
+      const from = shift && last !== null ? Math.min(last, i) : i;
+      const to = shift && last !== null ? Math.max(last, i) : i;
       for (let j = from; j <= to; j++) {
         const r = pageRows[j];
         if (on) next.set(r.id, flagsOf(r));
@@ -746,12 +786,12 @@ export default function PayerNotifyManager({
         <label className="flex items-center gap-1.5 text-xs text-ink-soft">
           {t("Afișează")}
           <select
-            value={perPage}
+            value={wantPerPage}
             onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
-            className={fld(perPage === DEFAULT_PER_PAGE ? "" : "x")}
+            className={fld(wantPerPage === DEFAULT_PER_PAGE ? "" : "x")}
             aria-label={t("Rânduri pe pagină")}
           >
-            {NOTIFY_PER_PAGE.filter((n) => n <= (cards ? MAX_CARD_ROWS : MAX_TABLE_ROWS)).map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
+            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
           </select>
         </label>
       </div>
@@ -766,7 +806,7 @@ export default function PayerNotifyManager({
       {/* ── Tabel (stil 1C) ───────────────────────────────────────────────── */}
       {cards ? (
         <div className={`flex flex-col gap-1.5 transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
-          {pageRows.map((r, i) => {
+          {renderRows(pageRows, (r, i) => {
             const sel = selected.has(r.id);
             const st = r.latestInvoice ? INVOICE_STATUS[r.latestInvoice.status as InvoiceStatusKey] : null;
             const flags = flagsOf(r);
@@ -837,8 +877,18 @@ export default function PayerNotifyManager({
           )}
         </div>
       ) : (
-      <div className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`} style={{ maxHeight: perPage > 50 ? "max(78vh, 890px)" : undefined }}>
-        <table className="w-max min-w-full border-separate border-spacing-0 text-[11px] leading-[14px]">
+      <div
+        ref={scrollRef}
+        onScroll={virtualTable ? onTableScroll : undefined}
+        className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}
+        style={{ maxHeight: pageRows.length > 50 ? "max(78vh, 890px)" : undefined }}
+      >
+        <table className="min-w-full table-fixed border-separate border-spacing-0 text-[11px] leading-[14px]" style={{ width: COL_W.reduce((a, b) => a + b, 0) + (canSelect ? 28 : 0) + (canSend ? 32 : 0) }}>
+          <colgroup>
+            {canSelect && <col style={{ width: 28 }} />}
+            {COL_W.map((w, i) => <col key={i} style={{ width: w }} />)}
+            {canSend && <col style={{ width: 32 }} />}
+          </colgroup>
           <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
             <tr>
               {canSelect && (
@@ -875,7 +925,13 @@ export default function PayerNotifyManager({
             </tr>
           </thead>
           <tbody>
-            {pageRows.map((r, i) => {
+            {winStart > 0 && (
+              <tr aria-hidden>
+                <td colSpan={colCount} style={{ height: winStart * ROW_H, padding: 0, border: 0 }} />
+              </tr>
+            )}
+            {winRows.map((r, k) => {
+              const i = winStart + k;
               const sel = selected.has(r.id);
               const st = r.latestInvoice ? INVOICE_STATUS[r.latestInvoice.status as InvoiceStatusKey] : null;
               const flags = flagsOf(r);
@@ -885,6 +941,7 @@ export default function PayerNotifyManager({
                 <tr
                   key={r.id}
                   onClick={() => setDetailRow(r)}
+                  style={{ height: ROW_H }}
                   className={`cursor-pointer ${sel ? "bg-brand-soft/60" : "hover:bg-brand-soft/30"}`}
                 >
                   {canSelect && (
@@ -947,6 +1004,11 @@ export default function PayerNotifyManager({
                 </tr>
               );
             })}
+            {winEnd < pageRows.length && (
+              <tr aria-hidden>
+                <td colSpan={colCount} style={{ height: (pageRows.length - winEnd) * ROW_H, padding: 0, border: 0 }} />
+              </tr>
+            )}
             {pageRows.length === 0 && !loading && (
               <tr>
                 <td colSpan={colCount} className="p-8 text-center text-ink-soft">
