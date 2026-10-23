@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useT } from "@/lib/i18n/context";
 
 type Format = "csv" | "xlsx" | "json";
 
@@ -15,6 +16,7 @@ export default function ExportButton({
   className?: string;
   label?: string;
 }) {
+  const tr = useT();
   const [open, setOpen] = useState(false);
 
   function buildUrl(format: Format) {
@@ -34,12 +36,12 @@ export default function ExportButton({
           className ??
           "tap inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]"
         }
-        aria-label={label}
+        aria-label={tr(label)}
       >
         <svg className="size-4 shrink-0" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M10 3v10m0 0-3-3m3 3 3-3M4 15h12" />
         </svg>
-        {label}
+        {tr(label)}
       </button>
 
       {open && (

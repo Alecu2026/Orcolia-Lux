@@ -36,6 +36,8 @@ export type ApptVM = {
   categoryColor: string | null;
   remEmail: boolean;
   remTelegram: boolean;
+  /** „Mesaj / detalii” scris la creare (separat de „Descriere” = titlu). */
+  message: string;
 };
 
 export type QuickPrefill = Partial<{

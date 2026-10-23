@@ -27,7 +27,10 @@ export type ReminderEmailData = {
   fromAddr?: string | null;
 };
 
-function template(d: ReminderEmailData): string {
+const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function template(raw: ReminderEmailData): string {
+  const d = { ...raw, clientName: escHtml(raw.clientName), service: escHtml(raw.service), date: escHtml(raw.date), time: escHtml(raw.time) };
   return `<!doctype html>
 <html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">

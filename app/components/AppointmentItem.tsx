@@ -52,7 +52,8 @@ export default function AppointmentItem({ appt }: { appt: ApptVM }) {
     if (!confirm(m.appts.deleteConfirm)) return;
     setRemoved(true);
     try {
-      await deleteAppointment(appt.id);
+      const res = await deleteAppointment(appt.id);
+      if (res?.error) { setRemoved(false); toast.error(res.error); return; }
       toast.success(m.appts.deleted);
     } catch {
       setRemoved(false);

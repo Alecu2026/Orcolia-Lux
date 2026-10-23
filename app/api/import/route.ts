@@ -394,8 +394,8 @@ export async function POST(req: Request) {
   if (entity === "appointments") {
     if (!can(user, "appointments.manage")) return Response.json({ error: "Fără permisiune pentru import de programări." }, { status: 403 });
     const [allClients, allCategories] = await Promise.all([
+      // Clienții sunt comuni pentru organizație: altfel un angajat ar crea duplicate ale clienților adăugați de altcineva.
       prisma.client.findMany({
-        where: { userId: user.id },
         select: { id: true, name: true },
       }),
       prisma.category.findMany({ select: { id: true, name: true } }),

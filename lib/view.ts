@@ -18,5 +18,6 @@ export function toVM(a: AppointmentListItem, tz: string): ApptVM {
     categoryColor: a.categoryColorSnapshot,
     remEmail: a.reminderEmailEnabled,
     remTelegram: a.reminderTelegramEnabled,
+    message: a.message ?? "",
   };
 }

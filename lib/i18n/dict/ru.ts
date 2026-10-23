@@ -453,4 +453,13 @@ export const RU: Record<string, string> = {
   "Tichet nou din portalul clienților": "Новая заявка из портала клиентов",
   "Mesaj nou de la client pe un tichet": "Новое сообщение клиента в заявке",
   "Tichet nou din email": "Новая заявка из email",
+  "Detalii": "Детали",
+  "Click ca să modifici": "Нажмите, чтобы изменить",
+  "Caută…": "Поиск…",
+  "Nume client (nou sau existent)": "Имя клиента (новый или существующий)",
+  "Cu o zi înainte (08:00)": "За день (в 08:00)",
+  "Cu 3 ore înainte": "За 3 часа",
+  "Cu 30 minute înainte": "За 30 минут",
+  "Cu 10 minute înainte": "За 10 минут",
+  "Export": "Экспорт",
 };

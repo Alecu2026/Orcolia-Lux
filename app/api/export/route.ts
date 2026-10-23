@@ -402,11 +402,8 @@ export async function GET(req: Request) {
       const keys = weekKeys(tKey, tz);
       dateFilter = { dateKey: { in: keys } };
     } else {
-      // lista: export all (up to 2 years) so user gets all data
-      const now = new Date();
-      const from = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-      const to = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
-      dateFilter = { startAt: { gte: from, lte: to } };
+      // lista: toate programările utilizatorului (ca tabelul din pagină), fără fereastră de date
+      dateFilter = {};
     }
 
     const where: import("@prisma/client").Prisma.AppointmentWhereInput = {

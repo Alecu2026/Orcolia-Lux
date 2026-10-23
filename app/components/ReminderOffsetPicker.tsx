@@ -1,6 +1,7 @@
 "use client";
 
 import { REMINDER_PRESETS } from "@/lib/reminder-presets";
+import { useT } from "@/lib/i18n/context";
 
 const chip =
   "tap w-full rounded-xl px-3 py-2.5 text-sm font-medium border border-[var(--color-line)] text-center";
@@ -14,6 +15,7 @@ export default function ReminderOffsetPicker({
   value: string[];
   onChange: (next: string[]) => void;
 }) {
+  const tr = useT();
   function toggle(key: string) {
     onChange(value.includes(key) ? value.filter((k) => k !== key) : [...value, key]);
   }
@@ -31,7 +33,7 @@ export default function ReminderOffsetPicker({
             onClick={() => toggle(p.key)}
             className={`${chip} ${value.includes(p.key) ? "bg-brand text-white" : ""}`}
           >
-            {p.label}
+            {tr(p.label)}
           </button>
         ))}
       </div>

@@ -69,7 +69,7 @@ export default function AppointmentsTable({
     setRows((cur) => cur.filter((r) => r.id !== id));
     setDetail((d) => (d === id ? null : d));
     deleteAppointment(id)
-      .then(() => toast.success(m.appts.deleted))
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } else toast.success(m.appts.deleted); })
       .catch(() => { setRows(prev); toast.error(m.common.deleteFailed); });
   }
 
@@ -92,7 +92,7 @@ export default function AppointmentsTable({
       .catch(() => { setRows(prev); toast.error(m.common.error); });
   }
 
-  function patchAppt(a: ApptVM, patch: { title?: string; categoryId?: string | null }, optimistic: Partial<ApptVM>) {
+  function patchAppt(a: ApptVM, patch: { title?: string; categoryId?: string | null; message?: string }, optimistic: Partial<ApptVM>) {
     const prev = rows;
     setRows((cur) => cur.map((r) => (r.id === a.id ? { ...r, ...optimistic } : r)));
     updateAppointmentFieldAction(a.id, patch)
@@ -130,6 +130,10 @@ export default function AppointmentsTable({
       render: (a) => <EditableText value={a.title} allowEmpty disabled={!canManage} onSave={(v) => patchAppt(a, { title: v }, { title: v })} display={a.title ? <span title={a.title}>{a.title}</span> : undefined} />,
     },
     {
+      key: "msg", label: t("Detalii"), minW: 180, maxW: 300,
+      render: (a) => <EditableText value={a.message} allowEmpty disabled={!canManage} onSave={(v) => patchAppt(a, { message: v }, { message: v })} display={a.message ? <span title={a.message}>{a.message}</span> : undefined} />,
+    },
+    {
       key: "cat", label: t("Categorie"), minW: 120, sort: (a) => a.categoryName,
       render: (a) => (
         <EditableSelect
@@ -148,18 +152,18 @@ export default function AppointmentsTable({
       key: "status", label: t("Status"), minW: 100, sort: (a) => apptLabel(a.status, m),
       render: (a) => (
         <div className="origin-left scale-90" onClick={(e) => e.stopPropagation()}>
-          <ApptStatusDropdown status={a.status} pending={busy === a.id} onChange={(s) => change(a.id, s)} />
+          <ApptStatusDropdown status={a.status} pending={busy === a.id || !canManage} onChange={(s) => change(a.id, s)} />
         </div>
       ),
     },
     { key: "rem", label: t("Remindere"), minW: 70, render: (a) => (a.remEmail || a.remTelegram ? <span className="inline-flex items-center gap-1 text-ink-soft">{a.remEmail && <IconMail className="size-3" />}{a.remTelegram && <IconSend className="size-3" />}</span> : dash) },
     {
       key: "act", label: "", minW: 40,
-      render: (a) => (
+      render: (a) => canManage ? (
         <div onClick={(e) => e.stopPropagation()}>
           <button type="button" className={`${iconBtn} text-st-cancelled`} title={m.common.delete} onClick={() => remove(a.id)}><IconTrash className="size-3" /></button>
         </div>
-      ),
+      ) : null,
     },
   ];
 
@@ -218,8 +222,8 @@ export default function AppointmentsTable({
         toolbar={
           <>
             <ExportButton entity="appointments" className={topBtn} />
-            <ImportButton entity="appointments" className={topBtn} />
-            <OpenQuickAddButton className="tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong" />
+            {canManage && <ImportButton entity="appointments" className={topBtn} />}
+            {canManage && <OpenQuickAddButton className="tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong" />}
           </>
         }
       />
@@ -237,13 +241,14 @@ export default function AppointmentsTable({
             </div>
             <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
               <Link href={`/calendar?date=${current.dateKey}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">{t("Vezi în calendar →")}</Link>
-              <button type="button" onClick={() => remove(current.id)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium text-st-cancelled hover:bg-[var(--color-surface-2)]">🗑 {m.common.delete}</button>
+              {canManage && <button type="button" onClick={() => remove(current.id)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium text-st-cancelled hover:bg-[var(--color-surface-2)]">🗑 {m.common.delete}</button>}
             </div>
             <div className="divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)] text-sm">
-              <Row label={t("Status")}><ApptStatusDropdown status={current.status} pending={busy === current.id} onChange={(s) => change(current.id, s)} /></Row>
+              <Row label={t("Status")}><ApptStatusDropdown status={current.status} pending={busy === current.id || !canManage} onChange={(s) => change(current.id, s)} /></Row>
               <Row label={t("Categorie")}>{current.categoryName ?? "—"}</Row>
               <Row label={t("Remindere")}>{current.remEmail || current.remTelegram ? `${current.remEmail ? "email " : ""}${current.remTelegram ? "telegram" : ""}` : "—"}</Row>
               {current.title && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{t("Descriere")}</p><p className="whitespace-pre-wrap text-[13px]">{current.title}</p></div>}
+              {current.message && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{t("Detalii")}</p><p className="whitespace-pre-wrap text-[13px]">{current.message}</p></div>}
             </div>
           </div>
         </div>

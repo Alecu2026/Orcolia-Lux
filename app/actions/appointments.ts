@@ -131,6 +131,8 @@ export async function rescheduleAppointment(
 
 const VALID_APPT_STATUSES = new Set(["NEW", "CONFIRMED", "IN_PROGRESS", "DONE", "CANCELLED", "NO_SHOW"]);
 
+const OID = /^[0-9a-f]{24}$/i;
+
 export async function listAppointmentsAction(opts: {
   view: string;
   q?: string;
@@ -138,6 +140,7 @@ export async function listAppointmentsAction(opts: {
   category?: string;
 }): Promise<{ items: ApptVM[]; grouped: boolean }> {
   const user = await requireUser();
+  if (!can(user, "appointments.view")) return { items: [], grouped: false };
   const settings = await getSettings(user.id);
   const tz = settings.timezone;
 
@@ -146,7 +149,7 @@ export async function listAppointmentsAction(opts: {
     status: (opts.status && VALID_APPT_STATUSES.has(opts.status)
       ? opts.status
       : undefined) as AppointmentStatus | undefined,
-    categoryId: opts.category || undefined,
+    categoryId: opts.category && OID.test(opts.category) ? opts.category : undefined,
   };
 
   const today = todayKey(tz);
@@ -170,25 +173,33 @@ export async function listAppointmentsAction(opts: {
   return { items: raw.map((a) => toVM(a, tz)), grouped };
 }
 
-export async function deleteAppointment(id: string): Promise<void> {
+export async function deleteAppointment(id: string): Promise<ApptState> {
   const user = await requireUser();
-  if (!can(user, "appointments.manage")) return;
-  if (DEMO) return;
+  if (!can(user, "appointments.manage")) return { error: "Fără permisiune." };
+  if (DEMO) return { error: "Mod demo." };
+  if (!OID.test(id ?? "")) return { error: "Programare inexistentă." };
   const owned = await prisma.appointment.findFirst({
     where: { id, userId: user.id },
-    select: { id: true },
+    select: { id: true, status: true, clientId: true },
   });
-  if (!owned) return;
+  if (!owned) return { error: "Programare inexistentă." };
   await prisma.reminder.deleteMany({ where: { appointmentId: id } });
   await prisma.appointment.delete({ where: { id } });
+  // O programare „Nu a venit” ștearsă nu mai trebuie să numere la clientul respectiv.
+  if (owned.status === "NO_SHOW") {
+    await prisma.client
+      .updateMany({ where: { id: owned.clientId, noShowCount: { gt: 0 } }, data: { noShowCount: { decrement: 1 } } })
+      .catch(() => {});
+  }
   revalidateAll();
+  return { ok: true };
 }
 
 
 /** Editare rapidă (celulele din tabelul de programări): descriere și categorie. Data/ora se schimbă prin rescheduleAppointment. */
 export async function updateAppointmentFieldAction(
   id: string,
-  patch: { title?: string; categoryId?: string | null },
+  patch: { title?: string; categoryId?: string | null; message?: string },
 ): Promise<ApptState> {
   const user = await requireUser();
   if (!can(user, "appointments.manage")) return { error: "Fără permisiune." };
@@ -200,6 +211,7 @@ export async function updateAppointmentFieldAction(
 
   const data: Record<string, unknown> = {};
   if (patch.title !== undefined) data.title = String(patch.title).trim().slice(0, 500);
+  if (patch.message !== undefined) data.message = String(patch.message).trim().slice(0, 2000) || null;
   if ("categoryId" in patch) {
     if (patch.categoryId && OID.test(patch.categoryId)) {
       const cat = await prisma.category.findFirst({ where: { id: patch.categoryId }, select: { id: true, name: true, color: true } });

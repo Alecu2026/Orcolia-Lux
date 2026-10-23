@@ -23,6 +23,7 @@ export const LIST_SELECT = {
   categoryColorSnapshot: true,
   reminderEmailEnabled: true,
   reminderTelegramEnabled: true,
+  message: true,
 } as const;
 
 export type AppointmentListItem = {
@@ -38,6 +39,7 @@ export type AppointmentListItem = {
   categoryColorSnapshot: string | null;
   reminderEmailEnabled: boolean;
   reminderTelegramEnabled: boolean;
+  message?: string | null;
 };
 
 const ACTIVE_STATUSES: AppointmentStatus[] = [

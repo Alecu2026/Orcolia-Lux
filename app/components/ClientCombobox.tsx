@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useT } from "@/lib/i18n/context";
 
 type Match = { id: string; name: string; phone: string | null };
 
@@ -11,6 +12,7 @@ export default function ClientCombobox({
   value: { id: string; name: string };
   onPick: (v: { id: string; name: string }) => void;
 }) {
+  const tr = useT();
   const [query, setQuery] = useState(value.name);
   const [open, setOpen] = useState(false);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -65,7 +67,7 @@ export default function ClientCombobox({
           setOpen(true);
         }}
         onFocus={() => setOpen(true)}
-        placeholder="Nume client (nou sau existent)"
+        placeholder={tr("Nume client (nou sau existent)")}
         autoComplete="off"
         className="h-12 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/30"
       />

@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { isValidDateKey } from "./date";
 
 export type ParsedRow = Record<string, string>;
 
@@ -7,7 +8,8 @@ export type ParsedRow = Record<string, string>;
  * Prima linie devine cheile obiectului (antet). Valorile sunt întotdeauna string.
  */
 export function parseWorkbook(buffer: ArrayBuffer): ParsedRow[] {
-  const wb = XLSX.read(buffer, { type: "array", cellText: true, cellDates: false, codepage: 65001 });
+  // raw: true → CSV-ul se citește ca text (altfel „01.12.2026” devine o dată americană „1/12/26”, iar „069…” pierde zeroul din față).
+  const wb = XLSX.read(buffer, { type: "array", cellText: true, cellDates: false, codepage: 65001, raw: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   if (!ws) return [];
 
@@ -107,11 +109,12 @@ export function parseRoDateKey(s: string): string | null {
   const ro = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   if (ro) {
     const [, d, m, y] = ro;
-    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    const key = `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    return isValidDateKey(key) ? key : null;
   }
   // YYYY-MM-DD
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return iso[0];
+  if (iso) return isValidDateKey(iso[0]) ? iso[0] : null;
   return null;
 }
 

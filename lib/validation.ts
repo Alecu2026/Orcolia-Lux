@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidDateKey, isValidTimeOfDay } from "./date";
 
 const dateKeyRe = /^\d{4}-\d{2}-\d{2}$/;
 const timeRe = /^\d{2}:\d{2}$/;
@@ -56,8 +57,8 @@ export const quickAppointmentSchema = z
       .optional()
       .or(z.literal("")),
     categoryId: z.string().trim().optional().or(z.literal("")),
-    dateKey: z.string().regex(dateKeyRe, "Dată invalidă (YYYY-MM-DD)."),
-    time: z.string().regex(timeRe, "Oră invalidă (HH:mm)."),
+    dateKey: z.string().regex(dateKeyRe, "Dată invalidă (YYYY-MM-DD).").refine(isValidDateKey, "Dată invalidă (nu există în calendar)."),
+    time: z.string().regex(timeRe, "Oră invalidă (HH:mm).").refine(isValidTimeOfDay, "Oră invalidă (00:00–23:59)."),
     durationMinutes: z.coerce.number().gt(0).max(100000).catch(30),
     title: z.string().trim().max(120).optional().or(z.literal("")),
     message: z.string().trim().max(2000).optional().or(z.literal("")),
@@ -78,8 +79,8 @@ export const updateStatusSchema = z.object({
 
 export const rescheduleSchema = z.object({
   id: z.string().min(1),
-  dateKey: z.string().regex(dateKeyRe),
-  time: z.string().regex(timeRe),
+  dateKey: z.string().regex(dateKeyRe).refine(isValidDateKey),
+  time: z.string().regex(timeRe).refine(isValidTimeOfDay),
   durationMinutes: z.coerce.number().gt(0).max(100000).optional(),
 });
 

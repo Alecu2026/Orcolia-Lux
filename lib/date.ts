@@ -81,9 +81,27 @@ export function zonedToUtc(
   const [y, m, d] = dateKey.split("-").map(Number);
   const [hh, mm] = time.split(":").map(Number);
   const guess = Date.UTC(y, m - 1, d, hh, mm, 0);
-  // O singură corecție de offset acoperă toate cazurile, cu excepția marginilor DST.
-  const offset = tzOffsetMs(new Date(guess), timeZone);
-  return new Date(guess - offset);
+  // Offsetul se calculează la „ora de perete tratată ca UTC”, apoi se reverifică la instantul rezultat:
+  // în ziua schimbării orei (orele 00:00–03:00) primul offset poate fi cel greșit.
+  const o1 = tzOffsetMs(new Date(guess), timeZone);
+  const utc = guess - o1;
+  const o2 = tzOffsetMs(new Date(utc), timeZone);
+  return new Date(o2 === o1 ? utc : guess - o2);
+}
+
+/** "YYYY-MM-DD" care există în calendar (nu 2026-02-31 sau 2026-13-45). */
+export function isValidDateKey(s: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
+
+/** "HH:mm" între 00:00 și 23:59. */
+export function isValidTimeOfDay(s: string): boolean {
+  const m = /^(\d{2}):(\d{2})$/.exec(s);
+  return !!m && Number(m[1]) <= 23 && Number(m[2]) <= 59;
 }
 
 /** Formatează un Date UTC ca "HH:mm" în fusul dat. */

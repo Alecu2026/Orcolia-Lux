@@ -9,6 +9,8 @@ import { formatDate, formatTime } from "../date";
 
 const MAX_ATTEMPTS = 3;
 
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 /**
  * Procesează reminderele scadente (status PENDING, sendAt <= acum).
  * - succes → SENT
@@ -49,8 +51,8 @@ export async function processDueReminders(limit = 50) {
     // Ore de somn activ → sari, va fi procesat la următoarea rulare cron
     if (isQuietTime(now, qhConfig)) continue;
 
-    // Programare anulată / absentă / finalizată → reminder fără rost
-    if (!appt || ["CANCELLED", "NO_SHOW", "DONE"].includes(appt.status)) {
+    // Programare anulată / absentă / finalizată / deja începută → reminder fără rost (întârzierile de cron nu trimit „Ai programare mâine” după ce a trecut)
+    if (!appt || ["CANCELLED", "NO_SHOW", "DONE"].includes(appt.status) || appt.startAt.getTime() <= now.getTime()) {
       await prisma.reminder.update({ where: { id: r.id }, data: { status: "CANCELLED" } });
       continue;
     }
@@ -78,7 +80,7 @@ export async function processDueReminders(limit = 50) {
         if (!client.telegramChatId) throw new Error("Clientul nu are Telegram.");
         const ok = await sendMessage(
           client.telegramChatId,
-          `🔔 <b>Reminder</b>\nBună, ${client.name}. Ai programare la <b>${service}</b> pe <b>${date}</b> la <b>${time}</b>.\nTe rugăm confirmă dacă poți ajunge.`,
+          `🔔 <b>Reminder</b>\nBună, ${esc(client.name)}. Ai programare la <b>${esc(service)}</b> pe <b>${date}</b> la <b>${time}</b>.\nTe rugăm confirmă dacă poți ajunge.`,
         );
         if (ok === null) throw new Error("Trimitere Telegram eșuată.");
       } else {

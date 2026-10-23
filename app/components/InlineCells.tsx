@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useT } from "@/lib/i18n/context";
 
 /**
  * Celule editabile direct în tabel (Task-uri, Proiecte, Clienți, Programări): click pe celulă → câmpul devine
@@ -31,6 +32,7 @@ export function EditableText({
   type?: "text" | "email" | "tel";
   placeholder?: string;
 }) {
+  const tr = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const done = useRef(false);
@@ -41,7 +43,7 @@ export function EditableText({
       <button
         type="button"
         className={cellBtn}
-        title="Click ca să modifici"
+        title={tr("Click ca să modifici")}
         onClick={(e) => { e.stopPropagation(); done.current = false; setDraft(value); setEditing(true); }}
       >
         {display ?? (value || <span className="text-ink-soft/60">—</span>)}
@@ -89,13 +91,14 @@ export function EditableSelect({
   /** Opțiunea pentru „nimic" (valoare ""); null = nu există. */
   emptyLabel?: string | null;
 }) {
+  const tr = useT();
   const [editing, setEditing] = useState(false);
   const label = options.find((o) => o.value === value)?.label;
 
   if (disabled) return <>{display ?? label ?? <span className="text-ink-soft/60">—</span>}</>;
   if (!editing) {
     return (
-      <button type="button" className={cellBtn} title="Click ca să modifici" onClick={(e) => { e.stopPropagation(); setEditing(true); }}>
+      <button type="button" className={cellBtn} title={tr("Click ca să modifici")} onClick={(e) => { e.stopPropagation(); setEditing(true); }}>
         {display ?? label ?? <span className="text-ink-soft/60">—</span>}
       </button>
     );
@@ -127,6 +130,7 @@ export function PopEditor({
   width?: number;
   children: (close: () => void) => ReactNode;
 }) {
+  const tr = useT();
   // Poziția se calculează la click (nu într-un efect): sub celulă, sau deasupra dacă nu încape pe ecran.
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
   const rect = anchor;
@@ -160,7 +164,7 @@ export function PopEditor({
         ref={btn}
         type="button"
         className={cellBtn}
-        title="Click ca să modifici"
+        title={tr("Click ca să modifici")}
         onClick={(e) => {
           e.stopPropagation();
           if (anchor) { setAnchor(null); return; }
@@ -200,6 +204,7 @@ export function MultiPick({
   onSave: (picked: Record<string, string[]>) => void;
   onCancel: () => void;
 }) {
+  const tr = useT();
   const [sel, setSel] = useState<Set<string>>(new Set(selected));
   const [q, setQ] = useState("");
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -208,7 +213,7 @@ export function MultiPick({
   return (
     <div className="flex flex-col gap-1.5">
       {total > 8 && (
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Caută…" className="h-7 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-[12px] outline-none focus:border-brand" />
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("Caută…")} className="h-7 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-[12px] outline-none focus:border-brand" />
       )}
       <div className="max-h-56 overflow-auto">
         {groups.map((g) => {
@@ -228,7 +233,7 @@ export function MultiPick({
         })}
       </div>
       <div className="flex justify-end gap-1.5">
-        <button type="button" onClick={onCancel} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] hover:bg-[var(--color-surface-2)]">Anulează</button>
+        <button type="button" onClick={onCancel} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] hover:bg-[var(--color-surface-2)]">{tr("Anulează")}</button>
         <button
           type="button"
           onClick={() => {
@@ -261,6 +266,7 @@ export function DateTimePick({
   onSave: (date: string, time: string) => void;
   onCancel: () => void;
 }) {
+  const tr = useT();
   const [d, setD] = useState(date);
   const [t, setT] = useState(time);
   const field = "h-7 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-[12px] outline-none focus:border-brand";
@@ -272,11 +278,11 @@ export function DateTimePick({
       </div>
       <div className="flex justify-between gap-1.5">
         {allowClear ? (
-          <button type="button" onClick={() => onSave("", "")} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] text-st-cancelled hover:bg-[var(--color-surface-2)]">Șterge</button>
+          <button type="button" onClick={() => onSave("", "")} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] text-st-cancelled hover:bg-[var(--color-surface-2)]">{tr("Șterge")}</button>
         ) : <span />}
         <span className="flex gap-1.5">
-          <button type="button" onClick={onCancel} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] hover:bg-[var(--color-surface-2)]">Anulează</button>
-          <button type="button" disabled={!d} onClick={() => onSave(d, t)} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">Salvează</button>
+          <button type="button" onClick={onCancel} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] hover:bg-[var(--color-surface-2)]">{tr("Anulează")}</button>
+          <button type="button" disabled={!d} onClick={() => onSave(d, t)} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">{tr("Salvează")}</button>
         </span>
       </div>
     </div>
