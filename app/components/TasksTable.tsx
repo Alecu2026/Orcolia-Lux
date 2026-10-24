@@ -215,6 +215,16 @@ export default function TasksTable({
     setTpls((cur) => cur.map((t) => (t.id === id ? { ...t, counter: res.prefill.reserved + 1 } : t)));
     setCreateType(ticketMode ? "TICKET" : "TASK");
   }
+  /** „Fără șablon" în fereastra de creare: formularul revine gol, numărul rezervat se eliberează. */
+  async function clearTemplate() {
+    if (!prefill) return;
+    const old = prefill;
+    setPrefill(null);
+    if (!prefillCreated.current) {
+      await releaseTaskTemplateCounterAction(old.templateId, old.reserved).catch(() => {});
+      setTpls((cur) => cur.map((t) => (t.id === old.templateId && t.counter === old.reserved + 1 ? { ...t, counter: old.reserved } : t)));
+    }
+  }
   function closeCreate() {
     setCreateType(null);
     if (prefill && !prefillCreated.current) {
@@ -669,6 +679,7 @@ export default function TasksTable({
           prefill={prefill ?? undefined}
           templates={tpls}
           onPickTemplate={(id) => void startFromTemplate(id)}
+          onClearTemplate={() => void clearTemplate()}
           initialType={createType}
           users={users}
           teams={teams}

@@ -1703,4 +1703,5 @@ export const RU: Record<string, string> = {
   "Folosește un șablon": "Использовать шаблон",
   "📋 Alege un șablon (opțional)…": "📋 Выберите шаблон (необязательно)…",
   "📋 Șablon…": "📋 Шаблон…",
+  "✕ Fără șablon": "✕ Без шаблона",
 };

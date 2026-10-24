@@ -1220,7 +1220,7 @@ function fmtFileSize(bytes: number): string {
 }
 
 export function CreateDialog({
-  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialDescription, prefill, templates, onPickTemplate, onClose, onCreated,
+  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialDescription, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated,
 }: {
   initialType: "TASK" | "TICKET" | "WORK_ORDER";
   users: Opt[];
@@ -1241,6 +1241,8 @@ export function CreateDialog({
   /** Șabloanele disponibile: apar ca listă mică în capul ferestrei (alegerea completează formularul). */
   templates?: { id: string; name: string }[];
   onPickTemplate?: (id: string) => void;
+  /** Scoate șablonul ales: formularul revine gol, iar numărul {contor} rezervat se eliberează. */
+  onClearTemplate?: () => void;
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
@@ -1307,12 +1309,12 @@ export function CreateDialog({
             {templates && templates.length > 0 && onPickTemplate && (
               <select
                 value={prefill?.templateId ?? ""}
-                onChange={(e) => e.target.value && onPickTemplate(e.target.value)}
+                onChange={(e) => (e.target.value ? onPickTemplate(e.target.value) : onClearTemplate?.())}
                 aria-label={t("Folosește un șablon")}
                 title={t("Folosește un șablon")}
                 className="h-8 max-w-[9.5rem] cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 text-[11px] text-ink-soft outline-none focus:border-brand"
               >
-                <option value="">{t("📋 Șablon…")}</option>
+                <option value="">{prefill ? t("✕ Fără șablon") : t("📋 Șablon…")}</option>
                 {templates.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
             )}
