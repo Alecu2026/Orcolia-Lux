@@ -8,6 +8,7 @@ import { teamOptions } from "@/lib/queries/teams";
 import { projectOptions } from "@/lib/queries/projects";
 import { crmClientOptionsPlus } from "@/lib/queries/clients";
 import { listCategories } from "@/lib/queries/categories";
+import { listTaskTemplates } from "@/lib/queries/task-templates";
 import { env } from "@/lib/env";
 import TasksTable from "@/app/components/TasksTable";
 
@@ -37,7 +38,7 @@ export default async function TicketsPage({
   const initialOpenId = typeof sp.open === "string" && sp.open ? sp.open : undefined;
 
   // Toate tichetele din „scope" odată; filtrarea/sortarea/paginarea (inclusiv Active/Noi/Închise) rulează în browser.
-  const [result, users, teams, projects, clients, categories] = await Promise.all([
+  const [result, users, teams, projects, clients, categories, templates] = await Promise.all([
     listTasksForPage(
       {
         scope,
@@ -53,6 +54,7 @@ export default async function TicketsPage({
     projectOptions(),
     crmClientOptionsPlus(sp.client && /^[0-9a-f]{24}$/i.test(sp.client) ? sp.client : null), // + clientul din apel (plătitorii nu sunt în lista CRM)
     listCategories(),
+    listTaskTemplates("TICKET"),
   ]);
 
   const SCOPES = [
@@ -67,6 +69,8 @@ export default async function TicketsPage({
       <TasksTable
         items={result.items}
         dataset={result.dataset ? { total: result.total } : undefined}
+        templates={templates}
+        canAssign={can(user, "tasks.assign")}
         scope={scope}
         users={users}
         teams={teams}

@@ -32,6 +32,7 @@ export type TaskTuple = [
   number, // 20 createdAt (ms)
   0 | 1, // 21 chatUnread
   string, // 22 solicitantul (tichete din email/portal: fromName sau fromEmail), altfel ""
+  string, // 23 adresa (text) sau ""
 ];
 
 export type TaskNames = {
@@ -69,6 +70,7 @@ export type DecodedTask = {
   categoryId: string | null;
   categoryName: string | null;
   categoryColor: string | null;
+  address: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -111,6 +113,7 @@ export function decodeTasks(tuples: TaskTuple[], names: TaskNames): DecodedTask[
       categoryId: r[15],
       categoryName: category?.[0] ?? null,
       categoryColor: category?.[1] ?? null,
+      address: r[23] || null,
       extraAssigneeIds: r[16],
       extraTeamIds: r[17],
       assignmentSettingsJson: r[18],

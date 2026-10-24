@@ -5,6 +5,7 @@ import { ObjectId } from "mongodb";
 import type { Prisma } from "@prisma/client";
 import { buildOneCRecords, makeNameFixer } from "../apa-canal-1c";
 import { prisma } from "../prisma";
+import { apaCanalDueDate } from "../apa-canal-due";
 
 /**
  * Import date Apă-Canal dintr-un export 1C (JSON, de regulă codificat Windows-1251) — formatul
@@ -148,8 +149,8 @@ export type ExistingInvoiceLite = {
   dueDate?: Date | null;
 };
 
-const DUE_DAYS = 10;
-const dueDateFrom = (issueDate: Date) => new Date(issueDate.getTime() + DUE_DAYS * 24 * 60 * 60 * 1000);
+// Scadența facturilor Apă-Canal = ziua de 25 a lunii facturii (vezi lib/apa-canal-due.ts).
+const dueDateFrom = apaCanalDueDate;
 
 export type ApaCanalPlanStats = {
   documenteTotale: number;
@@ -400,7 +401,7 @@ export function buildApaCanalPlan(
             subtotal: apiValues.calculat,
             datoriiAvans: apiValues.datorie,
             grandTotal: apiValues.deAchitat,
-            ...(stored.dueDate ? {} : { dueDate: dueDateFrom(stored.issueDate) }),
+            dueDate: dueDateFrom(stored.issueDate),
             ...(sectorNr ? { sectorNr } : {}),
             ...(reading ? { monthlyConsumption: [{ label: String(issueDate.getUTCMonth() + 1), value: round2(reading.total) }] } : {}),
           },

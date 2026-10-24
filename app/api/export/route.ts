@@ -2,7 +2,8 @@ import { getCurrentUser } from "@/lib/dal";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
 import { listClients } from "@/lib/queries/clients";
 import { buildPayerWhere, matchesMonthInvoice, monthRange, parsePayerMonth, parseInstalledFrom } from "@/lib/queries/payers";
-import { filtersToListOpts } from "@/lib/queries/payer-notify";
+import { clientNamesFor } from "@/lib/queries/client-names";
+import { filtersToListOptsAsync } from "@/lib/queries/payer-notify";
 import { sanitizeFilters } from "@/lib/payer-notify";
 import { INVOICE_STATUS_LIST, INVOICE_STATUS } from "@/app/components/invoice-meta";
 import { prisma } from "@/lib/prisma";
@@ -91,12 +92,9 @@ export async function GET(req: Request) {
 
     // Batch-resolve client names (clientId is denormalized on task)
     const clientIds = [...new Set(items.map((t) => t.clientId).filter(Boolean) as string[])];
-    const clientUsers = clientIds.length
-      ? await prisma.client.findMany({ where: { id: { in: clientIds } }, select: { id: true, name: true } })
-      : [];
-    const clientNameMap = new Map(clientUsers.map((c) => [c.id, c.name]));
+    const clientNameMap = await clientNamesFor(clientIds); // id-in cu mii de id-uri e lent: pentru liste mari se citește harta numelor
 
-    const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Proiect", "Client", "Categorie", "Scadent", "Progres (%)", "Creat la", "Creat de", "Descriere"];
+    const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Proiect", "Client", "Adresă", "Categorie", "Scadent", "Progres (%)", "Creat la", "Creat de", "Descriere"];
     const rows = items.map((t) => ({
       "#": t.seq ?? "",
       "Titlu": t.title,
@@ -107,6 +105,7 @@ export async function GET(req: Request) {
       "Echipă": t.teamName ?? "",
       "Proiect": t.projectName ?? "",
       "Client": t.clientId ? (clientNameMap.get(t.clientId) ?? "") : "",
+      "Adresă": t.address ?? "",
       "Categorie": t.categoryName ?? "",
       "Scadent": fmtDate(t.dueAt),
       "Progres (%)": t.progress,
@@ -201,7 +200,7 @@ export async function GET(req: Request) {
     // doar cei filtrați, fără nicio indicație vizibilă că sunt mai mulți decât cei afișați.
     // Filtrele vin cu aceleași chei ca tabelul din /platitori (vezi NotifyFilters); "status" e cheia veche pentru "account".
     const f = sanitizeFilters({ ...Object.fromEntries(sp.entries()), account: sp.get("account") ?? sp.get("status") });
-    const fo = filtersToListOpts(f);
+    const fo = await filtersToListOptsAsync(f);
     const invoiceStatusFilter = fo.invoiceStatus;
     const debtFilter = fo.debt;
     // Cu o lună aleasă, soldul/statusul se filtrează pe factura acelei luni (mai jos, în memorie), nu pe ultima.

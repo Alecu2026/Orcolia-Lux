@@ -7,6 +7,7 @@ import { notifyUsers, filteredAdminRecipients } from "@/lib/services/notificatio
 import { checkUnansweredEmailTickets, checkAutoCloseEmailTickets } from "@/lib/services/email-ticket";
 import { pollInbox } from "@/lib/services/imap-poller";
 import { prewarmPayers } from "@/lib/services/payer-cache";
+import { normalizeApaCanalDueDates } from "@/lib/services/apa-canal-due";
 import { prewarmInvoices } from "@/lib/services/invoice-cache";
 import { TASK_STATUS_RO, TASK_TYPE_RO } from "@/lib/telegram";
 import { formatTime, DEFAULT_TZ } from "@/lib/date";
@@ -33,6 +34,9 @@ async function run() {
     select: { lastRunAt: true },
   });
   const since = ckpt.lastRunAt;
+
+  // Scadența facturilor Apă-Canal = 25 a lunii (corectează și ce a rămas pe alte date): înainte de pre-încălzirea listelor
+  await normalizeApaCanalDueDates().catch((e) => console.error("[cron] scadența facturilor Apă-Canal:", e));
 
   // ── Toate job-urile în paralel ───────────────────────────────────────────
   const [remindersR, , , statusR, newTasksR, apptR, unansweredR, autoCloseR, imapR] = await Promise.allSettled([

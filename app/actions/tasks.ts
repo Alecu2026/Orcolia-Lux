@@ -23,7 +23,7 @@ import { TASK_STATUS_RO } from "@/lib/telegram";
 import type { TaskStatus, TaskType, TaskPriority } from "@prisma/client";
 import type { AssignmentSetting } from "@/lib/services/tasks";
 
-export type TaskState = { ok?: boolean; error?: string; id?: string } | undefined;
+export type TaskState = { ok?: boolean; error?: string; id?: string; /** Finalizarea cere o poză / un fișier atașat de utilizator. */ needsProof?: boolean } | undefined;
 
 const F_STATUSES = new Set(["NEW","ASSIGNED","READ","IN_PROGRESS","ON_HOLD","REVIEW","DONE","CANCELLED"]);
 const F_PRIOS = new Set(["LOW","MEDIUM","HIGH","URGENT"]);
@@ -153,6 +153,7 @@ export async function createTaskAction(
         projectId: (formData.get("projectId") as string) || null,
         clientId: (formData.get("clientId") as string) || null,
         categoryId: (formData.get("categoryId") as string) || null,
+        address: String(formData.get("address") ?? "").trim().slice(0, 300) || null,
         reminderIntervalMinutes,
         bypassQuietHours: formData.get("bypassQuietHours") === "on",
       },
@@ -180,14 +181,11 @@ export async function setTaskStatus(id: string, status: string): Promise<TaskSta
     console.error(`[tasks.action] setTaskStatus: status invalid primit din client: "${status}"`);
     return { error: "Status invalid." };
   }
-  // Finalizarea / anularea cere „Închidere / finalizare”; celelalte schimbări de status rămân deschise (acțiune zilnică).
-  if ((status === "DONE" || status === "CANCELLED") && !can(user, "tasks.close")) {
-    return { error: "Nu ai permisiunea de a închide / finaliza." };
-  }
+  // Finalizarea / anularea: regula „Închidere / finalizare” (sau poză atașată) se aplică în changeTaskStatus; celelalte schimbări de status rămân deschise.
   const res = await changeTaskStatus(id, user.id, status as TaskStatus);
   if (!res.ok) {
     console.error(`[tasks.action] setTaskStatus: eșuat — ${res.error}`);
-    return { error: res.error };
+    return { error: res.error, needsProof: "needsProof" in res ? res.needsProof : false };
   }
   if (res.changed) {
     await logAudit(
@@ -358,6 +356,7 @@ export async function updateTaskAction(
       projectId: (formData.get("projectId") as string) || null,
       clientId: (formData.get("clientId") as string) || null,
       categoryId: (formData.get("categoryId") as string) || null,
+      ...(formData.has("address") ? { address: String(formData.get("address") ?? "").trim().slice(0, 300) || null } : {}),
       priority,
       dueAt,
       reminderIntervalMinutes,
@@ -384,6 +383,7 @@ export type TaskFieldPatch = {
   projectId?: string | null;
   clientId?: string | null;
   categoryId?: string | null;
+  address?: string | null;
   /** "YYYY-MM-DD" (sau null/"" = fără termen) + ora opțională "HH:mm", în fusul Europe/Bucharest. */
   dueDate?: string | null;
   dueTime?: string | null;
@@ -451,6 +451,7 @@ export async function updateTaskFieldAction(id: string, patch: TaskFieldPatch): 
     if ("projectId" in patch) input.projectId = idOrNull(patch.projectId);
     if ("clientId" in patch) input.clientId = idOrNull(patch.clientId);
     if ("categoryId" in patch) input.categoryId = idOrNull(patch.categoryId);
+    if ("address" in patch) input.address = String(patch.address ?? "").trim().slice(0, 300) || null;
     if ("dueDate" in patch) {
       const d = String(patch.dueDate ?? "").trim();
       const t = String(patch.dueTime ?? "").trim();

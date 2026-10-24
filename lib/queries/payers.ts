@@ -72,6 +72,9 @@ export type ListPayersOpts = {
   notified?: "never" | "7d" | "30d" | "not7d" | "not30d";
   /** Doar plătitorii fără nicio factură (snapshot-ul ultimei facturi e gol). */
   noInvoices?: boolean;
+  /** Restricții pe id-uri (ex. „notificați prin SMS în perioada…", calculate din jurnalul de trimiteri). */
+  idsIn?: string[];
+  idsNotIn?: string[];
   page?: number;
   perPage?: number;
 };
@@ -218,6 +221,8 @@ export async function buildPayerWhere(opts: ListPayersOpts = {}): Promise<Prisma
       ...contact,
       ...notified,
       ...(opts.noInvoices ? [{ lastInvoiceStatus: null }, { lastInvoiceGrandTotal: null }] : []),
+      ...(opts.idsIn ? [{ id: { in: opts.idsIn } }] : []),
+      ...(opts.idsNotIn?.length ? [{ id: { notIn: opts.idsNotIn } }] : []),
     ],
     ...(nameFixIds ? { id: { in: nameFixIds } } : {}),
     ...(opts.status === "activated" ? { portalPasswordHash: { not: null } } : {}),

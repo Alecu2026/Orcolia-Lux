@@ -6,6 +6,7 @@ import { after } from "next/server";
 import { requireUser, type CurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
+import { apaCanalDueDate } from "@/lib/apa-canal-due";
 import { createInvoice, updateInvoice, refreshClientInvoiceSnapshot, type ApaCanalInput } from "@/lib/services/invoices";
 import { invalidatePayers } from "@/lib/services/payer-cache";
 import { invalidateInvoices, syncInvoiceToCache } from "@/lib/services/invoice-cache";
@@ -128,11 +129,13 @@ export async function saveInvoice(payload: InvoicePayload): Promise<InvoiceActio
       })
     : null;
 
+  const issueDate = toDate(payload.issueDate) ?? new Date();
   const input = {
     status,
     kind: payload.kind ?? "STANDARD" as InvoiceKind,
-    issueDate: toDate(payload.issueDate) ?? new Date(),
-    dueDate: toDate(payload.dueDate),
+    issueDate,
+    // Facturile Apă-Canal au mereu scadența pe 25 a lunii facturii (indiferent ce trimite formularul); celelalte — cea aleasă.
+    dueDate: payload.kind === "APA_CANAL" ? apaCanalDueDate(issueDate) : toDate(payload.dueDate),
     clientId: payload.clientId,
     projectId: payload.projectId,
     taskIds: payload.taskIds,

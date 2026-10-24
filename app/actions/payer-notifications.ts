@@ -12,7 +12,7 @@ import { sendPayerNotificationEmail } from "@/lib/email";
 import { sendSms } from "@/lib/sms";
 import { sendCall } from "@/lib/call-gateway";
 import { listMatchingPayerContacts } from "@/lib/queries/payers";
-import { filtersToListOpts } from "@/lib/queries/payer-notify";
+import { filtersToListOptsAsync } from "@/lib/queries/payer-notify";
 import {
   NOTIFY_CHUNK_SIZE,
   NOTIFY_MAX_CALL_BODY,
@@ -59,7 +59,7 @@ export async function resolveNotifyFilterAction(rawFilters: unknown): Promise<Re
   if (DEMO) return { ok: false, error: "Mod demo: conectează o bază de date." };
 
   const filters = sanitizeFilters((rawFilters ?? {}) as Record<string, unknown>);
-  const all = await listMatchingPayerContacts(filtersToListOpts(filters));
+  const all = await listMatchingPayerContacts(await filtersToListOptsAsync(filters));
   const capped = all.slice(0, NOTIFY_MAX_RECIPIENTS);
   return {
     ok: true,

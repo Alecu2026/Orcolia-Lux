@@ -2,7 +2,7 @@ import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { getPayer, getPayerInvoices, listPayers, normalizePerPage } from "@/lib/queries/payers";
 import { prisma } from "@/lib/prisma";
-import { filtersToListOpts, listPayerNotes } from "@/lib/queries/payer-notify";
+import { filtersToListOptsAsync, listPayerNotes } from "@/lib/queries/payer-notify";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
 import { listPayersFromSnap } from "@/lib/services/payer-cache";
 
@@ -68,7 +68,7 @@ export async function GET(req: Request) {
     } catch (e) {
       console.error("[notificari-platitori] cache indisponibil, citesc din baza de date:", e);
     }
-    const res = await listPayers({ ...filtersToListOpts(filters), page, perPage });
+    const res = await listPayers({ ...(await filtersToListOptsAsync(filters)), page, perPage });
     return Response.json({
       items: res.items,
       total: res.total,

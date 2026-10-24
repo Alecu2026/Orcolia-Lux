@@ -26,6 +26,7 @@ export type TaskRow = {
   categoryId: string | null;
   categoryName: string | null;
   categoryColor: string | null;
+  address: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -60,6 +61,7 @@ const TASK_SELECT = {
   clientId: true,
   createdAt: true,
   categoryId: true,
+  address: true,
   extraAssigneeIds: true,
   extraTeamIds: true,
   assignmentSettingsJson: true,
@@ -162,6 +164,7 @@ function toRow(t: TaskDbRow, l: Lookups): TaskRow {
     categoryId: t.categoryId ?? null,
     categoryName: category?.name ?? null,
     categoryColor: category?.color ?? null,
+    address: t.address ?? null,
     extraAssigneeIds: t.extraAssigneeIds ?? [],
     extraTeamIds: t.extraTeamIds ?? [],
     assignmentSettingsJson: t.assignmentSettingsJson ?? null,
@@ -471,6 +474,7 @@ function toTuple(t: TaskDbRow): TaskTuple {
     t.createdAt.getTime(),
     t.chatLastSender === "CLIENT" && !!t.chatLastMsgAt && (!t.chatStaffReadAt || t.chatStaffReadAt < t.chatLastMsgAt) ? 1 : 0,
     t.type === "TICKET" ? (t.fromName || t.fromEmail || "").trim() : "",
+    t.address ?? "",
   ];
 }
 

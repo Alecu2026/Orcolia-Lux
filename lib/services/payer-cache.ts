@@ -7,11 +7,12 @@ import { DEMO } from "../demo";
 import {
   countPayersNeedingNameFix, getPayerSnapshot, getPayerMonthSlice, listPayerMonths, listPayers, loadPayerMonths, normalizePerPage, type PayerRow,
 } from "../queries/payers";
-import { filtersToListOpts } from "../queries/payer-notify";
+import { filtersToListOptsAsync, notifiedClientIds } from "../queries/payer-notify";
 import {
   decodeMonth,
   decodeSnapshot,
   filterSnapshot,
+  notifyCriterion,
   sortTuplesByName,
   type MonthTuple,
   type NotifyFilters,
@@ -250,7 +251,9 @@ function toPayerRow(r: SnapRow): PayerRow {
 export async function listPayersFromSnap(filters: NotifyFilters, page: number, perPage: number): Promise<{ items: PayerRow[]; total: number; page: number; months: PayerSnap["months"]; nameFixCount: number; version: string | null }> {
   const snap = await getPayerSnap();
   const monthMap = filters.month ? (await getMonthSlice(filters.month)).map : null;
-  const list = filterSnapshot(snap.rows, filters, monthMap);
+  const crit = notifyCriterion(filters);
+  const notifySet = crit ? new Set(await notifiedClientIds(crit)) : null;
+  const list = filterSnapshot(snap.rows, filters, monthMap, notifySet);
   const pages = Math.max(1, Math.ceil(list.length / perPage));
   const p = Math.min(Math.max(1, page), pages);
   return { items: list.slice((p - 1) * perPage, p * perPage).map(toPayerRow), total: list.length, page: p, months: snap.months, nameFixCount: snap.nameFixCount, version: snap.version };
@@ -266,7 +269,7 @@ export async function ssrPayerPage(filters: NotifyFilters, page: number, perPage
     return await listPayersFromSnap(filters, page, perPage);
   } catch (e) {
     console.error("[payer-cache] cache indisponibil, citesc din baza de date:", e);
-    const opts = { ...filtersToListOpts(filters), perPage: normalizePerPage(perPage) };
+    const opts = { ...(await filtersToListOptsAsync(filters)), perPage: normalizePerPage(perPage) };
     const [first, months, nameFixCount] = await Promise.all([listPayers({ ...opts, page }), listPayerMonths(), countPayersNeedingNameFix()]);
     let res = first;
     let p = page;

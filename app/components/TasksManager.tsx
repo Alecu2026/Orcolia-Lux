@@ -25,12 +25,14 @@ import { IconTrash, IconX, IconChevronLeft, IconChevronRight, IconPencil } from 
 import CardActionsMenu from "./CardActionsMenu";
 import QuickSelect from "./QuickSelect";
 import MultiAssignPicker from "./MultiAssignPicker";
+import AddressInput from "./AddressInput";
 import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
 import TaskAttachmentsPanel from "./TaskAttachmentsPanel";
 import { quickCreateProject } from "@/app/actions/projects";
 import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
+import type { TemplatePrefill } from "@/lib/task-template";
 
 export type HistoryRow = {
   id: string;
@@ -73,6 +75,8 @@ export type Task = {
   categoryId: string | null;
   categoryName: string | null;
   categoryColor: string | null;
+  /** Adresa locului intervenției. */
+  address?: string | null;
   assigneeName: string | null;
   teamName: string | null;
   projectName: string | null;
@@ -860,7 +864,8 @@ export function StatusDropdown({
 }) {
   const m = useMessages();
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0, minWidth: 0 });
+  // `top` = meniul se deschide în jos; `bottom` = în sus (când sub buton nu încape, ex. rândul e la finalul paginii).
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; minWidth: number; maxH: number }>({ top: 0, left: 0, minWidth: 0, maxH: 320 });
   const [mounted, setMounted] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -881,11 +886,16 @@ export function StatusDropdown({
     e.stopPropagation();
     const rect = btnRef.current?.getBoundingClientRect();
     if (rect) {
-      setPos({
-        top: rect.bottom + 4,
-        left: rect.left,
-        minWidth: Math.max(rect.width, 144),
-      });
+      const menuH = STATUSES.length * 34 + 12; // înălțimea estimată a meniului (8 opțiuni)
+      const below = window.innerHeight - rect.bottom - 8;
+      const above = rect.top - 8;
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - 160));
+      const minWidth = Math.max(rect.width, 144);
+      // Jos dacă încape; altfel în sus (ancorat de marginea de jos a ferestrei, deci nu depinde de înălțimea exactă);
+      // dacă nu încape nicăieri, în partea cu mai mult loc.
+      // maxH: dacă nici într-o parte nu încape tot meniul (fereastră foarte joasă), se derulează în interior, nu iese din ecran.
+      if (below >= menuH || below >= above) setPos({ top: rect.bottom + 4, left, minWidth, maxH: Math.max(120, below - 4) });
+      else setPos({ bottom: window.innerHeight - rect.top + 4, left, minWidth, maxH: Math.max(120, above - 4) });
     }
     setOpen((o) => !o);
   }
@@ -904,7 +914,7 @@ export function StatusDropdown({
       </button>
       {open && mounted && createPortal(
         <div
-          style={{ position: "fixed", top: pos.top, left: pos.left, minWidth: pos.minWidth, zIndex: 9999 }}
+          style={{ position: "fixed", top: pos.top, bottom: pos.bottom, left: pos.left, minWidth: pos.minWidth, zIndex: 9999, maxHeight: pos.maxH, overflowY: "auto" }}
           onMouseDown={(e) => e.stopPropagation()}
           className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1 shadow-xl"
         >
@@ -1052,38 +1062,18 @@ function CategoryChips({
 }) {
   const m = useMessages();
   if (categories.length === 0) return null;
+  const cur = categories.find((c) => c.id === value);
+  // Listă derulantă (nu butoane): ocupă un singur rând, oricâte categorii ar fi; culoarea categoriei alese apare lângă listă.
   return (
     <div>
       <label className="mb-1.5 block text-xs font-semibold text-ink-soft">{m.tasks.categoryLabel}</label>
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          className={`h-7 rounded-full px-3 text-xs font-medium border transition-colors ${
-            !value
-              ? "border-brand bg-brand text-white"
-              : "border-[var(--color-line)] text-ink-soft hover:border-brand"
-          }`}
-        >
-          {m.tasks.noCategory}
-        </button>
-        {categories.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => onChange(c.id)}
-            className={`inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs font-medium border transition-colors ${
-              value === c.id
-                ? "border-brand bg-brand/10 text-brand"
-                : "border-[var(--color-line)] text-ink-soft hover:border-brand"
-            }`}
-          >
-            <span className="size-2 rounded-full" style={{ background: c.color }} />
-            {c.name}
-          </button>
-        ))}
+      <div className="flex items-center gap-2">
+        <span className="size-3 shrink-0 rounded-full border border-[var(--color-line)]" style={{ background: cur?.color ?? "transparent" }} aria-hidden />
+        <select name="categoryId" value={value} onChange={(e) => onChange(e.target.value)} className={`${dlgInput} flex-1`}>
+          <option value="">{m.tasks.noCategory}</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
       </div>
-      <input type="hidden" name="categoryId" value={value} />
     </div>
   );
 }
@@ -1107,10 +1097,11 @@ export function EditDialog({
   const [categoryId, setCategoryId] = useState(task.categoryId ?? "");
   const [description, setDescription] = useState(task.description ?? "");
   const [title, setTitle] = useState(task.title);
+  const addressRef = useRef(task.address ?? "");
   useEffect(() => {
     if (state?.ok) {
       toast.success(m.tasks.saved);
-      onSaved({ id: task.id, title, description: description || null });
+      onSaved({ id: task.id, title, description: description || null, address: addressRef.current });
     } else if (state?.error) {
       toast.error(state.error);
     }
@@ -1166,6 +1157,7 @@ export function EditDialog({
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
+          <AddressInput defaultValue={task.address ?? ""} className={dlgInput} onChange={(v) => { addressRef.current = v; }} />
           <MultiAssignPicker
             users={users}
             teams={teams}
@@ -1224,7 +1216,7 @@ function fmtFileSize(bytes: number): string {
 }
 
 export function CreateDialog({
-  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialDescription, onClose, onCreated,
+  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialDescription, prefill, onClose, onCreated,
 }: {
   initialType: "TASK" | "TICKET" | "WORK_ORDER";
   users: Opt[];
@@ -1240,6 +1232,8 @@ export function CreateDialog({
   initialClientId?: string;
   initialTitle?: string;
   initialDescription?: string;
+  /** Câmpuri completate dintr-un șablon (titlu cu {contor} înlocuit, categorie, responsabili…). */
+  prefill?: TemplatePrefill;
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
@@ -1247,7 +1241,7 @@ export function CreateDialog({
   const m = useMessages();
   const formRef = useRef<HTMLFormElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [categoryId, setCategoryId] = useState("");
+  const [categoryId, setCategoryId] = useState(prefill?.categoryId ?? "");
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
@@ -1306,14 +1300,14 @@ export function CreateDialog({
           </button>
         </div>
         <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <input name="title" defaultValue={initialTitle ?? ""} placeholder="Titlu *" required autoFocus className={dlgInput} />
-          <textarea name="description" defaultValue={initialDescription ?? ""} placeholder="Descriere" rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm outline-none focus:border-brand" />
+          <input name="title" defaultValue={prefill?.title ?? initialTitle ?? ""} placeholder="Titlu *" required autoFocus className={dlgInput} />
+          <textarea name="description" defaultValue={prefill?.description ?? initialDescription ?? ""} placeholder="Descriere" rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm outline-none focus:border-brand" />
           <div className="grid gap-2 sm:grid-cols-2">
             <select name="type" defaultValue={initialType} className={dlgInput}>
               <option value="TASK">{m.tasks.typeTask}</option>
               <option value="TICKET">{m.tasks.typeTicket}</option>
             </select>
-            <select name="priority" defaultValue="MEDIUM" className={dlgInput}>
+            <select name="priority" defaultValue={prefill?.priority ?? "MEDIUM"} className={dlgInput}>
               <option value="LOW">{m.priority.LOW}</option>
               <option value="MEDIUM">{m.priority.MEDIUM}</option>
               <option value="HIGH">{m.priority.HIGH}</option>
@@ -1328,26 +1322,27 @@ export function CreateDialog({
             canCreate={canCreateProject}
             createLabel="proiect"
             onQuickCreate={quickCreateProject}
-            defaultValue={initialProjectId ?? ""}
+            defaultValue={prefill?.projectId || (initialProjectId ?? "")}
           />
           {clients.length > 0 && (
-            <select name="clientId" defaultValue={initialClientId ?? ""} className={dlgInput}>
+            <select name="clientId" defaultValue={prefill?.clientId || (initialClientId ?? "")} className={dlgInput}>
               <option value="">{m.tasks.noClient}</option>
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
-          <MultiAssignPicker users={users} teams={teams} />
+          <AddressInput defaultValue={prefill?.address ?? ""} className={dlgInput} />
+          <MultiAssignPicker users={users} teams={teams} initialAssigneeIds={prefill?.assigneeIds} initialTeamIds={prefill?.teamIds} />
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.dueDate}</label>
             <div className="grid gap-2 sm:grid-cols-2">
-              <input type="date" name="dueDate" className={dlgInput} />
+              <input type="date" name="dueDate" defaultValue={prefill?.dueDate ?? ""} className={dlgInput} />
               <input type="time" name="dueTime" placeholder={m.tasks.dueTime} className={dlgInput} />
             </div>
           </div>
           <CategoryChips categories={categories} value={categoryId} onChange={setCategoryId} />
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.reminderLabel}</label>
-            <select name="reminderIntervalMinutes" defaultValue={0} className={dlgInput}>
+            <select name="reminderIntervalMinutes" defaultValue={prefill?.reminderIntervalMinutes ?? 0} className={dlgInput}>
               <option value={0}>{m.tasks.reminderNever}</option>
               <option value={10}>{m.tasks.reminder10m}</option>
               <option value={30}>{m.tasks.reminder30m}</option>

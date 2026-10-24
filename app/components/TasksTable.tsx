@@ -15,6 +15,9 @@ import {
 } from "@/app/actions/tasks";
 import DataTable, { type Col, type Filter } from "./DataTable";
 import { useTaskDataset } from "./useTaskDataset";
+import TaskTemplatesDialog from "./TaskTemplatesDialog";
+import { releaseTaskTemplateCounterAction, applyTaskTemplateAction } from "@/app/actions/task-templates";
+import type { TaskTemplate, TemplatePrefill } from "@/lib/task-template";
 import { DateTimePick, EditableSelect, EditableText, MultiPick, PopEditor } from "./InlineCells";
 import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
@@ -66,7 +69,7 @@ function derivedOf(t: Task): Derived {
   let d = derivedCache.get(t);
   if (!d) {
     d = {
-      hay: [t.title, t.description, t.projectName, t.clientName, t.assigneeName, t.teamName, t.creatorName].map((x) => (x ?? "").toLowerCase()).join("\n"),
+      hay: [t.title, t.description, t.address, t.projectName, t.clientName, t.assigneeName, t.teamName, t.creatorName].map((x) => (x ?? "").toLowerCase()).join("\n"),
       due: t.dueAt ? dateKeyOf(new Date(t.dueAt), TZ) : null,
     };
     derivedCache.set(t, d);
@@ -135,6 +138,8 @@ export default function TasksTable({
   ticketMode = false,
   presetValues,
   dataset,
+  templates = [],
+  canAssign = false,
 }: {
   items: Task[];
   scope: string;
@@ -163,6 +168,9 @@ export default function TasksTable({
   presetValues?: Record<string, string | undefined>;
   /** Lista e mare: `items` conține doar cele mai noi rânduri, iar restul vine din /api/tasks/dataset (vezi useTaskDataset). `total` = câte sunt în total. */
   dataset?: { total: number };
+  /** Șabloanele acestui tip (task-uri sau tichete) și dacă utilizatorul poate seta responsabili în ele. */
+  templates?: TaskTemplate[];
+  canAssign?: boolean;
 }) {
   const toast = useToast();
   const m = useMessages();
@@ -182,6 +190,32 @@ export default function TasksTable({
     setRows((cur) => mergeLocal(incoming, cur, touched.current));
   }
   if (items !== seenItems) { setSeenItems(items); if (!(dataset && ds.rows)) setRows(items); }
+  // ── Șabloane: listă locală, meniul „Șabloane”, fereastra de gestionare și șablonul aplicat în fereastra de creare ──
+  const [tpls, setTpls] = useState(templates);
+  const [tplMenu, setTplMenu] = useState(false);
+  const [tplManage, setTplManage] = useState(false);
+  const [prefill, setPrefill] = useState<TemplatePrefill | null>(null);
+  const prefillCreated = useRef(false);
+  async function startFromTemplate(id: string) {
+    setTplMenu(false);
+    setTplManage(false);
+    const res = await applyTaskTemplateAction(id).catch(() => null);
+    if (!res || !res.ok) return toast.error(res && !res.ok ? res.error : m.common.error);
+    prefillCreated.current = false;
+    setPrefill(res.prefill);
+    // numărul din {contor} s-a mărit în șablon: lista locală îl arată corect fără reîncărcare
+    setTpls((cur) => cur.map((t) => (t.id === id ? { ...t, counter: res.prefill.reserved + 1 } : t)));
+    setCreateType(ticketMode ? "TICKET" : "TASK");
+  }
+  function closeCreate() {
+    setCreateType(null);
+    if (prefill && !prefillCreated.current) {
+      // am renunțat: numărul rezervat se eliberează (dacă nimeni n-a mai luat altul între timp)
+      void releaseTaskTemplateCounterAction(prefill.templateId, prefill.reserved);
+      setTpls((cur) => cur.map((t) => (t.id === prefill.templateId && t.counter === prefill.reserved + 1 ? { ...t, counter: prefill.reserved } : t)));
+    }
+    setPrefill(null);
+  }
   const [openId, setOpenId] = useState<string | null>(initialOpenId ?? null);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [createType, setCreateType] = useState<"TASK" | "TICKET" | "WORK_ORDER" | null>(initialCreate ?? null);
@@ -217,8 +251,12 @@ export default function TasksTable({
     setRows((cur) => cur.map((t) => (t.id === id ? { ...t, status: next } : t))); // optimist
     setTaskStatus(id, next)
       .then((res) => {
-        if (res?.error) { setRows(prev); toast.error(res.error); }
-        else toast.success(`Status: ${m.status[next]}`);
+        if (res?.error) {
+          setRows(prev);
+          toast.error(res.error);
+          // Finalizarea cere o poză / un fișier: deschidem detaliile, unde se atașează.
+          if (res.needsProof) setOpenId(id);
+        } else toast.success(`Status: ${m.status[next]}`);
       })
       .catch(() => { setRows(prev); toast.error(m.common.error); })
       .finally(() => { inflight.current--; setStatusPending((cur) => (cur === id ? null : cur)); });
@@ -313,6 +351,12 @@ export default function TasksTable({
           onChange={(v) => patchTask(t, { projectId: v || null }, { projectId: v || null, projectName: nameIn(projects, v) })}
           display={t.projectName ?? dash}
         />
+      ),
+    },
+    {
+      key: "address", label: "Adresă", minW: 150, maxW: 220, sort: (t) => t.address,
+      render: (t) => (
+        <EditableText value={t.address ?? ""} allowEmpty disabled={!canEditRow(t)} onSave={(v) => patchTask(t, { address: v || null }, { address: v || null })} display={t.address ? <span title={t.address}>{t.address}</span> : undefined} />
       ),
     },
     {
@@ -547,7 +591,33 @@ export default function TasksTable({
             <ExportButton entity={ticketMode ? "tickets" : "tasks"} params={{ scope: scope !== "mine" ? scope : undefined }} className={topBtn} />
             <ImportButton entity={ticketMode ? "tickets" : "tasks"} className={topBtn} />
             {canCreate && (
-              <button type="button" onClick={() => setCreateType(ticketMode ? "TICKET" : "TASK")} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">
+              <div className="relative">
+                <button type="button" onClick={() => setTplMenu((o) => !o)} aria-expanded={tplMenu} className={topBtn} title="Creează dintr-un șablon">
+                  📋 Șabloane ▾
+                </button>
+                {tplMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setTplMenu(false)} aria-hidden />
+                    <div className="absolute right-0 top-full z-50 mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1 shadow-xl">
+                      <div className="max-h-72 overflow-auto">
+                        {tpls.length === 0 && <p className="px-3 py-2 text-xs text-ink-soft">Niciun șablon încă.</p>}
+                        {tpls.map((t) => (
+                          <button key={t.id} type="button" onClick={() => void startFromTemplate(t.id)} className="flex w-full cursor-pointer flex-col rounded-lg px-3 py-1.5 text-left hover:bg-[var(--color-surface-2)]">
+                            <span className="truncate text-xs font-semibold">{t.name}</span>
+                            <span className="truncate text-[11px] text-ink-soft">{t.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <button type="button" onClick={() => { setTplMenu(false); setTplManage(true); }} className="mt-1 w-full cursor-pointer rounded-lg border-t border-[var(--color-line)] px-3 py-1.5 text-left text-xs font-medium text-brand hover:bg-brand-soft">
+                        ⚙ Gestionează șabloanele…
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            {canCreate && (
+              <button type="button" onClick={() => { setPrefill(null); setCreateType(ticketMode ? "TICKET" : "TASK"); }} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">
                 {createLabel ?? m.tasks.newButton}
               </button>
             )}
@@ -570,8 +640,25 @@ export default function TasksTable({
         />
       )}
 
+      {tplManage && (
+        <TaskTemplatesDialog
+          type={ticketMode ? "TICKET" : "TASK"}
+          templates={tpls}
+          onChange={setTpls}
+          users={users}
+          teams={teams}
+          projects={projects}
+          clients={clients}
+          categories={categories}
+          canAssign={canAssign}
+          onUse={(id) => void startFromTemplate(id)}
+          onClose={() => setTplManage(false)}
+        />
+      )}
       {createType && (
         <CreateDialog
+          key={prefill ? `${prefill.templateId}:${prefill.reserved}` : "nou"}
+          prefill={prefill ?? undefined}
           initialType={createType}
           users={users}
           teams={teams}
@@ -585,8 +672,9 @@ export default function TasksTable({
           initialClientId={initialClientId}
           initialTitle={initialTitle}
           initialDescription={initialDescription}
-          onClose={() => setCreateType(null)}
+          onClose={closeCreate}
           onCreated={(id) => {
+            prefillCreated.current = true;
             reconcile(id); // noul task apare în tabel (doar rândul lui, nu toată lista)
             setOpenId(id); // și se deschide direct (se afișează când sosește în listă)
           }}
@@ -710,6 +798,7 @@ function TaskDetailDialog({
           <Item label="Responsabil" value={t.assigneeName ?? t.teamName} />
           <Item label="Proiect" value={t.projectName} />
           <Item label="Client" value={t.clientName} />
+          <Item label="Adresă" value={t.address} />
           <Item label="Categorie" value={t.categoryName ? <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: t.categoryColor ?? "#6366f1" }} />{t.categoryName}</span> : null} />
           {t.description && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{m.tasks.descriptionLabel}</p><p className="whitespace-pre-wrap text-[13px]">{t.description}</p></div>}
         </Box>

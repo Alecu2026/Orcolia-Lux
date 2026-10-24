@@ -25,6 +25,14 @@ export type NotifyFilters = {
   kind: "" | "person" | "company";
   /** Când a fost notificat ultima dată (din jurnalul de trimiteri). */
   notified: "" | "never" | "7d" | "30d" | "not7d" | "not30d";
+  /**
+   * Canalul prin care a fost (sau NU a fost) notificat plătitorul, din jurnalul de trimiteri: "EMAIL" | "SMS" | "CALL" | "ANY" (orice canal);
+   * prefix "!" = NU a fost notificat (ex. "!SMS"). Se combină cu perioada de mai jos; fără perioadă = oricând.
+   */
+  via: "" | "ANY" | "EMAIL" | "SMS" | "CALL" | "!ANY" | "!EMAIL" | "!SMS" | "!CALL";
+  /** "YYYY-MM-DD" — perioada personalizată pentru `via` (inclusiv ambele capete; oricare poate lipsi). */
+  notifiedFrom: string;
+  notifiedTo: string;
   /** "YYYY-MM-DD" — contor instalat la sau după data asta. */
   installedFrom: string;
   sort: "" | "debtDesc" | "debtAsc" | "installDesc" | "installAsc";
@@ -36,7 +44,7 @@ export type NotifyFilters = {
 
 export const EMPTY_FILTERS: NotifyFilters = {
   q: "", street: "", month: "", account: "", sector: "", invoiceStatus: "", debt: "",
-  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", installedFrom: "", sort: "", nameFix: "", invoices: "",
+  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", sort: "", nameFix: "", invoices: "",
 };
 
 /** „Toate" = o pagină cât toată lista (plafon de siguranță; sunt ~19.000 de plătitori). */
@@ -64,6 +72,29 @@ export const NOTIFIED_OPTIONS: { value: NotifyFilters["notified"]; label: string
   { value: "30d", label: "Notificați în ultimele 30 de zile" },
 ];
 
+export const VIA_OPTIONS: { value: Exclude<NotifyFilters["via"], "">; label: string }[] = [
+  { value: "ANY", label: "Notificați (orice canal)" },
+  { value: "EMAIL", label: "Notificați prin email" },
+  { value: "SMS", label: "Notificați prin SMS" },
+  { value: "CALL", label: "Notificați prin apel" },
+  { value: "!ANY", label: "Nenotificați (orice canal)" },
+  { value: "!EMAIL", label: "Nenotificați prin email" },
+  { value: "!SMS", label: "Nenotificați prin SMS" },
+  { value: "!CALL", label: "Nenotificați prin apel" },
+];
+
+/** Criteriul „canal + perioadă" din filtre (null = inactiv). Perioada fără canal înseamnă „orice canal". */
+export type NotifyCriterion = { negate: boolean; channel: "EMAIL" | "SMS" | "CALL" | null; from: string; to: string };
+export function notifyCriterion(f: Pick<NotifyFilters, "via" | "notifiedFrom" | "notifiedTo">): NotifyCriterion | null {
+  if (!f.via && !f.notifiedFrom && !f.notifiedTo) return null;
+  const via = f.via || "ANY";
+  const negate = via.startsWith("!");
+  const ch = negate ? via.slice(1) : via;
+  return { negate, channel: ch === "ANY" ? null : (ch as "EMAIL" | "SMS" | "CALL"), from: f.notifiedFrom, to: f.notifiedTo };
+}
+/** Cheie stabilă pentru memorarea mulțimii de plătitori (nu depinde de „!"): aceeași mulțime pentru „notificați" și „nenotificați". */
+export const notifyCriterionKey = (c: NotifyCriterion) => `${c.channel ?? "ANY"}|${c.from}|${c.to}`;
+
 const ONE_OF = <T extends string>(v: unknown, allowed: readonly T[]): T | "" =>
   typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : "";
 
@@ -82,6 +113,13 @@ const get = (src: Source, k: string): unknown => (src instanceof URLSearchParams
 export function sanitizeFilters(src: Source): NotifyFilters {
   const month = txt(get(src, "month"), 7);
   const installedFrom = txt(get(src, "installedFrom"), 10);
+  const day = (k: string) => {
+    const v = txt(get(src, k), 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : "";
+  };
+  let notifiedFrom = day("notifiedFrom");
+  let notifiedTo = day("notifiedTo");
+  if (notifiedFrom && notifiedTo && notifiedFrom > notifiedTo) [notifiedFrom, notifiedTo] = [notifiedTo, notifiedFrom];
   return {
     q: txt(get(src, "q")),
     street: txt(get(src, "street")),
@@ -95,6 +133,9 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     contact: ONE_OF(get(src, "contact"), ["email", "phone", "both", "any", "none", "noemail", "nophone"] as const),
     kind: ONE_OF(get(src, "kind"), ["person", "company"] as const),
     notified: ONE_OF(get(src, "notified"), ["never", "7d", "30d", "not7d", "not30d"] as const),
+    via: ONE_OF(get(src, "via"), ["ANY", "EMAIL", "SMS", "CALL", "!ANY", "!EMAIL", "!SMS", "!CALL"] as const),
+    notifiedFrom,
+    notifiedTo,
     installedFrom: /^\d{4}-\d{2}-\d{2}$/.test(installedFrom) ? installedFrom : "",
     sort: ONE_OF(get(src, "sort"), ["debtDesc", "debtAsc", "installDesc", "installAsc"] as const),
     nameFix: ONE_OF(get(src, "nameFix"), ["1"] as const),
@@ -104,7 +145,9 @@ export function sanitizeFilters(src: Source): NotifyFilters {
 
 /** Câte filtre sunt active (sortarea nu se numără — nu restrânge lista). */
 export function countActiveFilters(f: NotifyFilters): number {
-  return (Object.keys(f) as (keyof NotifyFilters)[]).filter((k) => k !== "sort" && f[k]).length;
+  // Canalul și perioada formează un singur criteriu: se numără o singură dată.
+  const n = (Object.keys(f) as (keyof NotifyFilters)[]).filter((k) => k !== "sort" && k !== "via" && k !== "notifiedFrom" && k !== "notifiedTo" && f[k]).length;
+  return n + (f.via || f.notifiedFrom || f.notifiedTo ? 1 : 0);
 }
 
 export function filtersToParams(f: NotifyFilters, extra: Record<string, string | number> = {}): URLSearchParams {
@@ -449,7 +492,9 @@ function orderFor(rows: SnapRow[], sort: "debtDesc" | "debtAsc" | "installDesc" 
  * Cu `month`, suma/statusul sunt ale facturii acelei luni (`monthMap`); fără, ale ultimei facturi.
  * O singură trecere cu comparații pe câmpuri pre-calculate (vezi SnapRow) și ordine de sortare pre-calculate: milisecunde la 19.000 de rânduri.
  */
-export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: Map<string, SnapInvoice> | null): SnapRow[] {
+export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: Map<string, SnapInvoice> | null, notifySet: Set<string> | null = null): SnapRow[] {
+  const crit = notifyCriterion(f);
+  if (crit && !notifySet) return []; // mulțimea „notificați în perioada…" încă nu e încărcată: apelantul o cere și reface lista
   const rows = f.month ? (monthMap ? rowsForMonth(allRows, monthMap) : []) : allRows;
   const q = f.q.trim().toLowerCase();
   const street = f.street.trim().toLowerCase();
@@ -491,6 +536,8 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
       case "not7d": if (r._nm !== 0 && r._nm >= d7) continue; break;
       case "not30d": if (r._nm !== 0 && r._nm >= d30) continue; break;
     }
+
+    if (crit && notifySet!.has(r.id) === crit.negate) continue;
 
     if (f.installedFrom && !(r.installedAt && r.installedAt >= f.installedFrom)) continue;
     if (f.invoices === "none" && r.latestInvoice) continue;

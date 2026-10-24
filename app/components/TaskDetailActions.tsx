@@ -7,6 +7,7 @@ import { dateKeyOf, formatTime } from "@/lib/date";
 import { useToast } from "./toast";
 import { IconTrash, IconPencil, IconX } from "./icons";
 import MultiAssignPicker from "./MultiAssignPicker";
+import AddressInput from "./AddressInput";
 import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
 import { useMessages } from "@/lib/i18n/context";
@@ -28,6 +29,7 @@ export type TaskForEdit = {
   assignmentSettingsJson: string | null;
   projectId: string | null;
   categoryId: string | null;
+  address?: string | null;
 };
 
 const TZ = "Europe/Bucharest";
@@ -122,38 +124,18 @@ function CategoryChips({
 }) {
   const m = useMessages();
   if (categories.length === 0) return null;
+  const cur = categories.find((c) => c.id === value);
+  // Listă derulantă (nu butoane): ocupă un singur rând, oricâte categorii ar fi; culoarea categoriei alese apare lângă listă.
   return (
     <div>
       <label className="mb-1.5 block text-xs font-semibold text-ink-soft">{m.tasks.categoryLabel}</label>
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          className={`h-7 rounded-full px-3 text-xs font-medium border transition-colors ${
-            !value
-              ? "border-brand bg-brand text-white"
-              : "border-[var(--color-line)] text-ink-soft hover:border-brand"
-          }`}
-        >
-          {m.tasks.noCategory}
-        </button>
-        {categories.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => onChange(c.id)}
-            className={`inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs font-medium border transition-colors ${
-              value === c.id
-                ? "border-brand bg-brand/10 text-brand"
-                : "border-[var(--color-line)] text-ink-soft hover:border-brand"
-            }`}
-          >
-            <span className="size-2 rounded-full" style={{ background: c.color }} />
-            {c.name}
-          </button>
-        ))}
+      <div className="flex items-center gap-2">
+        <span className="size-3 shrink-0 rounded-full border border-[var(--color-line)]" style={{ background: cur?.color ?? "transparent" }} aria-hidden />
+        <select name="categoryId" value={value} onChange={(e) => onChange(e.target.value)} className={`${dlgInput} flex-1`}>
+          <option value="">{m.tasks.noCategory}</option>
+          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
       </div>
-      <input type="hidden" name="categoryId" value={value} />
     </div>
   );
 }
@@ -256,6 +238,7 @@ function EditDialog({
             initialSettings={task.assignmentSettingsJson ? (JSON.parse(task.assignmentSettingsJson) as AssignmentSetting[]) : []}
           />
           <CategoryChips categories={categories} value={categoryId} onChange={setCategoryId} />
+          {task.address !== undefined && <AddressInput defaultValue={task.address ?? ""} className={dlgInput} />}
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.dueDate}</label>
             <div className="grid gap-2 sm:grid-cols-2">

@@ -253,6 +253,7 @@ export default async function TaskDetailPage({
             assignmentSettingsJson: (task.assignmentSettingsJson ?? null) as string | null,
             projectId: task.projectId ?? null,
             categoryId: task.categoryId ?? null,
+            address: task.address ?? null,
           }}
           users={users}
           teams={teams}

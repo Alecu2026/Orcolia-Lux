@@ -6,6 +6,7 @@ import { saveInvoice, type InvoicePayload } from "@/app/actions/invoices";
 import { quickCreateClient } from "@/app/actions/clients";
 import { money, INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import { useToast } from "./toast";
+import { apaCanalDueKey } from "@/lib/apa-canal-due";
 import { IconPlus, IconCheck, IconX } from "./icons";
 
 type Opt = { id: string; name: string };
@@ -77,7 +78,8 @@ export default function ApaCanalInvoiceForm({
   const [busy, setBusy] = useState(false);
 
   const [issueDate, setIssueDate] = useState(initial?.issueDate ?? todayStr());
-  const [dueDate, setDueDate] = useState(initial?.dueDate ?? "");
+  // Scadența e mereu ziua de 25 a lunii facturii (nu se alege): se recalculează din data emiterii.
+  const dueDate = apaCanalDueKey(issueDate) ?? "";
   const [contPersonal, setContPersonal] = useState(initial?.contPersonal ?? "");
   const [sectorNr, setSectorNr] = useState(initial?.sectorNr ?? "");
   const [consumAddress, setConsumAddress] = useState(initial?.consumAddress ?? "");
@@ -211,7 +213,7 @@ export default function ApaCanalInvoiceForm({
             </div>
             <div>
               <label className={label}>Data limită de achitare</label>
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className={input} />
+              <input type="date" value={dueDate} readOnly tabIndex={-1} title="Scadența este mereu ziua de 25 a lunii facturii" className={`${input} cursor-not-allowed opacity-80`} />
             </div>
           </div>
 

@@ -7,6 +7,9 @@ import {
   DEFAULT_PER_PAGE,
   EMPTY_FILTERS,
   NOTIFIED_OPTIONS,
+  VIA_OPTIONS,
+  notifyCriterion,
+  notifyCriterionKey,
   NOTIFY_MAX_RECIPIENTS,
   NOTIFY_PER_PAGE,
   PER_PAGE_ALL,
@@ -242,14 +245,34 @@ export default function PayerNotifyManager({
   // un select nu „se agață" cât timp se filtrează/sortează.
   const listFilters = useDeferredValue(filters);
   const monthMap = listFilters.month ? (ds.monthMaps.get(listFilters.month) ?? null) : null;
-  const useLocal = !!ds.rows && (!listFilters.month || !!monthMap);
+  // Filtrul „canal + perioadă" se evaluează pe jurnalul de trimiteri: serverul dă mulțimea de plătitori (id-uri), iar filtrarea rămâne locală.
+  // Până sosește mulțimea, lista vine de pe server (care aplică același criteriu), deci nimic nu se blochează.
+  const crit = notifyCriterion(listFilters);
+  const critKey = crit ? notifyCriterionKey(crit) : "";
+  const [notifySets, setNotifySets] = useState<Map<string, Set<string>>>(new Map());
+  const notifySet = critKey ? (notifySets.get(critKey) ?? null) : null;
+  const haveNotifySet = !!notifySet;
+  useEffect(() => {
+    if (!ready || !critKey || haveNotifySet) return;
+    const ctl = new AbortController();
+    const q = new URLSearchParams({ via: listFilters.via, notifiedFrom: listFilters.notifiedFrom, notifiedTo: listFilters.notifiedTo });
+    fetch(`/api/platitori/notificari-ids?${q}`, { signal: ctl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { ids?: string[] } | null) => {
+        if (j?.ids) setNotifySets((m) => new Map(m).set(critKey, new Set(j.ids)));
+      })
+      .catch(() => {});
+    return () => ctl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, critKey, haveNotifySet]);
+  const useLocal = !!ds.rows && (!listFilters.month || !!monthMap) && (!critKey || haveNotifySet);
   // Cu lista completă în browser, orice dimensiune de pagină (inclusiv „Toate") e instant; până atunci serverul dă cel mult 200 de rânduri.
   const perPage = useLocal ? wantPerPage : Math.min(wantPerPage, SERVER_MAX_ROWS);
   const key = queryKey(filters, page, perPage);
   const localList = useMemo(
-    () => (useLocal && ds.rows ? filterSnapshot(ds.rows, sanitizeFilters(listFilters), monthMap) : null),
+    () => (useLocal && ds.rows ? filterSnapshot(ds.rows, sanitizeFilters(listFilters), monthMap, notifySet) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [useLocal, ds.rows, ds.version, listFilters, monthMap],
+    [useLocal, ds.rows, ds.version, listFilters, monthMap, notifySet],
   );
   const view: Page = useMemo(
     () => (localList ? { items: localList.slice((page - 1) * perPage, page * perPage), total: localList.length } : data),
@@ -570,6 +593,7 @@ export default function PayerNotifyManager({
     setCompose(null);
     if (sentSomething.current) {
       sentSomething.current = false;
+      setNotifySets(new Map()); // jurnalul s-a schimbat: mulțimile „canal + perioadă" se recitesc
       if (!useLocal) reload(); // cu motorul local, „Ultima notificare" e deja actualizată în memorie
     }
   }
@@ -665,6 +689,29 @@ export default function PayerNotifyManager({
           <option value="">{t("Notificat: oricând")}</option>
           {NOTIFIED_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
         </select>
+        <select value={filters.via} onChange={(e) => setFilter({ via: e.target.value as NotifyFilters["via"] })} className={fld(filters.via)} aria-label={t("Canal notificare")} title={t("Cine a primit (sau nu) o notificare pe acest canal; se combină cu perioada de mai jos")}>
+          <option value="">{t("Canal: email, SMS, apel")}</option>
+          {VIA_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+        </select>
+        <span className="flex items-center gap-1">
+          <input
+            type="date"
+            value={filters.notifiedFrom}
+            onChange={(e) => setFilter({ notifiedFrom: e.target.value })}
+            title={t("Perioadă notificare: de la data")}
+            aria-label={t("Perioadă notificare: de la data")}
+            className={txtFld(filters.notifiedFrom)}
+          />
+          <span className="text-ink-soft">–</span>
+          <input
+            type="date"
+            value={filters.notifiedTo}
+            onChange={(e) => setFilter({ notifiedTo: e.target.value })}
+            title={t("Perioadă notificare: până la data")}
+            aria-label={t("Perioadă notificare: până la data")}
+            className={txtFld(filters.notifiedTo)}
+          />
+        </span>
         <select value={filters.invoices} onChange={(e) => setFilter({ invoices: e.target.value as NotifyFilters["invoices"] })} className={fld(filters.invoices)} aria-label={t("Facturi")}>
           <option value="">{t("Facturi: toate")}</option>
           <option value="none">{t("Fără nicio factură")}</option>

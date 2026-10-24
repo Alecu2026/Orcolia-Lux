@@ -8,6 +8,7 @@ import { teamOptions } from "@/lib/queries/teams";
 import { projectOptions } from "@/lib/queries/projects";
 import { crmClientOptionsPlus } from "@/lib/queries/clients";
 import { listCategories } from "@/lib/queries/categories";
+import { listTaskTemplates } from "@/lib/queries/task-templates";
 import { getQuietHoursSettings } from "@/lib/queries/company";
 import { env } from "@/lib/env";
 import TasksTable from "@/app/components/TasksTable";
@@ -38,7 +39,7 @@ export default async function TasksPage({
   const initialOpenId = typeof sp.open === "string" && sp.open ? sp.open : undefined;
 
   // Toate task-urile din „scope" odată; filtrarea/sortarea/paginarea rulează în browser (vezi TasksTable / DataTable).
-  const [result, users, teams, projects, clients, categories, quietHoursSettings] = await Promise.all([
+  const [result, users, teams, projects, clients, categories, quietHoursSettings, templates] = await Promise.all([
     listTasksForPage(
       {
         scope,
@@ -55,6 +56,7 @@ export default async function TasksPage({
     crmClientOptionsPlus(sp.client && /^[0-9a-f]{24}$/i.test(sp.client) ? sp.client : null), // + clientul din apel (plătitorii nu sunt în lista CRM)
     listCategories(),
     getQuietHoursSettings(),
+    listTaskTemplates("TASK"),
   ]);
 
   const SCOPES = [
@@ -69,6 +71,8 @@ export default async function TasksPage({
       <TasksTable
         items={result.items}
         dataset={result.dataset ? { total: result.total } : undefined}
+        templates={templates}
+        canAssign={can(user, "tasks.assign")}
         scope={scope}
         users={users}
         teams={teams}

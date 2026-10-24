@@ -14,6 +14,7 @@ import {
   TASK_PRIORITY_RO,
 } from "../telegram";
 import { formatTime, formatDate, DEFAULT_TZ } from "../date";
+import { can } from "../permissions";
 import { env } from "../env";
 import { notifyUsers, observerRecipients, filteredAdminRecipients } from "./notifications";
 import type { TaskStatus, TaskType, TaskPriority, CreatedFrom } from "@prisma/client";
@@ -64,6 +65,8 @@ export type CreateTaskInput = {
   projectId?: string | null;
   clientId?: string | null;
   categoryId?: string | null;
+  /** Adresa locului intervenției (text). */
+  address?: string | null;
   reminderIntervalMinutes?: number | null;
   bypassQuietHours?: boolean;
 };
@@ -238,6 +241,8 @@ type TaskCardShape = {
   status: TaskStatus;
   assignee: { name: string } | null;
   project: { name: string; lat: number | null; lng: number | null; address: string | null } | null;
+  /** Adresa task-ului (are prioritate față de cea a proiectului). */
+  address?: string | null;
 };
 
 /** Cardul Telegram al unui task (antet + titlu + descriere + prioritate + asignat + proiect + status + hărți) — același pentru „task nou” și „task asignat”. */
@@ -249,6 +254,7 @@ function taskCardText(task: TaskCardShape, header: string): string {
   lines.push("", `⚑ Prioritate: <b>${TASK_PRIORITY_RO[task.priority]}</b>`);
   if (task.assignee?.name) lines.push(`👤 Asignat: ${escapeHtml(task.assignee.name)}`);
   if (task.project?.name) lines.push(`📁 Proiect: ${escapeHtml(task.project.name)}`);
+  if (task.address?.trim()) lines.push(`🏠 Adresă: ${escapeHtml(task.address.trim())}`);
   lines.push(`Status: <b>${TASK_STATUS_RO[task.status]}</b>`);
   const proj = task.project;
   if (proj?.lat != null && proj?.lng != null) {
@@ -257,8 +263,8 @@ function taskCardText(task: TaskCardShape, header: string): string {
       ` | <a href="https://waze.com/ul?ll=${proj.lat},${proj.lng}&navigate=yes">Waze</a>` +
       ` | <a href="https://maps.apple.com/?ll=${proj.lat},${proj.lng}">Apple Maps</a>`,
     );
-  } else if (proj?.address) {
-    lines.push(`📍 <a href="https://www.google.com/maps?q=${encodeURIComponent(proj.address)}">Google Maps</a>`);
+  } else if (task.address?.trim() || proj?.address) {
+    lines.push(`📍 <a href="https://www.google.com/maps?q=${encodeURIComponent((task.address?.trim() || proj?.address) as string)}">Google Maps</a>`);
   }
   return lines.join("\n");
 }
@@ -273,7 +279,7 @@ export async function notifyTaskAssigned(taskId: string, userIds: string[], acto
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       select: {
-        id: true, seq: true, title: true, description: true, type: true, priority: true, status: true,
+        id: true, seq: true, title: true, description: true, type: true, priority: true, status: true, address: true,
         assigneeId: true, assignmentSettingsJson: true,
         assignee: { select: { name: true } },
         project: { select: { name: true, lat: true, lng: true, address: true } },
@@ -372,6 +378,7 @@ export async function createTask(
       assignmentSettingsJson: input.assignmentSettingsJson ?? null,
       projectId: input.projectId || null,
       categoryId: input.categoryId || null,
+      address: input.address?.trim().slice(0, 300) || null,
       clientId,
       createdFrom: source,
       status,
@@ -398,6 +405,7 @@ export async function notifyNewTask(taskId: string): Promise<void> {
         type: true,
         priority: true,
         status: true,
+        address: true,
         creatorId: true,
         assigneeId: true,
         teamId: true,
@@ -552,6 +560,23 @@ export async function changeTaskStatus(
 
   const closed = newStatus === "DONE" || newStatus === "CANCELLED";
   const wasClosed = task.status === "DONE" || task.status === "CANCELLED";
+  // Închidere / finalizare: cine are permisiunea „Închidere / finalizare” o face liber. Ceilalți pot FINALIZA doar după ce au atașat
+  // o poză / un fișier informativ la acest task (dovada muncii făcute); anularea rămâne rezervată celor cu permisiune.
+  // Regula e aici (nu doar în acțiunea web), ca să fie valabilă și pentru butoanele din Telegram.
+  if (closed) {
+    const actorAcc = await prisma.user.findUnique({ where: { id: actorId }, select: { role: true, permissions: true } });
+    if (actorAcc && !can(actorAcc, "tasks.close")) {
+      if (newStatus === "CANCELLED") return { ok: false as const, error: "Nu ai permisiunea de a anula / închide task-ul.", needsProof: false };
+      const proofs = await prisma.taskAttachment.count({ where: { taskId, userId: actorId } });
+      if (proofs === 0) {
+        return {
+          ok: false as const,
+          error: "Ca să finalizezi task-ul, atașează mai întâi o poză sau un fișier informativ (în detaliile task-ului), apoi finalizează-l.",
+          needsProof: true,
+        };
+      }
+    }
+  }
   // Redeschis (din finalizat/anulat) un task cu reamintiri periodice: reamintirile pornesc din nou (la închidere se opriseră).
   const restartReminderAt = wasClosed && !closed && task.reminderIntervalMinutes ? new Date(Date.now() + task.reminderIntervalMinutes * 60_000) : null;
   await prisma.task.update({
@@ -926,6 +951,7 @@ export type UpdateTaskInput = {
   projectId?: string | null;
   clientId?: string | null;
   categoryId?: string | null;
+  address?: string | null;
   priority?: TaskPriority;
   dueAt?: Date | null;
   reminderIntervalMinutes?: number | null;
@@ -982,6 +1008,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
     data.clientId = input.clientId || null;
   }
   if ("categoryId" in input) data.categoryId = input.categoryId || null;
+  if ("address" in input) data.address = input.address?.trim().slice(0, 300) || null;
   if (input.priority !== undefined) data.priority = input.priority;
   if ("dueAt" in input) {
     data.dueAt = input.dueAt ?? null;
