@@ -1303,21 +1303,24 @@ export function CreateDialog({
       <div className="card max-h-[92dvh] w-full max-w-lg overflow-auto rounded-b-none rounded-t-2xl p-5 sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-bold">{dialogTitle}</h2>
-          <button onClick={onClose} className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={m.common.close}>
-            <IconX className="size-4" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {templates && templates.length > 0 && onPickTemplate && (
+              <select
+                value={prefill?.templateId ?? ""}
+                onChange={(e) => e.target.value && onPickTemplate(e.target.value)}
+                aria-label={t("Folosește un șablon")}
+                title={t("Folosește un șablon")}
+                className="h-8 max-w-[9.5rem] cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 text-[11px] text-ink-soft outline-none focus:border-brand"
+              >
+                <option value="">{t("📋 Șablon…")}</option>
+                {templates.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            )}
+            <button onClick={onClose} className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={m.common.close}>
+              <IconX className="size-4" />
+            </button>
+          </div>
         </div>
-        {templates && templates.length > 0 && onPickTemplate && (
-          <select
-            value={prefill?.templateId ?? ""}
-            onChange={(e) => e.target.value && onPickTemplate(e.target.value)}
-            aria-label={t("Folosește un șablon")}
-            className={`${dlgInput} mb-3`}
-          >
-            <option value="">{t("📋 Alege un șablon (opțional)…")}</option>
-            {templates.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-          </select>
-        )}
         <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
           <input name="title" defaultValue={prefill?.title ?? initialTitle ?? ""} placeholder={t("Titlu *")} required autoFocus className={dlgInput} />
           <textarea name="description" defaultValue={prefill?.description ?? initialDescription ?? ""} placeholder={t("Descriere")} rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm outline-none focus:border-brand" />

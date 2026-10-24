@@ -1702,4 +1702,5 @@ export const RU: Record<string, string> = {
   "(fără titlu)": "(без заголовка)",
   "Folosește un șablon": "Использовать шаблон",
   "📋 Alege un șablon (opțional)…": "📋 Выберите шаблон (необязательно)…",
+  "📋 Șablon…": "📋 Шаблон…",
 };

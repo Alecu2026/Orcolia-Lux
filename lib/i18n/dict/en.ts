@@ -1702,4 +1702,5 @@ export const EN: Record<string, string> = {
   "(fără titlu)": "(no title)",
   "Folosește un șablon": "Use a template",
   "📋 Alege un șablon (opțional)…": "📋 Choose a template (optional)…",
+  "📋 Șablon…": "📋 Template…",
 };
