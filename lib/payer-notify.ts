@@ -73,7 +73,6 @@ export const NOTIFIED_OPTIONS: { value: NotifyFilters["notified"]; label: string
 ];
 
 export const VIA_OPTIONS: { value: Exclude<NotifyFilters["via"], "">; label: string }[] = [
-  { value: "ANY", label: "Notificați (orice canal)" },
   { value: "EMAIL", label: "Notificați prin email" },
   { value: "SMS", label: "Notificați prin SMS" },
   { value: "CALL", label: "Notificați prin apel" },

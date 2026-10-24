@@ -1220,7 +1220,7 @@ function fmtFileSize(bytes: number): string {
 }
 
 export function CreateDialog({
-  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialDescription, prefill, onClose, onCreated,
+  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialDescription, prefill, templates, onPickTemplate, onClose, onCreated,
 }: {
   initialType: "TASK" | "TICKET" | "WORK_ORDER";
   users: Opt[];
@@ -1238,6 +1238,9 @@ export function CreateDialog({
   initialDescription?: string;
   /** Câmpuri completate dintr-un șablon (titlu cu {contor} înlocuit, categorie, responsabili…). */
   prefill?: TemplatePrefill;
+  /** Șabloanele disponibile: apar ca listă mică în capul ferestrei (alegerea completează formularul). */
+  templates?: { id: string; name: string }[];
+  onPickTemplate?: (id: string) => void;
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
@@ -1304,6 +1307,17 @@ export function CreateDialog({
             <IconX className="size-4" />
           </button>
         </div>
+        {templates && templates.length > 0 && onPickTemplate && (
+          <select
+            value={prefill?.templateId ?? ""}
+            onChange={(e) => e.target.value && onPickTemplate(e.target.value)}
+            aria-label={t("Folosește un șablon")}
+            className={`${dlgInput} mb-3`}
+          >
+            <option value="">{t("📋 Alege un șablon (opțional)…")}</option>
+            {templates.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        )}
         <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
           <input name="title" defaultValue={prefill?.title ?? initialTitle ?? ""} placeholder={t("Titlu *")} required autoFocus className={dlgInput} />
           <textarea name="description" defaultValue={prefill?.description ?? initialDescription ?? ""} placeholder={t("Descriere")} rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm outline-none focus:border-brand" />

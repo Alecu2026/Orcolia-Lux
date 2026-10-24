@@ -126,7 +126,7 @@ export default function TaskTemplatesDialog({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{t.name}</p>
                   <p className="truncate text-[11px] text-ink-soft">
-                    {t.title}
+                    {t.title || tr("(fără titlu)")}
                     {catName(t.categoryId) ? ` · ${catName(t.categoryId)}` : ""}
                     {/\{contor\}/i.test(t.title + t.description) ? " " + tr("· următorul nr. {n}", { n: t.counter }) : ""}
                   </p>
@@ -153,8 +153,8 @@ export default function TaskTemplatesDialog({
               <input name="name" defaultValue={form.name} maxLength={TEMPLATE_MAX_NAME} required autoFocus placeholder={tr("ex. Citire lunară contoare")} className={input} />
             </div>
             <div>
-              <label className={label}>{type === "TICKET" ? tr("Titlul cererii") : tr("Titlul sarcinii")}</label>
-              <input name="title" defaultValue={form.title} maxLength={TEMPLATE_MAX_TITLE} required placeholder={tr("ex. Verificare contor #{contor} — {luna}")} className={input} />
+              <label className={label}>{type === "TICKET" ? tr("Titlul cererii") : tr("Titlul sarcinii")} <span className="font-normal text-ink-soft">({tr("opțional")})</span></label>
+              <input name="title" defaultValue={form.title} maxLength={TEMPLATE_MAX_TITLE} placeholder={tr("ex. Verificare contor #{contor} — {luna}")} className={input} />
               <p className="mt-1 text-[11px] text-ink-soft">
                 {tr("Variabile (se înlocuiesc la creare, în titlu și în descriere):")} {TEMPLATE_VARIABLES.map((v) => <code key={v} className="mx-0.5 rounded bg-[var(--color-surface-2)] px-1">{v}</code>)}
                 — {tr("{contor} crește cu 1 la fiecare creare din șablon.")}

@@ -201,6 +201,12 @@ export default function TasksTable({
   async function startFromTemplate(id: string) {
     setTplMenu(false);
     setTplManage(false);
+    if (prefill && !prefillCreated.current) {
+      // schimb șablonul în fereastra deschisă: numărul rezervat de cel vechi se eliberează înainte
+      const old = prefill;
+      await releaseTaskTemplateCounterAction(old.templateId, old.reserved).catch(() => {});
+      setTpls((cur) => cur.map((t) => (t.id === old.templateId && t.counter === old.reserved + 1 ? { ...t, counter: old.reserved } : t)));
+    }
     const res = await applyTaskTemplateAction(id).catch(() => null);
     if (!res || !res.ok) return toast.error(res && !res.ok ? res.error : m.common.error);
     prefillCreated.current = false;
@@ -661,6 +667,8 @@ export default function TasksTable({
         <CreateDialog
           key={prefill ? `${prefill.templateId}:${prefill.reserved}` : "nou"}
           prefill={prefill ?? undefined}
+          templates={tpls}
+          onPickTemplate={(id) => void startFromTemplate(id)}
           initialType={createType}
           users={users}
           teams={teams}

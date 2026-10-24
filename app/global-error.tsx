@@ -1,7 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
-import { useT } from "@/lib/i18n/context";
+import { isValidLocale, type Locale } from "@/lib/i18n";
+import { makeT } from "@/lib/i18n/t";
+
+// Fără I18nProvider aici: global-error stă deasupra layout-ului rădăcină, deci limba se citește direct din cookie.
+function readLocale(): Locale {
+  try {
+    const v = /(?:^|; )app-locale=([^;]+)/.exec(document.cookie)?.[1] ?? "";
+    return isValidLocale(v) ? v : "ro";
+  } catch {
+    return "ro";
+  }
+}
 
 // Vezi app/portal/(dashboard)/error.tsx pentru explicația detaliată — aceeași detecție, dar
 // aici pentru orice eroare care scapă de toate boundary-urile imbricate (inclusiv layout-ul
@@ -27,7 +38,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
   unstable_retry: () => void;
 }) {
-  const t = useT();
+  const t = makeT(readLocale());
   const stale = isStaleDeployError(error);
 
   useEffect(() => {
@@ -45,7 +56,7 @@ export default function GlobalError({
   }, [error, stale]);
 
   return (
-    <html lang="ro">
+    <html lang={readLocale()}>
       <body
         style={{
           margin: 0,

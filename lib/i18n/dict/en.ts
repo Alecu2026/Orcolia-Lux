@@ -1698,4 +1698,8 @@ export const EN: Record<string, string> = {
   "X (mm)": "X (mm)",
   "Y (mm)": "Y (mm)",
   "Абоненты.Наименование (cu Ș/Ț refăcute)": "Абоненты.Наименование (with Ș/Ț restored)",
+  "opțional": "optional",
+  "(fără titlu)": "(no title)",
+  "Folosește un șablon": "Use a template",
+  "📋 Alege un șablon (opțional)…": "📋 Choose a template (optional)…",
 };

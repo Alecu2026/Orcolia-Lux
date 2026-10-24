@@ -45,7 +45,6 @@ export async function saveTaskTemplateAction(type: TaskTemplateType, input: Task
     const description = str(input?.description);
     if (!name) return { ok: false, error: "Dă un nume șablonului." };
     if (name.length > TEMPLATE_MAX_NAME) return { ok: false, error: `Numele depășește ${TEMPLATE_MAX_NAME} de caractere.` };
-    if (!title) return { ok: false, error: "Titlul e obligatoriu." };
     if (title.length > TEMPLATE_MAX_TITLE) return { ok: false, error: `Titlul depășește ${TEMPLATE_MAX_TITLE} de caractere.` };
     if (description.length > TEMPLATE_MAX_DESCRIPTION) return { ok: false, error: "Descrierea e prea lungă." };
     const priority = PRIORITIES.includes(input?.priority as (typeof PRIORITIES)[number]) ? input.priority : "MEDIUM";
