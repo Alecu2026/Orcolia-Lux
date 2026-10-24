@@ -113,7 +113,7 @@ export function EditableSelect({
       className={`${inputCls} cursor-pointer`}
     >
       {emptyLabel !== null && <option value="">{emptyLabel}</option>}
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      {options.map((o) => <option key={o.value} value={o.value}>{tr(o.label)}</option>)}
     </select>
   );
 }
@@ -221,7 +221,7 @@ export function MultiPick({
           if (!items.length) return null;
           return (
             <div key={g.label} className="mb-1">
-              <p className="px-1 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{g.label}</p>
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{tr(g.label)}</p>
               {items.map((i) => (
                 <label key={i.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-[var(--color-surface-2)]">
                   <input type="checkbox" checked={sel.has(i.id)} onChange={() => toggle(i.id)} className="size-3.5 cursor-pointer accent-[var(--color-brand)]" />

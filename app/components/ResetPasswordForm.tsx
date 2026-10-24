@@ -44,14 +44,14 @@ export default function ResetPasswordForm({ email }: { email: string }) {
         className={input}
       />
 
-      {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+      {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
 
       <button
         type="submit"
         disabled={pending}
         className="tap h-12 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60"
       >
-        {pending ? "Se procesează…" : "Setează parola nouă"}
+        {pending ? t("Se procesează…") : t("Setează parola nouă")}
       </button>
     </form>
   );

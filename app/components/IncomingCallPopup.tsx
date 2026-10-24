@@ -113,13 +113,13 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
   const ctx = c.context;
   const st = stateLabel(c);
   const q = phoneQuery(c.phone);
-  const callTitle = `Apel de la ${ctx?.name ?? pretty(c.phone)}`;
+  const callTitle = tr("Apel de la {who}", { who: ctx?.name ?? pretty(c.phone) });
   const prefill = (kind: "ticket" | "task") => {
     const sp = new URLSearchParams({
       create: kind,
       ...(ctx?.clientId ? { client: ctx.clientId } : {}),
       title: callTitle,
-      desc: `Apel ${c.direction === "out" ? "efectuat către" : "primit de la"} ${pretty(c.phone)} (${new Date(c.at).toLocaleString("ro-RO", { timeZone: "Europe/Chisinau", dateStyle: "short", timeStyle: "short" })}).`,
+      desc: `${c.direction === "out" ? tr("Apel efectuat către") : tr("Apel primit de la")} ${pretty(c.phone)} (${new Date(c.at).toLocaleString("ro-RO", { timeZone: "Europe/Chisinau", dateStyle: "short", timeStyle: "short" })}).`,
     });
     return `/${kind === "ticket" ? "tickets" : "tasks"}?${sp.toString()}`;
   };
@@ -130,7 +130,7 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
     setSaving(true);
     const res = await savePbxCallNoteAction(c.callId, text).catch(() => null);
     setSaving(false);
-    if (res?.ok) { setSaved((s) => (s ? `${s}\n${res.note}` : res.note)); setNote(""); toast.success(ctx ? "Notă salvată (și pe fișa clientului)." : "Notă salvată."); }
+    if (res?.ok) { setSaved((s) => (s ? `${s}\n${res.note}` : res.note)); setNote(""); toast.success(ctx ? tr("Notă salvată (și pe fișa clientului).") : tr("Notă salvată.")); }
     else toast.error(res && !res.ok ? res.error : "Nu am putut salva nota.");
   }
 
@@ -141,12 +141,12 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-brand">
             📞 {c.direction === "out" ? "Apel efectuat" : "Apel primit"}
-            <span className={`ml-2 rounded-full px-1.5 py-px text-[10px] normal-case ${st.cls}`}>{st.text}</span>
+            <span className={`ml-2 rounded-full px-1.5 py-px text-[10px] normal-case ${st.cls}`}>{tr(st.text)}</span>
           </p>
-          <p className="truncate text-base font-bold">{ctx?.name ?? pretty(c.phone)}</p>
+          <p className="truncate text-base font-bold">{ctx?.name ?? (c.phone ? pretty(c.phone) : tr("număr necunoscut"))}</p>
           <p className="text-xs text-ink-soft">
             {ctx ? `${pretty(c.phone)} · ` : ""}
-            {c.operator ? `răspunde ${c.operator}${c.ext ? ` (ext. ${c.ext})` : ""}` : c.diversion ? `pe ${pretty(c.diversion)}` : ""}
+            {c.operator ? tr("răspunde {op}", { op: c.operator }) + (c.ext ? ` (ext. ${c.ext})` : "") : c.diversion ? tr("pe {n}", { n: pretty(c.diversion) }) : ""}
           </p>
         </div>
         <button onClick={onDismiss} className="tap grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={tr("Închide")}>
@@ -156,7 +156,7 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
 
       {ctx ? (
         <div className="mb-2 divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)] text-[12px]">
-          <Row label={ctx.isPayer ? "Plătitor" : "Client CRM"}>{ctx.account ? `cont ${ctx.account}` : "—"}</Row>
+          <Row label={ctx.isPayer ? tr("Plătitor") : tr("Client CRM")}>{ctx.account ? `cont ${ctx.account}` : "—"}</Row>
           {ctx.address && <Row label={tr("Adresă")}>{ctx.address}</Row>}
           {ctx.debt != null && (
             <Row label={tr("De achitat")}>
@@ -172,7 +172,7 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
                     {t.seq != null ? `#${t.seq} ` : ""}{t.title}
                   </Link>
                 ))}
-                {ctx.openTicketCount > ctx.openTickets.length && <span className="text-ink-soft">+{ctx.openTicketCount - ctx.openTickets.length} altele</span>}
+                {ctx.openTicketCount > ctx.openTickets.length && <span className="text-ink-soft">+{ctx.openTicketCount - ctx.openTickets.length} {tr("altele")}</span>}
               </span>
             )}
           </Row>
@@ -204,7 +204,7 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
               className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-[12px] outline-none focus:border-brand"
             />
             <button type="button" onClick={saveNote} disabled={saving || !note.trim()} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">
-              {saving ? "…" : "Salvează"}
+              {saving ? "…" : tr("Salvează")}
             </button>
           </div>
         </div>

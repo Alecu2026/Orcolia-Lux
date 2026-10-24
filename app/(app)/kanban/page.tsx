@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/dal";
+import { getT } from "@/lib/i18n/server-t";
 import { canUseAllScope } from "@/lib/permissions";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
 import { userOptions } from "@/lib/queries/users";
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function KanbanPage() {
   const user = await requirePermission("kanban.view");
+  const tr = await getT();
 
   const KANBAN_LIMIT = 100;
   // STAFF vede doar task-urile proprii/echipei lui; ADMIN vede tot
@@ -27,7 +29,7 @@ export default async function KanbanPage() {
     <div className="w-full">
       {result.hasMore && (
         <div className="mb-3 rounded-xl border border-amber-300/40 bg-amber-100/60 px-4 py-2.5 text-xs text-amber-900 dark:bg-amber-500/15 dark:text-amber-300">
-          Kanban afișează primele {KANBAN_LIMIT} task-uri. Folosește <strong>lista</strong> pentru filtrare avansată cu mai multe date.
+          {tr("Kanban afișează primele {n} sarcini. Folosește lista pentru filtrare avansată cu mai multe date.", { n: KANBAN_LIMIT })}
         </div>
       )}
       <TaskKanban items={result.items} users={users} teams={teams} projects={projects} categories={categories} />

@@ -128,7 +128,7 @@ export default function PortalAccountsTable({ rows }: { rows: PortalAccountRow[]
       onRowClick={(r) => router.push(`/platitori/${r.id}`)}
       summaryExtra={(f) => (
         <span className="text-ink-soft">
-          · activate: <b className="text-ink">{f.filter((r) => r.activated).length.toLocaleString("ro-RO")}</b> din {f.length.toLocaleString("ro-RO")} (în total {activated.toLocaleString("ro-RO")} din {rows.length.toLocaleString("ro-RO")})
+          {t("· activate:")} <b className="text-ink">{f.filter((r) => r.activated).length.toLocaleString("ro-RO")}</b> {t("din")} {f.length.toLocaleString("ro-RO")} ({t("în total")} {activated.toLocaleString("ro-RO")} {t("din")} {rows.length.toLocaleString("ro-RO")})
         </span>
       )}
     />

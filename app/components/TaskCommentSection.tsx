@@ -93,7 +93,7 @@ export default function TaskCommentSection({
                   <>
                     <span className="text-sm font-semibold">{c.user?.name ?? "—"}</span>
                     <span className="text-[11px] text-ink-soft">
-                      {fmt(c.createdAt)}{SOURCE[c.source] ?? ""}
+                      {fmt(c.createdAt)}{SOURCE[c.source] ? t(SOURCE[c.source]) : ""}
                     </span>
                   </>
                 )}

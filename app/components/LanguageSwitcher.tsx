@@ -4,6 +4,7 @@ import { useState, useTransition, useRef, useEffect } from "react";
 import { setLocale } from "@/app/actions/locale";
 import { useLocale } from "@/lib/i18n/context";
 import type { Locale } from "@/lib/i18n";
+import { useT } from "@/lib/i18n/context";
 
 const OPTIONS: { locale: Locale; flag: string; label: string }[] = [
   { locale: "ro", flag: "🇷🇴", label: "Română" },
@@ -12,6 +13,7 @@ const OPTIONS: { locale: Locale; flag: string; label: string }[] = [
 ];
 
 export default function LanguageSwitcher() {
+  const t = useT();
   const locale = useLocale();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -65,7 +67,7 @@ export default function LanguageSwitcher() {
               ].join(" ")}
             >
               <span className="text-base">{opt.flag}</span>
-              <span>{opt.label}</span>
+              <span>{t(opt.label)}</span>
               {opt.locale === locale && (
                 <svg className="ml-auto" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M20 6L9 17l-5-5" />

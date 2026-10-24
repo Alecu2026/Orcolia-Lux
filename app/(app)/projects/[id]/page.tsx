@@ -12,6 +12,7 @@ import ProjectDetailHeader from "@/app/components/ProjectDetailHeader";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
 import { getT } from "@/lib/i18n/server-t";
+import { dateTag } from "@/lib/i18n/t";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +29,8 @@ const PRIO_CLS: Record<string, string> = {
   LOW:    "bg-[var(--color-surface-2)] text-ink-soft",
 };
 
-function fmtDue(d: Date) {
-  return d.toLocaleDateString("ro-RO", { day: "numeric", month: "short" });
+function fmtDue(d: Date, tag: string) {
+  return d.toLocaleDateString(tag, { day: "numeric", month: "short" });
 }
 
 export default async function ProjectDetailPage({
@@ -199,7 +200,7 @@ export default async function ProjectDetailPage({
                   )}
                   {due && (
                     <span className={`shrink-0 text-[11px] font-mono ${overdue ? "text-st-cancelled font-semibold" : "text-ink-soft"}`}>
-                      {fmtDue(due)}
+                      {fmtDue(due, dateTag(locale))}
                     </span>
                   )}
                   <span className="hidden shrink-0 text-[11px] text-ink-soft sm:inline">

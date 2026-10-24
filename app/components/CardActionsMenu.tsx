@@ -85,7 +85,7 @@ export default function CardActionsMenu({
               className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] font-medium hover:bg-[var(--color-surface-2)] ${it.danger ? "text-st-cancelled" : "text-ink"}`}
             >
               {it.icon}
-              {it.label}
+              {t(it.label)}
             </button>
           ))}
         </div>,

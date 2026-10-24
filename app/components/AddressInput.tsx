@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useT } from "@/lib/i18n/context";
 
 /** Memoria sugestiilor pe sesiune: aceeași căutare nu mai cere nimic (cheie = textul tastat, litere mici). */
 const cache = new Map<string, string[]>();
@@ -28,6 +29,7 @@ export default function AddressInput({
   onChange?: (v: string) => void;
   autoFocus?: boolean;
 }) {
+  const t = useT();
   const [value, setValue] = useState(defaultValue);
   const [items, setItems] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
@@ -90,7 +92,7 @@ export default function AddressInput({
         autoFocus={autoFocus}
         autoComplete="off"
         maxLength={300}
-        placeholder={placeholder}
+        placeholder={t(placeholder)}
         role="combobox"
         aria-expanded={open}
         aria-controls={id}

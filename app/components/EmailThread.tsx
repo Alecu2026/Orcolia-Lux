@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { sendEmailReplyAction } from "@/app/actions/email-tickets";
-import { useMessages } from "@/lib/i18n/context";
+import { useMessages, useT } from "@/lib/i18n/context";
 
 type ThreadMessage = {
   id: string;
@@ -28,6 +28,7 @@ export default function EmailThread({
   canReply: boolean;
 }) {
   const m = useMessages();
+  const t = useT();
   const [reply, setReply] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -134,7 +135,7 @@ export default function EmailThread({
             rows={3}
             className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
           />
-          {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+          {error && <p className="mt-1 text-xs text-red-500">{t(error)}</p>}
           {sent && <p className="mt-1 text-xs text-green-600">{m.email.sent}</p>}
           <div className="mt-2 flex justify-end">
             <button

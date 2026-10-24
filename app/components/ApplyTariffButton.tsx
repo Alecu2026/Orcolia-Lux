@@ -91,7 +91,7 @@ export default function ApplyTariffButton({ hasSavedTariff }: { hasSavedTariff: 
         type="button"
         onClick={loadPreview}
         disabled={!hasSavedTariff}
-        title={!hasSavedTariff ? "Salvează întâi un tarif mai mare ca 0" : ""}
+        title={!hasSavedTariff ? t("Salvează întâi un tarif mai mare ca 0") : ""}
         className="tap h-10 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
       >
         {t("Aplică tariful salvat și la facturile existente")}
@@ -111,7 +111,7 @@ export default function ApplyTariffButton({ hasSavedTariff }: { hasSavedTariff: 
                   <circle cx="12" cy="12" r="10" strokeOpacity={0.25} />
                   <path d="M12 2a10 10 0 0 1 10 10" />
                 </svg>
-                <p className="text-sm text-ink-soft">{phase === "loading" ? "Se calculează..." : "Se actualizează facturile..."}</p>
+                <p className="text-sm text-ink-soft">{phase === "loading" ? t("Se calculează...") : t("Se actualizează facturile...")}</p>
               </div>
             )}
 
@@ -167,7 +167,7 @@ export default function ApplyTariffButton({ hasSavedTariff }: { hasSavedTariff: 
             {phase === "error" && (
               <>
                 <p className="mb-2 text-sm font-semibold text-st-cancelled">{t("Eroare")}</p>
-                <p className="mb-4 text-sm text-ink-soft">{error}</p>
+                <p className="mb-4 text-sm text-ink-soft">{t(error ?? "")}</p>
                 <button type="button" onClick={close} className="tap h-11 w-full rounded-xl bg-[var(--color-surface-2)] text-sm font-medium hover:bg-[var(--color-line)]">
                   {t("Închide")}
                 </button>

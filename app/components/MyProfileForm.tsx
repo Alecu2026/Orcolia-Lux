@@ -77,7 +77,7 @@ export default function MyProfileForm({
           <input name="telegramChatId" defaultValue={telegramChatId ?? ""} inputMode="numeric" className={input} />
         </div>
 
-        {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+        {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
         {state?.ok && <p className="text-sm text-st-done">{t("Salvat.")}</p>}
 
         <button
@@ -85,7 +85,7 @@ export default function MyProfileForm({
           disabled={pending}
           className="tap h-11 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60"
         >
-          {pending ? "Se salvează…" : "Salvează"}
+          {pending ? t("Se salvează…") : t("Salvează")}
         </button>
       </form>
 
@@ -146,7 +146,7 @@ export default function MyProfileForm({
                 disabled={codePending}
                 className="tap h-11 flex-1 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60"
               >
-                {codePending ? "Se confirmă…" : "Confirmă"}
+                {codePending ? t("Se confirmă…") : t("Confirmă")}
               </button>
             </div>
           </form>

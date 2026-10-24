@@ -32,6 +32,7 @@ import {
 import type { LayoutState } from "@/app/actions/company";
 import ApaCanalInvoicePublic, { buildApaCanalVars, type ApaCanalInvoiceData } from "./ApaCanalInvoicePublic";
 import { useToast } from "./toast";
+import { useT } from "@/lib/i18n/context";
 
 // ── Date de test (fixe, ca randarea de pe server și din browser să fie identică) ───────────────────
 
@@ -261,6 +262,7 @@ export default function ApaCanalLayoutEditor({
   /** Site-ul pe care se salvează (fiecare site are propria bază de date și propriul șablon). */
   host?: string;
 }) {
+  const tr = useT();
   const toast = useToast();
   const router = useRouter();
   const initial = useMemo(() => sanitizeApaCanalLayout(company.apaCanalLayout), [company.apaCanalLayout]);
@@ -417,7 +419,7 @@ export default function ApaCanalLayoutEditor({
       } catch (e) {
         // Eroare aruncată de server sau de rețea (altfel nu s-ar vedea nimic): arătăm că salvarea a eșuat.
         console.error("[layout] salvarea a eșuat:", e);
-        toast.error("Salvarea nu a reușit (eroare de server sau de rețea). Reîncarcă pagina și încearcă din nou.");
+        toast.error(tr("Salvarea nu a reușit (eroare de server sau de rețea). Reîncarcă pagina și încearcă din nou."));
       }
     });
   }
@@ -428,17 +430,17 @@ export default function ApaCanalLayoutEditor({
   }
 
   function removeTemplate() {
-    if (!confirm("Ștergi șablonul salvat? Facturile revin la aspectul automat (cel standard).")) return;
+    if (!confirm(tr("Ștergi șablonul salvat? Facturile revin la aspectul automat (cel standard)."))) return;
     persist({}, "Șablon șters — facturile folosesc aspectul automat");
   }
 
   function discard() {
-    if (dirty && !confirm("Renunți la toate modificările nesalvate?")) return;
+    if (dirty && !confirm(tr("Renunți la toate modificările nesalvate?"))) return;
     dispatch({ type: "replace", layout: JSON.parse(savedJson) as ApaCanalLayout });
   }
 
   function resetAll() {
-    if (!confirm("Readuci TOATE elementele la poziția din factura standard? (nu se salvează până nu apeși „Salvează”)")) return;
+    if (!confirm(tr("Readuci TOATE elementele la poziția din factura standard? (nu se salvează până nu apeși „Salvează”)"))) return;
     setLegacyMode(false);
     edit((l) => (l.customImages?.length ? { customImages: l.customImages } : {}), "reset-all");
   }
@@ -533,7 +535,7 @@ export default function ApaCanalLayoutEditor({
         const b = solid[j].box;
         const ox = Math.min(a.xMm + a.widthMm, b.xMm + b.widthMm) - Math.max(a.xMm, b.xMm);
         const oy = Math.min(a.yMm + a.heightMm, b.yMm + b.heightMm) - Math.max(a.yMm, b.yMm);
-        if (ox > 1.5 && oy > 1.5) out.push(`${APA_CANAL_ELEMENT_LABELS[solid[i].key]} ↔ ${APA_CANAL_ELEMENT_LABELS[solid[j].key]}`);
+        if (ox > 1.5 && oy > 1.5) out.push(`${tr(APA_CANAL_ELEMENT_LABELS[solid[i].key])} ↔ ${tr(APA_CANAL_ELEMENT_LABELS[solid[j].key])}`);
       }
     }
     return out;
@@ -570,45 +572,44 @@ export default function ApaCanalLayoutEditor({
         {legacy && !legacyDismissed && (
           <div className="card flex flex-wrap items-center gap-3 border-st-progress/40 bg-st-progress/10 p-3 text-xs text-st-progress">
             <p className="min-w-0 flex-1">
-              <b>Șablonul salvat e vechi</b> (nu are toate elementele sau are poziții/fonturi modificate din versiuni anterioare), de aceea unele elemente par nepotrivite.
-              Pornește de la factura standard, apoi ajustează ce vrei.
+              <b>{tr("Șablonul salvat e vechi")}</b> {tr("(nu are toate elementele sau are poziții/fonturi modificate din versiuni anterioare), de aceea unele elemente par nepotrivite. Pornește de la factura standard, apoi ajustează ce vrei.")}
             </p>
-            <button type="button" className={btnCls} onClick={() => { setLegacyMode(false); edit((l) => (l.customImages?.length ? { customImages: l.customImages } : {}), "reset-all"); setLegacyDismissed(true); }}>Pornește de la factura standard</button>
-            <button type="button" className={btnCls} onClick={() => setLegacyDismissed(true)}>Păstrează șablonul</button>
+            <button type="button" className={btnCls} onClick={() => { setLegacyMode(false); edit((l) => (l.customImages?.length ? { customImages: l.customImages } : {}), "reset-all"); setLegacyDismissed(true); }}>{tr("Pornește de la factura standard")}</button>
+            <button type="button" className={btnCls} onClick={() => setLegacyDismissed(true)}>{tr("Păstrează șablonul")}</button>
           </div>
         )}
         {/* Bara de unelte */}
         <div className="card flex flex-wrap items-center gap-2 p-3 text-xs">
-          <button type="button" className={btnCls} disabled={!state.past.length} onClick={() => dispatch({ type: "undo" })} title="Anulează (Ctrl+Z)">↶ Anulează</button>
-          <button type="button" className={btnCls} disabled={!state.future.length} onClick={() => dispatch({ type: "redo" })} title="Refă (Ctrl+Y)">↷ Refă</button>
+          <button type="button" className={btnCls} disabled={!state.past.length} onClick={() => dispatch({ type: "undo" })} title={tr("Anulează (Ctrl+Z)")}>{tr("↶ Anulează")}</button>
+          <button type="button" className={btnCls} disabled={!state.future.length} onClick={() => dispatch({ type: "redo" })} title={tr("Refă (Ctrl+Y)")}>{tr("↷ Refă")}</button>
           <label className="flex items-center gap-1 font-medium">
-            Zoom
+            {tr("Zoom")}
             <select className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5" value={zoom === "fit" ? "fit" : String(zoom)} onChange={(e) => setZoom(e.target.value === "fit" ? "fit" : Number(e.target.value))}>
-              <option value="fit">Potrivit ecranului</option>
+              <option value="fit">{tr("Potrivit ecranului")}</option>
               {[0.5, 0.75, 1, 1.25, 1.5, 2].map((z) => <option key={z} value={z}>{Math.round(z * 100)}%</option>)}
             </select>
           </label>
           <label className="flex items-center gap-1 font-medium">
-            Lipire la grilă
+            {tr("Lipire la grilă")}
             <select className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5" value={snap} onChange={(e) => setSnap(Number(e.target.value))}>
-              <option value={0}>Liber</option>
-              <option value={0.5}>0,5 mm</option>
-              <option value={1}>1 mm</option>
-              <option value={5}>5 mm</option>
+              <option value={0}>{tr("Liber")}</option>
+              <option value={0.5}>{tr("0,5 mm")}</option>
+              <option value={1}>{tr("1 mm")}</option>
+              <option value={5}>{tr("5 mm")}</option>
             </select>
           </label>
           <label className="flex h-9 items-center gap-1.5 font-medium">
             <input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={grid} onChange={(e) => setGrid(e.target.checked)} />
-            Grilă 10 mm + margini
+            {tr("Grilă 10 mm + margini")}
           </label>
           <label className="flex items-center gap-1 font-medium">
-            Date de test
+            {tr("Date de test")}
             <select className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5" value={sampleKey} onChange={(e) => setSampleKey(e.target.value)}>
-              {Object.entries(SAMPLES).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
+              {Object.entries(SAMPLES).map(([k, s]) => <option key={k} value={k}>{tr(s.label)}</option>)}
             </select>
           </label>
           <span className="ml-auto text-ink-soft">
-            A4 landscape · {PAGE_W_MM}×{PAGE_H_MM} mm{scale ? ` · ${Math.round(scale * 100)}%` : ""}
+            {tr("A4 landscape · {PAGE_W_MM}×{PAGE_H_MM} mm{v1}", { PAGE_W_MM, PAGE_H_MM, v1: scale ? ` · ${Math.round(scale * 100)}%` : "" })}
           </span>
         </div>
 
@@ -639,12 +640,12 @@ export default function ApaCanalLayoutEditor({
         {/* Factura reală, așa cum o vede clientul / PDF-ul, cu șablonul SALVAT */}
         <div className="card flex flex-col gap-2 p-3 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            <b className="text-sm">Verifică pe o factură reală</b>
-            <span className="text-ink-soft">arată șablonul salvat în baza de date a acestui site — la fel ca portalul, linkul public și PDF-ul.</span>
+            <b className="text-sm">{tr("Verifică pe o factură reală")}</b>
+            <span className="text-ink-soft">{tr("arată șablonul salvat în baza de date a acestui site — la fel ca portalul, linkul public și PDF-ul.")}</span>
             {sampleToken ? (
-              <button type="button" className={`${btnCls} ml-auto`} onClick={() => setShowReal((v) => !v)}>{showReal ? "Ascunde" : "Arată factura reală"}</button>
+              <button type="button" className={`${btnCls} ml-auto`} onClick={() => setShowReal((v) => !v)}>{showReal ? "Ascunde" : tr("Arată factura reală")}</button>
             ) : (
-              <span className="ml-auto text-ink-soft">Nu există încă nicio factură Apă-Canal.</span>
+              <span className="ml-auto text-ink-soft">{tr("Nu există încă nicio factură Apă-Canal.")}</span>
             )}
           </div>
           {sampleToken && showReal && scale !== null && (
@@ -652,7 +653,7 @@ export default function ApaCanalLayoutEditor({
               <div style={{ width: PAGE_W_PX * (fitScale ?? 1), height: PAGE_H_PX * (fitScale ?? 1) }}>
                 <iframe
                   key={savedAt ?? "initial"}
-                  title="Factură reală"
+                  title={tr("Factură reală")}
                   src={`/invoice/public/${sampleToken}?v=${encodeURIComponent(savedAt ?? "0")}`}
                   style={{ width: PAGE_W_PX + 40, height: PAGE_H_PX + 120, border: 0, background: "white", transform: `scale(${fitScale ?? 1})`, transformOrigin: "top left" }}
                 />
@@ -661,8 +662,8 @@ export default function ApaCanalLayoutEditor({
           )}
           {sampleToken && (
             <div className="flex flex-wrap gap-2">
-              <a className={`${btnCls} inline-flex items-center`} href={`/invoice/public/${sampleToken}`} target="_blank" rel="noreferrer">Deschide factura în filă nouă ↗</a>
-              <a className={`${btnCls} inline-flex items-center`} href={`/api/invoice/public/${sampleToken}/pdf`} target="_blank" rel="noreferrer">Descarcă PDF-ul ↗</a>
+              <a className={`${btnCls} inline-flex items-center`} href={`/invoice/public/${sampleToken}`} target="_blank" rel="noreferrer">{tr("Deschide factura în filă nouă ↗")}</a>
+              <a className={`${btnCls} inline-flex items-center`} href={`/api/invoice/public/${sampleToken}/pdf`} target="_blank" rel="noreferrer">{tr("Descarcă PDF-ul ↗")}</a>
             </div>
           )}
         </div>
@@ -673,31 +674,31 @@ export default function ApaCanalLayoutEditor({
         <div className="card flex flex-col gap-2 p-4">
           <div className="flex gap-2">
             <button onClick={save} disabled={pending} className="tap h-11 flex-1 cursor-pointer rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
-              {pending ? "Se salvează…" : dirty ? "Salvează șablonul •" : "Salvează șablonul"}
+              {pending ? tr("Se salvează…") : dirty ? tr("Salvează șablonul •") : tr("Salvează șablonul")}
             </button>
-            <button onClick={discard} disabled={pending || !dirty} className={`${btnCls} h-11`} title="Revino la ultima versiune salvată">Renunță</button>
+            <button onClick={discard} disabled={pending || !dirty} className={`${btnCls} h-11`} title={tr("Revino la ultima versiune salvată")}>{tr("Renunță")}</button>
           </div>
           <p className={`text-[11px] ${dirty ? "font-semibold text-st-progress" : "text-ink-soft"}`}>
-            {dirty ? "Ai modificări nesalvate." : savedAt ? `Salvat și verificat la ${new Date(savedAt).toLocaleTimeString("ro-RO")}.` : "Nicio modificare nesalvată."}
+            {dirty ? tr("Ai modificări nesalvate.") : savedAt ? tr("Salvat și verificat la {time}.", { time: new Date(savedAt).toLocaleTimeString("ro-RO") }) : tr("Nicio modificare nesalvată.")}
           </p>
           <p className="text-[11px] text-ink-soft">
-            Șablonul se salvează în baza de date a site-ului <b>{host ?? "curent"}</b> și se aplică pe facturile acestui site (portal, link public, PDF). Alt site (ex. Vercel față de serverul propriu) are propria bază de date și propriul șablon.
+            {tr("Șablonul se salvează în baza de date a site-ului")} <b>{host ?? "curent"}</b> {tr("și se aplică pe facturile acestui site (portal, link public, PDF). Alt site (ex. Vercel față de serverul propriu) are propria bază de date și propriul șablon.")}
           </p>
           <div className="flex flex-wrap gap-2">
-            <button onClick={resetAll} disabled={pending} className={btnCls}>Resetează tot la standard</button>
-            <button onClick={resetFonts} disabled={pending} className={btnCls} title="Elimină mărimile de font modificate; textul revine la mărimea standard">Resetează fonturile</button>
-            <button onClick={removeTemplate} disabled={pending} className={`${btnCls} text-st-cancelled`}>Șterge șablonul salvat</button>
+            <button onClick={resetAll} disabled={pending} className={btnCls}>{tr("Resetează tot la standard")}</button>
+            <button onClick={resetFonts} disabled={pending} className={btnCls} title={tr("Elimină mărimile de font modificate; textul revine la mărimea standard")}>{tr("Resetează fonturile")}</button>
+            <button onClick={removeTemplate} disabled={pending} className={`${btnCls} text-st-cancelled`}>{tr("Șterge șablonul salvat")}</button>
           </div>
         </div>
 
         {/* Element ales */}
         <div className="card flex flex-col gap-3 p-4">
-          <h3 className="text-sm font-bold">Element ales</h3>
+          <h3 className="text-sm font-bold">{tr("Element ales")}</h3>
           <p className="-mt-2 text-xs text-ink-soft">
-            Apasă pe un element din pânză sau alege-l aici. Săgeți = 0,5 mm (Shift 5 mm, Alt 0,1 mm).
+            {tr("Apasă pe un element din pânză sau alege-l aici. Săgeți = 0,5 mm (Shift 5 mm, Alt 0,1 mm).")}
           </p>
           <select className={inputCls} value={selected} onChange={(e) => setSelected(e.target.value as ApaCanalElementKey)}>
-            {ALL_ELEMENT_KEYS.map((key) => <option key={key} value={key}>{APA_CANAL_ELEMENT_LABELS[key]}</option>)}
+            {ALL_ELEMENT_KEYS.map((key) => <option key={key} value={key}>{tr(APA_CANAL_ELEMENT_LABELS[key])}</option>)}
           </select>
 
           <div className="grid grid-cols-2 gap-2">
@@ -710,31 +711,30 @@ export default function ApaCanalLayoutEditor({
               ] as const
             ).map(([label, field]) => (
               <div key={field}>
-                <label className={labelCls}>{label}</label>
+                <label className={labelCls}>{tr(label)}</label>
                 <NumField className={inputCls} value={sel[field]} onCommit={(n) => n !== undefined && setBox(selected, { [field]: n }, field)} />
               </div>
             ))}
           </div>
           <p className="-mt-1 text-[11px] text-ink-soft">
-            Limite: pagina {PAGE_W_MM}×{PAGE_H_MM} mm · minim {minSizeMm(selected).w}×{minSizeMm(selected).h} mm. Valorile se corectează automat.
-          </p>
+            {tr("Limite: pagina {PAGE_W_MM}×{PAGE_H_MM} mm · minim {w}×{h} mm. Valorile se corectează automat.", { PAGE_W_MM, PAGE_H_MM, w: minSizeMm(selected).w, h: minSizeMm(selected).h })}</p>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            <button type="button" className={miniBtn} title="Stânga" onClick={() => setBox(selected, { xMm: sel.xMm - 0.5 }, "nx")}>◀</button>
-            <button type="button" className={miniBtn} title="Sus" onClick={() => setBox(selected, { yMm: sel.yMm - 0.5 }, "ny")}>▲</button>
-            <button type="button" className={miniBtn} title="Jos" onClick={() => setBox(selected, { yMm: sel.yMm + 0.5 }, "ny")}>▼</button>
-            <button type="button" className={miniBtn} title="Dreapta" onClick={() => setBox(selected, { xMm: sel.xMm + 0.5 }, "nx")}>▶</button>
+            <button type="button" className={miniBtn} title={tr("Stânga")} onClick={() => setBox(selected, { xMm: sel.xMm - 0.5 }, "nx")}>◀</button>
+            <button type="button" className={miniBtn} title={tr("Sus")} onClick={() => setBox(selected, { yMm: sel.yMm - 0.5 }, "ny")}>▲</button>
+            <button type="button" className={miniBtn} title={tr("Jos")} onClick={() => setBox(selected, { yMm: sel.yMm + 0.5 }, "ny")}>▼</button>
+            <button type="button" className={miniBtn} title={tr("Dreapta")} onClick={() => setBox(selected, { xMm: sel.xMm + 0.5 }, "nx")}>▶</button>
             <span className="mx-1 h-6 w-px bg-[var(--color-line)]" />
-            <button type="button" className={`${miniBtn} text-[11px]`} title="Centrat pe lățimea paginii" onClick={() => setBox(selected, { xMm: (PAGE_W_MM - sel.widthMm) / 2 }, "al")}>↔ centru</button>
-            <button type="button" className={`${miniBtn} text-[11px]`} title="La marginea din stânga (5 mm)" onClick={() => setBox(selected, { xMm: 5 }, "al")}>⇤ 5mm</button>
-            <button type="button" className={`${miniBtn} text-[11px]`} title="La marginea de sus (5 mm)" onClick={() => setBox(selected, { yMm: 5 }, "al")}>⇥ sus</button>
+            <button type="button" className={`${miniBtn} text-[11px]`} title={tr("Centrat pe lățimea paginii")} onClick={() => setBox(selected, { xMm: (PAGE_W_MM - sel.widthMm) / 2 }, "al")}>{tr("↔ centru")}</button>
+            <button type="button" className={`${miniBtn} text-[11px]`} title={tr("La marginea din stânga (5 mm)")} onClick={() => setBox(selected, { xMm: 5 }, "al")}>{tr("⇤ 5mm")}</button>
+            <button type="button" className={`${miniBtn} text-[11px]`} title={tr("La marginea de sus (5 mm)")} onClick={() => setBox(selected, { yMm: 5 }, "al")}>{tr("⇥ sus")}</button>
           </div>
 
           {textKey && (
             <>
               <div className="flex items-end gap-3 border-t border-[var(--color-line)] pt-3">
                 <div className="flex-1">
-                  <label className={labelCls}>Mărime font (mm){defaultFont ? ` — implicit ${defaultFont}` : ""}</label>
+                  <label className={labelCls}>{tr("Mărime font (mm){v1}", { v1: defaultFont ? ` — implicit ${defaultFont}` : "" })}</label>
                   <NumField
                     className={inputCls}
                     value={selOv?.fontSizeMm}
@@ -744,46 +744,46 @@ export default function ApaCanalLayoutEditor({
                 </div>
                 <label className="flex h-9 items-center gap-1.5 text-xs font-medium">
                   <input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!selOv?.bold} onChange={(e) => setField(selected, { bold: e.target.checked || undefined }, "bold")} />
-                  Bold
+                  {tr("Bold")}
                 </label>
               </div>
 
               <div>
-                <label className={labelCls}>Text personalizat (înlocuiește conținutul)</label>
+                <label className={labelCls}>{tr("Text personalizat (înlocuiește conținutul)")}</label>
                 <textarea
                   ref={textRef}
                   className={`${inputCls} h-28 py-2 font-mono text-xs`}
                   value={selOv?.textOverride ?? ""}
                   maxLength={3000}
-                  placeholder="Lasă gol pentru conținutul normal al facturii"
+                  placeholder={tr("Lasă gol pentru conținutul normal al facturii")}
                   onChange={(e) => setField(selected, { textOverride: e.target.value === "" ? undefined : e.target.value }, "text")}
                 />
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {TEXT_TEMPLATES[selected] && (
                     <button type="button" className={`${btnCls} h-7 px-2 text-[11px]`} onClick={() => setField(selected, { textOverride: TEXT_TEMPLATES[selected] }, "text")}>
-                      Pornește de la textul standard, cu variabile
+                      {tr("Pornește de la textul standard, cu variabile")}
                     </button>
                   )}
                   {selOv?.textOverride && (
-                    <button type="button" className={`${btnCls} h-7 px-2 text-[11px]`} onClick={() => setField(selected, { textOverride: undefined }, "text")}>Revino la conținutul normal</button>
+                    <button type="button" className={`${btnCls} h-7 px-2 text-[11px]`} onClick={() => setField(selected, { textOverride: undefined }, "text")}>{tr("Revino la conținutul normal")}</button>
                   )}
                 </div>
                 <p className="mt-1 text-[11px] text-ink-soft">
-                  Scrie variabile între acolade, ex. <code>{"{cont}"}</code> — fiecare factură își pune propriile valori. Lista completă e mai jos.
+                  {tr("Scrie variabile între acolade, ex.")} <code>{tr("{cont}")}</code> {tr("— fiecare factură își pune propriile valori. Lista completă e mai jos.")}
                 </p>
               </div>
             </>
           )}
 
-          <button onClick={() => resetOne(selected)} className={btnCls}>Resetează doar acest element</button>
+          <button onClick={() => resetOne(selected)} className={btnCls}>{tr("Resetează doar acest element")}</button>
         </div>
 
         {/* Toate elementele */}
         <div className="card flex flex-col gap-2 p-4">
-          <h3 className="text-sm font-bold">Toate elementele</h3>
-          <p className="-mt-1 text-xs text-ink-soft">Valorile în mm: X, Y, lățime, înălțime. Editează direct aici.</p>
+          <h3 className="text-sm font-bold">{tr("Toate elementele")}</h3>
+          <p className="-mt-1 text-xs text-ink-soft">{tr("Valorile în mm: X, Y, lățime, înălțime. Editează direct aici.")}</p>
           <div className="grid grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))] items-center gap-x-1 gap-y-1 text-[10px] font-semibold text-ink-soft">
-            <span>Element</span><span className="text-center">X</span><span className="text-center">Y</span><span className="text-center">Lăț.</span><span className="text-center">Înăl.</span>
+            <span>{tr("Element")}</span><span className="text-center">X</span><span className="text-center">Y</span><span className="text-center">{tr("Lăț.")}</span><span className="text-center">{tr("Înăl.")}</span>
           </div>
           <div className="flex max-h-96 flex-col gap-1 overflow-y-auto pr-1">
             {boxes.map(({ key, box }) => (
@@ -792,7 +792,7 @@ export default function ApaCanalLayoutEditor({
                 onClick={() => setSelected(key)}
                 className={`grid cursor-pointer grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))] items-center gap-x-1 rounded-md px-1 py-0.5 ${selected === key ? "bg-brand/10 ring-1 ring-brand" : "hover:bg-[var(--color-surface-2)]"}`}
               >
-                <span className="truncate text-[11px] font-medium" title={APA_CANAL_ELEMENT_LABELS[key]}>{APA_CANAL_ELEMENT_LABELS[key]}</span>
+                <span className="truncate text-[11px] font-medium" title={tr(APA_CANAL_ELEMENT_LABELS[key])}>{tr(APA_CANAL_ELEMENT_LABELS[key])}</span>
                 {(["xMm", "yMm", "widthMm", "heightMm"] as const).map((f) => (
                   <NumField key={f} className={cellCls} value={box[f]} onCommit={(n) => n !== undefined && setBox(key, { [f]: n }, f)} />
                 ))}
@@ -803,14 +803,14 @@ export default function ApaCanalLayoutEditor({
 
         {/* Variabile */}
         <details className="card p-4" open>
-          <summary className="cursor-pointer text-sm font-bold">Variabile ({APA_CANAL_VARIABLES.length})</summary>
+          <summary className="cursor-pointer text-sm font-bold">{tr("Variabile ({length})", { length: APA_CANAL_VARIABLES.length })}</summary>
           <p className="mt-1 text-xs text-ink-soft">
-            Apasă pe una ca s-o inserezi în „Text personalizat” al elementului ales. Valorile arătate sunt din datele de test alese.
+            {tr("Apasă pe una ca s-o inserezi în „Text personalizat” al elementului ales. Valorile arătate sunt din datele de test alese.")}
           </p>
           <div className="mt-2 flex max-h-[28rem] flex-col gap-3 overflow-y-auto pr-1">
             {groups.map(([group, list]) => (
               <div key={group}>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{group}</p>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{tr(group)}</p>
                 <div className="flex flex-col gap-0.5">
                   {list.map((v) => (
                     <button
@@ -818,11 +818,11 @@ export default function ApaCanalLayoutEditor({
                       type="button"
                       onClick={() => insertVariable(v.key)}
                       className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-1.5 py-1 text-left hover:bg-brand-soft"
-                      title={`Inserează {${v.key}}`}
+                      title={tr("Inserează {v}", { v: `{${v.key}}` })}
                     >
                       <code className="rounded bg-[var(--color-surface-2)] px-1 text-[11px]">{`{${v.key}}`}</code>
                       <span className="min-w-0 text-[11px]">
-                        <span className="text-ink-soft">{v.label}: </span>
+                        <span className="text-ink-soft">{tr(v.label)}: </span>
                         <span className="break-words font-medium">{(vars[v.key] ?? "").slice(0, 60) || "—"}</span>
                       </span>
                     </button>
@@ -835,34 +835,34 @@ export default function ApaCanalLayoutEditor({
 
         {/* Verificări */}
         <div className="card flex flex-col gap-1 p-4 text-xs">
-          <h3 className="text-sm font-bold">Verificări</h3>
+          <h3 className="text-sm font-bold">{tr("Verificări")}</h3>
           {overlaps.length === 0 ? (
-            <p className="text-st-done">✓ Nicio suprapunere între elemente. Toate sunt în pagină.</p>
+            <p className="text-st-done">{tr("✓ Nicio suprapunere între elemente. Toate sunt în pagină.")}</p>
           ) : (
             <>
-              <p className="text-st-progress">⚠ Elemente care se suprapun (verifică dacă e intenționat):</p>
+              <p className="text-st-progress">{tr("⚠ Elemente care se suprapun (verifică dacă e intenționat):")}</p>
               <ul className="list-disc pl-5 text-ink-soft">
                 {overlaps.slice(0, 8).map((o) => <li key={o}>{o}</li>)}
-                {overlaps.length > 8 && <li>… și încă {overlaps.length - 8}</li>}
+                {overlaps.length > 8 && <li>{tr("… și încă {v1}", { v1: overlaps.length - 8 })}</li>}
               </ul>
             </>
           )}
           {oddFonts.length > 0 && (
             <p className="text-st-progress">
-              ⚠ Font mult diferit de cel standard: {oddFonts.map((k) => APA_CANAL_ELEMENT_LABELS[k]).join(", ")}. Folosește „Resetează fonturile”.
+              {tr("⚠ Font mult diferit de cel standard:")} {oddFonts.map((k) => tr(APA_CANAL_ELEMENT_LABELS[k])).join(", ")}{tr(". Folosește „Resetează fonturile”.")}
             </p>
           )}
           <p className="mt-1 text-ink-soft">
-            Dacă o factură are mai multe servicii decât cele 2 standard, elementele de sub tabel coboară automat, fără să iasă din pagină.
+            {tr("Dacă o factură are mai multe servicii decât cele 2 standard, elementele de sub tabel coboară automat, fără să iasă din pagină.")}
           </p>
         </div>
 
         {/* Fotografii */}
         <div className="card flex flex-col gap-3 p-4">
-          <h3 className="text-sm font-bold">Fotografii</h3>
-          <p className="-mt-2 text-xs text-ink-soft">Adaugă o imagine liberă (max {MAX_CUSTOM_IMAGES}), apoi trage/redimensionează pe pânză sau scrie valorile.</p>
+          <h3 className="text-sm font-bold">{tr("Fotografii")}</h3>
+          <p className="-mt-2 text-xs text-ink-soft">{tr("Adaugă o imagine liberă (max {MAX_CUSTOM_IMAGES}), apoi trage/redimensionează pe pânză sau scrie valorile.", { MAX_CUSTOM_IMAGES })}</p>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onPickPhoto} />
-          <button onClick={() => fileInputRef.current?.click()} className={btnCls}>+ Adaugă fotografie</button>
+          <button onClick={() => fileInputRef.current?.click()} className={btnCls}>{tr("+ Adaugă fotografie")}</button>
           {photoWarn && <p className="text-xs text-st-cancelled">{photoWarn}</p>}
           {photos.map((img) => (
             <div key={img.id} className="flex flex-col gap-1 border-t border-[var(--color-line)] pt-2">
@@ -871,12 +871,12 @@ export default function ApaCanalLayoutEditor({
                 <img src={img.dataUrl} alt="" className="size-10 shrink-0 rounded-lg border border-[var(--color-line)] object-cover" />
                 <div className="grid flex-1 grid-cols-4 gap-1">
                   {(["xMm", "yMm", "widthMm", "heightMm"] as const).map((f) => (
-                    <NumField key={f} className={cellCls} title={{ xMm: "X (mm)", yMm: "Y (mm)", widthMm: "Lățime (mm)", heightMm: "Înălțime (mm)" }[f]} value={img[f]} onCommit={(n) => n !== undefined && patchCustomImage(img.id, { [f]: n }, f)} />
+                    <NumField key={f} className={cellCls} title={{ xMm: "X (mm)", yMm: "Y (mm)", widthMm: tr("Lățime (mm)"), heightMm: tr("Înălțime (mm)") }[f]} value={img[f]} onCommit={(n) => n !== undefined && patchCustomImage(img.id, { [f]: n }, f)} />
                   ))}
                 </div>
-                <button onClick={() => deleteCustomImage(img.id)} className="tap h-8 shrink-0 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-xs text-st-cancelled hover:bg-[var(--color-surface-2)]">Șterge</button>
+                <button onClick={() => deleteCustomImage(img.id)} className="tap h-8 shrink-0 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-xs text-st-cancelled hover:bg-[var(--color-surface-2)]">{tr("Șterge")}</button>
               </div>
-              <p className="text-[10px] text-ink-soft">X · Y · Lățime · Înălțime (mm)</p>
+              <p className="text-[10px] text-ink-soft">{tr("X · Y · Lățime · Înălțime (mm)")}</p>
             </div>
           ))}
         </div>

@@ -100,7 +100,7 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
                       <td className={tdNum}>{nr(r.penalitati, r.currency)}</td>
                       <td className={`${tdNum} font-semibold`}>{nr(r.grandTotal, r.currency)}</td>
                       <td className={td}>
-                        <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
+                        <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{t(st.label)}</span>
                       </td>
                     </tr>
                   );
@@ -135,7 +135,7 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
                   subtitle={
                     <>
                       <span>{r.number}</span>
-                      <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{st.label}</span>
+                      <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{t(st.label)}</span>
                     </>
                   }
                   trailing={<span className="font-semibold tabular-nums">{nr(r.grandTotal, r.currency)}</span>}

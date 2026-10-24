@@ -61,9 +61,9 @@ export default async function TelegramPage() {
           <h1 className="text-lg font-bold">{t("Telegram Bot")}</h1>
           <p className="text-sm text-ink-soft">
             {account
-              ? `Conectat${account.firstName ? ` ca ${account.firstName}` : ""} · din ${formatDate(account.linkedAt, tz)}`
+              ? account.firstName ? t("Conectat ca {name} · din {date}", { name: account.firstName, date: formatDate(account.linkedAt, tz) }) : t("Conectat · din {date}", { date: formatDate(account.linkedAt, tz) })
               : telegramChatId
-                ? "Conectat"
+                ? t("Conectat")
                 : enabled
                   ? "Neconectat"
                   : "Bot neconfigurat"}

@@ -87,7 +87,7 @@ export default function TaskStatusChanger({
               isActive ? "scale-105 shadow-sm" : "opacity-70",
             ].join(" ")}
           >
-            {s.label}
+            {t(s.label)}
           </button>
         );
       })}

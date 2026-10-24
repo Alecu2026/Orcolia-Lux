@@ -4,6 +4,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useTransition } from "react";
 import { useUrlFilters } from "@/app/hooks/useUrlFilters";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 
@@ -19,6 +20,7 @@ export default function AppointmentsControls({
 }: {
   categories?: Opt[];
 }) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -70,7 +72,7 @@ export default function AppointmentsControls({
               view === v.key ? "bg-brand text-white" : "card text-ink-soft"
             }`}
           >
-            {v.label}
+            {t(v.label)}
           </button>
         ))}
       </div>
@@ -86,7 +88,7 @@ export default function AppointmentsControls({
         <select value={status} onChange={(e) => patch({ status: e.target.value })} className={fldCls(status)}>
           <option value="">{m.appts.filterStatusAll}</option>
           {STATUSES.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
+            <option key={s.value} value={s.value}>{t(s.label)}</option>
           ))}
         </select>
         {categories.length > 0 && (

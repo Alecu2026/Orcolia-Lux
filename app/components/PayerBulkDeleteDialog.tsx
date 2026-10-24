@@ -148,7 +148,7 @@ export default function PayerBulkDeleteDialog({
                 {totals.missing > 0 && <li>{t("{n} nu mai existau", { n: nf(totals.missing) })}</li>}
               </ul>
             )}
-            {error && <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-xs text-st-cancelled">{error}</p>}
+            {error && <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-xs text-st-cancelled">{t(error)}</p>}
             <div className="flex justify-end gap-2">
               {running ? (
                 <button type="button" onClick={() => (stop.current = true)} className="tap h-9 cursor-pointer rounded-lg border border-[var(--color-line)] px-4 text-sm hover:bg-[var(--color-surface-2)]">

@@ -32,7 +32,7 @@ export default async function PortalLoginPage({
         <PortalLoginForm />
 
         <p className="mt-5 text-center text-xs text-ink-soft">
-          Nu ai cont?{" "}
+          {t("Nu ai cont?")}{" "}
           <Link href="/portal/register" className="text-brand hover:underline">
             {t("Activează-l cu contul personal")}
           </Link>

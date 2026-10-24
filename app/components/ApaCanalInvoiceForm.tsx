@@ -250,7 +250,7 @@ export default function ApaCanalInvoiceForm({
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className={label}>Cont personal{prefilled?.contPersonal && <span className="font-normal text-brand"> {t("· din fișa plătitorului")}</span>}</label>
+              <label className={label}>{t("Cont personal")}{prefilled?.contPersonal && <span className="font-normal text-brand"> {t("· din fișa plătitorului")}</span>}</label>
               <input value={contPersonal} onChange={(e) => setContPersonal(e.target.value)} placeholder="900616" className={input} />
             </div>
             <div>
@@ -260,7 +260,7 @@ export default function ApaCanalInvoiceForm({
           </div>
 
           <div>
-            <label className={label}>Adresa locului de consum{prefilled?.consumAddress && <span className="font-normal text-brand"> {t("· din fișa plătitorului")}</span>}</label>
+            <label className={label}>{t("Adresa locului de consum")}{prefilled?.consumAddress && <span className="font-normal text-brand"> {t("· din fișa plătitorului")}</span>}</label>
             <input value={consumAddress} onChange={(e) => setConsumAddress(e.target.value)} placeholder={t("or.Cahul, STROESCU, 31")} className={input} />
           </div>
         </div>
@@ -374,23 +374,23 @@ export default function ApaCanalInvoiceForm({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {error && <p className="text-sm text-st-cancelled">{error}</p>}
+        {error && <p className="text-sm text-st-cancelled">{t(error)}</p>}
         {lockedStatus && (
           <p className="text-xs text-ink-soft">
-            {t("Statusul rămâne „{label}” — salvarea nu îl schimbă.", { label: INVOICE_STATUS[lockedStatus].label })}</p>
+            {t("Statusul rămâne „{label}” — salvarea nu îl schimbă.", { label: t(INVOICE_STATUS[lockedStatus].label) })}</p>
         )}
         <div className="ml-auto flex gap-2">
           {lockedStatus ? (
             <button onClick={() => submit(lockedStatus)} disabled={saving} className="tap h-9 rounded-lg bg-brand px-6 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
-              {saving ? "Se salvează…" : "Salvează"}
+              {saving ? t("Se salvează…") : t("Salvează")}
             </button>
           ) : (
             <>
               <button onClick={() => submit("DRAFT")} disabled={saving} className="tap h-9 rounded-lg border border-[var(--color-line)] px-4 text-sm font-semibold hover:bg-[var(--color-surface-2)] disabled:opacity-60">
-                {saving ? "Se salvează…" : "Salvează ciornă"}
+                {saving ? t("Se salvează…") : t("Salvează ciornă")}
               </button>
               <button onClick={() => submit("SENT")} disabled={saving} className="tap h-9 rounded-lg bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
-                {saving ? "Se salvează…" : "Generează factura"}
+                {saving ? t("Se salvează…") : t("Generează factura")}
               </button>
             </>
           )}

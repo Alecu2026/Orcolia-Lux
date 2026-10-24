@@ -506,7 +506,7 @@ export default function UserDialog({
         </div>
 
         <div className="flex flex-col gap-2 border-t border-[var(--color-line)] bg-[var(--color-surface)] px-5 py-3">
-          {error && <p role="alert" className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{error}</p>}
+          {error && <p role="alert" className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{t(error)}</p>}
           <div className="flex gap-2">
             <button type="button" onClick={requestClose} disabled={pending} className="tap h-11 cursor-pointer rounded-xl border border-[var(--color-line)] px-5 text-sm font-medium hover:bg-[var(--color-surface-2)] disabled:opacity-60">
               {m.common.cancel}

@@ -96,7 +96,7 @@ export default async function EditInvoicePage({
           <Link href="/invoices" className="inline-flex items-center gap-1 text-xs text-ink-soft hover:text-ink">
             <IconChevronLeft className="size-3.5" /> {t("Facturi")}
           </Link>
-          <h1 className="text-lg font-bold">Editează {invoice.number} <span className="text-sm font-normal text-ink-soft">{t("(Apă-Canal)")}</span></h1>
+          <h1 className="text-lg font-bold">{t("Editează {number}", { number: invoice.number })} <span className="text-sm font-normal text-ink-soft">{t("(Apă-Canal)")}</span></h1>
         </div>
         <ApaCanalInvoiceForm
           clients={clients}

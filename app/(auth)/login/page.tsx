@@ -35,7 +35,7 @@ export default async function LoginPage({
           <div>
             <h1 className="text-lg font-bold leading-5">{t("Programări")}</h1>
             <p className="text-xs text-ink-soft">
-              {mode === "login" ? "Autentificare" : "Configurare inițială"}
+              {mode === "login" ? t("Autentificare") : t("Configurare inițială")}
             </p>
           </div>
         </div>

@@ -113,7 +113,7 @@ export default async function NewInvoicePage({
     <div className="w-full">
       {backLink}
       <h1 className="mb-4 text-xl font-bold">
-        {kind === "apa-canal" ? "Factură Apă-Canal — nouă" : "Factură standard — nouă"}
+        {kind === "apa-canal" ? t("Factură Apă-Canal — nouă") : t("Factură standard — nouă")}
       </h1>
       {kind === "apa-canal" ? (
         <ApaCanalInvoiceForm

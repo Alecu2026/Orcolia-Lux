@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 export default function CreateMenu() {
+  const t = useT();
   const router = useRouter();
   const m = useMessages();
   const [open, setOpen] = useState(false);
@@ -41,7 +43,7 @@ export default function CreateMenu() {
               onClick={() => go(it.href)}
               className="block w-full px-4 py-3 text-left text-sm font-medium hover:bg-[var(--color-surface-2)]"
             >
-              {it.label}
+              {t(it.label)}
             </button>
           ))}
         </div>

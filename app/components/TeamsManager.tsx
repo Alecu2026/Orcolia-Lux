@@ -11,7 +11,7 @@ import {
 import { useToast } from "./toast";
 import { IconX, IconPencil, IconTrash } from "./icons";
 import CardActionsMenu from "./CardActionsMenu";
-import { useMessages } from "@/lib/i18n/context";
+import { useMessages, useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 type Team = {
@@ -116,6 +116,7 @@ export default function TeamsManager({ teams, users }: { teams: Team[]; users: O
 function TeamDialog({ team, users, onClose }: { team: Team | null; users: Opt[]; onClose: () => void }) {
   const router = useRouter();
   const m = useMessages();
+  const t = useT();
   const [, startTransition] = useTransition();
   const action = team ? updateTeam : createTeam;
   const [state, formAction, pending] = useActionState<TeamState, FormData>(action, undefined);
@@ -160,7 +161,7 @@ function TeamDialog({ team, users, onClose }: { team: Team | null; users: Opt[];
               </div>
             )}
           </div>
-          {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+          {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
           <button type="submit" disabled={pending} className="tap h-12 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
             {pending ? m.common.saving : m.common.save}
           </button>

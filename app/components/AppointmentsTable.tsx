@@ -233,7 +233,7 @@ export default function AppointmentsTable({
             <div className="mb-2 flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h2 className="truncate text-lg font-bold">{current.clientName}</h2>
-                <p className="text-xs capitalize text-ink-soft">{humanDay(current.dateKey, tz)} · {current.time}–{current.endTime}</p>
+                <p className="text-xs capitalize text-ink-soft">{humanDay(current.dateKey, tz, dateTag(locale))} · {current.time}–{current.endTime}</p>
               </div>
               <button onClick={() => setDetail(null)} className="tap grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={m.common.close}>
                 <IconX className="size-4" />

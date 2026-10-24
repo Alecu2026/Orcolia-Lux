@@ -141,10 +141,11 @@ const FilterSelect = memo(function FilterSelect({
   value: string;
   onPick: (key: string, value: string) => void;
 }) {
+  const t = useT();
   return (
-    <select value={value} onChange={(e) => onPick(fkey, e.target.value)} className={fld(value)} aria-label={label}>
-      <option value="">{label}</option>
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    <select value={value} onChange={(e) => onPick(fkey, e.target.value)} className={fld(value)} aria-label={t(label)}>
+      <option value="">{t(label)}</option>
+      {options.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
     </select>
   );
 });
@@ -448,14 +449,14 @@ export default function DataTable<T extends { id: string }>({
           f.kind === "select" ? (
             <FilterSelect key={f.key} fkey={f.key} label={f.label} options={f.options} value={values[f.key] ?? ""} onPick={pickFilter} />
           ) : f.kind === "date" ? (
-            <input key={f.key} type="date" value={values[f.key] ?? ""} onChange={(e) => { setValue(f.key, e.target.value); setDraft((d) => ({ ...d, [f.key]: e.target.value })); }} title={f.label} aria-label={f.label} className={txtFld(values[f.key] ?? "")} />
+            <input key={f.key} type="date" value={values[f.key] ?? ""} onChange={(e) => { setValue(f.key, e.target.value); setDraft((d) => ({ ...d, [f.key]: e.target.value })); }} title={t(f.label)} aria-label={t(f.label)} className={txtFld(values[f.key] ?? "")} />
           ) : (
             <input
               key={f.key}
               value={draft[f.key] ?? ""}
               onChange={(e) => onText(f.key, e.target.value)}
-              placeholder={f.placeholder ?? f.label}
-              aria-label={f.label}
+              placeholder={t(f.placeholder ?? f.label)}
+              aria-label={t(f.label)}
               style={f.w ? { width: f.w } : undefined}
               className={`${txtFld(draft[f.key] ?? "")} ${f.grow ? "min-w-48 flex-1" : f.w ? "" : "w-40"}`}
             />
@@ -484,7 +485,7 @@ export default function DataTable<T extends { id: string }>({
               aria-label={t("Sortare")}
             >
               {!sortableCols.some((c) => c.key === sortKey) && <option value="">—</option>}
-              {sortableCols.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+              {sortableCols.map((c) => <option key={c.key} value={c.key}>{t(c.label)}</option>)}
             </select>
             <button type="button" onClick={() => { setSortDir((d) => (d === "asc" ? "desc" : "asc")); setPage(1); }} className="tap h-7 w-7 cursor-pointer rounded-lg border border-[var(--color-line)] text-[11px] hover:bg-[var(--color-surface-2)]" aria-label={t("Direcția sortării")} title={sortDir === "asc" ? t("Crescător") : t("Descrescător")}>
               {sortDir === "asc" ? "▲" : "▼"}
@@ -517,7 +518,7 @@ export default function DataTable<T extends { id: string }>({
                 {orderedLabeled.map((c, i) => (
                   <li key={c.key} className="flex items-center gap-1.5 rounded px-1 py-0.5 text-[12px] hover:bg-[var(--color-surface-2)]">
                     <input type="checkbox" checked={isVisible(c)} onChange={(e) => setVis((v) => ({ ...v, [c.key]: e.target.checked }))} className="size-3.5 cursor-pointer accent-[var(--color-brand)]" />
-                    <span className="min-w-0 flex-1 truncate">{c.label}{c.defaultHidden ? <span className="ml-1 text-[10px] text-ink-soft">{t("(în plus)")}</span> : null}</span>
+                    <span className="min-w-0 flex-1 truncate">{t(c.label)}{c.defaultHidden ? <span className="ml-1 text-[10px] text-ink-soft">{t("(în plus)")}</span> : null}</span>
                     <button type="button" disabled={i === 0} onClick={() => stepCol(c.key, -1)} className="grid size-5 cursor-pointer place-items-center rounded text-[10px] hover:bg-brand-soft disabled:opacity-30" aria-label={t("Mai sus")}>▲</button>
                     <button type="button" disabled={i === orderedLabeled.length - 1} onClick={() => stepCol(c.key, 1)} className="grid size-5 cursor-pointer place-items-center rounded text-[10px] hover:bg-brand-soft disabled:opacity-30" aria-label={t("Mai jos")}>▼</button>
                   </li>
@@ -584,7 +585,7 @@ export default function DataTable<T extends { id: string }>({
               >
                 {rest.length > 0 && (
                   <dl>
-                    {rest.map((c) => <CompactField key={c.key} label={c.label}>{c.render(r)}</CompactField>)}
+                    {rest.map((c) => <CompactField key={c.key} label={t(c.label)}>{c.render(r)}</CompactField>)}
                   </dl>
                 )}
                 {(cardActions.length > 0 || onRowClick) && (
@@ -658,10 +659,10 @@ export default function DataTable<T extends { id: string }>({
                 >
                   {c.sort ? (
                     <button type="button" onClick={() => toggleSort(c.key)} className="inline-flex cursor-pointer items-center gap-1 font-semibold hover:text-brand">
-                      {c.label}
+                      {t(c.label)}
                       <span className="text-[10px] opacity-60">{sortKey === c.key ? (sortDir === "asc" ? "▲" : "▼") : "↕"}</span>
                     </button>
-                  ) : c.label}
+                  ) : t(c.label)}
                 </th>
               ))}
             </tr>

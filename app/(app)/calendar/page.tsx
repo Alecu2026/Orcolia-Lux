@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { getT } from "@/lib/i18n/server-t";
 import Link from "next/link";
 import { requirePermission } from "@/lib/dal";
 import { can, canAny, canUseAllScope } from "@/lib/permissions";
@@ -217,7 +218,8 @@ export default async function CalendarPage({
   );
 }
 
-function MonthView({ anchor, tz, items }: { anchor: string; tz: string; items: CalItem[] }) {
+async function MonthView({ anchor, tz, items }: { anchor: string; tz: string; items: CalItem[] }) {
+  const tr = await getT();
   const [y, m] = anchor.split("-").map(Number);
   const firstKey = `${y}-${String(m).padStart(2, "0")}-01`;
   const firstDow = (new Date(Date.UTC(y, m - 1, 1, 12)).getUTCDay() + 6) % 7;
@@ -264,13 +266,13 @@ function MonthView({ anchor, tz, items }: { anchor: string; tz: string; items: C
                       key={item.id}
                       className="size-1.5 rounded-full"
                       style={{ backgroundColor: item.color ?? "#8b5cf6" }}
-                      title={`${item.title} · Programare`}
+                      title={`${item.title} · ${tr("Programare")}`}
                     />
                   ) : (
                     <span
                       key={item.id}
                       className={`size-1.5 rounded-full ${TASK_DOT[item.status] ?? "bg-ink-soft"}`}
-                      title={`${item.title} · ${TASK_ST_RO[item.status]}`}
+                      title={`${item.title} · ${tr(TASK_ST_RO[item.status])}`}
                     />
                   )
                 )}
@@ -338,11 +340,12 @@ function WeekView({ weekKeys, tz, items }: { weekKeys: string[]; tz: string; ite
   );
 }
 
-function DayView({ anchor, tz, items }: { anchor: string; tz: string; items: CalItem[] }) {
+async function DayView({ anchor, tz, items }: { anchor: string; tz: string; items: CalItem[] }) {
+  const tr = await getT();
   if (items.length === 0) {
     return (
       <div className="card grid place-items-center p-10 text-center text-sm text-ink-soft">
-        Nicio intrare în această zi.
+        {tr("Nicio intrare în această zi.")}
       </div>
     );
   }
@@ -365,7 +368,7 @@ function DayView({ anchor, tz, items }: { anchor: string; tz: string; items: Cal
               {item.title}
             </span>
             <span className="shrink-0 rounded bg-[var(--color-surface-2)] px-1.5 py-0.5 text-[10px] text-ink-soft">
-              {TYPE_BADGE[item.kind]}
+              {tr(TYPE_BADGE[item.kind])}
             </span>
             {(item.assigneeName ?? item.clientName) && (
               <span className="hidden shrink-0 text-[11px] text-ink-soft sm:inline">

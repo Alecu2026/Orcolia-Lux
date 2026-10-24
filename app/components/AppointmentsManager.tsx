@@ -11,6 +11,8 @@ import { humanDay } from "@/lib/date";
 import { listAppointmentsAction } from "@/app/actions/appointments";
 import type { ApptVM, CategoryLite, QuickDefaults } from "./types";
 import { useMessages } from "@/lib/i18n/context";
+import { useT, useLocale } from "@/lib/i18n/context";
+import { dateTag } from "@/lib/i18n/t";
 
 const fldCls = (val: string) =>
   `h-9 min-w-0 max-w-full appearance-none sel-arrow rounded-lg border pl-2 pr-7 text-xs outline-none focus:border-brand ${
@@ -44,6 +46,8 @@ export default function AppointmentsManager({
   today: string;
   tz: string;
 }) {
+  const t = useT();
+  const locale = useLocale();
   const m = useMessages();
   const VIEWS = [
     { key: "azi", label: m.appts.viewToday },
@@ -129,7 +133,7 @@ export default function AppointmentsManager({
                   localView === v.key ? "bg-brand text-white" : "card text-ink-soft"
                 }`}
               >
-                {v.label}
+                {t(v.label)}
               </button>
             ))}
           </div>
@@ -143,7 +147,7 @@ export default function AppointmentsManager({
             <select value={localStatus} onChange={(e) => applyFilter({ status: e.target.value })} className={fldCls(localStatus)}>
               <option value="">{m.appts.filterStatusAll}</option>
               {STATUSES.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
+                <option key={s.value} value={s.value}>{t(s.label)}</option>
               ))}
             </select>
             {categories.length > 0 && (
@@ -198,7 +202,7 @@ export default function AppointmentsManager({
               <section key={day}>
                 <h3 className="mb-2 capitalize text-xs font-semibold uppercase tracking-wide text-ink-soft">
                   {day === today ? m.appts.todayPrefix : ""}
-                  {humanDay(day, tz)}
+                  {humanDay(day, tz, dateTag(locale))}
                 </h3>
                 <div className="flex flex-col gap-2.5">
                   {byDay.get(day)!.map((a) => (

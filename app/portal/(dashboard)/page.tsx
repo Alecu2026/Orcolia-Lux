@@ -80,7 +80,7 @@ export default async function PortalDashboardPage({
 
       {invoices.length === 0 ? (
         <div className="card p-6 text-center text-sm text-ink-soft">
-          {allInvoices.length === 0 ? "Nu ai încă nicio factură." : "Nicio factură cu acest status."}
+          {allInvoices.length === 0 ? t("Nu ai încă nicio factură.") : t("Nicio factură cu acest status.")}
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -95,14 +95,14 @@ export default async function PortalDashboardPage({
                 <div>
                   <p className="text-sm font-semibold">{inv.number}</p>
                   <p className="text-xs text-ink-soft">
-                    Emisă: {fmtDate(inv.issueDate)}
+                    {t("Emisă:")} {fmtDate(inv.issueDate)}
                     {inv.dueDate && <> {t("· Scadență:")} {fmtDate(inv.dueDate)}</>}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold tabular-nums">{money(inv.grandTotal, inv.currency)}</p>
                   <span className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>
-                    {st.label}
+                    {t(st.label)}
                   </span>
                 </div>
               </Link>

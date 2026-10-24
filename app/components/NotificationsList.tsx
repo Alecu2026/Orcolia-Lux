@@ -110,7 +110,7 @@ export default function NotificationsList({
             className="h-8 appearance-none rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] pl-2 pr-7 text-xs outline-none focus:border-brand sel-arrow"
           >
             {[10, 20, 50, 100].map((n) => (
-              <option key={n} value={n}>{n} / pag.</option>
+              <option key={n} value={n}>{n} / {t("pag.")}</option>
             ))}
           </select>
           <button

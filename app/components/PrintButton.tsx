@@ -11,7 +11,7 @@ export default function PrintButton({ token, origin }: { token: string; origin: 
     setDownloading(true);
     try {
       const res = await fetch(`/api/invoice/public/${token}/pdf`);
-      if (!res.ok) throw new Error("Eșec generare PDF");
+      if (!res.ok) throw new Error(t("Eșec generare PDF"));
       const blob = await res.blob();
       const match = res.headers.get("Content-Disposition")?.match(/filename="(.+)"/);
       const filename = match?.[1] ?? "factura.pdf";
@@ -36,7 +36,7 @@ export default function PrintButton({ token, origin }: { token: string; origin: 
       await navigator.clipboard.writeText(url);
       alert(t("Link copiat!"));
     } catch {
-      prompt("Copiază linkul:", url);
+      prompt(t("Copiază linkul:"), url);
     }
   }
 
@@ -47,7 +47,7 @@ export default function PrintButton({ token, origin }: { token: string; origin: 
         disabled={downloading}
         className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-700 disabled:opacity-60"
       >
-        {downloading ? "Se generează…" : "Descarcă PDF"}
+        {downloading ? t("Se generează…") : t("Descarcă PDF")}
       </button>
       <button
         onClick={() => window.print()}

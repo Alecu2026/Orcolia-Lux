@@ -29,7 +29,7 @@ export default function PortalNewTicketForm() {
       <input name="title" placeholder={t("Titlu (ex: Scurgere la contor)")} required className={input} />
       <textarea name="description" placeholder={t("Descriere (opțional)")} rows={3} className={input} />
 
-      {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+      {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
       {state?.ok && <p className="text-sm text-brand-strong">{t("Cerere trimisă cu succes.")}</p>}
 
       <button
@@ -37,7 +37,7 @@ export default function PortalNewTicketForm() {
         disabled={pending}
         className="tap h-11 self-start rounded-xl bg-brand px-5 font-semibold text-white hover:bg-brand-strong disabled:opacity-60"
       >
-        {pending ? "Se trimite…" : "Trimite cerere"}
+        {pending ? t("Se trimite…") : t("Trimite cerere")}
       </button>
     </form>
   );

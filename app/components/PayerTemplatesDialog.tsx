@@ -254,7 +254,7 @@ function TemplateForm({
         />
         <VoicePicker voice={d.voice} text={d.call} onChange={(voice) => setD({ ...d, voice })} compact />
       </div>
-      {err && <p className="text-sm text-st-cancelled">{err}</p>}
+      {err && <p className="text-sm text-st-cancelled">{tr(err)}</p>}
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancel} className="tap h-10 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]">
           {tr("Înapoi")}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconFileText, IconTicket } from "./icons";
+import { useT } from "@/lib/i18n/context";
 
 const TABS = [
   { href: "/portal", label: "Facturi", icon: IconFileText },
@@ -10,6 +11,7 @@ const TABS = [
 ];
 
 export default function PortalNav() {
+  const tr = useT();
   const pathname = usePathname();
 
   return (
@@ -26,7 +28,7 @@ export default function PortalNav() {
             }`}
           >
             <Icon className="size-4" />
-            <span className="hidden sm:inline">{t.label}</span>
+            <span className="hidden sm:inline">{tr(t.label)}</span>
           </Link>
         );
       })}

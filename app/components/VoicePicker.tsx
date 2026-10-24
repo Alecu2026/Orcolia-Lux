@@ -95,7 +95,7 @@ export default function VoicePicker({
 
   const supported = typeof window !== "undefined";
   const busy = phase !== "idle";
-  const label = phase === "download" ? `Se descarcă vocea… ${pct}%` : phase === "synth" ? "Se pregătește…" : phase === "playing" ? "■ Oprește" : "▶ Ascultă";
+  const label = phase === "download" ? t("Se descarcă vocea… {n}%", { n: pct }) : phase === "synth" ? t("Se pregătește…") : phase === "playing" ? t("■ Oprește") : t("▶ Ascultă");
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2">
@@ -106,7 +106,7 @@ export default function VoicePicker({
           className={`${compact ? "h-8" : "h-9"} cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-xs outline-none focus:border-brand`}
         >
           {NOTIFY_VOICES.map((x) => (
-            <option key={x.id} value={x.id}>{x.label}</option>
+            <option key={x.id} value={x.id}>{t(x.label)}</option>
           ))}
         </select>
         <button
@@ -123,7 +123,7 @@ export default function VoicePicker({
           <span className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--color-surface-2)]"><span className="block h-full bg-brand transition-all" style={{ width: `${pct}%` }} /></span>
         )}
       </div>
-      {error && <p className="rounded-lg bg-st-progress/10 px-2 py-1 text-[11px] text-st-progress">{error}</p>}
+      {error && <p className="rounded-lg bg-st-progress/10 px-2 py-1 text-[11px] text-st-progress">{t(error)}</p>}
     </div>
   );
 }

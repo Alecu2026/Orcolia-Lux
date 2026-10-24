@@ -90,7 +90,7 @@ export default function TicketStatusConfigEditor({
     }
     const remaining = configs.filter((c) => c.key !== key);
     const first = remaining[0];
-    const confirmMsg = `Ștergi statusul "${configs.find((c) => c.key === key)?.label ?? key}"?\nCererile cu acest status vor fi mutate la "${first.label}".`;
+    const confirmMsg = t("Ștergi statusul „{a}”?", { a: configs.find((c) => c.key === key)?.label ?? key }) + "\n" + t("Cererile cu acest status vor fi mutate la „{b}”.", { b: first.label });
     if (!confirm(confirmMsg)) return;
 
     setSaving(true);

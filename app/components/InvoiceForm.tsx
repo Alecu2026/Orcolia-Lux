@@ -302,7 +302,7 @@ export default function InvoiceForm({
               {m.invoices.tasksLabel}
               {taskIds.length > 0 && (
                 <span className="ml-2 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-semibold text-brand">
-                  {taskIds.length} selectat{taskIds.length !== 1 ? "e" : ""}
+                  {taskIds.length} {taskIds.length !== 1 ? tr("selectate") : tr("selectat")}
                 </span>
               )}
             </label>
@@ -390,7 +390,7 @@ export default function InvoiceForm({
         </div>
       </div>
 
-      {error && <p className="text-sm text-st-cancelled">{error}</p>}
+      {error && <p className="text-sm text-st-cancelled">{tr(error)}</p>}
 
       <div className="flex flex-wrap justify-end gap-2">
         {lockedStatus ? (

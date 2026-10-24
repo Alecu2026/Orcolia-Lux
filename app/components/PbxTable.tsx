@@ -102,10 +102,10 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
       render: (c) => (c.direction === "out" ? <span className="text-st-progress">{tr("↗ Efectuat")}</span> : c.direction === "in" ? <span className="text-st-confirmed">{tr("↘ Primit")}</span> : dash),
     },
     { key: "phone", label: "Număr", minW: 120, sort: (c) => c.phone, render: (c) => <span className="font-mono">{pretty(c.phone)}</span> },
-    { key: "client", label: "Client", minW: 160, maxW: 220, sort: (c) => c.clientName, render: (c) => (c.clientName ? <span title={c.clientName}>{c.clientName}</span> : <span className="text-ink-soft">necunoscut</span>) },
+    { key: "client", label: "Client", minW: 160, maxW: 220, sort: (c) => c.clientName, render: (c) => (c.clientName ? <span title={c.clientName}>{c.clientName}</span> : <span className="text-ink-soft">{tr("necunoscut")}</span>) },
     {
       key: "result", label: "Rezultat", minW: 100, sort: (c) => resultOf(c).label,
-      render: (c) => { const r = resultOf(c); return <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium leading-[14px] ${r.cls}`}>{r.label}</span>; },
+      render: (c) => { const r = resultOf(c); return <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium leading-[14px] ${r.cls}`}>{tr(r.label)}</span>; },
     },
     { key: "dur", label: "Durată", minW: 60, right: true, sort: (c) => c.durationSec, render: (c) => mmss(c.durationSec) },
     { key: "wait", label: "Așteptare", minW: 65, right: true, sort: (c) => c.waitSec, render: (c) => (c.waitSec != null ? `${c.waitSec}s` : dash) },
@@ -122,7 +122,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
             className={`cursor-pointer rounded px-1 font-semibold hover:bg-brand-soft ${playing?.id === c.id ? "bg-brand/15 text-brand" : "text-brand"}`}
             title={tr("Ascultă aici, în pagină")}
           >
-            {playing?.id === c.id ? "♪ se ascultă" : "▶ Ascultă"}
+            {playing?.id === c.id ? tr("♪ se ascultă") : tr("▶ Ascultă")}
           </button>
         ) : dash,
     },
@@ -185,10 +185,10 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
           onClick={() => { navigator.clipboard?.writeText(webhookUrl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {}); }}
           className="cursor-pointer text-brand hover:underline"
         >
-          {copied ? "Copiat!" : "Copiază"}
+          {copied ? "Copiat!" : tr("Copiază")}
         </button>
         <span className={tokenConfigured ? "text-st-done" : "font-semibold text-st-cancelled"}>
-          {tokenConfigured ? "● token configurat" : "● CRM_TOKEN nesetat — apelurile sunt respinse"}
+          {tokenConfigured ? "● token configurat" : tr("● CRM_TOKEN nesetat — apelurile sunt respinse")}
         </span>
       </div>
 
@@ -240,11 +240,11 @@ function RecordingAudio({ callId, autoPlay = false }: { callId: string; autoPlay
         onError={() => {
           // aflăm motivul de la ruta proxy (mesaj JSON), nu doar „eroare de redare"
           fetch(src, { headers: { Range: "bytes=0-0" } })
-            .then(async (r) => setError(r.ok || r.status === 206 ? "Formatul nu a putut fi redat în browser." : ((await r.json().catch(() => null))?.error ?? `Eroare ${r.status}`)))
+            .then(async (r) => setError(r.ok || r.status === 206 ? t("Formatul nu a putut fi redat în browser.") : ((await r.json().catch(() => null))?.error ?? t("Eroare {n}", { n: r.status }))))
             .catch(() => setError(t("Nu am putut încărca înregistrarea.")));
         }}
       />
-      {error && <p className="mt-1 text-[11px] text-st-cancelled">{error}</p>}
+      {error && <p className="mt-1 text-[11px] text-st-cancelled">{t(error)}</p>}
     </div>
   );
 }
@@ -268,8 +268,8 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
     const sp = new URLSearchParams({
       create: kind,
       ...(c.clientId ? { client: c.clientId } : {}),
-      title: `Apel de la ${c.clientName ?? pretty(c.phone)}`,
-      desc: `Apel ${c.direction === "out" ? "efectuat către" : "primit de la"} ${pretty(c.phone)} (${fmtDateTime(c.at)}).`,
+      title: tr("Apel de la {who}", { who: c.clientName ?? pretty(c.phone) }),
+      desc: `${c.direction === "out" ? tr("Apel efectuat către") : tr("Apel primit de la")} ${pretty(c.phone)} (${fmtDateTime(c.at)}).`,
     });
     return `/${kind === "ticket" ? "tickets" : "tasks"}?${sp.toString()}`;
   };
@@ -279,7 +279,7 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
     setSaving(true);
     const res = await savePbxCallNoteAction(c.callId, text).catch(() => null);
     setSaving(false);
-    if (res?.ok) { setSavedNote((s) => (s ? `${s}\n${res.note}` : res.note)); setNote(""); toast.success(c.clientId ? "Notă salvată (și pe fișa clientului)." : "Notă salvată."); router.refresh(); }
+    if (res?.ok) { setSavedNote((s) => (s ? `${s}\n${res.note}` : res.note)); setNote(""); toast.success(c.clientId ? tr("Notă salvată (și pe fișa clientului).") : tr("Notă salvată.")); router.refresh(); }
     else toast.error(res && !res.ok ? res.error : "Nu am putut salva nota.");
   }
   const actBtn = "tap inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-brand-soft";
@@ -322,7 +322,7 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
           <section className="mb-2.5 overflow-hidden rounded-lg border border-[var(--color-line)]">
             <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Datele clientului acum")}</h3>
             <div className="divide-y divide-[var(--color-line)] text-[13px]">
-              <Item label={ctx.isPayer ? "Plătitor" : "Client CRM"}>{ctx.account ? `cont ${ctx.account}` : "—"}</Item>
+              <Item label={ctx.isPayer ? tr("Plătitor") : tr("Client CRM")}>{ctx.account ? `cont ${ctx.account}` : "—"}</Item>
               {ctx.address && <Item label={tr("Adresă")}>{ctx.address}</Item>}
               {ctx.debt != null && <Item label={tr("De achitat")}><b className={ctx.debt > 0 ? "text-st-cancelled" : "text-st-done"}>{ctx.debt.toLocaleString("ro-RO", { minimumFractionDigits: 2 })} MDL</b></Item>}
               <Item label={tr("Cereri deschise")}>
@@ -347,7 +347,7 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
                 placeholder={tr("Cine a sunat, ce a cerut… Enter = salvează")}
                 className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-[12px] outline-none focus:border-brand"
               />
-              <button type="button" onClick={saveNote} disabled={saving || !note.trim()} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">{saving ? "…" : "Salvează"}</button>
+              <button type="button" onClick={saveNote} disabled={saving || !note.trim()} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">{saving ? "…" : tr("Salvează")}</button>
             </div>
             {c.clientId && <p className="mt-1 text-[10px] text-ink-soft">{tr("Nota se adaugă și pe fișa clientului.")}</p>}
           </div>
@@ -356,10 +356,10 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
         <section className="mb-2.5 overflow-hidden rounded-lg border border-[var(--color-line)]">
           <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Apel")}</h3>
           <div className="divide-y divide-[var(--color-line)] text-[13px]">
-            <Item label={tr("Rezultat")}><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${r.cls}`}>{r.label}</span></Item>
+            <Item label={tr("Rezultat")}><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${r.cls}`}>{tr(r.label)}</span></Item>
             <Item label={tr("Număr")}>{pretty(c.phone)}</Item>
             <Item label={tr("Client")}>{c.clientName ?? "necunoscut"}</Item>
-            <Item label={tr("Durată")}>{mmss(c.durationSec)}{c.waitSec != null ? ` · așteptare ${c.waitSec}s` : ""}</Item>
+            <Item label={tr("Durată")}>{mmss(c.durationSec)}{c.waitSec != null ? tr(" · așteptare {n}s", { n: c.waitSec }) : ""}</Item>
             <Item label={tr("Operator")}>{[c.pbxUser, c.ext ? `ext. ${c.ext}` : null].filter(Boolean).join(" · ") || "—"}</Item>
             <Item label={tr("Număr companie")}>{c.diversion ? pretty(c.diversion) : "—"}{c.lineName ? ` (${c.lineName})` : ""}</Item>
             {c.groupName && <Item label={tr("Departament")}>{c.groupName}</Item>}

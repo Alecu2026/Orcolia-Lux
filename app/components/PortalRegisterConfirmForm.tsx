@@ -51,14 +51,14 @@ export default function PortalRegisterConfirmForm({
         className={input}
       />
 
-      {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+      {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
 
       <button
         type="submit"
         disabled={pending}
         className="tap h-12 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60"
       >
-        {pending ? "Se procesează…" : "Activează contul"}
+        {pending ? t("Se procesează…") : t("Activează contul")}
       </button>
     </form>
   );

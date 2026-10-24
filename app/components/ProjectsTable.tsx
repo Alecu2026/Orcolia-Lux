@@ -168,7 +168,7 @@ export default function ProjectsTable({
       },
       {
         kind: "select", key: "tasks", label: "Sarcini: toate",
-        options: [{ value: "has", label: "Cu task-uri" }, { value: "none", label: "Fără sarcini" }],
+        options: [{ value: "has", label: "Cu sarcini" }, { value: "none", label: "Fără sarcini" }],
         test: (p, v) => (v === "has" ? p.taskCount > 0 : p.taskCount === 0),
       },
       {
@@ -269,12 +269,12 @@ function ProjectDetailDialog({
           <Item label={tr("Client")} value={clientName} />
           <Item label={tr("Responsabil")} value={assigneeName} />
           <Item label={tr("Echipă")} value={teamName} />
-          <Item label={tr("Locație")} value={p.address ? `${p.lat != null ? "📍 " : ""}${p.address}` : p.lat != null ? "📍 pin pe hartă" : null} />
+          <Item label={tr("Locație")} value={p.address ? `${p.lat != null ? "📍 " : ""}${p.address}` : p.lat != null ? tr("📍 pin pe hartă") : null} />
           <Item label={tr("Sarcini")} value={String(p.taskCount)} />
           {p.description && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{tr("Descriere")}</p><p className="whitespace-pre-wrap text-[13px]">{p.description}</p></div>}
         </Box>
 
-        <Box title={`Sarcini${tasks ? ` (${tasks.length})` : ""}`}>
+        <Box title={`${tr("Sarcini")}${tasks ? ` (${tasks.length})` : ""}`}>
           {!tasks ? (
             <p className="px-2.5 py-2 text-sm text-ink-soft">{m.projects.loadingTasks}</p>
           ) : tasks.length === 0 ? (

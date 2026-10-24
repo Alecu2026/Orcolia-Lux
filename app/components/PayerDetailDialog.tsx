@@ -253,7 +253,7 @@ export default function PayerDetailDialog({
 
         <Section title={detail ? `${t("Facturi")} (${detail.invoices.length})` : t("Facturi")}>
           {error ? (
-            <p className="px-2.5 py-2 text-sm text-st-cancelled">{error}</p>
+            <p className="px-2.5 py-2 text-sm text-st-cancelled">{t(error)}</p>
           ) : !detail ? (
             <p className="px-2.5 py-2 text-sm text-ink-soft">{t("Se încarcă…")}</p>
           ) : detail.invoices.length === 0 ? (

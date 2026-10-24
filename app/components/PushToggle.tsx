@@ -125,7 +125,7 @@ export default function PushToggle() {
           )}
         </div>
       )}
-      {msg && <p className="mt-2 text-xs text-ink-soft">{msg}</p>}
+      {msg && <p className="mt-2 text-xs text-ink-soft">{t(msg)}</p>}
     </div>
   );
 }

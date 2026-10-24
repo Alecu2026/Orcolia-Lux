@@ -140,7 +140,7 @@ export default function OneCTable() {
           {tr("Doar diferențe PWA ≠ 1C")}
         </label>
         <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }} className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm" aria-label={tr("Rânduri pe pagină")}>
-          {PER_PAGE.map((n) => <option key={n} value={n}>{n} / pagină</option>)}
+          {PER_PAGE.map((n) => <option key={n} value={n}>{n} / {tr("pagină")}</option>)}
         </select>
         {activeFilters > 0 && (
           <button type="button" onClick={() => { appliedRef.current = {}; setFilters({}); setApplied({}); setOnlyDiff(false); setPage(1); }} className="tap h-9 rounded-lg border border-[var(--color-line)] px-3 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">
@@ -161,7 +161,7 @@ export default function OneCTable() {
                 ["lines", "Linii de calcul (РасчетСумм)"],
               ] as const
             ).map(([k, l]) => (
-              <a key={k} href={exportUrl(k)} download onClick={(e) => e.currentTarget.closest("details")?.removeAttribute("open")} className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--color-surface-2)]">{l}</a>
+              <a key={k} href={exportUrl(k)} download onClick={(e) => e.currentTarget.closest("details")?.removeAttribute("open")} className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--color-surface-2)]">{tr(l)}</a>
             ))}
           </div>
         </details>
@@ -173,14 +173,14 @@ export default function OneCTable() {
 
       {data && (
         <div className="mb-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
-          <span><b>{data.total.toLocaleString("ro-RO")}</b> {period === "all" ? "rânduri (abonat × lună)" : "abonați"}</span>
+          <span><b>{data.total.toLocaleString("ro-RO")}</b> {period === "all" ? tr("rânduri (abonat × lună)") : tr("abonați")}</span>
           <span>{tr("Σ Calculat:")} <b>{money(data.sums.calculat)}</b></span>
           <span>{tr("Σ Datorie/avans:")} <b>{money(data.sums.datorieAvans)}</b></span>
           <span>{tr("Σ De achitat:")} <b>{money(data.sums.deAchitat)}</b></span>
           {loading && <span className="text-ink-soft">{tr("se încarcă…")}</span>}
         </div>
       )}
-      {error && <p className="mb-2 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{error}</p>}
+      {error && <p className="mb-2 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{tr(error)}</p>}
 
       <div className="card overflow-auto" style={{ maxHeight: "68vh" }}>
         <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
@@ -190,19 +190,19 @@ export default function OneCTable() {
                 <th
                   key={c.key}
                   style={{ minWidth: c.w, width: c.w }}
-                  title={`Câmp 1C: ${c.src}`}
+                  title={tr("Câmp 1C: {src}", { src: tr(c.src) })}
                   className={`border-b border-[var(--color-line)] px-2 pt-2 text-left align-bottom ${i === 1 ? "sticky left-0 z-30 bg-[var(--color-surface-2)]" : ""}`}
                 >
                   <button type="button" onClick={() => toggleSort(c.key)} className="flex w-full items-center gap-1 pb-1 text-left font-semibold hover:text-brand">
-                    <span className="truncate">{c.label}</span>
+                    <span className="truncate">{tr(c.label)}</span>
                     <span className="shrink-0 text-[10px] text-ink-soft">{sort === c.key ? (dir === "asc" ? "▲" : "▼") : "↕"}</span>
                   </button>
                   <input
                     value={filters[c.key] ?? ""}
                     onChange={(e) => setFilters((f) => ({ ...f, [c.key]: e.target.value }))}
-                    placeholder={c.type === "num" ? ">100 · 10-50" : "Filtru…"}
+                    placeholder={c.type === "num" ? ">100 · 10-50" : tr("Filtru…")}
                     className={`${inputCls} mb-2`}
-                    aria-label={`Filtru ${c.label}`}
+                    aria-label={`${tr("Filtru")} ${tr(c.label)}`}
                   />
                 </th>
               ))}
@@ -251,8 +251,8 @@ export default function OneCTable() {
       <div className="mt-3 flex items-center justify-between text-sm">
         <button type="button" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)} className="tap card rounded-lg px-3 py-2 disabled:opacity-40">{tr("‹ Anterior")}</button>
         <span className="text-center text-ink-soft">
-          Pagina {page} din {pages}
-          {data && data.total > 0 && <><br /><span className="text-xs">{(page - 1) * data.perPage + 1}–{Math.min(page * data.perPage, data.total)} din {data.total.toLocaleString("ro-RO")}</span></>}
+          {tr("Pagina")} {page} {tr("din")} {pages}
+          {data && data.total > 0 && <><br /><span className="text-xs">{(page - 1) * data.perPage + 1}–{Math.min(page * data.perPage, data.total)} {tr("din")} {data.total.toLocaleString("ro-RO")}</span></>}
         </span>
         <button type="button" disabled={page >= pages || loading} onClick={() => setPage((p) => p + 1)} className="tap card rounded-lg px-3 py-2 disabled:opacity-40">{tr("Următor ›")}</button>
       </div>
@@ -338,7 +338,7 @@ function DetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
       <div className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-t-2xl bg-[var(--color-surface)] p-4 shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-bold">{d?.nume ?? "Se încarcă…"}</h2>
+            <h2 className="truncate text-lg font-bold">{d?.nume ?? t("Se încarcă…")}</h2>
             {d && <p className="break-all text-xs text-ink-soft">{t("UID: {uid} · Factură: {v1}", { uid: d.uid, v1: d.invoiceNumber ?? "—" })}</p>}
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -347,7 +347,7 @@ function DetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
             <button type="button" onClick={onClose} className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={t("Închide")}>✕</button>
           </div>
         </div>
-        {err && <p className="text-sm text-st-cancelled">{err}</p>}
+        {err && <p className="text-sm text-st-cancelled">{t(err)}</p>}
         {d && (
           <>
             <MiniTable title={t("Consumatori (Потребители)")} rows={d.consumers} cols={[["perioada", "Perioadă"], ["nume", "Consumator"], ["inn", "IDNO/ИНН"], ["inceput", "Început"], ["sfarsit", "Sfârșit"], ["zona", "Zonă presiune"], ["sector", "Sector"], ["nrPersoane", "Nr. pers."], ["suprafata", "Suprafață"]]} />

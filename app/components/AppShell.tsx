@@ -9,7 +9,7 @@ import CreateMenu from "./CreateMenu";
 import VoiceTaskButton from "./VoiceTaskButton";
 import LanguageSwitcher from "./LanguageSwitcher";
 import IncomingCallPopup from "./IncomingCallPopup";
-import { I18nProvider, useMessages } from "@/lib/i18n/context";
+import { I18nProvider, useMessages, useT } from "@/lib/i18n/context";
 import type { Messages, Locale } from "@/lib/i18n";
 
 /**
@@ -369,6 +369,7 @@ function BottomNav({ perms, appointmentsLabel }: { perms?: Record<string, boolea
 }
 
 function Brand({ label = "Programări" }: { label?: string }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-2.5 px-1">
       <div className="grid size-9 place-items-center rounded-xl bg-brand text-white">
@@ -377,7 +378,7 @@ function Brand({ label = "Programări" }: { label?: string }) {
           <path d="M3 9h18M8 2.5v4M16 2.5v4" />
         </svg>
       </div>
-      <span className="text-base font-bold">{label}</span>
+      <span className="text-base font-bold">{t(label)}</span>
     </div>
   );
 }

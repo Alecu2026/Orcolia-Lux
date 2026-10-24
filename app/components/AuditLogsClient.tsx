@@ -171,11 +171,11 @@ export default function AuditLogsClient({
         </select>
         <select value={filters.module} onChange={(e) => apply({ module: e.target.value })} className={fldCls(filters.module)}>
           <option value="">{m.auditLogs.filterModule}</option>
-          {AUDIT_MODULES.map((mod) => <option key={mod} value={mod}>{moduleLabel(mod)}</option>)}
+          {AUDIT_MODULES.map((mod) => <option key={mod} value={mod}>{moduleLabel(mod, t)}</option>)}
         </select>
         <select value={filters.action} onChange={(e) => apply({ action: e.target.value })} className={fldCls(filters.action)}>
           <option value="">{m.auditLogs.filterAction}</option>
-          {ACTION_OPTIONS.map((a) => <option key={a.key} value={a.key}>{a.label}</option>)}
+          {ACTION_OPTIONS.map((a) => <option key={a.key} value={a.key}>{t(a.label)}</option>)}
         </select>
         <button
           onClick={() => { try { localStorage.removeItem("filters:audit"); } catch {} router.push("/admin/audit-logs"); }}
@@ -275,7 +275,7 @@ export default function AuditLogsClient({
               {/* Acțiune */}
               <span className="min-w-0 flex-1 truncate lg:flex-none">
                 <span className="font-medium lg:hidden">{r.userName}: </span>
-                {rowSummary(r)}
+                {rowSummary(r, t)}
                 {r.objectName && (
                   <span className="ml-1 lg:hidden text-ink-soft">— {r.objectName}</span>
                 )}

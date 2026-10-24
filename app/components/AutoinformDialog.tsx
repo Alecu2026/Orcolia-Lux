@@ -56,7 +56,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
       const tts = await import("@diffusionstudio/vits-web");
       const id = voiceById(voice).id as Parameters<typeof tts.predict>[0]["voiceId"];
       if (!(await tts.stored()).includes(id)) {
-        await tts.download(id, (p) => { if (p.total > 1_000_000) setProgress((s) => ({ ...s, label: `Se descarcă vocea… ${Math.round((p.loaded * 100) / p.total)}%` })); });
+        await tts.download(id, (p) => { if (p.total > 1_000_000) setProgress((s) => ({ ...s, label: t("Se descarcă vocea… {n}%", { n: Math.round((p.loaded * 100) / p.total) }) })); });
       }
 
       // parts: listă de arhive; fiecare = { files, rows, bytes }
@@ -68,7 +68,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
       for (let i = 0; i < okRows.length; i++) {
         if (stopRef.current) break;
         const r = okRows[i];
-        setProgress({ done: i, total, label: `Se generează audio: ${r.clientName}` });
+        setProgress({ done: i, total, label: t("Se generează audio: {name}", { name: r.clientName }) });
         const num = digits(r.phone);
         try {
           const wav = await wavToTelephony(await tts.predict({ text: r.text.slice(0, MAX_TEXT * 4), voiceId: id }));
@@ -124,7 +124,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
     setMarking(false);
     if (res?.ok) {
       onExported(exportedIds);
-      toast.success(`${res.count} plătitori marcați „exportați în PBX”.`);
+      toast.success(t("{n} plătitori marcați „exportați în PBX”.", { n: res.count }));
       onClose();
     } else {
       toast.error(res && !res.ok ? res.error : "Nu am putut marca rândurile.");
@@ -166,7 +166,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
           <div className="flex flex-col gap-3">
             <div>
               <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="min-w-0 truncate font-semibold">{progress.label}</span>
+                <span className="min-w-0 truncate font-semibold">{t(progress.label)}</span>
                 <span className="tabular-nums text-ink-soft">{progress.done} / {progress.total}</span>
               </div>
               <div className="h-2.5 overflow-hidden rounded-full bg-[var(--color-surface-2)]"><div className="h-full rounded-full bg-brand transition-all" style={{ width: `${pct}%` }} /></div>
@@ -205,7 +205,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
               <button type="button" onClick={onClose} className="tap h-10 cursor-pointer rounded-xl border border-[var(--color-line)] px-4 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">{t("Închide")}</button>
               {exportedIds.length > 0 && (
                 <button type="button" disabled={marking} onClick={() => void markExported()} className="tap h-10 cursor-pointer rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-50" title={t("Scoate rândurile din coadă, ca să nu fie exportate a doua oară")}>
-                  {marking ? "…" : `Am descărcat — marchează ${exportedIds.length} ca exportați`}
+                  {marking ? "…" : t("Am descărcat — marchează {n} ca exportați", { n: exportedIds.length })}
                 </button>
               )}
             </div>

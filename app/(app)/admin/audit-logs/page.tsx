@@ -39,7 +39,7 @@ export default async function AuditLogsPage({
   return (
     <div className="w-full">
       <div className="mb-3">
-        <h1 className="text-lg font-bold">Audit Logs</h1>
+        <h1 className="text-lg font-bold">{t("Jurnal de audit")}</h1>
         <p className="text-xs text-ink-soft">{t("Istoric complet al acțiunilor — vizibil doar pentru super-admini.")}</p>
       </div>
       <AuditLogsClient

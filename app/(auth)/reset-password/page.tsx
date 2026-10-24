@@ -22,8 +22,8 @@ export default async function ResetPasswordPage({
           <h1 className="text-lg font-bold leading-5">{t("Resetare parolă")}</h1>
           <p className="mt-1 text-xs text-ink-soft">
             {sent === "1"
-              ? "Am trimis un cod de 6 cifre pe email. Introdu-l mai jos împreună cu noua parolă."
-              : "Introdu codul de 6 cifre primit pe email, împreună cu noua parolă."}
+              ? t("Am trimis un cod de 6 cifre pe email. Introdu-l mai jos împreună cu noua parolă.")
+              : t("Introdu codul de 6 cifre primit pe email, împreună cu noua parolă.")}
           </p>
         </div>
 

@@ -123,7 +123,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
           });
         } else setUsersError(r.error);
       })
-      .catch(() => alive && setUsersError("Nu am putut încărca operatorii."));
+      .catch(() => alive && setUsersError(tr("Nu am putut încărca operatorii.")));
     return () => { alive = false; };
   }, []);
 
@@ -145,7 +145,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
     setBusy(null);
     if (res?.ok) {
       setLocal((m) => ({ ...m, [c.id]: { ...m[c.id], callId: res.callId, dialedAt: res.dialedAt, operator: res.operator, pbxStatus: null, pbxState: null } }));
-      toast.success(`Apel pornit prin „${res.operator}” către ${c.clientName}. Starea apare în tabel în câteva secunde.`);
+      toast.success(tr("Apel pornit prin „{op}” către {name}. Starea apare în tabel în câteva secunde.", { op: res.operator, name: c.clientName }));
       router.refresh();
     } else {
       toast.error(res && !res.ok ? res.error : "Nu am putut porni apelul.");
@@ -212,7 +212,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
     { key: "phone", label: "Telefon", minW: 110, sort: (c) => c.phone, render: (c) => <span className="font-mono">{c.phone}</span> },
     {
       key: "result", label: "Stare", minW: 100, sort: (c) => resultOf(c).label,
-      render: (c) => { const r = resultOf(c); return <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium leading-[14px] ${r.cls}`}>{r.label}</span>; },
+      render: (c) => { const r = resultOf(c); return <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium leading-[14px] ${r.cls}`}>{tr(r.label)}</span>; },
     },
     { key: "dur", label: "Durată", minW: 60, right: true, sort: (c) => c.durationSec, render: (c) => (c.durationSec != null ? mmss(c.durationSec) : dash) },
     { key: "op", label: "Apelant", minW: 90, maxW: 130, sort: (c) => c.operator, render: (c) => c.operator ?? dash },
@@ -230,7 +230,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
           onClick={(e) => { e.stopPropagation(); void dial(c); }}
           className="tap h-6 cursor-pointer rounded-md bg-brand px-2 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-50"
         >
-          {busy === c.id ? "…" : c.callId ? "📞 Din nou" : "📞 Sună"}
+          {busy === c.id ? "…" : c.callId ? "📞 Din nou" : tr("📞 Sună")}
         </button>
       ),
     },
@@ -302,7 +302,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
                 value={operator}
                 onChange={(e) => pickOperator(e.target.value)}
                 placeholder="robot"
-                title={usersError ?? "Extensia din PBX care face apelul (robotul) — scrie loginul sau alege din listă"}
+                title={usersError ?? tr("Extensia din PBX care face apelul (robotul) — scrie loginul sau alege din listă")}
                 className={`${selectCls} w-28`}
               />
               <datalist id="notify-callers">
@@ -314,7 +314,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
             <button type="button" disabled={queued.length === 0} onClick={() => setExportOpen(true)} className={`${topBtn} border-brand text-brand disabled:cursor-default disabled:opacity-40`} title={tr("Pregătește ZIP-ul (numere + audio per plătitor) pentru PBX → Autoinformare")}>
               {tr("⬇ Export autoinformare ({length})", { length: queued.length })}</button>
             {bulk.phase === "idle" || bulk.phase === "done" ? (
-              <button type="button" disabled={queued.length === 0 || !activeOperator} onClick={() => setBulk((b) => ({ ...b, phase: "confirm" }))} className={`${topBtn} disabled:cursor-default disabled:opacity-40`} title={activeOperator ? "Pornește apelurile pe rând, prin operatorul ales" : "Alege întâi apelantul (robotul)"}>
+              <button type="button" disabled={queued.length === 0 || !activeOperator} onClick={() => setBulk((b) => ({ ...b, phase: "confirm" }))} className={`${topBtn} disabled:cursor-default disabled:opacity-40`} title={activeOperator ? tr("Pornește apelurile pe rând, prin operatorul ales") : tr("Alege întâi apelantul (robotul)")}>
                 {tr("📞 Sună toți din coadă ({length})", { length: queued.length })}</button>
             ) : bulk.phase === "confirm" ? (
               <>
@@ -400,8 +400,8 @@ function Detail({
         </div>
 
         <div className="divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)]">
-          {item("Stare", <span className={`inline-block rounded-full px-1.5 text-[11px] font-medium ${r.cls}`}>{r.label}</span>)}
-          {item("Durată convorbire", c.durationSec != null ? mmss(c.durationSec) : "—")}
+          {item("Stare", <span className={`inline-block rounded-full px-1.5 text-[11px] font-medium ${r.cls}`}>{t(r.label)}</span>)}
+          {item(t("Durată convorbire"), c.durationSec != null ? mmss(c.durationSec) : "—")}
           {item("Apelant", c.operator ?? "—")}
           {item("Sunat la", c.dialedAt ? fmtDateTime(c.dialedAt) : "—")}
           {c.rating != null && item("Notă client", `${c.rating}/5`)}
@@ -442,7 +442,7 @@ function Detail({
             />
           </label>
           <button type="button" onClick={onDial} disabled={busy} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-50">
-            {busy ? "Se sună…" : c.callId ? "📞 Sună din nou" : "📞 Sună"}
+            {busy ? t("Se sună…") : c.callId ? t("📞 Sună din nou") : t("📞 Sună")}
           </button>
           <Link href={`/platitori/${c.clientId}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-brand-soft">{t("Fișa plătitorului →")}</Link>
           <span className="ml-auto" />

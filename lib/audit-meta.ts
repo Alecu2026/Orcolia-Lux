@@ -117,19 +117,25 @@ export function actionLabel(action: string): string {
   return ACTION_LABELS[action] ?? action;
 }
 
-export function moduleLabel(m: string): string {
-  return MODULE_LABELS[m] ?? m;
+type Tr = (ro: string) => string;
+
+export function moduleLabel(m: string, t?: Tr): string {
+  const l = MODULE_LABELS[m] ?? m;
+  return t ? t(l) : l;
 }
 
 /** Descriere compactă pentru un singur rând: „Status schimbat: Asignat → În lucru". */
-export function rowSummary(r: {
-  action: string;
-  oldValue?: string | null;
-  newValue?: string | null;
-}): string {
-  const label = SHORT_LABELS[r.action] ?? actionLabel(r.action);
+export function rowSummary(
+  r: {
+    action: string;
+    oldValue?: string | null;
+    newValue?: string | null;
+  },
+  t: Tr = (x) => x,
+): string {
+  const label = t(SHORT_LABELS[r.action] ?? actionLabel(r.action));
   if (r.oldValue != null && r.newValue != null) {
-    return `${label}: ${r.oldValue} → ${r.newValue}`;
+    return `${label}: ${t(r.oldValue)} → ${t(r.newValue)}`;
   }
   return label;
 }

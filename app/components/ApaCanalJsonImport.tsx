@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { upload } from "@vercel/blob/client";
 import { IconDroplet, IconX } from "./icons";
-import { useMessages } from "@/lib/i18n/context";
+import { useMessages, useT } from "@/lib/i18n/context";
 
 type Stats = {
   documenteTotale: number;
@@ -31,6 +31,7 @@ type Phase = "idle" | "uploading" | "analyzing" | "preview" | "committing" | "do
 
 export default function ApaCanalJsonImport({ className }: { className?: string }) {
   const m = useMessages();
+  const t = useT();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -238,7 +239,7 @@ export default function ApaCanalJsonImport({ className }: { className?: string }
             {phase === "error" && (
               <div className="flex flex-col gap-4">
                 <p className="text-sm font-semibold text-red-600">{m.apaCanalImport.errorTitle}</p>
-                <p className="text-sm text-ink-soft">{error}</p>
+                <p className="text-sm text-ink-soft">{t(error ?? "")}</p>
                 <button type="button" onClick={closeModal} className="tap h-11 w-full rounded-xl bg-[var(--color-surface-2)] text-sm font-medium hover:bg-[var(--color-line)]">
                   {m.apaCanalImport.closeButton}
                 </button>

@@ -8,7 +8,7 @@ import {
   type ClientState,
 } from "@/app/actions/clients";
 import { IconX } from "./icons";
-import { useMessages } from "@/lib/i18n/context";
+import { useMessages, useT } from "@/lib/i18n/context";
 
 export type ClientEdit = {
   id: string;
@@ -31,6 +31,7 @@ export default function ClientDialog({
 }) {
   const router = useRouter();
   const m = useMessages();
+  const t = useT();
   const action = client ? updateClient : createClient;
   const [state, formAction, pending] = useActionState<ClientState, FormData>(
     action,
@@ -67,7 +68,7 @@ export default function ClientDialog({
           <input name="telegramChatId" defaultValue={client?.telegramChatId ?? ""} placeholder={m.clients.telegramPlaceholder} className={input} />
           <textarea name="notes" defaultValue={client?.notes ?? ""} placeholder={m.clients.notesPlaceholder} rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3 text-[15px] outline-none focus:border-brand" />
 
-          {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+          {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
 
           <button type="submit" disabled={pending} className="tap h-12 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
             {pending ? m.common.saving : m.common.save}

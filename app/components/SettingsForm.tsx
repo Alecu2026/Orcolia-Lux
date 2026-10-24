@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { updateSettings, type SettingsState } from "@/app/actions/settings";
 import type { Settings } from "@/lib/queries/settings";
 import ReminderOffsetPicker from "./ReminderOffsetPicker";
-import { useMessages } from "@/lib/i18n/context";
+import { useMessages, useT } from "@/lib/i18n/context";
 
 const input =
   "h-11 w-full min-w-0 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
@@ -14,6 +14,7 @@ const label = "mb-1.5 block text-xs font-semibold text-ink-soft";
 export default function SettingsForm({ settings }: { settings: Settings }) {
   const router = useRouter();
   const m = useMessages();
+  const t = useT();
   const [state, action, pending] = useActionState<SettingsState, FormData>(
     updateSettings,
     undefined,
@@ -109,7 +110,7 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
         </div>
       </div>
 
-      {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+      {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
       {state?.ok && <p className="text-sm text-st-done">{m.settings.saved}</p>}
 
       <button type="submit" disabled={pending} className="tap h-11 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">

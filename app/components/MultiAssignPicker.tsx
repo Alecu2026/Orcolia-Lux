@@ -4,6 +4,7 @@ import { useState } from "react";
 import { IconX } from "./icons";
 import type { AssignmentSetting } from "@/lib/services/tasks";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 
@@ -23,6 +24,7 @@ export default function MultiAssignPicker({
   initialTeamIds?: string[];
   initialSettings?: AssignmentSetting[];
 }) {
+  const tr = useT();
   const m = useMessages();
   const STATUS_OPTIONS = [
     { value: "NEW", label: m.status.NEW },
@@ -96,7 +98,7 @@ export default function MultiAssignPicker({
                   >
                     <option value="">{m.appts.notifyAlways}</option>
                     {STATUS_OPTIONS.map((s) => (
-                      <option key={s.value} value={s.value}>{m.appts.notifyUntil} {s.label}</option>
+                      <option key={s.value} value={s.value}>{m.appts.notifyUntil} {tr(s.label)}</option>
                     ))}
                   </select>
                 )}
@@ -130,7 +132,7 @@ export default function MultiAssignPicker({
                   >
                     <option value="">{m.appts.notifyAlways}</option>
                     {STATUS_OPTIONS.map((s) => (
-                      <option key={s.value} value={s.value}>{m.appts.notifyUntil} {s.label}</option>
+                      <option key={s.value} value={s.value}>{m.appts.notifyUntil} {tr(s.label)}</option>
                     ))}
                   </select>
                 )}

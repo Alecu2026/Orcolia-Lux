@@ -2,20 +2,21 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CHAT_MAX_BODY, CHAT_POLL_MS, type ChatMessage, type ChatSender, type ChatState } from "@/lib/ticket-chat-shared";
-import { useT } from "@/lib/i18n/context";
+import { useLocale, useT } from "@/lib/i18n/context";
+import { dateTag } from "@/lib/i18n/t";
 
 const TZ = "Europe/Chisinau";
 const GROUP_GAP_MS = 5 * 60_000;
 
 type Pending = { tempId: string; body: string; createdAt: string; failed: boolean };
 
-const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("ro-RO", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
+const fmtTime = (iso: string, tag = "ro-RO") => new Date(iso).toLocaleTimeString(tag, { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
 const dayKey = (iso: string) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: TZ });
-function dayLabel(iso: string): string {
+function dayLabel(iso: string, t: (s: string) => string, tag: string): string {
   const k = dayKey(iso);
-  if (k === dayKey(new Date().toISOString())) return "Azi";
-  if (k === dayKey(new Date(Date.now() - 86_400_000).toISOString())) return "Ieri";
-  return new Date(iso).toLocaleDateString("ro-RO", { timeZone: TZ, day: "numeric", month: "long", year: "numeric" });
+  if (k === dayKey(new Date().toISOString())) return t("Azi");
+  if (k === dayKey(new Date(Date.now() - 86_400_000).toISOString())) return t("Ieri");
+  return new Date(iso).toLocaleDateString(tag, { timeZone: TZ, day: "numeric", month: "long", year: "numeric" });
 }
 
 /** Linkurile din text devin clicabile; restul rămâne text (React îl escapează). */
@@ -58,6 +59,7 @@ export default function TicketChat({
   heightClass?: string;
 }) {
   const t = useT();
+  const tag = dateTag(useLocale());
   const own: ChatSender = viewer === "client" ? "CLIENT" : "STAFF";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<Pending[]>([]);
@@ -102,7 +104,7 @@ export default function TicketChat({
     const res = await fetch(`/api/tickets/${ticketId}/chat?as=${viewer}${since}&mark=1`, { cache: "no-store", signal });
     if (!res.ok) {
       const j = (await res.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(j?.error ?? `Eroare ${res.status}`);
+      throw new Error(j?.error ?? t("Eroare {n}", { n: res.status }));
     }
     applyState((await res.json()) as ChatState, first);
   }, [ticketId, viewer, applyState]);
@@ -118,7 +120,7 @@ export default function TicketChat({
         try {
           await poll(first, ctl.signal);
         } catch (e) {
-          if (!stopped && first) setLoadError(e instanceof Error ? e.message : "Nu am putut încărca conversația.");
+          if (!stopped && first) setLoadError(e instanceof Error ? e.message : t("Nu am putut încărca conversația."));
         }
       }
       if (!stopped) timer = setTimeout(() => void tick(), CHAT_POLL_MS);
@@ -159,7 +161,7 @@ export default function TicketChat({
         body: JSON.stringify({ body }),
       });
       const j = (await res.json().catch(() => null)) as { message?: ChatMessage; error?: string } | null;
-      if (!res.ok || !j?.message) throw new Error(j?.error ?? `Eroare ${res.status}`);
+      if (!res.ok || !j?.message) throw new Error(j?.error ?? t("Eroare {n}", { n: res.status }));
       seenIdsRef.current.add(j.message.id);
       if (!lastAtRef.current || j.message.createdAt > lastAtRef.current) lastAtRef.current = j.message.createdAt;
       setMessages((prev) => mergeMessages(prev, [j.message!]));
@@ -219,7 +221,7 @@ export default function TicketChat({
             return (
               <Fragment key={it.key}>
                 {newDay && (
-                  <div className="my-3 text-center text-[11px] font-medium text-ink-soft">{dayLabel(it.createdAt)}</div>
+                  <div className="my-3 text-center text-[11px] font-medium text-ink-soft">{dayLabel(it.createdAt, t, tag)}</div>
                 )}
                 <div className={`flex flex-col ${mine ? "items-end" : "items-start"} ${startsGroup ? "mt-2" : "mt-0.5"}`}>
                   {showName && <span className="mb-0.5 px-1 text-[11px] text-ink-soft">{it.authorName}</span>}
@@ -240,12 +242,12 @@ export default function TicketChat({
                             <span className="text-st-cancelled">{t("Netrimis")}</span>
                             <button type="button" onClick={() => retry(it.pending!)} className="cursor-pointer font-semibold text-brand underline">{t("Reîncearcă")}</button>
                           </>
-                        ) : "Se trimite…"
+                        ) : t("Se trimite…")
                       ) : (
                         <>
                           {fmtTime(it.createdAt)}
                           {mine && it.key === lastOwnKey && it.key !== "intro" && (
-                            <span className={seen(it.createdAt) ? "font-semibold text-brand" : ""}>{seen(it.createdAt) ? "· ✓✓ Văzut" : "· ✓ Trimis"}</span>
+                            <span className={seen(it.createdAt) ? "font-semibold text-brand" : ""}>{seen(it.createdAt) ? t("· ✓✓ Văzut") : t("· ✓ Trimis")}</span>
                           )}
                         </>
                       )}
@@ -272,7 +274,7 @@ export default function TicketChat({
       )}
 
       {meta && !meta.canWrite ? (
-        <p className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-3 text-center text-xs text-ink-soft">{meta.writeBlockedReason ?? "Nu poți scrie aici."}</p>
+        <p className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-3 text-center text-xs text-ink-soft">{meta.writeBlockedReason ?? t("Nu poți scrie aici.")}</p>
       ) : (
         <form
           onSubmit={(e) => { e.preventDefault(); send(); }}

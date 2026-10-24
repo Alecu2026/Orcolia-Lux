@@ -159,7 +159,7 @@ export default function ApaCanalApiSync() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "Nu s-a putut schimba.");
       setCfg(j);
-      setInfo(next ? "Sincronizare automată pornită — se rulează în fiecare noapte." : "Sincronizare automată oprită.");
+      setInfo(next ? t("Sincronizare automată pornită — se rulează în fiecare noapte.") : t("Sincronizare automată oprită."));
     } catch (e) {
       setCfg((c) => (c ? { ...c, autoSync: !next } : c));
       setError(e instanceof Error ? e.message : "Nu s-a putut schimba.");
@@ -193,9 +193,9 @@ export default function ApaCanalApiSync() {
       try {
         j = await r.json();
       } catch {
-        throw new Error(`Răspuns neașteptat de la server (HTTP ${r.status}) — probabil a durat prea mult și a fost întrerupt.`);
+        throw new Error(t("Răspuns neașteptat de la server (HTTP {n}) — probabil a durat prea mult și a fost întrerupt.", { n: r.status }));
       }
-      if (!r.ok) throw new Error(j.error ?? "Eroare la sincronizare.");
+      if (!r.ok) throw new Error(j.error ?? t("Eroare la sincronizare."));
       setStats(j.stats ?? null);
       setReport(j.report ?? null);
       if (commit) {
@@ -205,7 +205,7 @@ export default function ApaCanalApiSync() {
       await load();
     } catch (e) {
       const isAbort = e instanceof DOMException && e.name === "AbortError";
-      setError(isAbort ? "A durat prea mult (peste 5 minute) și s-a întrerupt. Încearcă din nou — dacă se repetă, API-ul lor e prea lent sau indisponibil." : e instanceof Error ? e.message : "Eroare la sincronizare.");
+      setError(isAbort ? t("A durat prea mult (peste 5 minute) și s-a întrerupt. Încearcă din nou — dacă se repetă, API-ul lor e prea lent sau indisponibil.") : e instanceof Error ? e.message : t("Eroare la sincronizare."));
       await load();
     } finally {
       clearTimeout(timer);
@@ -261,8 +261,8 @@ export default function ApaCanalApiSync() {
                   />
                   <p className="mt-1 text-[11px] text-ink-soft">
                     {isAbsoluteUrl(url)
-                      ? "Alegi ziua/luna/anul — se scrie automat în linkul de mai sus."
-                      : "Completează întâi linkul (cu https://…), ca să poți alege perioada."}
+                      ? t("Alegi ziua/luna/anul — se scrie automat în linkul de mai sus.")
+                      : t("Completează întâi linkul (cu https://…), ca să poți alege perioada.")}
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -272,7 +272,7 @@ export default function ApaCanalApiSync() {
                   </div>
                   <div>
                     <label className={lbl} htmlFor="api-pass">{t("Parolă")}</label>
-                    <input id="api-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!canEdit || locked} autoComplete="new-password" placeholder={cfg.hasPassword ? "•••••••• salvată" : ""} className={fld} />
+                    <input id="api-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!canEdit || locked} autoComplete="new-password" placeholder={cfg.hasPassword ? t("•••••••• salvată") : ""} className={fld} />
                   </div>
                 </div>
                 <div>
@@ -289,7 +289,7 @@ export default function ApaCanalApiSync() {
 
                 {cfg.lastSyncAt && (
                   <p className={`rounded-lg px-3 py-2 text-xs ${cfg.lastSyncOk ? "bg-brand-soft text-brand-strong" : "bg-st-cancelled/10 text-st-cancelled"}`}>
-                    {t("Ultima încercare: {v1} — {lastSyncMessage}", { v1: new Date(cfg.lastSyncAt).toLocaleString("ro-RO"), lastSyncMessage: cfg.lastSyncMessage ?? "" })}
+                    {t("Ultima încercare: {v1} — {lastSyncMessage}", { v1: new Date(cfg.lastSyncAt).toLocaleString("ro-RO"), lastSyncMessage: t(cfg.lastSyncMessage ?? "") })}
                   </p>
                 )}
                 {cfg.lastSuccessAt && <p className="text-[11px] text-ink-soft">{t("Ultima dată când s-au scris date din API: {v1}.", { v1: new Date(cfg.lastSuccessAt).toLocaleString("ro-RO") })}</p>}
@@ -307,11 +307,11 @@ export default function ApaCanalApiSync() {
                       <b>{t("Extrage automat în fiecare noapte")}</b> {t("(în jur de 03:00)")}
                       <span className="mt-0.5 block text-xs text-ink-soft">
                         {cfg.autoSync
-                          ? "Pornit: aplicația își aduce singură datele, nu mai trebuie să apeși butonul. Dacă API-ul întoarce același lucru ca data trecută, nu se schimbă nimic."
+                          ? t("Pornit: aplicația își aduce singură datele, nu mai trebuie să apeși butonul. Dacă API-ul întoarce același lucru ca data trecută, nu se schimbă nimic.")
                           : cfg.lastSyncOk === true
-                            ? "Setările au funcționat — poți porni extragerea automată."
-                            : "Se poate porni doar după o testare sau o sincronizare reușită cu setările curente."}
-                        {!canEdit && " Doar un administrator o poate porni sau opri."}
+                            ? t("Setările au funcționat — poți porni extragerea automată.")
+                            : t("Se poate porni doar după o testare sau o sincronizare reușită cu setările curente.")}
+                        {!canEdit && t("Doar un administrator o poate porni sau opri.")}
                       </span>
                     </span>
                   </label>
@@ -320,38 +320,38 @@ export default function ApaCanalApiSync() {
                 <div className="flex flex-wrap gap-2">
                   {canEdit && (
                     <button type="button" disabled={locked || !dirty} onClick={save} className="tap h-11 rounded-xl border border-[var(--color-line)] px-4 text-sm font-semibold hover:bg-[var(--color-surface-2)] disabled:opacity-40">
-                      {busy === "save" ? "Se salvează…" : "Salvează"}
+                      {busy === "save" ? t("Se salvează…") : t("Salvează")}
                     </button>
                   )}
                   <button type="button" disabled={locked || !(cfg.url || url.trim())} onClick={() => run(false)} className="tap h-11 rounded-xl border border-brand px-4 text-sm font-semibold text-brand-strong hover:bg-brand-soft disabled:opacity-40">
-                    {busy === "test" ? `Se testează… (${elapsed}s)` : "Testează conexiunea"}
+                    {busy === "test" ? t("Se testează… ({n}s)", { n: elapsed }) : t("Testează conexiunea")}
                   </button>
                   <button type="button" disabled={locked || !(cfg.url || url.trim())} onClick={() => run(true)} className="tap h-11 rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-40">
-                    {busy === "sync" ? `Se extrage… (${elapsed}s)` : "Extrage din API"}
+                    {busy === "sync" ? t("Se extrage… ({n}s)", { n: elapsed }) : t("Extrage din API")}
                   </button>
                 </div>
                 {locked && (busy === "test" || busy === "sync") && (
                   <p className="text-xs text-ink-soft">
                     {elapsed < 5
-                      ? "Se descarcă și se procesează datele — nu închide fereastra."
-                      : `Încă lucrează (${elapsed} secunde) — poate dura până la câteva minute la un fișier mare, e normal. Rămâi pe pagină.`}
+                      ? t("Se descarcă și se procesează datele — nu închide fereastra.")
+                      : t("Încă lucrează ({n} secunde) — poate dura până la câteva minute la un fișier mare, e normal. Rămâi pe pagină.", { n: elapsed })}
                   </p>
                 )}
               </div>
             )}
 
-            {error && <p className="mt-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{error}</p>}
-            {info && !error && <p className="mt-3 text-sm text-brand-strong">{info}</p>}
+            {error && <p className="mt-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{t(error)}</p>}
+            {info && !error && <p className="mt-3 text-sm text-brand-strong">{t(info)}</p>}
 
             {stats && (
               <div className="mt-3 rounded-xl border border-[var(--color-line)] p-3 text-sm">
-                <p className="mb-1 font-semibold">{applied ? "Sincronizare încheiată" : "Conexiune reușită — iată ce s-ar schimba (nu s-a scris nimic)"}</p>
+                <p className="mb-1 font-semibold">{applied ? t("Sincronizare încheiată") : t("Conexiune reușită — iată ce s-ar schimba (nu s-a scris nimic)")}</p>
                 <ul className="grid gap-x-4 gap-y-0.5 text-xs sm:grid-cols-2">
                   <li>{t("Abonați în API:")} <b>{stats.documenteTotale.toLocaleString("ro-RO")}</b></li>
                   <li>{t("Clienți noi:")} <b>{stats.clientiNoiDeCreat.toLocaleString("ro-RO")}</b></li>
                   <li>{t("Clienți actualizați:")} <b>{stats.clientiExistentiActualizati.toLocaleString("ro-RO")}</b></li>
                   <li>{t("Facturi noi:")} <b>{stats.facturiDeCreat.toLocaleString("ro-RO")}</b></li>
-                  <li>Facturi deja existente: <b>{stats.facturiSaritePreexistente.toLocaleString("ro-RO")}</b>{stats.facturiActualizate ? <> {t("(din care actualizate:")} <b>{stats.facturiActualizate.toLocaleString("ro-RO")}</b>)</> : null}</li>
+                  <li>{t("Facturi deja existente:")} <b>{stats.facturiSaritePreexistente.toLocaleString("ro-RO")}</b>{stats.facturiActualizate ? <> {t("(din care actualizate:")} <b>{stats.facturiActualizate.toLocaleString("ro-RO")}</b>)</> : null}</li>
                   <li>{t("Fără abonat/document (sărite):")} <b>{stats.sariteFaraAbonent.toLocaleString("ro-RO")}</b></li>
                   <li>{t("Calculat (facturi noi):")} <b>{money(stats.totalNecuvenit)}</b></li>
                   <li>{t("De achitat (facturi noi):")} <b>{money(stats.totalDePlata)}</b></li>

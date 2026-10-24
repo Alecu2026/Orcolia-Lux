@@ -303,7 +303,7 @@ export default function InvoicesList({
         >
           <option value="">{t("Status: {v1}", { v1: m.invoices.filterAll.toLowerCase() })}</option>
           {INVOICE_STATUS_LIST.map((s) => (
-            <option key={s} value={s}>{INVOICE_STATUS[s].label}</option>
+            <option key={s} value={s}>{t(INVOICE_STATUS[s].label)}</option>
           ))}
         </select>
         {(status || q || search) && (
@@ -330,7 +330,7 @@ export default function InvoicesList({
 
       <div className="mb-1 flex flex-wrap items-center gap-x-3 text-xs">
         <span>
-          <b>{view.total.toLocaleString("ro-RO")}</b> facturi
+          <b>{view.total.toLocaleString("ro-RO")}</b> {t("facturi")}
           {view.total > 0 && <span className="text-ink-soft"> {t("· afișate {v1}–{v2} · pagina {page}/{totalPages}", { v1: from.toLocaleString("ro-RO"), v2: to.toLocaleString("ro-RO"), page, totalPages })}</span>}
         </span>
         <span className="text-ink-soft">{t("Σ pagină:")} <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
@@ -340,7 +340,7 @@ export default function InvoicesList({
           type="button"
           onClick={toggleCards}
           aria-pressed={cards}
-          title={cards ? "Înapoi la tabel" : "Afișează facturile într-o coloană mică; apeși pe una ca să vezi detaliile (potrivit pentru telefon)"}
+          title={cards ? t("Înapoi la tabel") : t("Afișează facturile într-o coloană mică; apeși pe una ca să vezi detaliile (potrivit pentru telefon)")}
           className={`tap ml-auto h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
         >
           {cards ? "▦ Tabel" : "📱 Mod telefon"}
@@ -355,7 +355,7 @@ export default function InvoicesList({
             }`}
             aria-label={t("Câte pe pagină")}
           >
-            {INVOICE_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n === INVOICE_ALL ? 25_000 : n)}</option>)}
+            {INVOICE_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n === INVOICE_ALL ? 25_000 : n, t)}</option>)}
           </select>
         </label>
       </div>
@@ -379,16 +379,16 @@ export default function InvoicesList({
                 subtitle={
                   <>
                     <span className="min-w-0 truncate">{r.clientName ?? m.invoices.noClient}</span>
-                    <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{st.label}</span>
+                    <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{t(st.label)}</span>
                   </>
                 }
                 trailing={<span className="font-semibold tabular-nums">{money(r.grandTotal, r.currency)}</span>}
               >
                 <dl>
-                  {r.kind === "APA_CANAL" && <CompactField label={t("Tip")}><span className="rounded bg-sky-100 px-1 text-[10px] font-semibold text-sky-700">Apă-Canal</span></CompactField>}
+                  {r.kind === "APA_CANAL" && <CompactField label={t("Tip")}><span className="rounded bg-sky-100 px-1 text-[10px] font-semibold text-sky-700">{t("Apă-Canal")}</span></CompactField>}
                   <CompactField label={t("Emisă")}>{fmtMs(r.issueMs)}</CompactField>
                   <CompactField label={t("Scadență")}>
-                    <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtMs(r.dueMs)}{late ? " · depășită" : ""}</span>
+                    <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtMs(r.dueMs)}{late ? t("· depășită") : ""}</span>
                   </CompactField>
                   <CompactField label={t("Achitată")}>
                     {r.status === "PAID" ? (
@@ -403,7 +403,7 @@ export default function InvoicesList({
                       aria-label={`Status ${r.number}`}
                     >
                       {INVOICE_STATUS_LIST.map((x) => (
-                        <option key={x} value={x}>{INVOICE_STATUS[x].label}</option>
+                        <option key={x} value={x}>{t(INVOICE_STATUS[x].label)}</option>
                       ))}
                     </select>
                   </CompactField>
@@ -462,14 +462,14 @@ export default function InvoicesList({
                   <td className={`${cell} whitespace-nowrap font-semibold`}>
                     {r.number}
                     {r.kind === "APA_CANAL" && (
-                      <span className="ml-1.5 rounded bg-sky-100 px-1 text-[9px] font-semibold text-sky-700">Apă-Canal</span>
+                      <span className="ml-1.5 rounded bg-sky-100 px-1 text-[9px] font-semibold text-sky-700">{t("Apă-Canal")}</span>
                     )}
                   </td>
                   <td className={cell}>
                     <div className="truncate" title={r.clientName ?? ""}>{r.clientName ?? <span className="text-ink-soft/60">{m.invoices.noClient}</span>}</div>
                   </td>
                   <td className={`${cell} whitespace-nowrap`}>{fmtMs(r.issueMs)}</td>
-                  <td className={`${cell} whitespace-nowrap ${late ? "font-semibold text-st-cancelled" : ""}`} title={late ? "Scadența a trecut" : undefined}>{fmtMs(r.dueMs)}</td>
+                  <td className={`${cell} whitespace-nowrap ${late ? "font-semibold text-st-cancelled" : ""}`} title={late ? t("Scadența a trecut") : undefined}>{fmtMs(r.dueMs)}</td>
                   <td className={`${cell} whitespace-nowrap`}>
                     {r.status === "PAID" ? (
                       r.paidMs ? <span className="text-st-done">{fmtMs(r.paidMs)}</span> : <span className="text-ink-soft/70" title={t("Marcată plătită, dar data nu s-a înregistrat")}>?</span>
@@ -484,7 +484,7 @@ export default function InvoicesList({
                       aria-label={`Status ${r.number}`}
                     >
                       {INVOICE_STATUS_LIST.map((s) => (
-                        <option key={s} value={s}>{INVOICE_STATUS[s].label}</option>
+                        <option key={s} value={s}>{t(INVOICE_STATUS[s].label)}</option>
                       ))}
                     </select>
                   </td>
@@ -562,7 +562,7 @@ export default function InvoicesList({
               setPage(Math.min(n, totalPages));
             }}
           >
-            Mergi la
+            {t("Mergi la")}
             <input
               value={goto}
               onChange={(e) => setGoto(e.target.value.replace(/\D/g, "").slice(0, 6))}

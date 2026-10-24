@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { updateProject, deleteProject, type ProjectState } from "@/app/actions/projects";
 import { IconPencil, IconTrash, IconX } from "./icons";
 import ProjectMapPickerDynamic from "./ProjectMapPickerDynamic";
-import { useMessages } from "@/lib/i18n/context";
+import { useMessages, useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 
@@ -116,6 +116,7 @@ function EditDialog({
   onSaved: () => void;
 }) {
   const m = useMessages();
+  const t = useT();
   const [state, formAction, pending] = useActionState<ProjectState, FormData>(updateProject, undefined);
 
   useEffect(() => {
@@ -204,7 +205,7 @@ function EditDialog({
             </div>
           </div>
           {state?.error && (
-            <p className="text-sm text-st-cancelled">{state.error}</p>
+            <p className="text-sm text-st-cancelled">{t(state.error)}</p>
           )}
           <button
             type="submit"

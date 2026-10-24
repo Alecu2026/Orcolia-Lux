@@ -262,7 +262,7 @@ function EditDialog({
               <option value={10080}>{m.tasks.reminder7d}</option>
             </select>
           </div>
-          {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+          {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
           <button
             type="submit"
             disabled={pending}

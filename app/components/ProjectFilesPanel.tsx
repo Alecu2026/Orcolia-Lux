@@ -7,7 +7,7 @@ import {
   type ProjectAttachmentRow,
 } from "@/app/actions/attachments";
 import { IconTrash } from "./icons";
-import { useMessages } from "@/lib/i18n/context";
+import { useMessages, useT } from "@/lib/i18n/context";
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -21,6 +21,7 @@ function isImage(mimeType: string | null): boolean {
 
 export default function ProjectFilesPanel({ projectId }: { projectId: string }) {
   const m = useMessages();
+  const t = useT();
   const [files, setFiles] = useState<ProjectAttachmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -55,7 +56,7 @@ export default function ProjectFilesPanel({ projectId }: { projectId: string }) 
       </p>
 
       {error && (
-        <p className="mb-2 rounded-lg bg-red-50 px-2 py-1 text-[11px] text-red-600">{error}</p>
+        <p className="mb-2 rounded-lg bg-red-50 px-2 py-1 text-[11px] text-red-600">{t(error)}</p>
       )}
 
       {loading ? (

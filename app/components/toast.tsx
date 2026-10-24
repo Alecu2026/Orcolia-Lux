@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useT } from "@/lib/i18n/context";
 
 type ToastType = "success" | "error" | "info";
 type Toast = { id: number; type: ToastType; msg: string };
@@ -31,13 +32,14 @@ const STYLES: Record<ToastType, string> = {
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const tr = useT();
   const [items, setItems] = useState<Toast[]>([]);
 
   const push = useCallback((type: ToastType, msg: string) => {
     const id = Date.now() + Math.random();
     setItems((prev) => [...prev, { id, type, msg }]);
     setTimeout(() => {
-      setItems((prev) => prev.filter((t) => t.id !== id));
+      setItems((prev) => prev.filter((x) => x.id !== id));
     }, 3500);
   }, []);
 
@@ -51,13 +53,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={api}>
       {children}
       <div className="pointer-events-none fixed inset-x-0 bottom-[calc(6rem+env(safe-area-inset-bottom))] z-[60] flex flex-col items-center gap-2 px-4 lg:bottom-6">
-        {items.map((t) => (
+        {items.map((it) => (
           <div
-            key={t.id}
+            key={it.id}
             role="status"
-            className={`pointer-events-auto max-w-sm rounded-xl px-4 py-2.5 text-sm font-medium shadow-lg ${STYLES[t.type]}`}
+            className={`pointer-events-auto max-w-sm rounded-xl px-4 py-2.5 text-sm font-medium shadow-lg ${STYLES[it.type]}`}
           >
-            {t.msg}
+            {tr(it.msg)}
           </div>
         ))}
       </div>

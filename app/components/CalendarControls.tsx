@@ -5,7 +5,8 @@ import { useTransition } from "react";
 import { addDaysToKey, todayKey } from "@/lib/date";
 import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useUrlFilters } from "@/app/hooks/useUrlFilters";
-import { useMessages } from "@/lib/i18n/context";
+import { useLocale, useMessages } from "@/lib/i18n/context";
+import { dateTag } from "@/lib/i18n/t";
 
 type Opt = { id: string; name: string };
 
@@ -17,14 +18,14 @@ function getWeekBounds(anchor: string, tz: string): { monday: string; sunday: st
   return { monday, sunday };
 }
 
-function getNavDates(view: string, anchor: string, tz: string): { prev: string; next: string; label: string } {
+function getNavDates(view: string, anchor: string, tz: string, tag: string): { prev: string; next: string; label: string } {
   const [y, m, d] = anchor.split("-").map(Number);
 
   if (view === "month") {
     const firstKey = `${y}-${String(m).padStart(2, "0")}-01`;
     const prev = addDaysToKey(firstKey, -1, tz).slice(0, 7) + "-01";
     const next = addDaysToKey(`${y}-${String(m).padStart(2, "0")}-28`, 7, tz).slice(0, 7) + "-01";
-    const label = new Intl.DateTimeFormat("ro-RO", { timeZone: tz, month: "long", year: "numeric" })
+    const label = new Intl.DateTimeFormat(tag, { timeZone: tz, month: "long", year: "numeric" })
       .format(new Date(Date.UTC(y, m - 1, 15)));
     return { prev, next, label };
   }
@@ -35,7 +36,7 @@ function getNavDates(view: string, anchor: string, tz: string): { prev: string; 
     const next = addDaysToKey(monday, 7, tz);
     const fmt = (k: string) => {
       const [ky, km, kd] = k.split("-").map(Number);
-      return new Intl.DateTimeFormat("ro-RO", { timeZone: tz, day: "numeric", month: "short" })
+      return new Intl.DateTimeFormat(tag, { timeZone: tz, day: "numeric", month: "short" })
         .format(new Date(Date.UTC(ky, km - 1, kd, 12)));
     };
     const [sy] = sunday.split("-").map(Number);
@@ -46,7 +47,7 @@ function getNavDates(view: string, anchor: string, tz: string): { prev: string; 
   // day
   const prev = addDaysToKey(anchor, -1, tz);
   const next = addDaysToKey(anchor, 1, tz);
-  const label = new Intl.DateTimeFormat("ro-RO", {
+  const label = new Intl.DateTimeFormat(tag, {
     timeZone: tz, weekday: "long", day: "numeric", month: "long", year: "numeric",
   }).format(new Date(Date.UTC(y, m - 1, d, 12)));
   return { prev, next, label };
@@ -86,7 +87,7 @@ export default function CalendarControls({
     start(() => router.replace(`${pathname}?${params.toString()}`, { scroll: false }));
   }
 
-  const { prev, next, label } = getNavDates(view, anchor, tz);
+  const { prev, next, label } = getNavDates(view, anchor, tz, dateTag(useLocale()));
   const today = todayKey(tz);
 
   const scope = sp.get("scope") ?? "all";

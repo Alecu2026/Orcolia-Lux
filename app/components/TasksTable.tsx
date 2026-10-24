@@ -404,7 +404,7 @@ export default function TasksTable({
     {
       key: "due", label: "Termen", minW: 120, sort: (t) => (t.dueAt ? new Date(t.dueAt).getTime() : null),
       render: (t) => {
-        const display = t.dueAt ? <span className={overdue(t) ? "font-semibold text-st-cancelled" : ""} title={overdue(t) ? "Termen depășit" : undefined}>{fmtDue(t.dueAt)}</span> : dash;
+        const display = t.dueAt ? <span className={overdue(t) ? "font-semibold text-st-cancelled" : ""} title={overdue(t) ? tr("Termen depășit") : undefined}>{fmtDue(t.dueAt)}</span> : dash;
         const dueDate = t.dueAt ? dateKeyOf(new Date(t.dueAt), TZ) : "";
         const rawTime = t.dueAt ? formatTime(new Date(t.dueAt), TZ) : "";
         return (
@@ -459,7 +459,7 @@ export default function TasksTable({
       render: (t) => {
         const n = t.reminderIntervalMinutes;
         if (!n) return dash;
-        return n >= 1440 ? `la ${Math.round(n / 1440)} zile` : n >= 60 ? `la ${Math.round(n / 60)} h` : `la ${n} min`;
+        return n >= 1440 ? tr("la {n} zile", { n: Math.round(n / 1440) }) : n >= 60 ? tr("la {n} h", { n: Math.round(n / 60) }) : tr("la {n} min", { n });
       },
     },
     {
@@ -566,7 +566,7 @@ export default function TasksTable({
               href={`${basePath}${s.key === "mine" ? "" : `?scope=${s.key}`}`}
               className={`tap shrink-0 cursor-pointer rounded-full px-3 py-1 text-xs font-medium ${scope === s.key ? "bg-brand text-white" : "card text-ink-soft"}`}
             >
-              {s.label}
+              {tr(s.label)}
             </Link>
           ))}
         </div>
@@ -796,7 +796,7 @@ function TaskDetailDialog({
 
         <Box title={tr("Detalii")}>
           <Item label={tr("Prioritate")} value={<span className={PRIO_CLS[t.priority]}>{m.priority[t.priority]}</span>} />
-          <Item label={tr("Termen")} value={t.dueAt ? <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtDue(t.dueAt)}{late ? " · depășit" : ""}</span> : null} />
+          <Item label={tr("Termen")} value={t.dueAt ? <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtDue(t.dueAt)}{late ? tr("· depășit") : ""}</span> : null} />
           <Item label={tr("Responsabil")} value={t.assigneeName ?? t.teamName} />
           <Item label={tr("Proiect")} value={t.projectName} />
           <Item label={tr("Client")} value={t.clientName} />

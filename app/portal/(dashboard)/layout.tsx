@@ -4,6 +4,10 @@ import { clientLogout } from "@/app/actions/client-auth";
 import PortalNav from "@/app/components/PortalNav";
 import { IconDroplet, IconLogout } from "@/app/components/icons";
 import { getT } from "@/lib/i18n/server-t";
+import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
+import { getMessages } from "@/lib/i18n";
+import { I18nProvider } from "@/lib/i18n/context";
+import LanguageSwitcher from "@/app/components/LanguageSwitcher";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +17,13 @@ export default async function PortalDashboardLayout({
   children: React.ReactNode;
 }) {
   const t = await getT();
+  const locale = await getLocaleFromCookie();
+  const messages = getMessages(locale);
   const client = await requireClient();
   const company = await getCompanySettings();
 
   return (
+    <I18nProvider messages={messages} locale={locale}>
     <div className="min-h-dvh bg-[var(--color-app)]">
       <div className="h-1 bg-brand" />
       <header className="border-b border-[var(--color-line)] bg-[var(--color-surface)]">
@@ -32,6 +39,7 @@ export default async function PortalDashboardLayout({
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <PortalNav />
+            <LanguageSwitcher />
             <form action={clientLogout}>
               <button
                 type="submit"
@@ -47,5 +55,6 @@ export default async function PortalDashboardLayout({
       </header>
       <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>
     </div>
+    </I18nProvider>
   );
 }

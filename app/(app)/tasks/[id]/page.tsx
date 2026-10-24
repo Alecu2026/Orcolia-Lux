@@ -237,7 +237,7 @@ export default async function TaskDetailPage({
           href={task.type === "TICKET" ? "/tickets" : "/tasks"}
           className="inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink"
         >
-          {task.type === "TICKET" ? "← Înapoi la cereri" : "← Înapoi la sarcini"}
+          {task.type === "TICKET" ? tr("← Înapoi la cereri") : tr("← Înapoi la sarcini")}
         </Link>
         <TaskDetailActions
           task={{
@@ -275,7 +275,7 @@ export default async function TaskDetailPage({
             </span>
           )}
           <span className="rounded bg-[var(--color-surface-2)] px-2 py-0.5 text-[11px] text-ink-soft">
-            {TYPE_RO[task.type] ?? task.type}
+            {tr(TYPE_RO[task.type] ?? task.type)}
           </span>
           <span className={`rounded px-2 py-0.5 text-[11px] font-semibold ${ST[task.status]?.badge ?? ""}`}>
             {ST[task.status]?.label ?? task.status}
@@ -296,7 +296,7 @@ export default async function TaskDetailPage({
         )}
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
-          <MetaRow label={tr("Prioritate")} value={PRIO_RO[task.priority] ?? task.priority} />
+          <MetaRow label={tr("Prioritate")} value={tr(PRIO_RO[task.priority] ?? task.priority)} />
           {task.assignee?.name && (
             <MetaRow
               label={tr("Asignat")}
@@ -320,7 +320,7 @@ export default async function TaskDetailPage({
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline"
               >
-                📍 {(task.project as { address?: string | null }).address || "Vezi pe hartă"}
+                📍 {(task.project as { address?: string | null }).address || tr("Vezi pe hartă")}
               </a>
             </div>
           )}
@@ -362,8 +362,8 @@ export default async function TaskDetailPage({
             <h2 className="text-sm font-bold">{tr("💬 Conversație cu clientul{v1}", { v1: chatClient ? ` — ${chatClient.name}` : "" })}</h2>
             {chatClient && (
               <p className="text-[11px] text-ink-soft">
-                {chatClient.email ? `Răspunsurile tale ajung și pe email (${chatClient.email}).` : "Clientul nu are email — nu primește notificare pe email."}
-                {!chatClient.portalPasswordHash && " Nu are cont activ în portal, deci nu poate vedea conversația."}
+                {chatClient.email ? tr("Răspunsurile tale ajung și pe email ({email}).", { email: chatClient.email }) : tr("Clientul nu are email — nu primește notificare pe email.")}
+                {!chatClient.portalPasswordHash && tr("Nu are cont activ în portal, deci nu poate vedea conversația.")}
               </p>
             )}
           </div>
@@ -505,7 +505,7 @@ export default async function TaskDetailPage({
         {/* Total duration */}
         {timeline.length > 1 && (
           <div className="mt-3 border-t border-[var(--color-line)] pt-3 text-[11px] text-ink-soft">
-            Durată totală de la creare:{" "}
+            {tr("Durată totală de la creare:")}{" "}
             <span className="font-semibold text-ink">
               {fmtDuration(
                 new Date(timeline[timeline.length - 1].at).getTime() -

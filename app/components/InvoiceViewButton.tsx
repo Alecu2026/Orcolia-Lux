@@ -21,7 +21,7 @@ export default function InvoiceViewButton({
   return (
     <>
       <button type="button" onClick={(e) => { e.stopPropagation(); setOpen(true); }} className={className} title={t("Vezi factura (pop-up)")}>
-        {label}
+        {t(label)}
       </button>
       {open && <InvoicePreviewDialog token={token} title={title} onClose={() => setOpen(false)} />}
     </>

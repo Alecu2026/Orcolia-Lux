@@ -128,7 +128,7 @@ export default function TaskTemplatesDialog({
                   <p className="truncate text-[11px] text-ink-soft">
                     {t.title}
                     {catName(t.categoryId) ? ` · ${catName(t.categoryId)}` : ""}
-                    {/\{contor\}/i.test(t.title + t.description) ? ` · următorul nr. ${t.counter}` : ""}
+                    {/\{contor\}/i.test(t.title + t.description) ? " " + tr("· următorul nr. {n}", { n: t.counter }) : ""}
                   </p>
                 </div>
                 <button type="button" onClick={() => onUse(t.id)} className="tap h-8 shrink-0 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">
@@ -227,7 +227,7 @@ export default function TaskTemplatesDialog({
                 <input name="counter" type="number" min={1} max={9999999} defaultValue={form.counter} className={input} />
               </div>
             </div>
-            {error && <p className="text-sm text-st-cancelled">{error}</p>}
+            {error && <p className="text-sm text-st-cancelled">{tr(error)}</p>}
             <div className="flex gap-2">
               <button type="button" onClick={() => setEditing(null)} className="tap h-11 flex-1 cursor-pointer rounded-xl border border-[var(--color-line)] text-sm font-medium hover:bg-[var(--color-surface-2)]">
                 {tr("Înapoi")}

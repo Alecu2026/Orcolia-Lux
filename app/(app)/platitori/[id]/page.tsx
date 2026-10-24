@@ -11,6 +11,8 @@ import InvoiceViewButton from "@/app/components/InvoiceViewButton";
 import { listPayerNotes } from "@/lib/queries/payer-notify";
 import { IconChevronLeft } from "@/app/components/icons";
 import { getT } from "@/lib/i18n/server-t";
+import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
+import { dateTag } from "@/lib/i18n/t";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,7 @@ export default async function PayerDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const tr = await getT();
+  const dateLoc = dateTag(await getLocaleFromCookie());
   const user = await requirePermission("payers.view");
   const { id } = await params;
 
@@ -124,14 +127,14 @@ export default async function PayerDetailPage({
             {invoices.map((inv) => {
               const st = INVOICE_STATUS[inv.status as InvoiceStatusKey];
               // Luna facturii: eticheta perioadei (facturile Apă-Canal o au, ex. "SEPTEMBRIE 2026"), altfel luna emiterii.
-              const luna = inv.billingPeriodLabel || inv.issueDate.toLocaleDateString("ro-RO", { month: "long", year: "numeric", timeZone: "UTC" });
+              const luna = inv.billingPeriodLabel || inv.issueDate.toLocaleDateString(dateLoc, { month: "long", year: "numeric", timeZone: "UTC" });
               const isAc = inv.kind === "APA_CANAL";
               return (
                 <div key={inv.id} className="card flex flex-wrap items-center justify-between gap-3 p-4">
                   <div className="min-w-0">
                     <p className="text-sm font-bold uppercase">{luna}</p>
                     <p className="text-xs text-ink-soft">
-                      {inv.number} · emisă {fmtDate(inv.issueDate)}
+                      {inv.number} {tr("· emisă")} {fmtDate(inv.issueDate)}
                       {isAc && (inv.meterPrevReading || inv.meterCurrReading) && <> {tr("· citiri")} {inv.meterPrevReading ?? "—"} → {inv.meterCurrReading ?? "—"}</>}
                     </p>
                     {isAc && (
@@ -143,7 +146,7 @@ export default async function PayerDetailPage({
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <p className="text-sm font-semibold tabular-nums">{money(inv.grandTotal, inv.currency)}</p>
-                      <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
+                      <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{tr(st.label)}</span>
                     </div>
                     <InvoiceViewButton token={inv.publicToken} title={`${luna} · ${inv.number}`} />
                     <Link href={`/invoices/${inv.id}/edit`} className="tap h-9 rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium leading-9 hover:bg-[var(--color-surface-2)]">

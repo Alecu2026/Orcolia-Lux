@@ -255,7 +255,7 @@ export default function QuickAddDialog({
 
           {state?.error && (
             <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
-              {state.error}
+              {t(state.error)}
             </p>
           )}
 

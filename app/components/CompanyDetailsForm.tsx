@@ -245,16 +245,16 @@ export default function CompanyDetailsForm({
           {/* Buton chiar lângă tarife (același formular): nu trebuie să cauți „Salvează" la finalul paginii; rezultatul apare aici. */}
           <div className="flex flex-wrap items-center gap-3">
             <button type="submit" disabled={pending} className="tap h-10 cursor-pointer rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
-              {pending ? m.common.saving : "Salvează tarifele"}
+              {pending ? m.common.saving : t("Salvează tarifele")}
             </button>
             {state?.ok && <span className="text-sm text-st-done">{state.message ?? m.company.saved}</span>}
-            {state?.error && <span className="text-sm text-st-cancelled">{state.error}</span>}
+            {state?.error && <span className="text-sm text-st-cancelled">{t(state.error)}</span>}
           </div>
           <ApplyTariffButton hasSavedTariff={(company.apaCanalTarifApa || 0) > 0 || (company.apaCanalTarifCanal || 0) > 0} />
         </div>
       </details>
 
-      {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+      {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
       {state?.ok && <p className="text-sm text-st-done">{state.message ?? m.company.saved}</p>}
 
       <button type="submit" disabled={pending} className="tap h-11 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">

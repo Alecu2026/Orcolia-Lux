@@ -19,14 +19,14 @@ export default function PortalRegisterRequestForm() {
       <input name="meterSeries" placeholder={t("Cont personal sau contract")} required className={input} />
       <input name="email" type="email" placeholder="Email" autoComplete="email" required className={input} />
 
-      {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+      {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
 
       <button
         type="submit"
         disabled={pending}
         className="tap h-12 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60"
       >
-        {pending ? "Se procesează…" : "Trimite cod pe email"}
+        {pending ? t("Se procesează…") : t("Trimite cod pe email")}
       </button>
     </form>
   );

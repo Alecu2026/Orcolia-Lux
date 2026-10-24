@@ -57,7 +57,7 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
       )}
 
       {state?.error && (
-        <p className="text-sm text-st-cancelled">{state.error}</p>
+        <p className="text-sm text-st-cancelled">{t(state.error)}</p>
       )}
 
       <button

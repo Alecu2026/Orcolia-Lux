@@ -56,7 +56,7 @@ export default function PayerActions({
         <input name="phone" defaultValue={payer.phone ?? ""} placeholder={t("Telefon")} className={input} />
         <input name="email" defaultValue={payer.email ?? ""} placeholder={t("Email")} type="email" className={input} />
         <textarea name="notes" defaultValue={payer.notes ?? ""} placeholder={t("Notițe")} rows={2} className={input} />
-        {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+        {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
         <div className="flex gap-2">
           <button type="submit" disabled={pending} className="tap h-10 rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
             {pending ? t("Se salvează…") : t("Salvează")}

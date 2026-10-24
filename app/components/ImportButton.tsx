@@ -194,7 +194,7 @@ export default function ImportButton({ entity, className, hideAi }: Props) {
                       {result.failed.map((f) => (
                         <li key={f.row} className="px-3 py-2 text-sm">
                           <span className="font-medium">{m.import.rowLabel.replace("{n}", String(f.row))}</span>{" "}
-                          <span className="text-ink-soft">{f.error}</span>
+                          <span className="text-ink-soft">{t(f.error)}</span>
                         </li>
                       ))}
                     </ul>

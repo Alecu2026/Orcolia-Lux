@@ -416,6 +416,7 @@ export function ProjectDialog({
 }) {
   const router = useRouter();
   const m = useMessages();
+  const tr = useT();
   const action = project ? updateProject : createProject;
   const [state, formAction, pending] = useActionState<ProjectState, FormData>(action, undefined);
   useEffect(() => {
@@ -477,7 +478,7 @@ export function ProjectDialog({
               />
             </div>
           </div>
-          {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+          {state?.error && <p className="text-sm text-st-cancelled">{tr(state.error)}</p>}
           <button type="submit" disabled={pending} className="tap h-12 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
             {pending ? m.projects.saving : m.common.save}
           </button>

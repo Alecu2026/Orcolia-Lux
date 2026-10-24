@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setWebhookAction, unlinkTelegram, createInviteLink, deleteInviteLink } from "@/app/actions/telegram";
 import { IconSend } from "./icons";
-import { useMessages } from "@/lib/i18n/context";
+import { useMessages, useT } from "@/lib/i18n/context";
 
 export default function TelegramPanel({
   enabled,
@@ -25,6 +25,7 @@ export default function TelegramPanel({
 }) {
   const router = useRouter();
   const m = useMessages();
+  const t = useT();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string>("");
   const [inviteToken, setInviteToken] = useState<string | null>(initialInviteToken);
@@ -178,7 +179,7 @@ export default function TelegramPanel({
           >
             {pending ? m.telegram.webhookSetting : m.telegram.webhookSet}
           </button>
-          {msg && <p className="mt-2 break-all text-xs text-ink-soft">{msg}</p>}
+          {msg && <p className="mt-2 break-all text-xs text-ink-soft">{t(msg)}</p>}
         </div>
       )}
     </div>

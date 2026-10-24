@@ -111,7 +111,7 @@ export default function GlobalError({
               width: "100%",
             }}
           >
-            {stale ? "Reîncarcă pagina" : "Încearcă din nou"}
+            {stale ? t("Reîncarcă pagina") : t("Încearcă din nou")}
           </button>
         </div>
       </body>

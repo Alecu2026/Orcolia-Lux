@@ -452,7 +452,7 @@ export default function TasksManager({
                 localScope === s.key ? "bg-brand text-white" : "card text-ink-soft"
               }`}
             >
-              {s.label}
+              {tr(s.label)}
             </button>
           ))}
         </div>
@@ -576,7 +576,7 @@ export default function TasksManager({
                   : "bg-[var(--color-surface-2)] hover:bg-brand-soft"
               }`}
             >
-              {btn.label}
+              {tr(btn.label)}
             </button>
           ))}
         </div>
@@ -1014,6 +1014,7 @@ export function Comments({
   onSubmit: () => void;
 }) {
   const m = useMessages();
+  const tr = useT();
   const fmt = (d: string | Date) => new Date(d).toLocaleString("ro-RO", { dateStyle: "short", timeStyle: "short" });
   return (
     <div className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)]/40 px-3 py-2.5">
@@ -1027,7 +1028,7 @@ export function Comments({
           rows.map((c) => (
             <div key={c.id} className="text-[11px]">
               <span className="font-medium">{c.userName}</span>
-              <span className="text-ink-soft"> · {fmt(c.createdAt)}{SOURCE_LABEL[c.source]}</span>
+              <span className="text-ink-soft"> · {fmt(c.createdAt)}{tr(SOURCE_LABEL[c.source])}</span>
               <p className="mt-0.5 whitespace-pre-wrap">{c.body}</p>
             </div>
           ))
@@ -1202,7 +1203,7 @@ export function EditDialog({
               <span>{m.tasks.quietBypass}</span>
             </label>
           )}
-          {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
+          {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
           <button type="submit" disabled={pending} className="tap h-12 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
             {pending ? m.common.saving : m.common.save}
           </button>

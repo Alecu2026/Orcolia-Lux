@@ -251,7 +251,7 @@ export default function ProjectsMapView({ pins }: { pins: ProjectPin[] }) {
       <div className="card grid place-items-center p-16 text-center text-sm text-ink-soft">
         <p className="mb-1 font-semibold text-ink">{m.projects.map.unavailable}</p>
         <p>
-          Variabila <code className="rounded bg-[var(--color-surface-2)] px-1">{t("NEXT_PUBLIC_MAPBOX_TOKEN")}</code> {m.projects.map.varNotSet}
+          {t("Variabila")} <code className="rounded bg-[var(--color-surface-2)] px-1">{t("NEXT_PUBLIC_MAPBOX_TOKEN")}</code> {m.projects.map.varNotSet}
         </p>
       </div>
     );

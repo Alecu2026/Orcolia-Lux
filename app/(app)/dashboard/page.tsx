@@ -9,6 +9,7 @@ import type { TaskPriority } from "@prisma/client";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
 import type { Messages } from "@/lib/i18n/messages/ro";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ async function StatsSection({
   user: CurrentUser;
   m: Messages;
 }) {
+  const t = await getT();
   const stats = await dashboardStats(user.id, user.teamIds, user.role, {
     scope: user.taskViewScope,
     teamIds: user.taskViewTeamIds,
@@ -79,7 +81,7 @@ async function StatsSection({
       {visibleCards.map((c) => (
         <Link key={c.label} href={c.href} className="card tap p-3.5 hover:border-brand">
           <p className={`text-2xl font-bold ${c.accent}`}>{c.value}</p>
-          <p className="mt-0.5 text-xs leading-tight text-ink-soft">{c.label}</p>
+          <p className="mt-0.5 text-xs leading-tight text-ink-soft">{t(c.label)}</p>
         </Link>
       ))}
     </div>

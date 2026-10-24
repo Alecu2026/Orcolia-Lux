@@ -70,11 +70,12 @@ function Section({
 }
 
 function Who({ r }: { r: SyncReportRow }) {
+  const t = useT();
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-      <span className="font-medium">{r.name || "(fără nume)"}</span>
+      <span className="font-medium">{r.name || t("(fără nume)")}</span>
       <span className="text-ink-soft">
-        {r.contPersonal ? `cont ${r.contPersonal}` : r.contract ? `contract ${r.contract} (firmă, fără cont)` : "fără cont"}
+        {r.contPersonal ? t("cont {c}", { c: r.contPersonal }) : r.contract ? t("contract {c} (firmă, fără cont)", { c: r.contract }) : t("fără cont")}
         {r.period ? ` · ${r.period}` : ""}
         {r.deAchitat !== null ? ` · ${mdl(r.deAchitat)}` : ""}
       </span>
@@ -141,11 +142,11 @@ export default function ApaCanalSyncReport({ report, committed }: { report: Sync
       />
 
       <Section
-        title={committed ? "Existente, actualizate cu datele din 1C" : "Existente, cu alte valori — se vor actualiza"}
+        title={committed ? tr("Existente, actualizate cu datele din 1C") : tr("Existente, cu alte valori — se vor actualiza")}
         hint={
           committed
-            ? "Factura acestei luni exista deja; valorile ei au fost înlocuite cu cele din 1C (contor, citiri, sume)."
-            : "Factura acestei luni există deja, dar 1C trimite acum alte valori. La „Extrage din API” factura se actualizează cu valorile din 1C."
+            ? tr("Factura acestei luni exista deja; valorile ei au fost înlocuite cu cele din 1C (contor, citiri, sume).")
+            : tr("Factura acestei luni există deja, dar 1C trimite acum alte valori. La „Extrage din API” factura se actualizează cu valorile din 1C.")
         }
         total={counts.diferite}
         rows={f(report.diferite)}
