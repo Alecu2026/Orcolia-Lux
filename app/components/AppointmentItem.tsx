@@ -9,6 +9,7 @@ import { IconMail, IconSend, IconTrash, IconChevronRight } from "./icons";
 import type { ApptStatus, ApptVM } from "./types";
 import { useMessages } from "@/lib/i18n/context";
 import type { Messages } from "@/lib/i18n/messages/ro";
+import { useT } from "@/lib/i18n/context";
 
 export const APPT_STATUSES: ApptStatus[] = [
   "NEW", "CONFIRMED", "IN_PROGRESS", "DONE", "CANCELLED", "NO_SHOW",
@@ -26,6 +27,7 @@ export function apptLabel(s: ApptStatus, m: Messages): string {
 }
 
 export default function AppointmentItem({ appt }: { appt: ApptVM }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const [status, setStatus] = useState<ApptStatus>(appt.status);
@@ -42,7 +44,7 @@ export default function AppointmentItem({ appt }: { appt: ApptVM }) {
     setBusy(false);
     if (res?.error) {
       setStatus(prev);
-      toast.error(res.error);
+      toast.error(t(res.error));
     } else {
       toast.success(`Status: ${apptLabel(next, m)}`);
     }
@@ -53,7 +55,7 @@ export default function AppointmentItem({ appt }: { appt: ApptVM }) {
     setRemoved(true);
     try {
       const res = await deleteAppointment(appt.id);
-      if (res?.error) { setRemoved(false); toast.error(res.error); return; }
+      if (res?.error) { setRemoved(false); toast.error(t(res.error)); return; }
       toast.success(m.appts.deleted);
     } catch {
       setRemoved(false);

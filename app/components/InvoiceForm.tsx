@@ -9,6 +9,7 @@ import { money, INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import { useToast } from "./toast";
 import { IconTrash, IconPlus, IconCheck, IconX } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 type ProjOpt = { id: string; name: string; clientId: string | null };
@@ -55,6 +56,7 @@ export default function InvoiceForm({
   canCreateClient?: boolean;
   canCreateProject?: boolean;
 }) {
+  const tr = useT();
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
@@ -82,7 +84,7 @@ export default function InvoiceForm({
       setNewClient("");
       setAddingClient(false);
       toast.success(m.invoices.clientCreated);
-    } else toast.error(res.error);
+    } else toast.error(tr(res.error));
   }
 
   async function createProjectInline() {
@@ -99,7 +101,7 @@ export default function InvoiceForm({
       setNewProject("");
       setAddingProject(false);
       toast.success(m.invoices.projectCreated);
-    } else toast.error(res.error);
+    } else toast.error(tr(res.error));
   }
   const [taskIds, setTaskIds] = useState<string[]>(initial?.taskIds ?? []);
   const [tasks, setTasks] = useState<{ id: string; title: string }[]>([]);

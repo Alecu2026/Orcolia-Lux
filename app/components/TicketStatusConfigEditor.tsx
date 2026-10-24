@@ -6,6 +6,7 @@ import { DEFAULT_STATUS_CONFIGS, ALL_STATUS_KEYS, type StatusConfig } from "@/li
 import { useToast } from "./toast";
 import { IconTrash, IconPlus, IconChevronUp, IconChevronDown } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 function Toggle({
   checked,
@@ -44,6 +45,7 @@ export default function TicketStatusConfigEditor({
 }: {
   initial: StatusConfig[];
 }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const STATUS_LABELS: Record<string, string> = {
@@ -94,7 +96,7 @@ export default function TicketStatusConfigEditor({
     setSaving(true);
     startTransition(async () => {
       const res = await deleteTicketStatus(key, remaining.map((c, i) => ({ ...c, order: i })));
-      if (res?.error) toast.error(res.error);
+      if (res?.error) toast.error(t(res.error));
       else {
         setConfigs(remaining.map((c, i) => ({ ...c, order: i })));
         toast.success(m.tickets.statusDeleted);
@@ -107,7 +109,7 @@ export default function TicketStatusConfigEditor({
     setAddOpen(false);
     startTransition(async () => {
       const res = await addTicketStatus(key);
-      if (res?.error) { toast.error(res.error); return; }
+      if (res?.error) { toast.error(t(res.error)); return; }
       const def = DEFAULT_STATUS_CONFIGS.find((c) => c.key === key);
       const newEntry: StatusConfig = def
         ? { ...def, order: configs.length }
@@ -121,7 +123,7 @@ export default function TicketStatusConfigEditor({
     setSaving(true);
     startTransition(async () => {
       const res = await saveTicketStatusConfig(configs.map((c, i) => ({ ...c, order: i })));
-      if (res?.error) toast.error(res.error);
+      if (res?.error) toast.error(t(res.error));
       else toast.success(m.tickets.statusSaved);
       setSaving(false);
     });
@@ -136,8 +138,8 @@ export default function TicketStatusConfigEditor({
       {/* Header */}
       <div className="grid grid-cols-[1.5rem_1fr_2rem_3.5rem_3.5rem_2rem] items-center gap-x-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
         <span />
-        <span>Status</span>
-        <span className="text-center">Col.</span>
+        <span>{t("Status")}</span>
+        <span className="text-center">{t("Col.")}</span>
         <span className="text-center leading-tight">{m.tickets.notifEntry}</span>
         <span className="text-center leading-tight">{m.tickets.stopNotif}</span>
         <span />
@@ -183,7 +185,7 @@ export default function TicketStatusConfigEditor({
           </div>
 
           {/* Color picker */}
-          <label className="relative cursor-pointer" title="Schimbă culoarea">
+          <label className="relative cursor-pointer" title={t("Schimbă culoarea")}>
             <span className="flex h-6 w-6 rounded-full border-2 border-[var(--color-line)]" style={{ background: cfg.color }} />
             <input
               type="color"

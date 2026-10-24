@@ -18,6 +18,7 @@ import ProjectFilesPanel from "./ProjectFilesPanel";
 import ProjectMapPickerDynamic from "./ProjectMapPickerDynamic";
 import CardActionsMenu from "./CardActionsMenu";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 export type Opt = { id: string; name: string };
 export type Project = {
@@ -64,6 +65,7 @@ export default function ProjectsManager({
   filters?: { q: string; status: string; ps?: string };
   openCreate?: boolean;
 }) {
+  const tr = useT();
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
@@ -237,7 +239,7 @@ export default function ProjectsManager({
                     {p.seq != null && (
                       <span
                         className="shrink-0 cursor-copy rounded bg-[var(--color-surface-2)] px-1 py-0.5 text-[10px] font-mono font-semibold text-ink-soft hover:bg-brand/10 hover:text-brand"
-                        title="Click pentru copiere"
+                        title={tr("Click pentru copiere")}
                         onClick={(e) => {
                           e.preventDefault();
                           navigator.clipboard.writeText(`#${String(p.seq).padStart(3, "0")}`);
@@ -375,12 +377,12 @@ export default function ProjectsManager({
             className="ml-2 h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs outline-none focus:border-brand"
             title={m.projects.perPage}
           >
-            <option value="20">20 / pag.</option>
-            <option value="50">50 / pag.</option>
-            <option value="100">100 / pag.</option>
-            <option value="200">200 / pag.</option>
-            <option value="500">500 / pag.</option>
-            <option value="1000">1000 / pag.</option>
+            <option value="20">{tr("20 / pag.")}</option>
+            <option value="50">{tr("50 / pag.")}</option>
+            <option value="100">{tr("100 / pag.")}</option>
+            <option value="200">{tr("200 / pag.")}</option>
+            <option value="500">{tr("500 / pag.")}</option>
+            <option value="1000">{tr("1000 / pag.")}</option>
             <option value="all">{m.common.all}</option>
           </select>
         </div>

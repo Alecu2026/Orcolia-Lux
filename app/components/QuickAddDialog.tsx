@@ -11,6 +11,7 @@ import ClientCombobox from "./ClientCombobox";
 import { IconCheck, IconMail, IconSend, IconX } from "./icons";
 import ReminderOffsetPicker from "./ReminderOffsetPicker";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 function nextSlot(slot: number): string {
   const d = new Date();
@@ -36,6 +37,7 @@ export default function QuickAddDialog({
   prefill?: QuickPrefill;
   onClose: () => void;
 }) {
+  const t = useT();
   const router = useRouter();
   const m = useMessages();
   const [state, formAction, pending] = useActionState<ApptState, FormData>(
@@ -198,7 +200,7 @@ export default function QuickAddDialog({
                   step="any"
                   value={duration}
                   onChange={(e) => setDuration(e.target.value)}
-                  placeholder="ex. 30"
+                  placeholder={t("ex. 30")}
                   className="h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand"
                 />
               </div>

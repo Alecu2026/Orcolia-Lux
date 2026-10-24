@@ -11,6 +11,7 @@ import { IconPencil, IconTrash } from "./icons";
 import { effectivePermissionKeys } from "@/lib/permissions";
 import UserDialog, { type UserRow, type Opt } from "./UserDialog";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 
 export default function UsersManager({
@@ -26,6 +27,7 @@ export default function UsersManager({
   viewerId?: string;
   viewerRole?: "ADMIN" | "STAFF";
 }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const [rows, setRows] = useState(users);
@@ -67,7 +69,7 @@ export default function UsersManager({
     setSuperAdmin(u.id, next).then((res) => {
       if (res?.error) {
         setRows((r) => r.map((x) => (x.id === u.id ? { ...x, isSuperAdmin: !next } : x)));
-        toast.error(res.error);
+        toast.error(t(res.error));
       } else {
         toast.success(next ? m.users.superGranted : m.users.superRevoked);
       }
@@ -81,7 +83,7 @@ export default function UsersManager({
     deleteUser(u.id).then((res) => {
       if (res?.error) {
         setRows(prev);
-        toast.error(res.error);
+        toast.error(t(res.error));
       } else {
         toast.success(m.users.deleted);
       }

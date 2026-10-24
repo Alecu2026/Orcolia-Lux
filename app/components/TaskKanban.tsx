@@ -5,6 +5,7 @@ import Link from "next/link";
 import { setTaskStatus } from "@/app/actions/tasks";
 import { useToast } from "./toast";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 type Status = "NEW" | "ASSIGNED" | "READ" | "IN_PROGRESS" | "ON_HOLD" | "REVIEW" | "DONE" | "CANCELLED";
@@ -103,6 +104,7 @@ export default function TaskKanban({
   projects: Opt[];
   categories?: Opt[];
 }) {
+  const tr = useT();
   const toast = useToast();
   const m = useMessages();
   const [tasks, setTasks] = useState(items);
@@ -186,7 +188,7 @@ export default function TaskKanban({
     const prev = tasks;
     setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, status } : t)));
     setTaskStatus(id, status).then((res) => {
-      if (res?.error) { setTasks(prev); toast.error(res.error); }
+      if (res?.error) { setTasks(prev); toast.error(tr(res.error)); }
       else toast.success(`${m.kanban.moved} „${m.status[status]}"`);
     });
   }

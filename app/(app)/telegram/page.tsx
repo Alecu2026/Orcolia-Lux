@@ -12,10 +12,12 @@ import { DEMO } from "@/lib/demo";
 import TelegramPanel from "@/app/components/TelegramPanel";
 import PendingTelegramUsers from "@/app/components/PendingTelegramUsers";
 import { IconCalendar, IconCheckCircle, IconMic, IconSearch } from "@/app/components/icons";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
 export default async function TelegramPage() {
+  const t = await getT();
   const user = await requireUser();
   const enabled = env.telegram.enabled;
   const canManageUsers = can(user, "users.manage");
@@ -56,7 +58,7 @@ export default async function TelegramPage() {
           </svg>
         </div>
         <div>
-          <h1 className="text-lg font-bold">Telegram Bot</h1>
+          <h1 className="text-lg font-bold">{t("Telegram Bot")}</h1>
           <p className="text-sm text-ink-soft">
             {account
               ? `Conectat${account.firstName ? ` ca ${account.firstName}` : ""} · din ${formatDate(account.linkedAt, tz)}`
@@ -84,23 +86,23 @@ export default async function TelegramPage() {
       />
 
       <div className="card mt-5 p-5 text-sm text-ink-soft">
-        <p className="mb-3 font-semibold text-ink">Comenzi rapide în bot</p>
+        <p className="mb-3 font-semibold text-ink">{t("Comenzi rapide în bot")}</p>
         <ul className="space-y-2.5">
           <li className="flex items-center gap-2.5">
             <IconCalendar className="size-4 shrink-0 text-brand" />
-            Azi / Mâine / Săptămâna — listare programări
+            {t("Azi / Mâine / Săptămâna — listare programări")}
           </li>
           <li className="flex items-center gap-2.5">
             <IconCheckCircle className="size-4 shrink-0 text-brand" />
-            Confirmă · Finalizat · Anulează — direct din buton
+            {t("Confirmă · Finalizat · Anulează — direct din buton")}
           </li>
           <li className="flex items-center gap-2.5">
             <IconMic className="size-4 shrink-0 text-brand" />
-            Trimite un mesaj vocal pentru o programare cu confirmare
+            {t("Trimite un mesaj vocal pentru o programare cu confirmare")}
           </li>
           <li className="flex items-center gap-2.5">
             <IconSearch className="size-4 shrink-0 text-brand" />
-            Scrie un nume pentru a căuta clientul
+            {t("Scrie un nume pentru a căuta clientul")}
           </li>
         </ul>
       </div>

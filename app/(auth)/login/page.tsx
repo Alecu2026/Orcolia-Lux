@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import AuthForm from "@/app/components/AuthForm";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ reset?: string }>;
 }) {
+  const t = await getT();
   // Mod demo (fără DB/secret): intri direct în aplicație cu date de exemplu.
   if (!env.isConfigured) {
     redirect("/dashboard");
@@ -31,7 +33,7 @@ export default async function LoginPage({
             </svg>
           </div>
           <div>
-            <h1 className="text-lg font-bold leading-5">Programări</h1>
+            <h1 className="text-lg font-bold leading-5">{t("Programări")}</h1>
             <p className="text-xs text-ink-soft">
               {mode === "login" ? "Autentificare" : "Configurare inițială"}
             </p>
@@ -40,14 +42,13 @@ export default async function LoginPage({
 
         {reset === "1" && mode === "login" && (
           <p className="mb-4 rounded-xl bg-brand-soft px-3 py-2 text-xs text-brand-strong">
-            Parola a fost schimbată. Autentifică-te cu noua parolă.
+            {t("Parola a fost schimbată. Autentifică-te cu noua parolă.")}
           </p>
         )}
 
         {mode === "register" && (
           <p className="mb-4 rounded-xl bg-brand-soft px-3 py-2 text-xs text-brand-strong">
-            Nu există încă niciun cont. Creează contul de administrator pentru a
-            începe.
+            {t("Nu există încă niciun cont. Creează contul de administrator pentru a începe.")}
           </p>
         )}
 
@@ -56,7 +57,7 @@ export default async function LoginPage({
         </Suspense>
 
         <p className="mt-5 text-center text-xs text-ink-soft">
-          Sesiune sigură, păstrată pe acest dispozitiv timp îndelungat.
+          {t("Sesiune sigură, păstrată pe acest dispozitiv timp îndelungat.")}
         </p>
       </div>
     </main>

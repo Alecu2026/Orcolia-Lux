@@ -3,6 +3,7 @@ import { requireClient } from "@/lib/client-dal";
 import { prisma } from "@/lib/prisma";
 import { money, fmtDate, INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatusKey } from "@/app/components/invoice-meta";
 import { IconTicket } from "@/app/components/icons";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export default async function PortalDashboardPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
+  const t = await getT();
   const client = await requireClient();
   const { status } = await searchParams;
   const statusFilter = INVOICE_STATUS_LIST.includes(status as InvoiceStatusKey) ? (status as InvoiceStatusKey) : undefined;
@@ -41,27 +43,27 @@ export default async function PortalDashboardPage({
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold">Facturile mele</h1>
+          <h1 className="text-lg font-bold">{t("Facturile mele")}</h1>
           <p className="mt-0.5 text-xs text-ink-soft">{allInvoices.length} facturi în total</p>
         </div>
         <Link
-          href="/portal/tickets"
+          href="/portal/cereri"
           className="tap flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-strong"
         >
           <IconTicket className="size-4" />
-          Creează tichet
+          {t("Creează cerere")}
         </Link>
       </div>
 
       {allInvoices.length > 0 && (
         <div className="card flex items-center justify-between p-4">
           <div>
-            <p className="text-xs text-ink-soft">Total de plată</p>
+            <p className="text-xs text-ink-soft">{t("Total de plată")}</p>
             <p className="text-xl font-bold tabular-nums">{money(totalDue, currency)}</p>
           </div>
           {totalDue > 0 && (
             <span className="rounded-full bg-st-progress/12 px-3 py-1 text-xs font-medium text-st-progress">
-              Ai facturi neachitate
+              {t("Ai facturi neachitate")}
             </span>
           )}
         </div>
@@ -69,7 +71,7 @@ export default async function PortalDashboardPage({
 
       {allInvoices.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          <StatusChip href="/portal" active={!statusFilter} label="Toate" />
+          <StatusChip href="/portal" active={!statusFilter} label={t("Toate")} />
           {INVOICE_STATUS_LIST.filter((s) => allInvoices.some((i) => i.status === s)).map((s) => (
             <StatusChip key={s} href={`/portal?status=${s}`} active={statusFilter === s} label={INVOICE_STATUS[s].label} />
           ))}
@@ -94,7 +96,7 @@ export default async function PortalDashboardPage({
                   <p className="text-sm font-semibold">{inv.number}</p>
                   <p className="text-xs text-ink-soft">
                     Emisă: {fmtDate(inv.issueDate)}
-                    {inv.dueDate && <> · Scadență: {fmtDate(inv.dueDate)}</>}
+                    {inv.dueDate && <> {t("· Scadență:")} {fmtDate(inv.dueDate)}</>}
                   </p>
                 </div>
                 <div className="text-right">

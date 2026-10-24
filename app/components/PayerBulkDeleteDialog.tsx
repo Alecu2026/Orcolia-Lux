@@ -51,7 +51,7 @@ export default function PayerBulkDeleteDialog({
       const chunk = ids.slice(i, i + CHUNK);
       try {
         const res = await deletePayersBulkAction(chunk);
-        if (!res.ok) { setError(res.error); break; }
+        if (!res.ok) { setError(t(res.error)); break; }
         deletedIds.current.push(...res.deletedIds);
         setTotals((s) => ({
           deleted: s.deleted + res.deletedIds.length,
@@ -100,12 +100,12 @@ export default function PayerBulkDeleteDialog({
               {t("Acțiunea nu poate fi anulată. Dacă acești plătitori vin din exportul 1C, o sincronizare următoare îi poate crea la loc.")}
             </p>
             <label className="text-xs font-semibold text-ink-soft">
-              {t("Scrie")} <span className="font-mono">STERGE</span> {t("ca să confirmi")}
+              {t("Scrie")} <span className="font-mono">{t("STERGE")}</span> {t("ca să confirmi")}
               <input
                 value={word}
                 onChange={(e) => setWord(e.target.value)}
                 autoFocus
-                placeholder="STERGE"
+                placeholder={t("STERGE")}
                 className="mt-1 h-9 w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm outline-none focus:border-st-cancelled"
               />
             </label>

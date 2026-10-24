@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from "next/navigation";
 import { useTransition, useEffect, useRef } from "react";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 const STORAGE_KEY = "filters:dashboard";
 
@@ -26,6 +27,7 @@ export default function DashboardFilters({
   scope: string;
   isAdmin: boolean;
 }) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const [, start] = useTransition();
@@ -116,12 +118,12 @@ export default function DashboardFilters({
           className="ml-auto h-8 min-w-0 max-w-full appearance-none sel-arrow rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] pl-2 pr-7 text-xs outline-none focus:border-brand"
           title={d.perPage}
         >
-          <option value="20">20 / pag.</option>
-          <option value="50">50 / pag.</option>
-          <option value="100">100 / pag.</option>
-          <option value="200">200 / pag.</option>
-          <option value="500">500 / pag.</option>
-          <option value="1000">1000 / pag.</option>
+          <option value="20">{t("20 / pag.")}</option>
+          <option value="50">{t("50 / pag.")}</option>
+          <option value="100">{t("100 / pag.")}</option>
+          <option value="200">{t("200 / pag.")}</option>
+          <option value="500">{t("500 / pag.")}</option>
+          <option value="1000">{t("1000 / pag.")}</option>
           <option value="all">{m.common.all}</option>
         </select>
       </div>

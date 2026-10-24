@@ -33,6 +33,7 @@ import { quickCreateProject } from "@/app/actions/projects";
 import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
 import type { TemplatePrefill } from "@/lib/task-template";
+import { useT } from "@/lib/i18n/context";
 
 export type HistoryRow = {
   id: string;
@@ -214,6 +215,7 @@ export default function TasksManager({
   basePath?: string;
   createButtons?: { label: string; type: "TASK" | "TICKET" | "WORK_ORDER" }[];
 }) {
+  const tr = useT();
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
@@ -276,7 +278,7 @@ export default function TasksManager({
       setHasMoreState(result.hasMore);
       setCurrentPage(result.page);
     } catch {
-      if (req === listReq.current) toast.error(m.common.error);
+      if (req === listReq.current) toast.error(tr(m.common.error));
     } finally {
       if (req === listReq.current) setNavPending(false);
     }
@@ -368,7 +370,7 @@ export default function TasksManager({
         .catch(() => {
           // Ultima încercare a eșuat: ieșim din starea "Se încarcă…" în loc să o lăsăm blocată.
           setComments((c) => ({ ...c, [id]: [] }));
-          toast.error(m.common.error);
+          toast.error(tr(m.common.error));
         });
     }
   }
@@ -379,7 +381,7 @@ export default function TasksManager({
     setPostingComment(id);
     addTaskCommentAction(id, body)
       .then((res) => {
-        if (res?.error) { toast.error(res.error); return; }
+        if (res?.error) { toast.error(tr(res.error)); return; }
         setCommentDraft((d) => ({ ...d, [id]: "" }));
         getTaskComments(id).then((rows) => setComments((c) => ({ ...c, [id]: rows as CommentRow[] })));
         toast.success(m.tasks.commentAdded);
@@ -401,7 +403,7 @@ export default function TasksManager({
     setStatusPending(id);
     setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, status: next } : t)));
     setTaskStatus(id, next).then((res) => {
-      if (res?.error) { setTasks(prev); toast.error(res.error); }
+      if (res?.error) { setTasks(prev); toast.error(tr(res.error)); }
       else {
         toast.success(`Status: ${m.status[next]}`);
         setHistory((h) => { if (!h[id]) return h; const { [id]: _, ...rest } = h; return rest; });
@@ -417,7 +419,7 @@ export default function TasksManager({
     setProgressPending(id);
     setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, progress } : t)));
     setTaskProgress(id, progress).then((res) => {
-      if (res?.error) { setTasks(prev); toast.error(res.error); }
+      if (res?.error) { setTasks(prev); toast.error(tr(res.error)); }
       else toast.success(`Progres: ${progress}%`);
     }).finally(() => setProgressPending((cur) => (cur === id ? null : cur)));
   }
@@ -655,7 +657,7 @@ export default function TasksManager({
                       value={t.progress}
                       onChange={(e) => changeProgress(t.id, Number(e.target.value))}
                       disabled={progressPending === t.id}
-                      title="Progres"
+                      title={tr("Progres")}
                       className="hidden h-8 w-16 shrink-0 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-[11px] outline-none focus:border-brand disabled:opacity-50 sm:block"
                     >
                       {PROGRESS.map((p) => <option key={p} value={p}>{p}%</option>)}
@@ -715,7 +717,7 @@ export default function TasksManager({
                           rel="noreferrer"
                           className="inline-flex h-7 items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 text-[11px] font-medium text-ink hover:bg-[var(--color-surface-2)]"
                         >
-                          🗺 Google Maps
+                          {tr("🗺 Google Maps")}
                         </a>
                         <a
                           href={`https://waze.com/ul?ll=${t.projectLat},${t.projectLng}&navigate=yes`}
@@ -723,7 +725,7 @@ export default function TasksManager({
                           rel="noreferrer"
                           className="inline-flex h-7 items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 text-[11px] font-medium text-ink hover:bg-[var(--color-surface-2)]"
                         >
-                          🚗 Waze
+                          {tr("🚗 Waze")}
                         </a>
                         <a
                           href={`https://maps.apple.com/?ll=${t.projectLat},${t.projectLng}`}
@@ -731,7 +733,7 @@ export default function TasksManager({
                           rel="noreferrer"
                           className="inline-flex h-7 items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 text-[11px] font-medium text-ink hover:bg-[var(--color-surface-2)]"
                         >
-                          🍎 Apple Maps
+                          {tr("🍎 Apple Maps")}
                         </a>
                       </div>
                     </div>
@@ -799,12 +801,12 @@ export default function TasksManager({
             className="ml-2 h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs outline-none focus:border-brand"
             title={m.tasks.perPage}
           >
-            <option value="20">20 / pag.</option>
-            <option value="50">50 / pag.</option>
-            <option value="100">100 / pag.</option>
-            <option value="200">200 / pag.</option>
-            <option value="500">500 / pag.</option>
-            <option value="1000">1000 / pag.</option>
+            <option value="20">{tr("20 / pag.")}</option>
+            <option value="50">{tr("50 / pag.")}</option>
+            <option value="100">{tr("100 / pag.")}</option>
+            <option value="200">{tr("200 / pag.")}</option>
+            <option value="500">{tr("500 / pag.")}</option>
+            <option value="1000">{tr("1000 / pag.")}</option>
             <option value="all">{m.common.allPages}</option>
           </select>
         </div>
@@ -1091,6 +1093,7 @@ export function EditDialog({
   onClose: () => void;
   onSaved: (updated: Partial<Task> & { id: string }) => void;
 }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const [state, action, pending] = useActionState<TaskState, FormData>(updateTaskAction, undefined);
@@ -1103,7 +1106,7 @@ export function EditDialog({
       toast.success(m.tasks.saved);
       onSaved({ id: task.id, title, description: description || null, address: addressRef.current });
     } else if (state?.error) {
-      toast.error(state.error);
+      toast.error(t(state.error));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
@@ -1128,7 +1131,7 @@ export function EditDialog({
             name="title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Titlu *"
+            placeholder={t("Titlu *")}
             required
             autoFocus
             className={dlgInput}
@@ -1137,7 +1140,7 @@ export function EditDialog({
             name="description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Descriere"
+            placeholder={t("Descriere")}
             rows={3}
             className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm outline-none focus:border-brand"
           />
@@ -1237,6 +1240,7 @@ export function CreateDialog({
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const formRef = useRef<HTMLFormElement>(null);
@@ -1283,7 +1287,7 @@ export function CreateDialog({
       onCreated(result.id);
       onClose();
     } catch {
-      setFormError(m.common.error);
+      setFormError(t(m.common.error));
     } finally {
       setSubmitting(false);
       setProgress(null);
@@ -1300,8 +1304,8 @@ export function CreateDialog({
           </button>
         </div>
         <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <input name="title" defaultValue={prefill?.title ?? initialTitle ?? ""} placeholder="Titlu *" required autoFocus className={dlgInput} />
-          <textarea name="description" defaultValue={prefill?.description ?? initialDescription ?? ""} placeholder="Descriere" rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm outline-none focus:border-brand" />
+          <input name="title" defaultValue={prefill?.title ?? initialTitle ?? ""} placeholder={t("Titlu *")} required autoFocus className={dlgInput} />
+          <textarea name="description" defaultValue={prefill?.description ?? initialDescription ?? ""} placeholder={t("Descriere")} rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm outline-none focus:border-brand" />
           <div className="grid gap-2 sm:grid-cols-2">
             <select name="type" defaultValue={initialType} className={dlgInput}>
               <option value="TASK">{m.tasks.typeTask}</option>

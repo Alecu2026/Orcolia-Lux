@@ -4,6 +4,7 @@ import { useState } from "react";
 import { addTaskCommentAction } from "@/app/actions/tasks";
 import { useToast } from "./toast";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type CommentRow = {
   id: string;
@@ -33,6 +34,7 @@ export default function TaskCommentSection({
   taskId: string;
   initialComments: CommentRow[];
 }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const [comments, setComments] = useState(initialComments);
@@ -47,7 +49,7 @@ export default function TaskCommentSection({
     try {
       const res = await addTaskCommentAction(taskId, body);
       if (res?.error) {
-        toast.error(res.error);
+        toast.error(t(res.error));
         return;
       }
       setDraft("");

@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { login, register, type AuthState } from "@/app/actions/auth";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 const input =
   "w-full h-12 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
 
 export default function AuthForm({ mode }: { mode: "login" | "register" }) {
+  const t = useT();
   const m = useMessages();
   const action = mode === "login" ? login : register;
   const [state, formAction, pending] = useActionState<AuthState, FormData>(
@@ -50,7 +52,7 @@ export default function AuthForm({ mode }: { mode: "login" | "register" }) {
 
       {mode === "login" && (
         <Link href="/forgot-password" className="-mt-1 self-end text-xs text-brand hover:underline">
-          Ai uitat parola?
+          {t("Ai uitat parola?")}
         </Link>
       )}
 

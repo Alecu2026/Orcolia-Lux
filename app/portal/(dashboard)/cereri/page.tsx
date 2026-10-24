@@ -5,6 +5,7 @@ import { TASK_STATUS_RO } from "@/lib/telegram";
 import { fmtDate } from "@/app/components/invoice-meta";
 import PortalNewTicketForm from "@/app/components/PortalNewTicketForm";
 import { IconTicket } from "@/app/components/icons";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ const TICKET_STATUS_CLS: Record<string, string> = {
 };
 
 export default async function PortalTicketsPage() {
+  const tr = await getT();
   const client = await requireClient();
 
   const rows = await prisma.task.findMany({
@@ -35,24 +37,24 @@ export default async function PortalTicketsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-lg font-bold">Cererile mele</h1>
-        <p className="mt-0.5 text-xs text-ink-soft">{tickets.length} tichete în total</p>
+        <h1 className="text-lg font-bold">{tr("Cererile mele")}</h1>
+        <p className="mt-0.5 text-xs text-ink-soft">{tr("{n} cereri în total", { n: tickets.length })}</p>
       </div>
 
       <div className="card p-4">
         <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold">
           <IconTicket className="size-4 text-brand" />
-          Creează un tichet nou
+          {tr("Creează o cerere nouă")}
         </h2>
         <PortalNewTicketForm />
       </div>
 
       {tickets.length === 0 ? (
-        <div className="card p-6 text-center text-sm text-ink-soft">Nu ai creat încă nicio cerere.</div>
+        <div className="card p-6 text-center text-sm text-ink-soft">{tr("Nu ai creat încă nicio cerere.")}</div>
       ) : (
         <div className="flex flex-col gap-2">
           {tickets.map((t) => (
-            <Link key={t.id} href={`/portal/tickets/${t.id}`} className="card block cursor-pointer p-4 hover:border-brand">
+            <Link key={t.id} href={`/portal/cereri/${t.id}`} className="card block cursor-pointer p-4 hover:border-brand">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm font-semibold">
                   {t.seq ? <span className="text-ink-soft">#{t.seq} · </span> : ""}
@@ -66,9 +68,9 @@ export default async function PortalTicketsPage() {
               <div className="mt-2 flex items-center justify-between gap-2 text-xs text-ink-soft">
                 <span>{fmtDate(t.createdAt)}</span>
                 {t.chatLastSender === "STAFF" && (!t.chatClientReadAt || (t.chatLastMsgAt && t.chatClientReadAt < t.chatLastMsgAt)) ? (
-                  <span className="rounded-full bg-brand px-2 py-0.5 font-semibold text-white">● Mesaj nou</span>
+                  <span className="rounded-full bg-brand px-2 py-0.5 font-semibold text-white">{tr("● Mesaj nou")}</span>
                 ) : (
-                  <span className="font-medium text-brand">💬 Deschide conversația →</span>
+                  <span className="font-medium text-brand">{tr("💬 Deschide conversația →")}</span>
                 )}
               </div>
             </Link>

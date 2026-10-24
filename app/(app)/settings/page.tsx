@@ -14,10 +14,12 @@ import PushToggle from "@/app/components/PushToggle";
 import TicketStatusConfigEditor from "@/app/components/TicketStatusConfigEditor";
 import { IconChevronRight } from "@/app/components/icons";
 import { loadStatusConfigs } from "@/lib/queries/ticket-status-config";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
+  const t = await getT();
   const user = await requireUser();
   const [settings, categories, company, quietHours, statusConfigs, me] = await Promise.all([
     getSettings(user.id),
@@ -40,9 +42,9 @@ export default async function SettingsPage() {
       {user.role === "ADMIN" && (
         <div className="card p-5 space-y-4">
           <div>
-            <h2 className="text-base font-bold">Statusuri cereri</h2>
+            <h2 className="text-base font-bold">{t("Statusuri cereri")}</h2>
             <p className="text-sm text-ink-soft">
-              Configurează etichetele, culorile și comportamentul notificărilor per status.
+              {t("Configurează etichetele, culorile și comportamentul notificărilor per status.")}
             </p>
           </div>
           <TicketStatusConfigEditor initial={statusConfigs} />
@@ -55,8 +57,8 @@ export default async function SettingsPage() {
           className="card tap flex items-center justify-between p-5 hover:border-brand"
         >
           <div>
-            <h2 className="text-base font-bold">Șablon factură Apă-Canal</h2>
-            <p className="text-sm text-ink-soft">Editor vizual — trage, redimensionează, ajustează text și linii pe factură.</p>
+            <h2 className="text-base font-bold">{t("Șablon factură Apă-Canal")}</h2>
+            <p className="text-sm text-ink-soft">{t("Editor vizual — trage, redimensionează, ajustează text și linii pe factură.")}</p>
           </div>
           <IconChevronRight className="size-5 text-brand" />
         </Link>
@@ -68,8 +70,8 @@ export default async function SettingsPage() {
           className="card tap flex items-center justify-between p-5 hover:border-brand"
         >
           <div>
-            <h2 className="text-base font-bold">Conturi portal clienți</h2>
-            <p className="text-sm text-ink-soft">Cine s-a activat, cine nu, când s-a logat ultima dată.</p>
+            <h2 className="text-base font-bold">{t("Conturi portal clienți")}</h2>
+            <p className="text-sm text-ink-soft">{t("Cine s-a activat, cine nu, când s-a logat ultima dată.")}</p>
           </div>
           <IconChevronRight className="size-5 text-brand" />
         </Link>
@@ -80,8 +82,8 @@ export default async function SettingsPage() {
         className="card tap flex items-center justify-between p-5 hover:border-brand"
       >
         <div>
-          <h2 className="text-base font-bold">Telegram Bot</h2>
-          <p className="text-sm text-ink-soft">Conectează botul și gestionează din chat.</p>
+          <h2 className="text-base font-bold">{t("Telegram Bot")}</h2>
+          <p className="text-sm text-ink-soft">{t("Conectează botul și gestionează din chat.")}</p>
         </div>
         <IconChevronRight className="size-5 text-brand" />
       </Link>

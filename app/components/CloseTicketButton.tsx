@@ -5,8 +5,10 @@ import { setTaskStatus } from "@/app/actions/tasks";
 import { useRouter } from "next/navigation";
 import { useMessages } from "@/lib/i18n/context";
 import { useToast } from "./toast";
+import { useT } from "@/lib/i18n/context";
 
 export default function CloseTicketButton({ taskId }: { taskId: string }) {
+  const t = useT();
   const m = useMessages();
   const [isPending, startTransition] = useTransition();
   const [done, setDone] = useState(false);
@@ -18,7 +20,7 @@ export default function CloseTicketButton({ taskId }: { taskId: string }) {
       const res = await setTaskStatus(taskId, "DONE");
       // Fără permisiunea de închidere, tichetul se finalizează doar după ce atașezi o poză / un fișier: spunem de ce nu s-a închis.
       if (res?.error) {
-        toast.error(res.error);
+        toast.error(t(res.error));
         return;
       }
       setDone(true);

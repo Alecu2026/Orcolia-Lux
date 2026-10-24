@@ -89,7 +89,7 @@ export default function PayerDetailDialog({
         return j as Detail;
       })
       .then(setDetail)
-      .catch((e: Error) => { if (e.name !== "AbortError") setError(e.message); });
+      .catch((e: Error) => { if (e.name !== "AbortError") setError(t(e.message)); });
     return () => ctl.abort();
   }, [row.id, t]);
 
@@ -125,7 +125,7 @@ export default function PayerDetailDialog({
     // fără câmpul „notes": notița veche din fișă rămâne neatinsă
     updatePayer(undefined, fd)
       .then((res) => {
-        if (res?.error) { onUpdated(row.id, old); toast.error(res.error); }
+        if (res?.error) { onUpdated(row.id, old); toast.error(t(res.error)); }
         else toast.success(t("Plătitor salvat."));
       })
       .catch(() => { onUpdated(row.id, old); toast.error(t("Nu am putut salva modificarea.")); });

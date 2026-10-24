@@ -12,6 +12,7 @@ import { PERMISSION_GROUPS } from "@/lib/permissions";
 import { useToast } from "./toast";
 import { IconX } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 type Contact = {
@@ -36,6 +37,7 @@ export default function PendingTelegramUsers({
   teams: Opt[];
   users?: Opt[];
 }) {
+  const t = useT();
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
@@ -49,7 +51,7 @@ export default function PendingTelegramUsers({
     setRows((r) => r.filter((x) => x.id !== c.id));
     rejectTelegramContact(c.id)
       .then(() => toast.success(m.telegram.rejected))
-      .catch(() => toast.error(m.common.error));
+      .catch(() => toast.error(t(m.common.error)));
   }
 
   if (rows.length === 0) return null;
@@ -117,6 +119,7 @@ function ApproveDialog({
   onClose: () => void;
   onApproved: () => void;
 }) {
+  const tr = useT();
   const toast = useToast();
   const m = useMessages();
   const [mode, setMode] = useState<Mode>("new");
@@ -141,7 +144,7 @@ function ApproveDialog({
       onApproved();
       onClose();
     } else if (state?.error) {
-      toast.error(state.error);
+      toast.error(tr(state.error));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newState, linkState]);
@@ -207,7 +210,7 @@ function ApproveDialog({
                 className={input}
               />
             </div>
-            <input name="email" type="email" placeholder="Email *" required className={input} />
+            <input name="email" type="email" placeholder={tr("Email *")} required className={input} />
             <input name="password" type="password" placeholder={m.telegram.passwordPh} className={input} />
             <input name="phone" placeholder={m.telegram.phonePh} className={input} />
 

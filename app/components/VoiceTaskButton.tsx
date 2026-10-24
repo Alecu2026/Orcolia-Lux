@@ -12,6 +12,7 @@ import { IconX, IconMic } from "./icons";
 import MultiAssignPicker from "./MultiAssignPicker";
 import type { UniversalVoiceParsed } from "@/lib/validation";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Phase = "idle" | "rec" | "proc" | "err";
 type Opt = { id: string; name: string };
@@ -36,6 +37,7 @@ function chip(active: boolean) {
 }
 
 function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: () => void }) {
+  const tr = useT();
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
@@ -129,7 +131,7 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
       fd.delete("projectId");
       if (resolvedProjectId) fd.append("projectId", resolvedProjectId);
       const result = await createTaskAction(undefined, fd);
-      if (result?.error) { toast.error(result.error); setSubmitting(false); return; }
+      if (result?.error) { toast.error(tr(result.error)); setSubmitting(false); return; }
       toast.success(taskType === "TICKET" ? m.tasks.ticketCreated : m.tasks.taskCreated);
       router.refresh();
       onClose();
@@ -142,7 +144,7 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
     setSubmitting(true);
     try {
       const res = await quickCreateProject(title.trim());
-      if (!res.ok) { toast.error(res.error); setSubmitting(false); return; }
+      if (!res.ok) { toast.error(tr(res.error)); setSubmitting(false); return; }
       toast.success(m.voice.projectCreated.replace("{name}", res.name));
       router.push(`/projects`);
       router.refresh();
@@ -156,7 +158,7 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
     setSubmitting(true);
     try {
       const res = await voiceCreateClient(title.trim(), clientPhone || undefined, clientEmail || undefined);
-      if (!res.ok) { toast.error(res.error); setSubmitting(false); return; }
+      if (!res.ok) { toast.error(tr(res.error)); setSubmitting(false); return; }
       toast.success(m.voice.clientCreated.replace("{name}", res.name));
       router.push(`/clients`);
       router.refresh();
@@ -181,7 +183,7 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
         notes: invoiceNotes || undefined,
         items: invoiceItems.filter((i) => i.description.trim()),
       });
-      if (!res.ok) { toast.error(res.error); setSubmitting(false); return; }
+      if (!res.ok) { toast.error(tr(res.error)); setSubmitting(false); return; }
       toast.success(m.voice.invoiceDraftCreated);
       router.push(`/invoices/${res.id}/edit`);
       onClose();

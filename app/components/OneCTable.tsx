@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ONEC_COLUMNS, type OneCColumn } from "@/lib/apa-canal-1c";
+import { useT } from "@/lib/i18n/context";
 
 type Row = Record<string, string | number | null> & {
   id: string;
@@ -48,6 +49,7 @@ const inputCls =
   "h-7 w-full min-w-0 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-xs font-normal outline-none focus:border-brand";
 
 export default function OneCTable() {
+  const tr = useT();
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [applied, setApplied] = useState<Record<string, string>>({});
   const [sort, setSort] = useState("nume");
@@ -104,7 +106,7 @@ export default function OneCTable() {
         return j as Payload;
       })
       .then((j) => { if (id === req.current) setData(j); })
-      .catch((e: Error) => { if (id === req.current) setError(e.message); })
+      .catch((e: Error) => { if (id === req.current) setError(tr(e.message)); })
       .finally(() => { if (id === req.current) setLoading(false); });
   }, [queryString, page, perPage]);
 
@@ -125,19 +127,19 @@ export default function OneCTable() {
           value={period}
           onChange={(e) => { setPeriod(e.target.value); setPage(1); }}
           className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm font-medium"
-          aria-label="Luna"
+          aria-label={tr("Luna")}
         >
-          <option value="latest">Luna cea mai recentă (un rând per abonat)</option>
+          <option value="latest">{tr("Luna cea mai recentă (un rând per abonat)")}</option>
           {data?.months.map((m) => (
             <option key={m.month} value={m.month}>Doar {monthLabel(m.month)} ({m.count.toLocaleString("ro-RO")})</option>
           ))}
-          <option value="all">Toate lunile (un rând per abonat și lună)</option>
+          <option value="all">{tr("Toate lunile (un rând per abonat și lună)")}</option>
         </select>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={onlyDiff} onChange={(e) => { setOnlyDiff(e.target.checked); setPage(1); }} className="size-4 accent-[var(--color-brand)]" />
-          Doar diferențe PWA ≠ 1C
+          {tr("Doar diferențe PWA ≠ 1C")}
         </label>
-        <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }} className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm" aria-label="Rânduri pe pagină">
+        <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }} className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm" aria-label={tr("Rânduri pe pagină")}>
           {PER_PAGE.map((n) => <option key={n} value={n}>{n} / pagină</option>)}
         </select>
         {activeFilters > 0 && (
@@ -147,10 +149,10 @@ export default function OneCTable() {
         )}
         <details className="relative ml-auto">
           <summary className="tap inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong">
-            📊 Descarcă Excel ▾
+            {tr("📊 Descarcă Excel ▾")}
           </summary>
           <div className="absolute right-0 z-40 mt-1 w-72 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1 shadow-xl">
-            <p className="px-3 py-1.5 text-[11px] text-ink-soft">Cu filtrele curente și filtru pe fiecare coloană în Excel. Fiecare tabel are UID.</p>
+            <p className="px-3 py-1.5 text-[11px] text-ink-soft">{tr("Cu filtrele curente și filtru pe fiecare coloană în Excel. Fiecare tabel are UID.")}</p>
             {(
               [
                 ["main", "Tabel comun (după filtrul de lună)"],
@@ -167,18 +169,16 @@ export default function OneCTable() {
       </div>
 
       <p className="mb-2 text-xs text-ink-soft">
-        Filtrele merg pe fiecare coloană (text: „conține”). La coloanele cu numere poți scrie <b>&gt;100</b>, <b>&lt;=0</b>, <b>=45.3</b> sau un interval <b>10-50</b>.
-        Click pe un rând = toate datele lui din cele 6 tabele 1C. În 1C, UID-ul e al chitanței unei luni, nu al abonatului —
-        la „Toate lunile” același abonat apare o dată pentru fiecare lună (vezi coloana „Data document”).
+        {tr("Filtrele merg pe fiecare coloană (text: „conține”). La coloanele cu numere poți scrie")} <b>&gt;100</b>, <b>&lt;=0</b>, <b>=45.3</b> {tr("sau un interval")} <b>10-50</b>{tr(". Click pe un rând = toate datele lui din cele 6 tabele 1C. În 1C, UID-ul e al chitanței unei luni, nu al abonatului — la „Toate lunile” același abonat apare o dată pentru fiecare lună (vezi coloana „Data document”).")}
       </p>
 
       {data && (
         <div className="mb-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
           <span><b>{data.total.toLocaleString("ro-RO")}</b> {period === "all" ? "rânduri (abonat × lună)" : "abonați"}</span>
-          <span>Σ Calculat: <b>{money(data.sums.calculat)}</b></span>
-          <span>Σ Datorie/avans: <b>{money(data.sums.datorieAvans)}</b></span>
-          <span>Σ De achitat: <b>{money(data.sums.deAchitat)}</b></span>
-          {loading && <span className="text-ink-soft">se încarcă…</span>}
+          <span>{tr("Σ Calculat:")} <b>{money(data.sums.calculat)}</b></span>
+          <span>{tr("Σ Datorie/avans:")} <b>{money(data.sums.datorieAvans)}</b></span>
+          <span>{tr("Σ De achitat:")} <b>{money(data.sums.deAchitat)}</b></span>
+          {loading && <span className="text-ink-soft">{tr("se încarcă…")}</span>}
         </div>
       )}
       {error && <p className="mb-2 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{error}</p>}
@@ -207,10 +207,10 @@ export default function OneCTable() {
                   />
                 </th>
               ))}
-              <th className="border-b border-[var(--color-line)] px-2 pt-2 text-left align-top font-semibold" style={{ minWidth: 110 }}>Factură PWA</th>
-              <th className="border-b border-[var(--color-line)] px-2 pt-2 text-center align-top font-semibold" style={{ minWidth: 50 }}>Vezi</th>
-              <th className="border-b border-[var(--color-line)] px-2 pt-2 text-right align-top font-semibold" style={{ minWidth: 100 }}>Total PWA</th>
-              <th className="border-b border-[var(--color-line)] px-2 pt-2 text-right align-top font-semibold" style={{ minWidth: 110 }}>Diferență PWA − 1C</th>
+              <th className="border-b border-[var(--color-line)] px-2 pt-2 text-left align-top font-semibold" style={{ minWidth: 110 }}>{tr("Factură PWA")}</th>
+              <th className="border-b border-[var(--color-line)] px-2 pt-2 text-center align-top font-semibold" style={{ minWidth: 50 }}>{tr("Vezi")}</th>
+              <th className="border-b border-[var(--color-line)] px-2 pt-2 text-right align-top font-semibold" style={{ minWidth: 100 }}>{tr("Total PWA")}</th>
+              <th className="border-b border-[var(--color-line)] px-2 pt-2 text-right align-top font-semibold" style={{ minWidth: 110 }}>{tr("Diferență PWA − 1C")}</th>
             </tr>
           </thead>
           <tbody>
@@ -231,7 +231,7 @@ export default function OneCTable() {
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setPreviewToken(r.invoiceToken); }}
-                      title="Vezi factura (pop-up, fără să navighezi)"
+                      title={tr("Vezi factura (pop-up, fără să navighezi)")}
                       className="tap rounded-lg border border-[var(--color-line)] px-2 py-1 text-xs hover:bg-brand-soft hover:text-brand-strong"
                     >
                       👁
@@ -243,19 +243,19 @@ export default function OneCTable() {
               </tr>
             ))}
             {data && data.items.length === 0 && (
-              <tr><td colSpan={ONEC_COLUMNS.length + 4} className="p-8 text-center text-ink-soft">Niciun abonat cu filtrele acestea.</td></tr>
+              <tr><td colSpan={ONEC_COLUMNS.length + 4} className="p-8 text-center text-ink-soft">{tr("Niciun abonat cu filtrele acestea.")}</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
       <div className="mt-3 flex items-center justify-between text-sm">
-        <button type="button" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)} className="tap card rounded-lg px-3 py-2 disabled:opacity-40">‹ Anterior</button>
+        <button type="button" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)} className="tap card rounded-lg px-3 py-2 disabled:opacity-40">{tr("‹ Anterior")}</button>
         <span className="text-center text-ink-soft">
           Pagina {page} din {pages}
           {data && data.total > 0 && <><br /><span className="text-xs">{(page - 1) * data.perPage + 1}–{Math.min(page * data.perPage, data.total)} din {data.total.toLocaleString("ro-RO")}</span></>}
         </span>
-        <button type="button" disabled={page >= pages || loading} onClick={() => setPage((p) => p + 1)} className="tap card rounded-lg px-3 py-2 disabled:opacity-40">Următor ›</button>
+        <button type="button" disabled={page >= pages || loading} onClick={() => setPage((p) => p + 1)} className="tap card rounded-lg px-3 py-2 disabled:opacity-40">{tr("Următor ›")}</button>
       </div>
 
       {detailId && <DetailDialog id={detailId} onClose={() => setDetailId(null)} />}
@@ -267,31 +267,33 @@ export default function OneCTable() {
 /** Pop-up cu factura reală (exact ce vede clientul/PDF-ul), pentru verificare rapidă rând cu rând —
  * randează pagina publică într-un iframe, nu o reimplementare separată, ca să fie mereu identică. */
 function InvoicePreviewDialog({ token, onClose }: { token: string; onClose: () => void }) {
+  const t = useT();
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" onClick={onClose}>
       <div className="flex h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl bg-[var(--color-surface)] shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-[var(--color-line)] px-4 py-2.5">
-          <h2 className="text-sm font-semibold">Factură — verificare rapidă</h2>
+          <h2 className="text-sm font-semibold">{t("Factură — verificare rapidă")}</h2>
           <div className="flex items-center gap-2">
             <a href={`/invoice/public/${token}`} target="_blank" rel="noreferrer" className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-xs hover:bg-[var(--color-surface-2)]">
-              Deschide în filă nouă
+              {t("Deschide în filă nouă")}
             </a>
-            <button type="button" onClick={onClose} className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide">✕</button>
+            <button type="button" onClick={onClose} className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={t("Închide")}>✕</button>
           </div>
         </div>
-        <iframe src={`/invoice/public/${token}`} title="Factură" className="w-full flex-1 bg-white" />
+        <iframe src={`/invoice/public/${token}`} title={t("Factură")} className="w-full flex-1 bg-white" />
       </div>
     </div>
   );
 }
 
 function MiniTable({ title, rows, cols }: { title: string; rows: Record<string, string | number | null>[] | null; cols: [string, string][] }) {
+  const t = useT();
   const list = rows ?? [];
   return (
     <section className="mb-4">
       <h3 className="mb-1 text-sm font-semibold">{title} <span className="font-normal text-ink-soft">({list.length})</span></h3>
       {list.length === 0 ? (
-        <p className="text-xs text-ink-soft">— niciun rând în fișierul 1C —</p>
+        <p className="text-xs text-ink-soft">{t("— niciun rând în fișierul 1C —")}</p>
       ) : (
         // Doar overflow orizontal aici, fără antet fix (sticky) — un glisor propriu pe verticală,
         // imbricat în cel al ferestrei de detaliu (cum era înainte, cu antet fix pe amândouă),
@@ -320,6 +322,7 @@ function MiniTable({ title, rows, cols }: { title: string; rows: Record<string, 
 }
 
 function DetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
+  const t = useT();
   const [d, setD] = useState<Detail | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {
@@ -327,7 +330,7 @@ function DetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
     fetch(`/api/platitori/tabel?detail=${id}`)
       .then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error ?? "Eroare."); return j as Detail; })
       .then((j) => alive && setD(j))
-      .catch((e: Error) => alive && setErr(e.message));
+      .catch((e: Error) => alive && setErr(t(e.message)));
     return () => { alive = false; };
   }, [id]);
 
@@ -340,18 +343,18 @@ function DetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
             {d && <p className="break-all text-xs text-ink-soft">UID: {d.uid} · Factură: {d.invoiceNumber ?? "—"}</p>}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {d?.payerId && <Link href={`/platitori/${d.payerId}`} className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-sm hover:bg-[var(--color-surface-2)]">Fișa plătitorului</Link>}
-            {d?.invoiceId && <Link href={`/invoices/${d.invoiceId}/edit`} className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-sm hover:bg-[var(--color-surface-2)]">Factura</Link>}
-            <button type="button" onClick={onClose} className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide">✕</button>
+            {d?.payerId && <Link href={`/platitori/${d.payerId}`} className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-sm hover:bg-[var(--color-surface-2)]">{t("Fișa plătitorului")}</Link>}
+            {d?.invoiceId && <Link href={`/invoices/${d.invoiceId}/edit`} className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-sm hover:bg-[var(--color-surface-2)]">{t("Factura")}</Link>}
+            <button type="button" onClick={onClose} className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={t("Închide")}>✕</button>
           </div>
         </div>
         {err && <p className="text-sm text-st-cancelled">{err}</p>}
         {d && (
           <>
-            <MiniTable title="Consumatori (Потребители)" rows={d.consumers} cols={[["perioada", "Perioadă"], ["nume", "Consumator"], ["inn", "IDNO/ИНН"], ["inceput", "Început"], ["sfarsit", "Sfârșit"], ["zona", "Zonă presiune"], ["sector", "Sector"], ["nrPersoane", "Nr. pers."], ["suprafata", "Suprafață"]]} />
-            <MiniTable title="Contoare (ИзмерительныеПриборы)" rows={d.meters} cols={[["perioada", "Perioadă"], ["consumator", "Consumator"], ["contor", "Contor"], ["dataInstalare", "Instalat"], ["sigiliu", "Sigiliu"], ["dataScoatere", "Scos"], ["subAbonat", "Sub-abonat"], ["subContract", "Sub-contract"], ["subCont", "Sub-cont"], ["subContor", "Sub-contor"]]} />
-            <MiniTable title="Citiri (Потребления)" rows={d.readings} cols={[["consumator", "Consumator"], ["contor", "Contor"], ["sursa", "Sursa"], ["citirePrec", "Citire ant."], ["dataPrec", "Data ant."], ["citire", "Citire"], ["dataCitire", "Data"], ["consum", "Consum"], ["medie", "Medie"], ["consumSubcontoare", "Subcontoare"]]} />
-            <MiniTable title="Linii de calcul (РасчетСумм)" rows={d.lines} cols={[["consumator", "Consumator"], ["contor", "Contor"], ["serviciu", "Serviciu"], ["volum", "Volum"], ["tarif", "Tarif"], ["suma", "Sumă"], ["data", "Data"]]} />
+            <MiniTable title={t("Consumatori (Потребители)")} rows={d.consumers} cols={[["perioada", "Perioadă"], ["nume", "Consumator"], ["inn", "IDNO/ИНН"], ["inceput", "Început"], ["sfarsit", "Sfârșit"], ["zona", "Zonă presiune"], ["sector", "Sector"], ["nrPersoane", "Nr. pers."], ["suprafata", "Suprafață"]]} />
+            <MiniTable title={t("Contoare (ИзмерительныеПриборы)")} rows={d.meters} cols={[["perioada", "Perioadă"], ["consumator", "Consumator"], ["contor", "Contor"], ["dataInstalare", "Instalat"], ["sigiliu", "Sigiliu"], ["dataScoatere", "Scos"], ["subAbonat", "Sub-abonat"], ["subContract", "Sub-contract"], ["subCont", "Sub-cont"], ["subContor", "Sub-contor"]]} />
+            <MiniTable title={t("Citiri (Потребления)")} rows={d.readings} cols={[["consumator", "Consumator"], ["contor", "Contor"], ["sursa", "Sursa"], ["citirePrec", "Citire ant."], ["dataPrec", "Data ant."], ["citire", "Citire"], ["dataCitire", "Data"], ["consum", "Consum"], ["medie", "Medie"], ["consumSubcontoare", "Subcontoare"]]} />
+            <MiniTable title={t("Linii de calcul (РасчетСумм)")} rows={d.lines} cols={[["consumator", "Consumator"], ["contor", "Contor"], ["serviciu", "Serviciu"], ["volum", "Volum"], ["tarif", "Tarif"], ["suma", "Sumă"], ["data", "Data"]]} />
           </>
         )}
       </div>

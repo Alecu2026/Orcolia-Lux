@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import InvoicePreviewDialog from "./InvoicePreviewDialog";
+import { useT } from "@/lib/i18n/context";
 
 /** Buton „Vezi" care deschide factura într-un pop-up cu zoom (în loc să părăsești pagina). */
 export default function InvoiceViewButton({
@@ -15,10 +16,11 @@ export default function InvoiceViewButton({
   className?: string;
   label?: string;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={(e) => { e.stopPropagation(); setOpen(true); }} className={className} title="Vezi factura (pop-up)">
+      <button type="button" onClick={(e) => { e.stopPropagation(); setOpen(true); }} className={className} title={t("Vezi factura (pop-up)")}>
         {label}
       </button>
       {open && <InvoicePreviewDialog token={token} title={title} onClose={() => setOpen(false)} />}

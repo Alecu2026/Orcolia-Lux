@@ -18,6 +18,7 @@ import TicketChat from "@/app/components/TicketChat";
 import { prisma } from "@/lib/prisma";
 import type { TaskStatus } from "@prisma/client";
 import CloseTicketButton from "@/app/components/CloseTicketButton";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +88,7 @@ export default async function TaskDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const tr = await getT();
   const user = await requireAnyPermission(["tasks.view", "tickets.view", "kanban.view", "calendar.view"]);
   const { id } = await params;
 
@@ -294,24 +296,24 @@ export default async function TaskDetailPage({
         )}
 
         <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
-          <MetaRow label="Prioritate" value={PRIO_RO[task.priority] ?? task.priority} />
+          <MetaRow label={tr("Prioritate")} value={PRIO_RO[task.priority] ?? task.priority} />
           {task.assignee?.name && (
             <MetaRow
-              label="Asignat"
+              label={tr("Asignat")}
               value={[task.assignee.name, ...(task.extraAssigneeIds ?? []).map((uid) => users.find((u) => u.id === uid)?.name).filter(Boolean)].join(", ")}
             />
           )}
           {task.team?.name && (
             <MetaRow
-              label="Echipă"
+              label={tr("Echipă")}
               value={[task.team.name, ...(task.extraTeamIds ?? []).map((tid) => teams.find((t) => t.id === tid)?.name).filter(Boolean)].join(", ")}
             />
           )}
-          {task.project?.name && <MetaRow label="Proiect" value={task.project.name} />}
-          {task.project?.client?.name && <MetaRow label="Client" value={task.project.client.name} />}
+          {task.project?.name && <MetaRow label={tr("Proiect")} value={task.project.name} />}
+          {task.project?.client?.name && <MetaRow label={tr("Client")} value={task.project.client.name} />}
           {(task.project as { lat?: number | null; lng?: number | null; address?: string | null } | null)?.lat != null && (
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Locație</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Locație")}</p>
               <a
                 href={`https://maps.google.com/maps?q=${(task.project as { lat: number; lng: number }).lat},${(task.project as { lat: number; lng: number }).lng}`}
                 target="_blank"
@@ -324,7 +326,7 @@ export default async function TaskDetailPage({
           )}
           {!(task.project as { lat?: number | null } | null)?.lat && (task.project as { address?: string | null } | null)?.address && (
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Locație</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Locație")}</p>
               <a
                 href={`https://maps.google.com/maps?q=${encodeURIComponent((task.project as { address: string }).address)}`}
                 target="_blank"
@@ -335,12 +337,12 @@ export default async function TaskDetailPage({
               </a>
             </div>
           )}
-          {task.progress > 0 && <MetaRow label="Progres" value={`${task.progress}%`} />}
+          {task.progress > 0 && <MetaRow label={tr("Progres")} value={`${task.progress}%`} />}
           {task.dueAt && (
-            <MetaRow label="Scadent" value={fmtDue(task.dueAt)} alert={!!isOverdue} />
+            <MetaRow label={tr("Scadent")} value={fmtDue(task.dueAt)} alert={!!isOverdue} />
           )}
-          <MetaRow label="Creat" value={fmtDateTime(task.createdAt)} />
-          <MetaRow label="Creat de" value={ticketCreatorName(task)} />
+          <MetaRow label={tr("Creat")} value={fmtDateTime(task.createdAt)} />
+          <MetaRow label={tr("Creat de")} value={ticketCreatorName(task)} />
         </div>
 
         <div className="mt-4 border-t border-[var(--color-line)] pt-4 flex flex-col gap-3">
@@ -369,7 +371,7 @@ export default async function TaskDetailPage({
             <TicketChat ticketId={id} viewer="staff" heightClass="h-[min(28rem,60dvh)]" />
           ) : (
             <p className="rounded-lg bg-[var(--color-surface-2)] px-3 py-4 text-center text-sm text-ink-soft">
-              Tichetul nu are un client asociat. Asociază un client (editează tichetul) ca să poți purta o conversație cu el.
+              {tr("Tichetul nu are un client asociat. Asociază un client (editează tichetul) ca să poți purta o conversație cu el.")}
             </p>
           )}
         </div>
@@ -407,7 +409,7 @@ export default async function TaskDetailPage({
 
       {/* ── Timeline / Istoric ────────────────────────────── */}
       <div className="card mb-3 p-4">
-        <h2 className="mb-4 text-sm font-bold">📋 Istoric complet</h2>
+        <h2 className="mb-4 text-sm font-bold">{tr("📋 Istoric complet")}</h2>
         <ol className="flex flex-col">
           {timeline.map((ev, i) => {
             const isLast = i === timeline.length - 1;
@@ -423,7 +425,7 @@ export default async function TaskDetailPage({
                 <div className={`min-w-0 flex-1 ${!isLast ? "pb-5" : ""}`}>
                   {ev.action === "CREATED" && (
                     <>
-                      <p className="text-sm font-semibold">🆕 Creat</p>
+                      <p className="text-sm font-semibold">{tr("🆕 Creat")}</p>
                       <p className="text-[11px] text-ink-soft">{ev.userName} · {fmtDateTime(ev.at)}</p>
                     </>
                   )}
@@ -443,7 +445,7 @@ export default async function TaskDetailPage({
 
                   {ev.action === "EDITED" && (
                     <>
-                      <p className="text-sm font-semibold">✏️ Editat</p>
+                      <p className="text-sm font-semibold">{tr("✏️ Editat")}</p>
                       <p className="text-[11px] text-ink-soft">{ev.userName} · {fmtDateTime(ev.at)}</p>
                       {ev.changes && ev.changes.length > 0 && (
                         <ul className="mt-1.5 flex flex-col gap-1">
@@ -456,7 +458,7 @@ export default async function TaskDetailPage({
                                 : <span className="text-ink-soft">— → </span>}
                               {c.to != null
                                 ? <span className="font-medium">{c.to}</span>
-                                : <span className="text-ink-soft italic">șters</span>}
+                                : <span className="text-ink-soft italic">{tr("șters")}</span>}
                             </li>
                           ))}
                         </ul>
@@ -466,7 +468,7 @@ export default async function TaskDetailPage({
 
                   {ev.action === "COMMENTED" && (
                     <>
-                      <p className="text-sm font-semibold">💬 Comentariu adăugat</p>
+                      <p className="text-sm font-semibold">{tr("💬 Comentariu adăugat")}</p>
                       <p className="text-[11px] text-ink-soft">{ev.userName} · {fmtDateTime(ev.at)}</p>
                       {ev.commentBody && (
                         <p className="mt-1 truncate text-[11px] italic text-ink-soft">«{ev.commentBody}»</p>
@@ -476,7 +478,7 @@ export default async function TaskDetailPage({
 
                   {ev.action === "ATTACHMENT_ADDED" && (
                     <>
-                      <p className="text-sm font-semibold">📎 Atașament adăugat</p>
+                      <p className="text-sm font-semibold">{tr("📎 Atașament adăugat")}</p>
                       <p className="text-[11px] text-ink-soft">{ev.userName} · {fmtDateTime(ev.at)}</p>
                       {ev.fileName && <p className="mt-0.5 text-[11px] text-ink-soft">{ev.fileName}</p>}
                     </>
@@ -484,7 +486,7 @@ export default async function TaskDetailPage({
 
                   {ev.action === "ATTACHMENT_DELETED" && (
                     <>
-                      <p className="text-sm font-semibold text-st-cancelled">🗑 Atașament șters</p>
+                      <p className="text-sm font-semibold text-st-cancelled">{tr("🗑 Atașament șters")}</p>
                       <p className="text-[11px] text-ink-soft">{ev.userName} · {fmtDateTime(ev.at)}</p>
                       {ev.fileName && <p className="mt-0.5 text-[11px] text-ink-soft">{ev.fileName}</p>}
                     </>

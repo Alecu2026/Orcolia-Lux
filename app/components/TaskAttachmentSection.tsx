@@ -6,6 +6,7 @@ import { optimizeImage } from "@/lib/image-optimize";
 import { useToast } from "./toast";
 import { IconTrash } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -40,6 +41,7 @@ export default function TaskAttachmentSection({
   canDelete: boolean;
   blobEnabled: boolean;
 }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -60,7 +62,7 @@ export default function TaskAttachmentSection({
     try {
       const res = await addAttachmentAction(taskId, fd);
       if (res.error) {
-        toast.error(res.error);
+        toast.error(t(res.error));
         return;
       }
       if (res.attachment) {
@@ -79,7 +81,7 @@ export default function TaskAttachmentSection({
     setAttachments((a) => a.filter((x) => x.id !== id));
     const res = await deleteAttachmentAction(id, taskId);
     if (res.error) {
-      toast.error(res.error);
+      toast.error(t(res.error));
       setAttachments(prev);
     } else {
       toast.success(m.tasks.attachmentDeleted);
@@ -102,7 +104,7 @@ export default function TaskAttachmentSection({
             />
           </label>
         ) : (
-          <span className="text-[11px] text-ink-soft">BLOB_READ_WRITE_TOKEN nedefinit</span>
+          <span className="text-[11px] text-ink-soft">{t("BLOB_READ_WRITE_TOKEN nedefinit")}</span>
         )}
       </div>
 

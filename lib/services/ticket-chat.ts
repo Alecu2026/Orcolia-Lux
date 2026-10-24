@@ -176,7 +176,7 @@ export async function notifyChatMessage(access: Extract<ChatAccess, { ok: true }
       seq: task.seq,
       authorName: message.authorName,
       message: message.body,
-      url: `${env.appUrl.replace(/\/$/, "")}/portal/tickets/${task.id}`,
+      url: `${env.appUrl.replace(/\/$/, "")}/portal/cereri/${task.id}`,
       companyName: company?.companyName,
     });
     await prisma.task.update({ where: { id: task.id }, data: { chatClientEmailedAt: new Date() } });

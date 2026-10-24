@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type FailedRow = { row: number; error: string };
 type ImportResult = { imported: number; total: number; failed: FailedRow[]; entity?: string };
@@ -18,6 +19,7 @@ const TEMPLATE_BY_ENTITY: Record<string, string> = {
 };
 
 export default function ImportButton({ entity, className, hideAi }: Props) {
+  const t = useT();
   const m = useMessages();
   const router = useRouter();
   const excelRef = useRef<HTMLInputElement>(null);
@@ -113,7 +115,7 @@ export default function ImportButton({ entity, className, hideAi }: Props) {
                   <path d="M3 4a1 1 0 0 1 1-1h5.586a1 1 0 0 1 .707.293l4.414 4.414A1 1 0 0 1 15 8.414V16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4Z" />
                 </svg>
                 <div>
-                  <p className="text-sm font-medium">Import Excel / CSV / JSON</p>
+                  <p className="text-sm font-medium">{t("Import Excel / CSV / JSON")}</p>
                   <p className="text-xs text-ink-soft">{m.import.excelDesc}</p>
                 </div>
               </button>

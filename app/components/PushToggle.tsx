@@ -90,7 +90,7 @@ export default function PushToggle() {
       setSubscribed(false);
       setMsg(m.push.disabled);
     } catch {
-      setMsg(m.common.error);
+      setMsg(t(m.common.error));
     } finally {
       setBusy(false);
     }

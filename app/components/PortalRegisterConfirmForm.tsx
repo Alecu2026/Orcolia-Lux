@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { confirmClientRegistration, type ClientAuthState } from "@/app/actions/client-auth";
+import { useT } from "@/lib/i18n/context";
 
 const input =
   "w-full h-12 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
@@ -13,6 +14,7 @@ export default function PortalRegisterConfirmForm({
   meterSeries: string;
   email: string;
 }) {
+  const t = useT();
   const [state, formAction, pending] = useActionState<ClientAuthState, FormData>(
     confirmClientRegistration,
     undefined,
@@ -26,14 +28,14 @@ export default function PortalRegisterConfirmForm({
         name="code"
         inputMode="numeric"
         maxLength={6}
-        placeholder="Cod (6 cifre)"
+        placeholder={t("Cod (6 cifre)")}
         required
         className={`${input} text-center tracking-[0.5em]`}
       />
       <input
         name="newPassword"
         type="password"
-        placeholder="Parolă (minim 8 caractere)"
+        placeholder={t("Parolă (minim 8 caractere)")}
         autoComplete="new-password"
         required
         minLength={8}
@@ -42,7 +44,7 @@ export default function PortalRegisterConfirmForm({
       <input
         name="confirmPassword"
         type="password"
-        placeholder="Confirmă parola"
+        placeholder={t("Confirmă parola")}
         autoComplete="new-password"
         required
         minLength={8}

@@ -55,7 +55,7 @@ export default function ExportButton({
               className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-[var(--color-surface-2)]"
             >
               <span className="text-base">📊</span>
-              Excel (.xlsx)
+              {tr("Excel (.xlsx)")}
             </a>
             <a
               href={buildUrl("csv")}
@@ -64,7 +64,7 @@ export default function ExportButton({
               className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-[var(--color-surface-2)]"
             >
               <span className="text-base">📄</span>
-              CSV (.csv)
+              {tr("CSV (.csv)")}
             </a>
             <a
               href={buildUrl("json")}
@@ -73,7 +73,7 @@ export default function ExportButton({
               className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-[var(--color-surface-2)]"
             >
               <span className="text-base">🧩</span>
-              JSON (.json)
+              {tr("JSON (.json)")}
             </a>
           </div>
         </>

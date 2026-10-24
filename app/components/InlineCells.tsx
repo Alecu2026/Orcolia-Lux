@@ -243,7 +243,7 @@ export function MultiPick({
           }}
           className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong"
         >
-          Salvează
+          {tr("Salvează")}
         </button>
       </div>
     </div>

@@ -10,6 +10,7 @@ import PayerNotes from "@/app/components/PayerNotes";
 import InvoiceViewButton from "@/app/components/InvoiceViewButton";
 import { listPayerNotes } from "@/lib/queries/payer-notify";
 import { IconChevronLeft } from "@/app/components/icons";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export default async function PayerDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const tr = await getT();
   const user = await requirePermission("payers.view");
   const { id } = await params;
 
@@ -29,7 +31,7 @@ export default async function PayerDetailPage({
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
       <Link href="/platitori" className="inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink">
-        <IconChevronLeft className="size-4" /> Înapoi la plătitori
+        <IconChevronLeft className="size-4" /> {tr("Înapoi la plătitori")}
       </Link>
 
       <div className="card p-5">
@@ -40,17 +42,17 @@ export default async function PayerDetailPage({
               {/* meterSeries e identificatorul cu care clientul se loghează în portal — afișat
                   ca "Cont personal" (nu "Serie contor"), la fel ca pe factură/pagina de login,
                   ca staff-ul să știe exact ce număr să-i dea clientului. */}
-              {payer.meterSeries ? <>Cont personal: <b>{payer.meterSeries}</b></> : <>Firmă · Contract 1C: <b>{payer.contract}</b></>}
-              {payer.meterNumber && <> · Contor: {payer.meterNumber}</>}
+              {payer.meterSeries ? <>{tr("Cont personal:")} <b>{payer.meterSeries}</b></> : <>{tr("Firmă · Contract 1C:")} <b>{payer.contract}</b></>}
+              {payer.meterNumber && <> {tr("· Contor:")} {payer.meterNumber}</>}
             </p>
             {payer.consumAddress && <p className="text-sm text-ink-soft">{payer.consumAddress}</p>}
           </div>
           {!payer.meterSeries ? (
-            <span className="rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-xs font-medium text-ink-soft">Fără cont de portal</span>
+            <span className="rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-xs font-medium text-ink-soft">{tr("Fără cont de portal")}</span>
           ) : payer.activated ? (
-            <span className="rounded-full bg-brand-soft px-2.5 py-1 text-xs font-medium text-brand-strong">Cont activat</span>
+            <span className="rounded-full bg-brand-soft px-2.5 py-1 text-xs font-medium text-brand-strong">{tr("Cont activat")}</span>
           ) : (
-            <span className="rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-xs font-medium text-ink-soft">Cont neactivat</span>
+            <span className="rounded-full bg-[var(--color-surface-2)] px-2.5 py-1 text-xs font-medium text-ink-soft">{tr("Cont neactivat")}</span>
           )}
         </div>
 
@@ -60,15 +62,15 @@ export default async function PayerDetailPage({
             <p className="font-medium">{payer.email || "—"}</p>
           </div>
           <div>
-            <p className="text-xs text-ink-soft">Telefon</p>
+            <p className="text-xs text-ink-soft">{tr("Telefon")}</p>
             <p className="font-medium">{payer.phone || "—"}</p>
           </div>
           <div>
-            <p className="text-xs text-ink-soft">Activat la</p>
+            <p className="text-xs text-ink-soft">{tr("Activat la")}</p>
             <p className="font-medium">{payer.portalActivatedAt ? fmtDate(payer.portalActivatedAt) : "—"}</p>
           </div>
           <div>
-            <p className="text-xs text-ink-soft">Ultima logare</p>
+            <p className="text-xs text-ink-soft">{tr("Ultima logare")}</p>
             <p className="font-medium">{payer.portalLastLoginAt ? fmtDate(payer.portalLastLoginAt) : "—"}</p>
           </div>
         </div>
@@ -79,7 +81,7 @@ export default async function PayerDetailPage({
           href={`/invoices/new?kind=apa-canal&clientId=${payer.id}`}
           className="tap h-10 rounded-xl bg-brand px-4 text-sm font-semibold leading-10 text-white hover:bg-brand-strong"
         >
-          Trimite factură nouă
+          {tr("Trimite factură nouă")}
         </Link>
         {/* "Decontare" — pagină cu fișă tip tabel contabil (un rând per perioadă + rând TOTAL), în
             același spirit cu raportul "Взаиморасчеты с абонентами" pe care îl folosește Apă-Canal
@@ -88,7 +90,7 @@ export default async function PayerDetailPage({
           href={`/platitori/${payer.id}/decontare`}
           className="tap inline-flex h-10 items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]"
         >
-          Decontare
+          {tr("Decontare")}
         </Link>
       </div>
 
@@ -116,7 +118,7 @@ export default async function PayerDetailPage({
       <div>
         <h2 className="mb-2 text-base font-bold">Facturi pe luni ({invoices.length})</h2>
         {invoices.length === 0 ? (
-          <div className="card p-6 text-center text-sm text-ink-soft">Nicio factură încă.</div>
+          <div className="card p-6 text-center text-sm text-ink-soft">{tr("Nicio factură încă.")}</div>
         ) : (
           <div className="flex flex-col gap-2">
             {invoices.map((inv) => {
@@ -130,7 +132,7 @@ export default async function PayerDetailPage({
                     <p className="text-sm font-bold uppercase">{luna}</p>
                     <p className="text-xs text-ink-soft">
                       {inv.number} · emisă {fmtDate(inv.issueDate)}
-                      {isAc && (inv.meterPrevReading || inv.meterCurrReading) && <> · citiri {inv.meterPrevReading ?? "—"} → {inv.meterCurrReading ?? "—"}</>}
+                      {isAc && (inv.meterPrevReading || inv.meterCurrReading) && <> {tr("· citiri")} {inv.meterPrevReading ?? "—"} → {inv.meterCurrReading ?? "—"}</>}
                     </p>
                     {isAc && (
                       <p className="text-xs text-ink-soft">
@@ -145,7 +147,7 @@ export default async function PayerDetailPage({
                     </div>
                     <InvoiceViewButton token={inv.publicToken} title={`${luna} · ${inv.number}`} />
                     <Link href={`/invoices/${inv.id}/edit`} className="tap h-9 rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium leading-9 hover:bg-[var(--color-surface-2)]">
-                      Editează
+                      {tr("Editează")}
                     </Link>
                   </div>
                 </div>
@@ -158,7 +160,7 @@ export default async function PayerDetailPage({
       <div>
         <h2 className="mb-2 text-base font-bold">Tichete ({tickets.length})</h2>
         {tickets.length === 0 ? (
-          <div className="card p-6 text-center text-sm text-ink-soft">Nicio cerere încă.</div>
+          <div className="card p-6 text-center text-sm text-ink-soft">{tr("Nicio cerere încă.")}</div>
         ) : (
           <div className="flex flex-col gap-2">
             {tickets.map((t) => (

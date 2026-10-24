@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SyncReport, SyncReportRow } from "@/lib/services/apa-canal-import";
+import { useT } from "@/lib/i18n/context";
 
 const nf = (n: number) => n.toLocaleString("ro-RO");
 const mdl = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MDL`);
@@ -36,6 +37,7 @@ function Section({
   open?: boolean;
   render: (r: SyncReportRow) => React.ReactNode;
 }) {
+  const t = useT();
   return (
     <details open={open} className="rounded-xl border border-[var(--color-line)]">
       <summary className={`tap flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm font-semibold ${tone}`}>
@@ -45,7 +47,7 @@ function Section({
       <div className="border-t border-[var(--color-line)] px-3 py-2">
         <p className="mb-2 text-[11px] text-ink-soft">{hint}</p>
         {total === 0 ? (
-          <p className="text-xs text-ink-soft">Niciunul.</p>
+          <p className="text-xs text-ink-soft">{t("Niciunul.")}</p>
         ) : (
           <>
             <ul className="flex max-h-72 flex-col divide-y divide-[var(--color-line)] overflow-auto text-xs">
@@ -54,7 +56,7 @@ function Section({
                   {render(r)}
                 </li>
               ))}
-              {rows.length === 0 && <li className="py-1.5 text-ink-soft">Nimic nu corespunde căutării.</li>}
+              {rows.length === 0 && <li className="py-1.5 text-ink-soft">{t("Nimic nu corespunde căutării.")}</li>}
             </ul>
             {total > limit && (
               <p className="mt-1 text-[11px] text-ink-soft">
@@ -87,6 +89,7 @@ function Who({ r }: { r: SyncReportRow }) {
  * existentă dar cu alte valori (și care), sau un document sărit (și de ce).
  */
 export default function ApaCanalSyncReport({ report, committed }: { report: SyncReport; committed: boolean }) {
+  const tr = useT();
   const [q, setQ] = useState("");
   const { counts } = report;
   const f = (rows: SyncReportRow[]) => rows.filter((r) => matches(r, q.trim()));
@@ -94,7 +97,7 @@ export default function ApaCanalSyncReport({ report, committed }: { report: Sync
   return (
     <div className="mt-3 flex flex-col gap-3 text-sm">
       <div className="rounded-xl border border-[var(--color-line)] p-3">
-        <p className="mb-2 font-semibold">Ce a venit din API</p>
+        <p className="mb-2 font-semibold">{tr("Ce a venit din API")}</p>
         <table className="w-full text-xs">
           <tbody>
             {report.tabele.map((t) => (
@@ -121,7 +124,7 @@ export default function ApaCanalSyncReport({ report, committed }: { report: Sync
         </div>
         <div className="rounded-xl bg-[var(--color-surface-2)] p-2 text-center">
           <p className="text-lg font-bold tabular-nums">{nf(counts.identice)}</p>
-          <p className="text-[11px]">Existente, identice</p>
+          <p className="text-[11px]">{tr("Existente, identice")}</p>
         </div>
         <div className={`rounded-xl p-2 text-center ${counts.diferite ? "bg-st-progress/15" : "bg-[var(--color-surface-2)]"}`}>
           <p className={`text-lg font-bold tabular-nums ${counts.diferite ? "text-st-progress" : ""}`}>{nf(counts.diferite)}</p>
@@ -129,14 +132,14 @@ export default function ApaCanalSyncReport({ report, committed }: { report: Sync
         </div>
         <div className={`rounded-xl p-2 text-center ${counts.sarite ? "bg-st-cancelled/10" : "bg-[var(--color-surface-2)]"}`}>
           <p className={`text-lg font-bold tabular-nums ${counts.sarite ? "text-st-cancelled" : ""}`}>{nf(counts.sarite)}</p>
-          <p className="text-[11px]">Sărite</p>
+          <p className="text-[11px]">{tr("Sărite")}</p>
         </div>
       </div>
 
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Caută după nume, cont personal, contract sau nr. factură…"
+        placeholder={tr("Caută după nume, cont personal, contract sau nr. factură…")}
         className="h-10 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand"
       />
 
@@ -158,9 +161,9 @@ export default function ApaCanalSyncReport({ report, committed }: { report: Sync
             <table className="mt-1 w-full text-[11px]">
               <thead className="text-ink-soft">
                 <tr>
-                  <th className="text-left font-normal">Câmp</th>
-                  <th className="text-right font-normal">În API</th>
-                  <th className="text-right font-normal">În aplicație</th>
+                  <th className="text-left font-normal">{tr("Câmp")}</th>
+                  <th className="text-right font-normal">{tr("În API")}</th>
+                  <th className="text-right font-normal">{tr("În aplicație")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -178,7 +181,7 @@ export default function ApaCanalSyncReport({ report, committed }: { report: Sync
       />
       <Section
         title={committed ? "Facturi noi (scrise acum)" : "Facturi noi (s-ar scrie)"}
-        hint="Documente pentru care aplicația nu avea încă factură în luna respectivă."
+        hint={tr("Documente pentru care aplicația nu avea încă factură în luna respectivă.")}
         total={counts.noi}
         rows={f(report.noi)}
         limit={report.limita}
@@ -187,13 +190,13 @@ export default function ApaCanalSyncReport({ report, committed }: { report: Sync
         render={(r) => (
           <>
             <Who r={r} />
-            {r.clientNou && <p className="text-[11px] text-brand-strong">Plătitor nou — nu exista în aplicație.</p>}
+            {r.clientNou && <p className="text-[11px] text-brand-strong">{tr("Plătitor nou — nu exista în aplicație.")}</p>}
           </>
         )}
       />
       <Section
-        title="Existente și identice"
-        hint="Factura există deja în aplicație pentru aceeași lună, cu aceleași sume și citiri. Nu se schimbă nimic."
+        title={tr("Existente și identice")}
+        hint={tr("Factura există deja în aplicație pentru aceeași lună, cu aceleași sume și citiri. Nu se schimbă nimic.")}
         total={counts.identice}
         rows={f(report.identice)}
         limit={report.limita}
@@ -201,8 +204,8 @@ export default function ApaCanalSyncReport({ report, committed }: { report: Sync
         render={(r) => <Who r={r} />}
       />
       <Section
-        title="Sărite"
-        hint="Documente din API care nu pot deveni factură."
+        title={tr("Sărite")}
+        hint={tr("Documente din API care nu pot deveni factură.")}
         total={counts.sarite}
         rows={f(report.sarite)}
         limit={report.limita}

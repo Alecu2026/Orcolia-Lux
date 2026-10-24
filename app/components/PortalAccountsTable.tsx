@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import DataTable, { type Col, type Filter } from "./DataTable";
+import { useT } from "@/lib/i18n/context";
 
 export type PortalAccountRow = {
   id: string;
@@ -27,6 +28,7 @@ const daysAgo = (iso: string | null) => (iso ? (Date.now() - new Date(iso).getTi
 
 /** Conturile din portalul clienților: toate odată, filtrate/sortate/paginate în browser, cu orice număr de rânduri pe pagină. */
 export default function PortalAccountsTable({ rows }: { rows: PortalAccountRow[] }) {
+  const t = useT();
   const router = useRouter();
 
   const columns: Col<PortalAccountRow>[] = useMemo(
@@ -45,9 +47,9 @@ export default function PortalAccountsTable({ rows }: { rows: PortalAccountRow[]
         key: "status", label: "Status", minW: 90, sort: (r) => (r.activated ? 1 : 0),
         render: (r) =>
           r.activated ? (
-            <span className="inline-block rounded-full bg-brand-soft px-2 text-[10px] font-medium leading-[14px] text-brand-strong">Activat</span>
+            <span className="inline-block rounded-full bg-brand-soft px-2 text-[10px] font-medium leading-[14px] text-brand-strong">{t("Activat")}</span>
           ) : (
-            <span className="inline-block rounded-full bg-[var(--color-surface-2)] px-2 text-[10px] font-medium leading-[14px] text-ink-soft">Neactivat</span>
+            <span className="inline-block rounded-full bg-[var(--color-surface-2)] px-2 text-[10px] font-medium leading-[14px] text-ink-soft">{t("Neactivat")}</span>
           ),
       },
       { key: "act", label: "Activat la", minW: 90, sort: (r) => r.activatedAt, render: (r) => dmy(r.activatedAt) ?? dash },
@@ -122,7 +124,7 @@ export default function PortalAccountsTable({ rows }: { rows: PortalAccountRow[]
       filters={filters}
       defaultSort={{ key: "name", dir: "asc" }}
       noun="conturi"
-      emptyText="Niciun cont găsit."
+      emptyText={t("Niciun cont găsit.")}
       onRowClick={(r) => router.push(`/platitori/${r.id}`)}
       summaryExtra={(f) => (
         <span className="text-ink-soft">

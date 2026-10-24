@@ -13,6 +13,7 @@ import { ProjectDialog, type Opt, type Project } from "./ProjectsManager";
 import { useToast } from "./toast";
 import { IconPencil, IconPlus, IconTrash, IconX } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 const STATUS_CLS: Record<Project["status"], string> = {
   ACTIVE: "bg-st-progress/15 text-st-progress",
@@ -46,6 +47,7 @@ export default function ProjectsTable({
   clients: Opt[];
   openCreate?: boolean;
 }) {
+  const tr = useT();
   const toast = useToast();
   const m = useMessages();
   const [rows, setRows] = useState(projects);
@@ -69,8 +71,8 @@ export default function ProjectsTable({
     const prev = rows;
     setRows((cur) => cur.map((x) => (x.id === p.id ? { ...x, ...optimistic } : x)));
     updateProjectFieldAction(p.id, patch)
-      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } })
-      .catch(() => { setRows(prev); toast.error(m.common.error); });
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(tr(res.error)); } })
+      .catch(() => { setRows(prev); toast.error(tr(m.common.error)); });
   }
   const opts = (list: Opt[]) => list.map((o) => ({ value: o.id, label: o.name }));
 
@@ -79,7 +81,7 @@ export default function ProjectsTable({
     {
       key: "seq", label: "#", minW: 45, sort: (p) => p.seq,
       render: (p) => (
-        <button type="button" onClick={() => setDetail(p)} title="Deschide detaliile" className="cursor-pointer rounded px-0.5 font-mono font-semibold text-brand hover:bg-brand-soft/60 hover:underline">
+        <button type="button" onClick={() => setDetail(p)} title={tr("Deschide detaliile")} className="cursor-pointer rounded px-0.5 font-mono font-semibold text-brand hover:bg-brand-soft/60 hover:underline">
           {p.seq != null ? `#${String(p.seq).padStart(3, "0")}` : "↗"}
         </button>
       ),
@@ -229,6 +231,7 @@ function ProjectDetailDialog({
   onEdit: () => void;
   onClose: () => void;
 }) {
+  const tr = useT();
   const m = useMessages();
   const [tasks, setTasks] = useState<ProjectTaskRow[] | null>(null);
   useEffect(() => {
@@ -256,19 +259,19 @@ function ProjectDetailDialog({
           </button>
         </div>
         <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
-          <Link href={`/projects/${p.id}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">Pagina proiectului →</Link>
+          <Link href={`/projects/${p.id}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">{tr("Pagina proiectului →")}</Link>
           <button type="button" onClick={onEdit} className={miniBtn}>✎ {m.common.edit}</button>
           <Link href={`/tasks?create=task&project=${p.id}`} className={miniBtn}>+ {m.projects.taskLabel}</Link>
           <Link href={`/tasks?scope=all&proj=${p.id}`} className={miniBtn}>{m.projects.viewAllTasks}</Link>
         </div>
 
-        <Box title="Detalii">
-          <Item label="Client" value={clientName} />
-          <Item label="Responsabil" value={assigneeName} />
-          <Item label="Echipă" value={teamName} />
-          <Item label="Locație" value={p.address ? `${p.lat != null ? "📍 " : ""}${p.address}` : p.lat != null ? "📍 pin pe hartă" : null} />
-          <Item label="Sarcini" value={String(p.taskCount)} />
-          {p.description && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">Descriere</p><p className="whitespace-pre-wrap text-[13px]">{p.description}</p></div>}
+        <Box title={tr("Detalii")}>
+          <Item label={tr("Client")} value={clientName} />
+          <Item label={tr("Responsabil")} value={assigneeName} />
+          <Item label={tr("Echipă")} value={teamName} />
+          <Item label={tr("Locație")} value={p.address ? `${p.lat != null ? "📍 " : ""}${p.address}` : p.lat != null ? "📍 pin pe hartă" : null} />
+          <Item label={tr("Sarcini")} value={String(p.taskCount)} />
+          {p.description && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{tr("Descriere")}</p><p className="whitespace-pre-wrap text-[13px]">{p.description}</p></div>}
         </Box>
 
         <Box title={`Sarcini${tasks ? ` (${tasks.length})` : ""}`}>

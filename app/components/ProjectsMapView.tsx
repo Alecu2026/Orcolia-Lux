@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type ProjectPin = {
   id: string;
@@ -23,6 +24,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function ProjectsMapView({ pins }: { pins: ProjectPin[] }) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   const m = useMessages();
@@ -249,7 +251,7 @@ export default function ProjectsMapView({ pins }: { pins: ProjectPin[] }) {
       <div className="card grid place-items-center p-16 text-center text-sm text-ink-soft">
         <p className="mb-1 font-semibold text-ink">{m.projects.map.unavailable}</p>
         <p>
-          Variabila <code className="rounded bg-[var(--color-surface-2)] px-1">NEXT_PUBLIC_MAPBOX_TOKEN</code> {m.projects.map.varNotSet}
+          Variabila <code className="rounded bg-[var(--color-surface-2)] px-1">{t("NEXT_PUBLIC_MAPBOX_TOKEN")}</code> {m.projects.map.varNotSet}
         </p>
       </div>
     );

@@ -55,7 +55,7 @@ export default function PayerNotes({
     addPayerNoteAction(payerId, body)
       .then((res) => {
         if (res.ok) setNotes((n) => n.map((x) => (x.id === tmp ? res.note : x)));
-        else { setNotes((n) => n.filter((x) => x.id !== tmp)); setDraft(body); toast.error(res.error); }
+        else { setNotes((n) => n.filter((x) => x.id !== tmp)); setDraft(body); toast.error(t(res.error)); }
       })
       .catch(() => { setNotes((n) => n.filter((x) => x.id !== tmp)); setDraft(body); toast.error(t("Nu am putut salva notița.")); });
   }

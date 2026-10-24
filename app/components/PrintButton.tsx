@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useT } from "@/lib/i18n/context";
 
 export default function PrintButton({ token, origin }: { token: string; origin: string }) {
+  const t = useT();
   const [downloading, setDownloading] = useState(false);
 
   async function download() {
@@ -22,7 +24,7 @@ export default function PrintButton({ token, origin }: { token: string; origin: 
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      alert("Nu am putut descărca PDF-ul. Încearcă din nou.");
+      alert(t("Nu am putut descărca PDF-ul. Încearcă din nou."));
     } finally {
       setDownloading(false);
     }
@@ -32,7 +34,7 @@ export default function PrintButton({ token, origin }: { token: string; origin: 
     const url = `${origin}/invoice/public/${token}`;
     try {
       await navigator.clipboard.writeText(url);
-      alert("Link copiat!");
+      alert(t("Link copiat!"));
     } catch {
       prompt("Copiază linkul:", url);
     }
@@ -50,15 +52,15 @@ export default function PrintButton({ token, origin }: { token: string; origin: 
       <button
         onClick={() => window.print()}
         className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-        title="Deschide dialogul de printare al browserului"
+        title={t("Deschide dialogul de printare al browserului")}
       >
-        Printează
+        {t("Printează")}
       </button>
       <button
         onClick={copy}
         className="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
       >
-        Copiază link
+        {t("Copiază link")}
       </button>
     </div>
   );

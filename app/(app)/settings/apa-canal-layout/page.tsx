@@ -9,10 +9,12 @@ import { getCompanySettings } from "@/lib/queries/company";
 import { updateApaCanalLayout } from "@/app/actions/company";
 import ApaCanalLayoutEditor from "@/app/components/ApaCanalLayoutEditor";
 import { IconChevronLeft } from "@/app/components/icons";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
 export default async function ApaCanalLayoutPage() {
+  const t = await getT();
   const user = await requireUser();
   if (!can(user, "admin")) redirect("/settings");
 
@@ -28,12 +30,11 @@ export default async function ApaCanalLayoutPage() {
   return (
     <div className="w-full">
       <Link href="/settings" className="mb-4 inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink">
-        <IconChevronLeft className="size-4" /> Înapoi la setări
+        <IconChevronLeft className="size-4" /> {t("Înapoi la setări")}
       </Link>
-      <h1 className="mb-1 text-xl font-bold">Șablon factură Apă-Canal</h1>
+      <h1 className="mb-1 text-xl font-bold">{t("Șablon factură Apă-Canal")}</h1>
       <p className="mb-4 text-sm text-ink-soft">
-        Pânza de mai jos e exact pagina din PDF (A4 landscape, 297×210 mm). Trage și redimensionează elementele, sau scrie valorile în mm în panoul din dreapta.
-        Se aplică pe toate facturile Apă-Canal ale acestui site, existente și viitoare — în portal, în linkul public și în PDF.
+        {t("Pânza de mai jos e exact pagina din PDF (A4 landscape, 297×210 mm). Trage și redimensionează elementele, sau scrie valorile în mm în panoul din dreapta. Se aplică pe toate facturile Apă-Canal ale acestui site, existente și viitoare — în portal, în linkul public și în PDF.")}
       </p>
       <ApaCanalLayoutEditor company={company} onSave={updateApaCanalLayout} sampleToken={sample?.publicToken ?? null} host={host} />
     </div>

@@ -7,6 +7,7 @@ import { useToast } from "./toast";
 import type { ApptStatus, ApptVM } from "./types";
 import { useMessages } from "@/lib/i18n/context";
 import type { Messages } from "@/lib/i18n/messages/ro";
+import { useT } from "@/lib/i18n/context";
 
 function apptLabel(s: ApptStatus, m: Messages): string {
   switch (s) {
@@ -20,6 +21,7 @@ function apptLabel(s: ApptStatus, m: Messages): string {
 }
 
 export default function KanbanBoard({ items }: { items: ApptVM[] }) {
+  const tr = useT();
   const toast = useToast();
   const m = useMessages();
   const [list, setList] = useState(items);
@@ -35,7 +37,7 @@ export default function KanbanBoard({ items }: { items: ApptVM[] }) {
     const res = await setStatusAction(id, status);
     if (res?.error) {
       setList(prev);
-      toast.error(res.error);
+      toast.error(tr(res.error));
     } else {
       toast.success(`${m.kanban.moved} "${apptLabel(status, m)}"`);
     }

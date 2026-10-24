@@ -9,6 +9,7 @@ import type { CallerContext } from "@/lib/services/pbx";
 import { phoneQuery } from "./IncomingCallPopup";
 import { useToast } from "./toast";
 import { IconX } from "./icons";
+import { useT } from "@/lib/i18n/context";
 
 export type PbxCallRow = {
   id: string;
@@ -81,6 +82,7 @@ const topBtn =
 
 /** PBX (Moldcell) — apelurile primite prin webhook. Tabel dens cu filtre locale; click pe rând = toate mesajele apelului. */
 export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: PbxCallRow[]; webhookUrl: string; tokenConfigured: boolean }) {
+  const tr = useT();
   const router = useRouter();
   const [detail, setDetail] = useState<PbxCallRow | null>(null);
   const [playing, setPlaying] = useState<PbxCallRow | null>(null);
@@ -97,7 +99,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
     { key: "at", label: "Data și ora", minW: 150, sticky: true, sort: (c) => c.at, render: (c) => <span className="whitespace-nowrap">{fmtDateTime(c.at)}</span> },
     {
       key: "dir", label: "Direcție", minW: 80, sort: (c) => c.direction,
-      render: (c) => (c.direction === "out" ? <span className="text-st-progress">↗ Efectuat</span> : c.direction === "in" ? <span className="text-st-confirmed">↘ Primit</span> : dash),
+      render: (c) => (c.direction === "out" ? <span className="text-st-progress">{tr("↗ Efectuat")}</span> : c.direction === "in" ? <span className="text-st-confirmed">{tr("↘ Primit")}</span> : dash),
     },
     { key: "phone", label: "Număr", minW: 120, sort: (c) => c.phone, render: (c) => <span className="font-mono">{pretty(c.phone)}</span> },
     { key: "client", label: "Client", minW: 160, maxW: 220, sort: (c) => c.clientName, render: (c) => (c.clientName ? <span title={c.clientName}>{c.clientName}</span> : <span className="text-ink-soft">necunoscut</span>) },
@@ -118,7 +120,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
             type="button"
             onClick={(e) => { e.stopPropagation(); setPlaying(c); }}
             className={`cursor-pointer rounded px-1 font-semibold hover:bg-brand-soft ${playing?.id === c.id ? "bg-brand/15 text-brand" : "text-brand"}`}
-            title="Ascultă aici, în pagină"
+            title={tr("Ascultă aici, în pagină")}
           >
             {playing?.id === c.id ? "♪ se ascultă" : "▶ Ascultă"}
           </button>
@@ -176,7 +178,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
   return (
     <>
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-[11px]">
-        <span className="font-semibold">Webhook PBX:</span>
+        <span className="font-semibold">{tr("Webhook PBX:")}</span>
         <code className="rounded bg-[var(--color-surface)] px-1.5 py-0.5 font-mono">{webhookUrl}</code>
         <button
           type="button"
@@ -197,10 +199,10 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
         filters={filters}
         defaultSort={{ key: "at", dir: "desc" }}
         noun="apeluri"
-        emptyText="Niciun apel primit încă. Apelurile apar aici imediat ce PBX-ul trimite mesaje către webhook."
+        emptyText={tr("Niciun apel primit încă. Apelurile apar aici imediat ce PBX-ul trimite mesaje către webhook.")}
         onRowClick={(c) => setDetail(c)}
         rowClassName={(c) => (resultOf(c).key === "missed" ? "bg-st-cancelled/5" : "")}
-        toolbar={<button type="button" onClick={() => router.refresh()} className={topBtn}>↻ Reîncarcă</button>}
+        toolbar={<button type="button" onClick={() => router.refresh()} className={topBtn}>{tr("↻ Reîncarcă")}</button>}
       />
 
       {detail && <CallDialog call={rows.find((r) => r.id === detail.id) ?? detail} onClose={() => setDetail(null)} onPlay={(c) => setPlaying(c)} />}
@@ -211,7 +213,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
             <span className="min-w-0 truncate font-semibold">
               ▶ {playing.clientName ?? pretty(playing.phone)} <span className="font-normal text-ink-soft">· {fmtDateTime(playing.at)} · {mmss(playing.durationSec)}</span>
             </span>
-            <button type="button" onClick={() => setPlaying(null)} className="tap grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide player-ul">
+            <button type="button" onClick={() => setPlaying(null)} className="tap grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={tr("Închide player-ul")}>
               <IconX className="size-4" />
             </button>
           </div>
@@ -224,6 +226,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
 
 /** Player în pagină. Fișierul vine prin /api/pbx/recording (proxy), nu direct de la PBX. */
 function RecordingAudio({ callId, autoPlay = false }: { callId: string; autoPlay?: boolean }) {
+  const t = useT();
   const [error, setError] = useState<string | null>(null);
   const src = `/api/pbx/recording?callId=${encodeURIComponent(callId)}`;
   return (
@@ -238,7 +241,7 @@ function RecordingAudio({ callId, autoPlay = false }: { callId: string; autoPlay
           // aflăm motivul de la ruta proxy (mesaj JSON), nu doar „eroare de redare"
           fetch(src, { headers: { Range: "bytes=0-0" } })
             .then(async (r) => setError(r.ok || r.status === 206 ? "Formatul nu a putut fi redat în browser." : ((await r.json().catch(() => null))?.error ?? `Eroare ${r.status}`)))
-            .catch(() => setError("Nu am putut încărca înregistrarea."));
+            .catch(() => setError(t("Nu am putut încărca înregistrarea.")));
         }}
       />
       {error && <p className="mt-1 text-[11px] text-st-cancelled">{error}</p>}
@@ -247,6 +250,7 @@ function RecordingAudio({ callId, autoPlay = false }: { callId: string; autoPlay
 }
 
 function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: () => void; onPlay: (c: PbxCallRow) => void }) {
+  const tr = useT();
   const toast = useToast();
   const router = useRouter();
   const [events, setEvents] = useState<PbxEventRow[] | null>(null);
@@ -301,38 +305,38 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
               {c.direction === "out" ? "Apel efectuat" : "Apel primit"} · {fmtDateTime(c.at)}
             </p>
           </div>
-          <button onClick={onClose} className="tap grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide">
+          <button onClick={onClose} className="tap grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={tr("Închide")}>
             <IconX className="size-4" />
           </button>
         </div>
 
         <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
-          {ctx?.isPayer && <Link href={`/platitori/${ctx.clientId}`} className={`${actBtn} border-brand bg-brand text-white hover:bg-brand-strong`}>Fișa plătitorului →</Link>}
-          {q && <Link href={`/platitori?q=${q}`} className={actBtn}>🔎 Filtrează în Plătitori</Link>}
-          {!c.clientId && <Link href="/clients?create=1" className={actBtn}>+ Client nou</Link>}
-          <Link href={prefill("ticket")} className={actBtn}>🎫 Tichet</Link>
-          <Link href={prefill("task")} className={actBtn}>✔ Task</Link>
+          {ctx?.isPayer && <Link href={`/platitori/${ctx.clientId}`} className={`${actBtn} border-brand bg-brand text-white hover:bg-brand-strong`}>{tr("Fișa plătitorului →")}</Link>}
+          {q && <Link href={`/platitori?q=${q}`} className={actBtn}>{tr("🔎 Filtrează în Plătitori")}</Link>}
+          {!c.clientId && <Link href="/clients?create=1" className={actBtn}>{tr("+ Client nou")}</Link>}
+          <Link href={prefill("ticket")} className={actBtn}>{tr("🎫 Cerere")}</Link>
+          <Link href={prefill("task")} className={actBtn}>{tr("✔ Sarcină")}</Link>
         </div>
 
         {ctx && (
           <section className="mb-2.5 overflow-hidden rounded-lg border border-[var(--color-line)]">
-            <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Datele clientului acum</h3>
+            <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Datele clientului acum")}</h3>
             <div className="divide-y divide-[var(--color-line)] text-[13px]">
               <Item label={ctx.isPayer ? "Plătitor" : "Client CRM"}>{ctx.account ? `cont ${ctx.account}` : "—"}</Item>
-              {ctx.address && <Item label="Adresă">{ctx.address}</Item>}
-              {ctx.debt != null && <Item label="De achitat"><b className={ctx.debt > 0 ? "text-st-cancelled" : "text-st-done"}>{ctx.debt.toLocaleString("ro-RO", { minimumFractionDigits: 2 })} MDL</b></Item>}
-              <Item label="Cereri deschise">
+              {ctx.address && <Item label={tr("Adresă")}>{ctx.address}</Item>}
+              {ctx.debt != null && <Item label={tr("De achitat")}><b className={ctx.debt > 0 ? "text-st-cancelled" : "text-st-done"}>{ctx.debt.toLocaleString("ro-RO", { minimumFractionDigits: 2 })} MDL</b></Item>}
+              <Item label={tr("Cereri deschise")}>
                 {ctx.openTicketCount === 0 ? "niciunul" : ctx.openTickets.map((t) => (
                   <Link key={t.id} href={`/tickets/${t.id}`} className="block cursor-pointer text-brand hover:underline">{t.seq != null ? `#${t.seq} ` : ""}{t.title}</Link>
                 ))}
               </Item>
-              {ctx.lastNote && <Item label="Ultima notiță">{ctx.lastNote.body}</Item>}
+              {ctx.lastNote && <Item label={tr("Ultima notiță")}>{ctx.lastNote.body}</Item>}
             </div>
           </section>
         )}
 
         <section className="mb-2.5 overflow-hidden rounded-lg border border-[var(--color-line)]">
-          <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Notă despre apel</h3>
+          <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Notă despre apel")}</h3>
           <div className="p-2.5">
             {savedNote && <p className="mb-1.5 whitespace-pre-wrap rounded bg-[var(--color-surface-2)] px-2 py-1 text-[12px]">{savedNote}</p>}
             <div className="flex gap-1.5">
@@ -340,34 +344,34 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveNote(); } }}
-                placeholder="Cine a sunat, ce a cerut… Enter = salvează"
+                placeholder={tr("Cine a sunat, ce a cerut… Enter = salvează")}
                 className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-[12px] outline-none focus:border-brand"
               />
               <button type="button" onClick={saveNote} disabled={saving || !note.trim()} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">{saving ? "…" : "Salvează"}</button>
             </div>
-            {c.clientId && <p className="mt-1 text-[10px] text-ink-soft">Nota se adaugă și pe fișa clientului.</p>}
+            {c.clientId && <p className="mt-1 text-[10px] text-ink-soft">{tr("Nota se adaugă și pe fișa clientului.")}</p>}
           </div>
         </section>
 
         <section className="mb-2.5 overflow-hidden rounded-lg border border-[var(--color-line)]">
-          <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Apel</h3>
+          <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Apel")}</h3>
           <div className="divide-y divide-[var(--color-line)] text-[13px]">
-            <Item label="Rezultat"><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${r.cls}`}>{r.label}</span></Item>
-            <Item label="Număr">{pretty(c.phone)}</Item>
-            <Item label="Client">{c.clientName ?? "necunoscut"}</Item>
-            <Item label="Durată">{mmss(c.durationSec)}{c.waitSec != null ? ` · așteptare ${c.waitSec}s` : ""}</Item>
-            <Item label="Operator">{[c.pbxUser, c.ext ? `ext. ${c.ext}` : null].filter(Boolean).join(" · ") || "—"}</Item>
-            <Item label="Număr companie">{c.diversion ? pretty(c.diversion) : "—"}{c.lineName ? ` (${c.lineName})` : ""}</Item>
-            {c.groupName && <Item label="Departament">{c.groupName}</Item>}
-            {c.rating != null && <Item label="Nota clientului">{c.rating}/5</Item>}
+            <Item label={tr("Rezultat")}><span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${r.cls}`}>{r.label}</span></Item>
+            <Item label={tr("Număr")}>{pretty(c.phone)}</Item>
+            <Item label={tr("Client")}>{c.clientName ?? "necunoscut"}</Item>
+            <Item label={tr("Durată")}>{mmss(c.durationSec)}{c.waitSec != null ? ` · așteptare ${c.waitSec}s` : ""}</Item>
+            <Item label={tr("Operator")}>{[c.pbxUser, c.ext ? `ext. ${c.ext}` : null].filter(Boolean).join(" · ") || "—"}</Item>
+            <Item label={tr("Număr companie")}>{c.diversion ? pretty(c.diversion) : "—"}{c.lineName ? ` (${c.lineName})` : ""}</Item>
+            {c.groupName && <Item label={tr("Departament")}>{c.groupName}</Item>}
+            {c.rating != null && <Item label={tr("Nota clientului")}>{c.rating}/5</Item>}
             {c.recordingUrl && (
               <div className="px-2.5 py-1.5">
-                <p className="mb-1 text-[11px] text-ink-soft">Înregistrare</p>
+                <p className="mb-1 text-[11px] text-ink-soft">{tr("Înregistrare")}</p>
                 <RecordingAudio callId={c.callId} />
-                <button type="button" onClick={() => onPlay(c)} className="mt-1 cursor-pointer text-[11px] text-brand hover:underline">Fixează player-ul în pagină (continuă să asculți după ce închizi fereastra)</button>
+                <button type="button" onClick={() => onPlay(c)} className="mt-1 cursor-pointer text-[11px] text-brand hover:underline">{tr("Fixează player-ul în pagină (continuă să asculți după ce închizi fereastra)")}</button>
               </div>
             )}
-            <Item label="ID apel"><span className="font-mono text-[11px]">{c.callId}</span></Item>
+            <Item label={tr("ID apel")}><span className="font-mono text-[11px]">{c.callId}</span></Item>
           </div>
         </section>
 
@@ -376,7 +380,7 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
             Mesaje primite{events ? ` (${events.length})` : ""}
           </h3>
           {!events ? (
-            <p className="px-2.5 py-2 text-sm text-ink-soft">Se încarcă…</p>
+            <p className="px-2.5 py-2 text-sm text-ink-soft">{tr("Se încarcă…")}</p>
           ) : events.length === 0 ? (
             <p className="px-2.5 py-2 text-sm text-ink-soft">—</p>
           ) : (

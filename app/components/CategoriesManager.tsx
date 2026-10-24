@@ -12,6 +12,7 @@ import type { CategoryLite } from "./types";
 import { useToast } from "./toast";
 import { IconPencil, IconTrash, IconX, IconCheck } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 const inp =
   "h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
@@ -23,6 +24,7 @@ export default function CategoriesManager({
   categories: CategoryLite[];
   canManage?: boolean;
 }) {
+  const t = useT();
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
@@ -37,7 +39,7 @@ export default function CategoriesManager({
   const [newColor, setNewColor] = useState("#0d9488");
   useEffect(() => {
     if (createState?.ok) { toast.success(m.categories.added); router.refresh(); }
-    else if (createState?.error) toast.error(createState.error);
+    else if (createState?.error) toast.error(t(createState.error));
   }, [createState, router, toast, m]);
 
   // edit
@@ -49,7 +51,7 @@ export default function CategoriesManager({
   );
   useEffect(() => {
     if (editState?.ok) { toast.success(m.categories.updated); setEditId(null); router.refresh(); }
-    else if (editState?.error) toast.error(editState.error);
+    else if (editState?.error) toast.error(t(editState.error));
   }, [editState, router, toast, m]);
 
   function startEdit(c: CategoryLite) {

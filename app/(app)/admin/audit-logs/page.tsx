@@ -2,6 +2,7 @@ import { requireSuperAdmin } from "@/lib/dal";
 import { listAuditLogs } from "@/lib/queries/audit";
 import { userOptions } from "@/lib/queries/users";
 import AuditLogsClient from "@/app/components/AuditLogsClient";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function AuditLogsPage({
     ps?: string;
   }>;
 }) {
+  const t = await getT();
   await requireSuperAdmin();
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
@@ -38,7 +40,7 @@ export default async function AuditLogsPage({
     <div className="w-full">
       <div className="mb-3">
         <h1 className="text-lg font-bold">Audit Logs</h1>
-        <p className="text-xs text-ink-soft">Istoric complet al acțiunilor — vizibil doar pentru super-admini.</p>
+        <p className="text-xs text-ink-soft">{t("Istoric complet al acțiunilor — vizibil doar pentru super-admini.")}</p>
       </div>
       <AuditLogsClient
         items={result.items}

@@ -44,6 +44,7 @@ import { addDaysToKey, dateKeyOf, formatTime, todayKey, zonedToUtc } from "@/lib
 import TicketChat from "./TicketChat";
 import { useMessages } from "@/lib/i18n/context";
 import type { CategoryLite } from "./types";
+import { useT } from "@/lib/i18n/context";
 
 const PRIO_RANK = { LOW: 1, MEDIUM: 2, HIGH: 3, URGENT: 4 } as const;
 const PRIO_CLS: Record<Task["priority"], string> = {
@@ -172,6 +173,7 @@ export default function TasksTable({
   templates?: TaskTemplate[];
   canAssign?: boolean;
 }) {
+  const tr = useT();
   const toast = useToast();
   const m = useMessages();
   const [rows, setRows] = useState(items);
@@ -253,12 +255,12 @@ export default function TasksTable({
       .then((res) => {
         if (res?.error) {
           setRows(prev);
-          toast.error(res.error);
+          toast.error(tr(res.error));
           // Finalizarea cere o poză / un fișier: deschidem detaliile, unde se atașează.
           if (res.needsProof) setOpenId(id);
         } else toast.success(`Status: ${m.status[next]}`);
       })
-      .catch(() => { setRows(prev); toast.error(m.common.error); })
+      .catch(() => { setRows(prev); toast.error(tr(m.common.error)); })
       .finally(() => { inflight.current--; setStatusPending((cur) => (cur === id ? null : cur)); });
   }
 
@@ -269,10 +271,10 @@ export default function TasksTable({
     setRows((cur) => cur.map((t) => (t.id === id ? { ...t, progress } : t)));
     setTaskProgress(id, progress)
       .then((res) => {
-        if (res?.error) { setRows(prev); toast.error(res.error); }
+        if (res?.error) { setRows(prev); toast.error(tr(res.error)); }
         else toast.success(`Progres: ${progress}%`);
       })
-      .catch(() => { setRows(prev); toast.error(m.common.error); })
+      .catch(() => { setRows(prev); toast.error(tr(m.common.error)); })
       .finally(() => { inflight.current--; });
   }
 
@@ -293,10 +295,10 @@ export default function TasksTable({
     setRows((cur) => cur.map((x) => (x.id === t.id ? { ...x, ...optimistic } : x)));
     updateTaskFieldAction(t.id, patch)
       .then((res) => {
-        if (res?.error) { setRows(prev); toast.error(res.error); }
+        if (res?.error) { setRows(prev); toast.error(tr(res.error)); }
         else { inflight.current--; reconcile(t.id); inflight.current++; } // reconciliază câmpurile derivate (ex. clientul proiectului) doar pe acest rând
       })
-      .catch(() => { setRows(prev); toast.error(m.common.error); })
+      .catch(() => { setRows(prev); toast.error(tr(m.common.error)); })
       .finally(() => { inflight.current--; });
   }
 
@@ -309,7 +311,7 @@ export default function TasksTable({
     {
       key: "seq", label: "#", minW: 45, sort: (t) => t.seq,
       render: (t) => (
-        <button type="button" onClick={() => setOpenId(t.id)} title="Deschide detaliile" className="cursor-pointer rounded px-0.5 font-mono font-semibold text-brand hover:bg-brand-soft/60 hover:underline">
+        <button type="button" onClick={() => setOpenId(t.id)} title={tr("Deschide detaliile")} className="cursor-pointer rounded px-0.5 font-mono font-semibold text-brand hover:bg-brand-soft/60 hover:underline">
           {t.seq != null ? `#${t.seq}` : "↗"}
         </button>
       ),
@@ -426,7 +428,7 @@ export default function TasksTable({
       key: "progress", label: "%", minW: 50, right: true, sort: (t) => t.progress,
       render: (t) => (
         <div onClick={(e) => e.stopPropagation()}>
-          <select value={t.progress} onChange={(e) => changeProgress(t.id, Number(e.target.value))} className="h-4 w-12 cursor-pointer rounded border-0 bg-transparent text-[11px] outline-none" aria-label="Progres">
+          <select value={t.progress} onChange={(e) => changeProgress(t.id, Number(e.target.value))} className="h-4 w-12 cursor-pointer rounded border-0 bg-transparent text-[11px] outline-none" aria-label={tr("Progres")}>
             {[0, 25, 50, 75, 100].map((p) => <option key={p} value={p}>{p}%</option>)}
           </select>
         </div>
@@ -473,8 +475,8 @@ export default function TasksTable({
       ? [{
           key: "chat", label: "💬", minW: 60, sort: (t: Task) => (t.chatUnread ? 1 : 0),
           render: (t: Task) => (t.chatUnread
-            ? <button type="button" onClick={() => setOpenId(t.id)} className="cursor-pointer rounded-full bg-brand px-1.5 text-[10px] font-semibold text-white" title="Clientul a scris — deschide conversația">● nou</button>
-            : t.clientId ? <span className="text-ink-soft/60" title="Cerere cu client: conversația se deschide din detalii">💬</span> : <span className="text-ink-soft/40">—</span>),
+            ? <button type="button" onClick={() => setOpenId(t.id)} className="cursor-pointer rounded-full bg-brand px-1.5 text-[10px] font-semibold text-white" title={tr("Clientul a scris — deschide conversația")}>{tr("● nou")}</button>
+            : t.clientId ? <span className="text-ink-soft/60" title={tr("Cerere cu client: conversația se deschide din detalii")}>💬</span> : <span className="text-ink-soft/40">—</span>),
         } satisfies Col<Task>]
       : []),
     { key: "creator", label: "Creat de", minW: 100, maxW: 140, sort: (t) => t.creatorName, render: (t) => t.creatorName },
@@ -572,7 +574,7 @@ export default function TasksTable({
       {dataset && ds.error && !ds.rows && (
         <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-st-cancelled/40 bg-st-cancelled/5 px-3 py-1.5 text-xs">
           <span>Nu am putut încărca toată lista ({dataset.total.toLocaleString("ro-RO")}); se văd doar cele mai noi rânduri.</span>
-          <button type="button" onClick={() => window.location.reload()} className="cursor-pointer rounded border border-[var(--color-line)] px-2 py-0.5 font-semibold hover:bg-[var(--color-surface-2)]">Reîncarcă</button>
+          <button type="button" onClick={() => window.location.reload()} className="cursor-pointer rounded border border-[var(--color-line)] px-2 py-0.5 font-semibold hover:bg-[var(--color-surface-2)]">{tr("Reîncarcă")}</button>
         </div>
       )}
       <DataTable
@@ -583,7 +585,7 @@ export default function TasksTable({
         defaultSort={{ key: "created", dir: "desc" }}
         presetValues={presetValues}
         pending={dataset && !ds.rows && !ds.error ? { total: dataset.total } : undefined}
-        noun={ticketMode ? "tichete" : "task-uri"}
+        noun={ticketMode ? t("cereri") : t("sarcini")}
         emptyText={m.tasks.noTasks}
         rowClassName={(t) => (overdue(t) ? "bg-st-cancelled/5" : "")}
         toolbar={
@@ -592,15 +594,15 @@ export default function TasksTable({
             <ImportButton entity={ticketMode ? "tickets" : "tasks"} className={topBtn} />
             {canCreate && (
               <div className="relative">
-                <button type="button" onClick={() => setTplMenu((o) => !o)} aria-expanded={tplMenu} className={topBtn} title="Creează dintr-un șablon">
-                  📋 Șabloane ▾
+                <button type="button" onClick={() => setTplMenu((o) => !o)} aria-expanded={tplMenu} className={topBtn} title={tr("Creează dintr-un șablon")}>
+                  {tr("📋 Șabloane ▾")}
                 </button>
                 {tplMenu && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setTplMenu(false)} aria-hidden />
                     <div className="absolute right-0 top-full z-50 mt-1 w-64 max-w-[calc(100vw-1.5rem)] rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1 shadow-xl">
                       <div className="max-h-72 overflow-auto">
-                        {tpls.length === 0 && <p className="px-3 py-2 text-xs text-ink-soft">Niciun șablon încă.</p>}
+                        {tpls.length === 0 && <p className="px-3 py-2 text-xs text-ink-soft">{tr("Niciun șablon încă.")}</p>}
                         {tpls.map((t) => (
                           <button key={t.id} type="button" onClick={() => void startFromTemplate(t.id)} className="flex w-full cursor-pointer flex-col rounded-lg px-3 py-1.5 text-left hover:bg-[var(--color-surface-2)]">
                             <span className="truncate text-xs font-semibold">{t.name}</span>
@@ -609,7 +611,7 @@ export default function TasksTable({
                         ))}
                       </div>
                       <button type="button" onClick={() => { setTplMenu(false); setTplManage(true); }} className="mt-1 w-full cursor-pointer rounded-lg border-t border-[var(--color-line)] px-3 py-1.5 text-left text-xs font-medium text-brand hover:bg-brand-soft">
-                        ⚙ Gestionează șabloanele…
+                        {tr("⚙ Gestionează șabloanele…")}
                       </button>
                     </div>
                   </>
@@ -725,6 +727,7 @@ function TaskDetailDialog({
   onDelete: () => void;
   onClose: () => void;
 }) {
+  const tr = useT();
   const m = useMessages();
   const toast = useToast();
   const [history, setHistory] = useState<HistoryRow[] | undefined>(undefined);
@@ -750,7 +753,7 @@ function TaskDetailDialog({
     setPosting(true);
     addTaskCommentAction(t.id, body)
       .then((res) => {
-        if (res?.error) { toast.error(res.error); return; }
+        if (res?.error) { toast.error(tr(res.error)); return; }
         setDraft("");
         getTaskComments(t.id).then((rows) => setComments(rows as CommentRow[]));
         toast.success(m.tasks.commentAdded);
@@ -786,25 +789,25 @@ function TaskDetailDialog({
           {canDelete && <button type="button" onClick={onDelete} className={`${miniBtn} text-st-cancelled`}>🗑 {m.common.delete}</button>}
           <span className="ml-auto flex items-center gap-2">
             <StatusDropdown status={t.status} pending={statusPending} onChange={onStatus} />
-            <select value={t.progress} onChange={(e) => onProgress(Number(e.target.value))} className="h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-[11px]" aria-label="Progres">
+            <select value={t.progress} onChange={(e) => onProgress(Number(e.target.value))} className="h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-[11px]" aria-label={tr("Progres")}>
               {[0, 25, 50, 75, 100].map((p) => <option key={p} value={p}>{p}%</option>)}
             </select>
           </span>
         </div>
 
-        <Box title="Detalii">
-          <Item label="Prioritate" value={<span className={PRIO_CLS[t.priority]}>{m.priority[t.priority]}</span>} />
-          <Item label="Termen" value={t.dueAt ? <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtDue(t.dueAt)}{late ? " · depășit" : ""}</span> : null} />
-          <Item label="Responsabil" value={t.assigneeName ?? t.teamName} />
-          <Item label="Proiect" value={t.projectName} />
-          <Item label="Client" value={t.clientName} />
-          <Item label="Adresă" value={t.address} />
-          <Item label="Categorie" value={t.categoryName ? <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: t.categoryColor ?? "#6366f1" }} />{t.categoryName}</span> : null} />
+        <Box title={tr("Detalii")}>
+          <Item label={tr("Prioritate")} value={<span className={PRIO_CLS[t.priority]}>{m.priority[t.priority]}</span>} />
+          <Item label={tr("Termen")} value={t.dueAt ? <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtDue(t.dueAt)}{late ? " · depășit" : ""}</span> : null} />
+          <Item label={tr("Responsabil")} value={t.assigneeName ?? t.teamName} />
+          <Item label={tr("Proiect")} value={t.projectName} />
+          <Item label={tr("Client")} value={t.clientName} />
+          <Item label={tr("Adresă")} value={t.address} />
+          <Item label={tr("Categorie")} value={t.categoryName ? <span className="inline-flex items-center gap-1"><span className="size-2 rounded-full" style={{ background: t.categoryColor ?? "#6366f1" }} />{t.categoryName}</span> : null} />
           {t.description && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{m.tasks.descriptionLabel}</p><p className="whitespace-pre-wrap text-[13px]">{t.description}</p></div>}
         </Box>
 
         {t.type === "TICKET" && t.clientId && (
-          <Box title="💬 Conversație cu clientul">
+          <Box title={tr("💬 Conversație cu clientul")}>
             <div className="p-2">
               <TicketChat ticketId={t.id} viewer="staff" heightClass="h-72" />
             </div>
@@ -814,9 +817,9 @@ function TaskDetailDialog({
         {t.projectLat != null && t.projectLng != null && (
           <Box title={m.tasks.locationLabel}>
             <div className="flex flex-wrap gap-1.5 p-2">
-              <a className={miniBtn} target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${t.projectLat},${t.projectLng}`}>🗺 Google Maps</a>
-              <a className={miniBtn} target="_blank" rel="noreferrer" href={`https://waze.com/ul?ll=${t.projectLat},${t.projectLng}&navigate=yes`}>🚗 Waze</a>
-              <a className={miniBtn} target="_blank" rel="noreferrer" href={`https://maps.apple.com/?ll=${t.projectLat},${t.projectLng}`}>🍎 Apple Maps</a>
+              <a className={miniBtn} target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${t.projectLat},${t.projectLng}`}>{tr("🗺 Google Maps")}</a>
+              <a className={miniBtn} target="_blank" rel="noreferrer" href={`https://waze.com/ul?ll=${t.projectLat},${t.projectLng}&navigate=yes`}>{tr("🚗 Waze")}</a>
+              <a className={miniBtn} target="_blank" rel="noreferrer" href={`https://maps.apple.com/?ll=${t.projectLat},${t.projectLng}`}>{tr("🍎 Apple Maps")}</a>
             </div>
           </Box>
         )}
@@ -825,7 +828,7 @@ function TaskDetailDialog({
           <TaskAttachmentsPanel taskId={t.id} projectName={t.projectName} />
         </Box>
 
-        <Box title="Istoric">
+        <Box title={tr("Istoric")}>
           <Timeline rows={history} loading={history === undefined} createdAt={t.createdAt} creatorName={t.creatorName} />
         </Box>
 

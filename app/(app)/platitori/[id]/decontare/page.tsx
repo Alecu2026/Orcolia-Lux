@@ -5,6 +5,7 @@ import { getPayerStatement } from "@/lib/services/payer-statement";
 import { INVOICE_STATUS, fmtDate, type InvoiceStatusKey } from "@/app/components/invoice-meta";
 import { IconChevronLeft } from "@/app/components/icons";
 import CompactCard, { CompactField } from "@/app/components/CompactCard";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ const vol = (n: number | null) => (n == null ? "—" : n.toLocaleString("ro-RO",
  * (Excel/CSV/JSON, mai jos) — vin din aceeași funcție, lib/services/payer-statement.ts.
  */
 export default async function PayerStatementPage({ params }: { params: Promise<{ id: string }> }) {
+  const t = await getT();
   await requirePermission("payers.view");
   const { id } = await params;
   const statement = await getPayerStatement(id);
@@ -37,7 +39,7 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
   return (
     <div className="flex w-full flex-col gap-4">
       <Link href={`/platitori/${client.id}`} className="inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink">
-        <IconChevronLeft className="size-4" /> Înapoi la plătitor
+        <IconChevronLeft className="size-4" /> {t("Înapoi la plătitor")}
       </Link>
 
       {/* Antet — ca fișa "Абонент / Лицевой счет / ..." din raportul lor, cu câmpurile pe care le avem noi. */}
@@ -45,18 +47,18 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
         <div className="bg-[var(--color-surface-2)] px-4 py-2 text-sm font-bold">Decontare — {client.name}</div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 p-4 text-sm sm:grid-cols-4">
           <div>
-            <p className="text-xs text-ink-soft">Cont personal</p>
+            <p className="text-xs text-ink-soft">{t("Cont personal")}</p>
             <p className="font-medium">{client.meterSeries ?? "—"}</p>
           </div>
           <div className="col-span-2 sm:col-span-3">
-            <p className="text-xs text-ink-soft">Adresă</p>
+            <p className="text-xs text-ink-soft">{t("Adresă")}</p>
             <p className="font-medium">{client.consumAddress ?? "—"}</p>
           </div>
         </div>
       </div>
 
       {rows.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-ink-soft">Niciun rând de decontare — plătitorul nu are încă nicio factură Apă-Canal.</div>
+        <div className="card p-8 text-center text-sm text-ink-soft">{t("Niciun rând de decontare — plătitorul nu are încă nicio factură Apă-Canal.")}</div>
       ) : (
         <>
           {/* Ecran mare: tabelul pe toată lățimea, fără derulare orizontală */}
@@ -64,17 +66,17 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
             <table className="w-full border-collapse text-[11px] lg:text-xs">
               <thead>
                 <tr className="bg-[var(--color-surface-2)]">
-                  <th className={th}>Perioadă</th>
-                  <th className={thNum}>Index ant.</th>
-                  <th className={thNum}>Index curent</th>
-                  <th className={thNum}>Apă (m³)</th>
-                  <th className={thNum}>Canal (m³)</th>
+                  <th className={th}>{t("Perioadă")}</th>
+                  <th className={thNum}>{t("Index ant.")}</th>
+                  <th className={thNum}>{t("Index curent")}</th>
+                  <th className={thNum}>{t("Apă (m³)")}</th>
+                  <th className={thNum}>{t("Canal (m³)")}</th>
                   <th className={thNum}>Calculat ({currency})</th>
-                  <th className={thNum}>Sold anterior / regularizare</th>
-                  <th className={thNum}>Recalculări</th>
-                  <th className={thNum}>Penalități</th>
-                  <th className={thNum}>Total de plată</th>
-                  <th className={th}>Status</th>
+                  <th className={thNum}>{t("Sold anterior / regularizare")}</th>
+                  <th className={thNum}>{t("Recalculări")}</th>
+                  <th className={thNum}>{t("Penalități")}</th>
+                  <th className={thNum}>{t("Total de plată")}</th>
+                  <th className={th}>{t("Status")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -105,7 +107,7 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
                 })}
                 {/* Rândul TOTAL — evidențiat, ca "ВСЕГО" din raportul lor. */}
                 <tr className="bg-brand-soft font-bold text-brand-strong">
-                  <td className={td}>TOTAL</td>
+                  <td className={td}>{t("TOTAL")}</td>
                   <td className={td} />
                   <td className={td} />
                   <td className={tdNum}>{vol(totals.apaQty)}</td>
@@ -139,33 +141,33 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
                   trailing={<span className="font-semibold tabular-nums">{nr(r.grandTotal, r.currency)}</span>}
                 >
                   <dl>
-                    <CompactField label="Index ant.">{r.meterPrevReading ?? "—"}</CompactField>
-                    <CompactField label="Index curent">{r.meterCurrReading ?? "—"}</CompactField>
-                    <CompactField label="Apă (m³)">{vol(r.apaQty)}</CompactField>
-                    <CompactField label="Canal (m³)">{vol(r.canalQty)}</CompactField>
+                    <CompactField label={t("Index ant.")}>{r.meterPrevReading ?? "—"}</CompactField>
+                    <CompactField label={t("Index curent")}>{r.meterCurrReading ?? "—"}</CompactField>
+                    <CompactField label={t("Apă (m³)")}>{vol(r.apaQty)}</CompactField>
+                    <CompactField label={t("Canal (m³)")}>{vol(r.canalQty)}</CompactField>
                     <CompactField label={`Calculat (${currency})`}>{nr(r.subtotal, r.currency)}</CompactField>
-                    <CompactField label="Sold anterior / regularizare">{nr(r.datoriiAvans, r.currency)}</CompactField>
-                    <CompactField label="Recalculări">{nr(r.recalculari, r.currency)}</CompactField>
-                    <CompactField label="Penalități">{nr(r.penalitati, r.currency)}</CompactField>
+                    <CompactField label={t("Sold anterior / regularizare")}>{nr(r.datoriiAvans, r.currency)}</CompactField>
+                    <CompactField label={t("Recalculări")}>{nr(r.recalculari, r.currency)}</CompactField>
+                    <CompactField label={t("Penalități")}>{nr(r.penalitati, r.currency)}</CompactField>
                   </dl>
                   <div className="border-t border-[var(--color-line)]/60 px-2.5 py-1.5">
-                    <Link href={`/invoices/${r.invoiceId}/edit`} className="tap inline-flex h-7 items-center rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft">Deschide factura</Link>
+                    <Link href={`/invoices/${r.invoiceId}/edit`} className="tap inline-flex h-7 items-center rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft">{t("Deschide factura")}</Link>
                   </div>
                 </CompactCard>
               );
             })}
             <CompactCard
               avatar="Σ"
-              title="TOTAL"
+              title={t("TOTAL")}
               trailing={<span className="font-bold tabular-nums text-brand-strong">{nr(totals.grandTotal, currency)}</span>}
             >
               <dl>
-                <CompactField label="Apă (m³)">{vol(totals.apaQty)}</CompactField>
-                <CompactField label="Canal (m³)">{vol(totals.canalQty)}</CompactField>
+                <CompactField label={t("Apă (m³)")}>{vol(totals.apaQty)}</CompactField>
+                <CompactField label={t("Canal (m³)")}>{vol(totals.canalQty)}</CompactField>
                 <CompactField label={`Calculat (${currency})`}>{nr(totals.subtotal, currency)}</CompactField>
-                <CompactField label="Sold anterior / regularizare">{nr(totals.datoriiAvans, currency)}</CompactField>
-                <CompactField label="Recalculări">{nr(totals.recalculari, currency)}</CompactField>
-                <CompactField label="Penalități">{nr(totals.penalitati, currency)}</CompactField>
+                <CompactField label={t("Sold anterior / regularizare")}>{nr(totals.datoriiAvans, currency)}</CompactField>
+                <CompactField label={t("Recalculări")}>{nr(totals.recalculari, currency)}</CompactField>
+                <CompactField label={t("Penalități")}>{nr(totals.penalitati, currency)}</CompactField>
               </dl>
             </CompactCard>
           </div>
@@ -173,7 +175,7 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-ink-soft">Descarcă:</span>
+        <span className="text-xs text-ink-soft">{t("Descarcă:")}</span>
         {(["xlsx", "csv", "json"] as const).map((fmt) => (
           <a
             key={fmt}
@@ -186,7 +188,7 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
         ))}
       </div>
       <p className="text-[11px] text-ink-soft">
-        Nu avem un jurnal de plăți individuale (dată/sumă/loc încasare), ca în raportul 1C — doar soldul net al fiecărei perioade.
+        {t("Nu avem un jurnal de plăți individuale (dată/sumă/loc încasare), ca în raportul 1C — doar soldul net al fiecărei perioade.")}
       </p>
     </div>
   );

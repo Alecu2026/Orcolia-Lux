@@ -11,6 +11,7 @@ import AddressInput from "./AddressInput";
 import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 
@@ -157,6 +158,7 @@ function EditDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const [state, action, pending] = useActionState<TaskState, FormData>(updateTaskAction, undefined);
@@ -169,7 +171,7 @@ function EditDialog({
       toast.success(m.tasks.saved);
       onSaved();
     } else if (state?.error) {
-      toast.error(state.error);
+      toast.error(t(state.error));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);

@@ -7,6 +7,13 @@ const nextConfig = {
   experimental: {
     staleTimes: { dynamic: 30, static: 60 },
   },
+  // Portalul client: „tickets” → „cereri”. Linkurile vechi (din emailuri deja trimise) merg în continuare.
+  async redirects() {
+    return [
+      { source: "/portal/tickets", destination: "/portal/cereri", permanent: true },
+      { source: "/portal/tickets/:id", destination: "/portal/cereri/:id", permanent: true },
+    ];
+  },
   // Parser MIME pentru emailurile primite (IMAP): se încarcă din node_modules, nu se împachetează în bundle.
   serverExternalPackages: ["mailparser"],
   // playwright-core loads browsers.json + other data files at runtime via a

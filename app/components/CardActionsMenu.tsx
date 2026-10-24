@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconDots } from "./icons";
+import { useT } from "@/lib/i18n/context";
 
 export type CardActionItem = {
   key: string;
@@ -24,6 +25,7 @@ export default function CardActionsMenu({
   items: CardActionItem[];
   className?: string;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const [mounted, setMounted] = useState(false);
@@ -61,7 +63,7 @@ export default function CardActionsMenu({
         onMouseDown={(e) => e.stopPropagation()}
         onClick={handleOpen}
         className={`tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] ${className}`}
-        title="Mai multe"
+        title={t("Mai multe")}
       >
         <IconDots className="size-4" />
       </button>

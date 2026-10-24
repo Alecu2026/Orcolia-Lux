@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { setTaskStatus } from "@/app/actions/tasks";
 import { useToast } from "./toast";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Status = "NEW" | "ASSIGNED" | "READ" | "IN_PROGRESS" | "ON_HOLD" | "REVIEW" | "DONE" | "CANCELLED";
 
@@ -37,6 +38,7 @@ export default function TaskStatusChanger({
   taskId: string;
   initialStatus: string;
 }) {
+  const t = useT();
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
@@ -59,7 +61,7 @@ export default function TaskStatusChanger({
       const res = await setTaskStatus(taskId, next);
       if (res?.error) {
         setStatus(prev);
-        toast.error(res.error);
+        toast.error(t(res.error));
       } else {
         toast.success(`Status: ${m.status[next]}`);
         startTransition(() => router.refresh());

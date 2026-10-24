@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { NOTIFY_VOICES, callSeconds, voiceById } from "@/lib/payer-notify";
+import { useT } from "@/lib/i18n/context";
 
 type Phase = "idle" | "download" | "synth" | "playing";
 
@@ -22,6 +23,7 @@ export default function VoicePicker({
   onChange: (id: string) => void;
   compact?: boolean;
 }) {
+  const t = useT();
   const [phase, setPhase] = useState<Phase>("idle");
   const [pct, setPct] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +79,7 @@ export default function VoicePicker({
       const audio = new Audio(url);
       audioRef.current = audio;
       audio.onended = () => stop();
-      audio.onerror = () => { setError("Nu am putut reda sunetul."); stop(); };
+      audio.onerror = () => { setError(t("Nu am putut reda sunetul.")); stop(); };
       setPhase("playing");
       await audio.play();
     } catch (e) {
@@ -86,7 +88,7 @@ export default function VoicePicker({
       setPhase("idle");
       // fără internet / blocat: încercăm vocea dispozitivului, dacă are una în limba aleasă
       if (!(await speakWithDevice())) {
-        setError("Nu am putut încărca vocea (verifică conexiunea la internet — modelul se descarcă o dată din Hugging Face).");
+        setError(t("Nu am putut încărca vocea (verifică conexiunea la internet — modelul se descarcă o dată din Hugging Face)."));
       }
     }
   }
@@ -100,7 +102,7 @@ export default function VoicePicker({
         <select
           value={v.id}
           onChange={(e) => { stop(); setError(null); onChange(e.target.value); }}
-          aria-label="Vocea"
+          aria-label={t("Vocea")}
           className={`${compact ? "h-8" : "h-9"} cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-xs outline-none focus:border-brand`}
         >
           {NOTIFY_VOICES.map((x) => (
@@ -111,7 +113,7 @@ export default function VoicePicker({
           type="button"
           onClick={() => void play()}
           disabled={!supported || !text.trim() || phase === "download" || phase === "synth"}
-          title="Ascultă mesajul cu vocea aleasă"
+          title={t("Ascultă mesajul cu vocea aleasă")}
           className={`tap ${compact ? "h-8" : "h-9"} cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-brand-soft disabled:cursor-default disabled:opacity-60`}
         >
           {label}

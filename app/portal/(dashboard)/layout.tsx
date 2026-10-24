@@ -3,6 +3,7 @@ import { getCompanySettings } from "@/lib/queries/company";
 import { clientLogout } from "@/app/actions/client-auth";
 import PortalNav from "@/app/components/PortalNav";
 import { IconDroplet, IconLogout } from "@/app/components/icons";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export default async function PortalDashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const t = await getT();
   const client = await requireClient();
   const company = await getCompanySettings();
 
@@ -34,8 +36,8 @@ export default async function PortalDashboardLayout({
               <button
                 type="submit"
                 className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]"
-                title="Deconectare"
-                aria-label="Deconectare"
+                title={t("Deconectare")}
+                aria-label={t("Deconectare")}
               >
                 <IconLogout className="size-4" />
               </button>

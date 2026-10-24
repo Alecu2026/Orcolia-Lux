@@ -5,6 +5,7 @@ import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { IconChevronLeft } from "@/app/components/icons";
 import PortalAccountsTable, { type PortalAccountRow } from "@/app/components/PortalAccountsTable";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
  * paginarea rulează în browser, cu orice număr de rânduri pe pagină (inclusiv „Toate") — ca la Plătitori.
  */
 export default async function PortalAccountsPage() {
+  const t = await getT();
   const user = await requireUser();
   if (!can(user, "admin")) redirect("/settings");
 
@@ -47,12 +49,12 @@ export default async function PortalAccountsPage() {
   return (
     <div className="flex w-full flex-col gap-3">
       <Link href="/settings" className="inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink">
-        <IconChevronLeft className="size-4" /> Înapoi la setări
+        <IconChevronLeft className="size-4" /> {t("Înapoi la setări")}
       </Link>
       <div>
-        <h1 className="text-xl font-bold">Conturi portal clienți</h1>
+        <h1 className="text-xl font-bold">{t("Conturi portal clienți")}</h1>
         <p className="mt-1 text-sm text-ink-soft">
-          Plătitorii care au cont personal sau contract și pot deschide cont în portal. Alege câte rânduri vrei pe pagină și filtrează după orice criteriu.
+          {t("Plătitorii care au cont personal sau contract și pot deschide cont în portal. Alege câte rânduri vrei pe pagină și filtrează după orice criteriu.")}
         </p>
       </div>
       <PortalAccountsTable rows={rows} />

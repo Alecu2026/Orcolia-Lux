@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import InvoiceForm, { type InvoiceInitial } from "@/app/components/InvoiceForm";
 import ApaCanalInvoiceForm, { type ApaCanalInitial } from "@/app/components/ApaCanalInvoiceForm";
 import { IconChevronLeft } from "@/app/components/icons";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function EditInvoicePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const t = await getT();
   const user = await requirePermission("invoices.edit");
   const { id } = await params;
   const [invoice, projects, company] = await Promise.all([
@@ -92,9 +94,9 @@ export default async function EditInvoicePage({
       <div className="w-full">
         <div className="mb-2 flex flex-wrap items-center gap-x-3">
           <Link href="/invoices" className="inline-flex items-center gap-1 text-xs text-ink-soft hover:text-ink">
-            <IconChevronLeft className="size-3.5" /> Facturi
+            <IconChevronLeft className="size-3.5" /> {t("Facturi")}
           </Link>
-          <h1 className="text-lg font-bold">Editează {invoice.number} <span className="text-sm font-normal text-ink-soft">(Apă-Canal)</span></h1>
+          <h1 className="text-lg font-bold">Editează {invoice.number} <span className="text-sm font-normal text-ink-soft">{t("(Apă-Canal)")}</span></h1>
         </div>
         <ApaCanalInvoiceForm
           clients={clients}
@@ -130,7 +132,7 @@ export default async function EditInvoicePage({
     <div className="w-full">
       <div className="mb-2 flex flex-wrap items-center gap-x-3">
         <Link href="/invoices" className="inline-flex items-center gap-1 text-xs text-ink-soft hover:text-ink">
-          <IconChevronLeft className="size-3.5" /> Facturi
+          <IconChevronLeft className="size-3.5" /> {t("Facturi")}
         </Link>
         <h1 className="text-lg font-bold">Editează {invoice.number}</h1>
       </div>

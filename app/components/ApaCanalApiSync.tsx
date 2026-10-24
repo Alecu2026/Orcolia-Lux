@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { IconX } from "./icons";
 import ApaCanalSyncReport from "./ApaCanalSyncReport";
 import type { SyncReport } from "@/lib/services/apa-canal-import";
+import { useT } from "@/lib/i18n/context";
 
 type Config = {
   url: string;
@@ -63,6 +64,7 @@ function withPeriodParam(raw: string, date: string): string {
  * Parola nu se citește niciodată înapoi din server — câmpul rămâne gol când există una salvată.
  */
 export default function ApaCanalApiSync() {
+  const t = useT();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [cfg, setCfg] = useState<Config | null>(null);
@@ -173,7 +175,7 @@ export default function ApaCanalApiSync() {
     setApplied(null);
     setReport(null);
     if (cfg?.canEdit && dirty && !(await save())) return;
-    if (commit && !confirm("Extrag plătitorii din API și îi scriu în aplicație (clienți și facturi noi). Continui?")) return;
+    if (commit && !confirm(t("Extrag plătitorii din API și îi scriu în aplicație (clienți și facturi noi). Continui?"))) return;
     setBusy(commit ? "sync" : "test");
     // Dacă serverul nu răspunde deloc (conexiune blocată, nu doar lentă), nu așteptăm la nesfârșit —
     // funcția de pe server oricum se oprește la 300 s, deci la fel și aici, ca butonul să nu rămână
@@ -221,7 +223,7 @@ export default function ApaCanalApiSync() {
         onClick={() => setOpen(true)}
         className="tap inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]"
       >
-        🔌 Sincronizare API
+        {t("🔌 Sincronizare API")}
       </button>
 
       {open && (
@@ -229,23 +231,22 @@ export default function ApaCanalApiSync() {
           <div className="max-h-[92vh] w-full max-w-xl overflow-auto rounded-t-2xl bg-[var(--color-surface)] p-5 shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-bold">Sincronizare plătitori din API</h2>
+                <h2 className="text-lg font-bold">{t("Sincronizare plătitori din API")}</h2>
                 <p className="mt-1 text-xs text-ink-soft">
-                  Pune linkul API-ului și credențialele; la apăsare, aplicația extrage plătitorii direct de acolo. API-ul trebuie să
-                  întoarcă același JSON ca exportul 1C (Документы, Абоненты, Потребители…). Ce există deja nu se dublează.
+                  {t("Pune linkul API-ului și credențialele; la apăsare, aplicația extrage plătitorii direct de acolo. API-ul trebuie să întoarcă același JSON ca exportul 1C (Документы, Абоненты, Потребители…). Ce există deja nu se dublează.")}
                 </p>
               </div>
-              <button type="button" disabled={locked} onClick={() => setOpen(false)} className="tap grid size-9 shrink-0 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label="Închide">
+              <button type="button" disabled={locked} onClick={() => setOpen(false)} className="tap grid size-9 shrink-0 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label={t("Închide")}>
                 <IconX className="size-4" />
               </button>
             </div>
 
-            {!cfg && !error && <p className="py-6 text-center text-sm text-ink-soft">Se încarcă…</p>}
+            {!cfg && !error && <p className="py-6 text-center text-sm text-ink-soft">{t("Se încarcă…")}</p>}
 
             {cfg && (
               <div className="flex flex-col gap-3">
                 <div>
-                  <label className={lbl} htmlFor="api-url">Link API</label>
+                  <label className={lbl} htmlFor="api-url">{t("Link API")}</label>
                   <input id="api-url" value={url} onChange={(e) => setUrl(e.target.value)} disabled={!canEdit || locked} placeholder="https://server.exemplu.md/api/platitori" inputMode="url" autoComplete="off" className={fld} />
                 </div>
                 <div>
@@ -266,25 +267,25 @@ export default function ApaCanalApiSync() {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
-                    <label className={lbl} htmlFor="api-user">Login</label>
+                    <label className={lbl} htmlFor="api-user">{t("Login")}</label>
                     <input id="api-user" value={username} onChange={(e) => setUsername(e.target.value)} disabled={!canEdit || locked} autoComplete="off" className={fld} />
                   </div>
                   <div>
-                    <label className={lbl} htmlFor="api-pass">Parolă</label>
+                    <label className={lbl} htmlFor="api-pass">{t("Parolă")}</label>
                     <input id="api-pass" type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!canEdit || locked} autoComplete="new-password" placeholder={cfg.hasPassword ? "•••••••• salvată" : ""} className={fld} />
                   </div>
                 </div>
                 <div>
-                  <label className={lbl} htmlFor="api-token">Token (opțional — se folosește doar dacă nu ai login)</label>
+                  <label className={lbl} htmlFor="api-token">{t("Token (opțional — se folosește doar dacă nu ai login)")}</label>
                   <input id="api-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} disabled={!canEdit || locked} autoComplete="new-password" placeholder={cfg.hasToken ? "•••••••• salvat" : ""} className={fld} />
                 </div>
                 {/^http:\/\//i.test(url.trim()) && !/^http:\/\/(localhost|127\.0\.0\.1)/i.test(url.trim()) && (
                   <p className="rounded-lg bg-st-progress/10 px-3 py-2 text-xs text-st-progress">
-                    Linkul începe cu http:// — login-ul și parola ar circula necriptat prin internet. Folosește https:// dacă serverul îl permite.
+                    {t("Linkul începe cu http:// — login-ul și parola ar circula necriptat prin internet. Folosește https:// dacă serverul îl permite.")}
                   </p>
                 )}
-                {!canEdit && <p className="text-xs text-ink-soft">Doar un administrator poate schimba linkul și credențialele. Poți totuși testa și sincroniza.</p>}
-                <p className="text-[11px] text-ink-soft">Parola se păstrează criptat și nu mai apare niciodată pe ecran.</p>
+                {!canEdit && <p className="text-xs text-ink-soft">{t("Doar un administrator poate schimba linkul și credențialele. Poți totuși testa și sincroniza.")}</p>}
+                <p className="text-[11px] text-ink-soft">{t("Parola se păstrează criptat și nu mai apare niciodată pe ecran.")}</p>
 
                 {cfg.lastSyncAt && (
                   <p className={`rounded-lg px-3 py-2 text-xs ${cfg.lastSyncOk ? "bg-brand-soft text-brand-strong" : "bg-st-cancelled/10 text-st-cancelled"}`}>
@@ -303,7 +304,7 @@ export default function ApaCanalApiSync() {
                       className="mt-0.5 size-4 accent-[var(--color-brand)]"
                     />
                     <span>
-                      <b>Extrage automat în fiecare noapte</b> (în jur de 03:00)
+                      <b>{t("Extrage automat în fiecare noapte")}</b> {t("(în jur de 03:00)")}
                       <span className="mt-0.5 block text-xs text-ink-soft">
                         {cfg.autoSync
                           ? "Pornit: aplicația își aduce singură datele, nu mai trebuie să apeși butonul. Dacă API-ul întoarce același lucru ca data trecută, nu se schimbă nimic."
@@ -346,14 +347,14 @@ export default function ApaCanalApiSync() {
               <div className="mt-3 rounded-xl border border-[var(--color-line)] p-3 text-sm">
                 <p className="mb-1 font-semibold">{applied ? "Sincronizare încheiată" : "Conexiune reușită — iată ce s-ar schimba (nu s-a scris nimic)"}</p>
                 <ul className="grid gap-x-4 gap-y-0.5 text-xs sm:grid-cols-2">
-                  <li>Abonați în API: <b>{stats.documenteTotale.toLocaleString("ro-RO")}</b></li>
-                  <li>Clienți noi: <b>{stats.clientiNoiDeCreat.toLocaleString("ro-RO")}</b></li>
-                  <li>Clienți actualizați: <b>{stats.clientiExistentiActualizati.toLocaleString("ro-RO")}</b></li>
-                  <li>Facturi noi: <b>{stats.facturiDeCreat.toLocaleString("ro-RO")}</b></li>
-                  <li>Facturi deja existente: <b>{stats.facturiSaritePreexistente.toLocaleString("ro-RO")}</b>{stats.facturiActualizate ? <> (din care actualizate: <b>{stats.facturiActualizate.toLocaleString("ro-RO")}</b>)</> : null}</li>
-                  <li>Fără abonat/document (sărite): <b>{stats.sariteFaraAbonent.toLocaleString("ro-RO")}</b></li>
-                  <li>Calculat (facturi noi): <b>{money(stats.totalNecuvenit)}</b></li>
-                  <li>De achitat (facturi noi): <b>{money(stats.totalDePlata)}</b></li>
+                  <li>{t("Abonați în API:")} <b>{stats.documenteTotale.toLocaleString("ro-RO")}</b></li>
+                  <li>{t("Clienți noi:")} <b>{stats.clientiNoiDeCreat.toLocaleString("ro-RO")}</b></li>
+                  <li>{t("Clienți actualizați:")} <b>{stats.clientiExistentiActualizati.toLocaleString("ro-RO")}</b></li>
+                  <li>{t("Facturi noi:")} <b>{stats.facturiDeCreat.toLocaleString("ro-RO")}</b></li>
+                  <li>Facturi deja existente: <b>{stats.facturiSaritePreexistente.toLocaleString("ro-RO")}</b>{stats.facturiActualizate ? <> {t("(din care actualizate:")} <b>{stats.facturiActualizate.toLocaleString("ro-RO")}</b>)</> : null}</li>
+                  <li>{t("Fără abonat/document (sărite):")} <b>{stats.sariteFaraAbonent.toLocaleString("ro-RO")}</b></li>
+                  <li>{t("Calculat (facturi noi):")} <b>{money(stats.totalNecuvenit)}</b></li>
+                  <li>{t("De achitat (facturi noi):")} <b>{money(stats.totalDePlata)}</b></li>
                 </ul>
                 {applied && (
                   <p className="mt-2 text-xs text-brand-strong">

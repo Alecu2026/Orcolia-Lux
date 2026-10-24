@@ -16,6 +16,7 @@ import {
   saveNotifyCallNoteAction,
 } from "@/app/actions/notify-calls";
 import type { PbxUser } from "@/lib/pbx-api";
+import { useT } from "@/lib/i18n/context";
 
 export type NotifyCallRow = {
   id: string;
@@ -83,6 +84,7 @@ function readOperator(fallback: string): string {
  * Starea, durata și înregistrarea vin din apelul PBX (același callId). Aici operatorul vede și mesajul de transmis.
  */
 export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: { rows: NotifyCallRow[]; defaultOperator: string }) {
+  const tr = useT();
   const router = useRouter();
   const toast = useToast();
   const [local, setLocal] = useState<Record<string, Partial<NotifyCallRow>>>({});
@@ -137,7 +139,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
   }
 
   async function dial(c: NotifyCallRow) {
-    if (!activeOperator) { toast.error("Alege apelantul (robotul) din câmpul „Apelant” de sus (acum e gol) — apoi apasă din nou „Sună”."); return; }
+    if (!activeOperator) { toast.error(tr("Alege apelantul (robotul) din câmpul „Apelant” de sus (acum e gol) — apoi apasă din nou „Sună”.")); return; }
     setBusy(c.id);
     const res = await dialNotifyCallAction(c.id, activeOperator).catch(() => null);
     setBusy(null);
@@ -191,7 +193,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
     const before = c.note;
     setLocal((m) => ({ ...m, [c.id]: { ...m[c.id], note: note.trim() || null } }));
     const res = await saveNotifyCallNoteAction(c.id, note).catch(() => null);
-    if (res?.ok) toast.success("Notă salvată.");
+    if (res?.ok) toast.success(tr("Notă salvată."));
     else {
       setLocal((m) => ({ ...m, [c.id]: { ...m[c.id], note: before } }));
       toast.error(res && !res.ok ? res.error : "Nu am putut salva nota.");
@@ -288,13 +290,13 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
         columns={columns}
         filters={filters}
         defaultSort={{ key: "at", dir: "desc" }}
-        noun="apeluri de notificare"
-        emptyText="Coada e goală. Din Notificări plătitori alege canalul „Apel” și trimite — plătitorii ajung aici, gata de sunat."
+        noun={tr("apeluri de notificare")}
+        emptyText={tr("Coada e goală. Din Notificări plătitori alege canalul „Apel” și trimite — plătitorii ajung aici, gata de sunat.")}
         onRowClick={(c) => setDetailId(c.id)}
         toolbar={
           <>
             <label className="flex items-center gap-1 text-[11px] text-ink-soft">
-              Apelant:
+              {tr("Apelant:")}
               <input
                 list="notify-callers"
                 value={operator}
@@ -309,7 +311,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
                 ))}
               </datalist>
             </label>
-            <button type="button" disabled={queued.length === 0} onClick={() => setExportOpen(true)} className={`${topBtn} border-brand text-brand disabled:cursor-default disabled:opacity-40`} title="Pregătește ZIP-ul (numere + audio per plătitor) pentru PBX → Autoinformare">
+            <button type="button" disabled={queued.length === 0} onClick={() => setExportOpen(true)} className={`${topBtn} border-brand text-brand disabled:cursor-default disabled:opacity-40`} title={tr("Pregătește ZIP-ul (numere + audio per plătitor) pentru PBX → Autoinformare")}>
               ⬇ Export autoinformare ({queued.length})
             </button>
             {bulk.phase === "idle" || bulk.phase === "done" ? (
@@ -319,15 +321,15 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
             ) : bulk.phase === "confirm" ? (
               <>
                 <button type="button" onClick={() => void dialAll()} className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-2 text-[11px] font-semibold text-white hover:bg-brand-strong">Confirmă: sună {queued.length} prin „{activeOperator}”</button>
-                <button type="button" onClick={() => setBulk((b) => ({ ...b, phase: "idle" }))} className={topBtn}>Anulează</button>
+                <button type="button" onClick={() => setBulk((b) => ({ ...b, phase: "idle" }))} className={topBtn}>{tr("Anulează")}</button>
               </>
             ) : (
               <>
                 <span className="text-[11px] text-ink-soft">Se sună… {bulk.done + bulk.failed}/{bulk.total}</span>
-                <button type="button" onClick={() => { stopBulk.current = true; }} className={topBtn}>■ Oprește</button>
+                <button type="button" onClick={() => { stopBulk.current = true; }} className={topBtn}>{tr("■ Oprește")}</button>
               </>
             )}
-            <button type="button" onClick={() => router.refresh()} className={topBtn}>↻ Reîncarcă</button>
+            <button type="button" onClick={() => router.refresh()} className={topBtn}>{tr("↻ Reîncarcă")}</button>
           </>
         }
       />
@@ -372,6 +374,7 @@ function Detail({
   onRemove: () => void;
   onSaveNote: (note: string) => void;
 }) {
+  const t = useT();
   const r = resultOf(c);
   const [note, setNote] = useState(c.note ?? "");
   const [voice, setVoice] = useState<string>(DEFAULT_VOICE);
@@ -390,11 +393,11 @@ function Detail({
             <h2 className="text-base font-bold">{c.clientName}</h2>
             <p className="text-xs text-ink-soft">{c.phone} · în coadă din {fmtDateTime(c.at)}</p>
           </div>
-          <button onClick={onClose} className="tap grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide"><IconX className="size-4" /></button>
+          <button onClick={onClose} className="tap grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={t("Închide")}><IconX className="size-4" /></button>
         </div>
 
         <div className="mb-3 rounded-lg border border-brand/30 bg-brand/5 p-2.5">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Mesaj de transmis</p>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{t("Mesaj de transmis")}</p>
           <p className="mb-2 whitespace-pre-wrap text-[13px]">{c.text}</p>
           <VoicePicker voice={voice} text={c.text} onChange={setVoice} compact />
         </div>
@@ -410,29 +413,29 @@ function Detail({
 
         {c.hasRecording && c.callId && (
           <div className="mt-3">
-            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Înregistrare</p>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{t("Înregistrare")}</p>
             <audio controls preload="none" src={`/api/pbx/recording?callId=${encodeURIComponent(c.callId)}`} className="h-10 w-full" />
           </div>
         )}
 
         <div className="mt-3">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Notă (ce a spus plătitorul)</p>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{t("Notă (ce a spus plătitorul)")}</p>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={3}
             maxLength={1000}
-            placeholder="ex. Promite că plătește vineri / nu mai locuiește la adresă…"
+            placeholder={t("ex. Promite că plătește vineri / nu mai locuiește la adresă…")}
             className="w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-2 text-sm outline-none focus:border-brand"
           />
           <button type="button" onClick={() => onSaveNote(note)} disabled={note.trim() === (c.note ?? "")} className="tap mt-1.5 h-8 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">
-            Salvează nota
+            {t("Salvează nota")}
           </button>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-[var(--color-line)] pt-3">
           <label className="flex items-center gap-1 text-xs text-ink-soft">
-            Apelant:
+            {t("Apelant:")}
             <input
               list="notify-callers"
               value={caller}
@@ -444,15 +447,15 @@ function Detail({
           <button type="button" onClick={onDial} disabled={busy} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-50">
             {busy ? "Se sună…" : c.callId ? "📞 Sună din nou" : "📞 Sună"}
           </button>
-          <Link href={`/platitori/${c.clientId}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-brand-soft">Fișa plătitorului →</Link>
+          <Link href={`/platitori/${c.clientId}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-brand-soft">{t("Fișa plătitorului →")}</Link>
           <span className="ml-auto" />
           {confirmDel ? (
             <>
-              <button type="button" onClick={onRemove} className="tap h-8 cursor-pointer rounded-lg bg-st-cancelled px-3 text-xs font-semibold text-white">Șterge din coadă</button>
-              <button type="button" onClick={() => setConfirmDel(false)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs">Nu</button>
+              <button type="button" onClick={onRemove} className="tap h-8 cursor-pointer rounded-lg bg-st-cancelled px-3 text-xs font-semibold text-white">{t("Șterge din coadă")}</button>
+              <button type="button" onClick={() => setConfirmDel(false)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs">{t("Nu")}</button>
             </>
           ) : (
-            <button type="button" onClick={() => setConfirmDel(true)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs text-st-cancelled hover:bg-[var(--color-surface-2)]">🗑 Șterge</button>
+            <button type="button" onClick={() => setConfirmDel(true)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs text-st-cancelled hover:bg-[var(--color-surface-2)]">{t("🗑 Șterge")}</button>
           )}
         </div>
       </div>

@@ -7,6 +7,7 @@ import { deleteAllAuditLogs } from "@/app/actions/audit";
 import { IconChevronLeft, IconChevronRight, IconTrash } from "./icons";
 import { useToast } from "./toast";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 type Row = {
@@ -77,6 +78,7 @@ export default function AuditLogsClient({
   filters: Filters;
   totalPages?: number;
 }) {
+  const t = useT();
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
@@ -145,7 +147,7 @@ export default function AuditLogsClient({
     setDeleting(true);
     try {
       const res = await deleteAllAuditLogs();
-      if (res?.error) toast.error(res.error);
+      if (res?.error) toast.error(t(res.error));
       else { toast.success(m.auditLogs.allDeleted); setConfirmDelete(false); router.refresh(); }
     } finally {
       setDeleting(false);
@@ -311,12 +313,12 @@ export default function AuditLogsClient({
             className="ml-2 h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs outline-none focus:border-brand"
             title={m.auditLogs.perPage}
           >
-            <option value="20">20 / pag.</option>
-            <option value="50">50 / pag.</option>
-            <option value="100">100 / pag.</option>
-            <option value="200">200 / pag.</option>
-            <option value="500">500 / pag.</option>
-            <option value="1000">1000 / pag.</option>
+            <option value="20">{t("20 / pag.")}</option>
+            <option value="50">{t("50 / pag.")}</option>
+            <option value="100">{t("100 / pag.")}</option>
+            <option value="200">{t("200 / pag.")}</option>
+            <option value="500">{t("500 / pag.")}</option>
+            <option value="1000">{t("1000 / pag.")}</option>
             <option value="all">{m.common.allPages}</option>
           </select>
         </div>

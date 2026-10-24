@@ -59,7 +59,7 @@ export default function AppointmentsTable({
     setBusy(id);
     const res = await setStatusAction(id, next);
     setBusy(null);
-    if (res?.error) { setRows(prev); toast.error(res.error); }
+    if (res?.error) { setRows(prev); toast.error(t(res.error)); }
     else toast.success(`Status: ${apptLabel(next, m)}`);
   }
 
@@ -69,7 +69,7 @@ export default function AppointmentsTable({
     setRows((cur) => cur.filter((r) => r.id !== id));
     setDetail((d) => (d === id ? null : d));
     deleteAppointment(id)
-      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } else toast.success(m.appts.deleted); })
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(t(res.error)); } else toast.success(m.appts.deleted); })
       .catch(() => { setRows(prev); toast.error(m.common.deleteFailed); });
   }
 
@@ -88,16 +88,16 @@ export default function AppointmentsTable({
     fd.set("dateKey", dateKey);
     fd.set("time", time);
     rescheduleAppointment(undefined, fd)
-      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } else toast.success(t("Reprogramat.")); })
-      .catch(() => { setRows(prev); toast.error(m.common.error); });
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(t(res.error)); } else toast.success(t("Reprogramat.")); })
+      .catch(() => { setRows(prev); toast.error(t(m.common.error)); });
   }
 
   function patchAppt(a: ApptVM, patch: { title?: string; categoryId?: string | null; message?: string }, optimistic: Partial<ApptVM>) {
     const prev = rows;
     setRows((cur) => cur.map((r) => (r.id === a.id ? { ...r, ...optimistic } : r)));
     updateAppointmentFieldAction(a.id, patch)
-      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } })
-      .catch(() => { setRows(prev); toast.error(m.common.error); });
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(t(res.error)); } })
+      .catch(() => { setRows(prev); toast.error(t(m.common.error)); });
   }
 
   const dash = <span className="text-ink-soft/60">—</span>;

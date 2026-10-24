@@ -8,6 +8,7 @@ import { money, INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import { useToast } from "./toast";
 import { apaCanalDueKey } from "@/lib/apa-canal-due";
 import { IconPlus, IconCheck, IconX } from "./icons";
+import { useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 type ConsumPoint = { label: string; value: string };
@@ -69,6 +70,7 @@ export default function ApaCanalInvoiceForm({
   defaultTarifApa?: number;
   defaultTarifCanal?: number;
 }) {
+  const t = useT();
   const router = useRouter();
   const toast = useToast();
   const [clientList, setClientList] = useState<Opt[]>(clients);
@@ -137,8 +139,8 @@ export default function ApaCanalInvoiceForm({
       setClientId(res.id);
       setNewClient("");
       setAddingClient(false);
-      toast.success("Client creat");
-    } else toast.error(res.error);
+      toast.success(t("Client creat"));
+    } else toast.error(t(res.error));
   }
 
   const totals = useMemo(() => {
@@ -156,7 +158,7 @@ export default function ApaCanalInvoiceForm({
   async function submit(status: "DRAFT" | "SENT" | "PAID" | "CANCELLED" | "OVERDUE") {
     setError("");
     if (!clientId) {
-      setError("Alege un client.");
+      setError(t("Alege un client."));
       return;
     }
     setSaving(true);
@@ -205,27 +207,27 @@ export default function ApaCanalInvoiceForm({
     <div className="flex flex-col gap-2.5">
       <div className="grid items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-3">
         <div className={cardCls}>
-          <h2 className={h2Cls}>Client și date factură</h2>
+          <h2 className={h2Cls}>{t("Client și date factură")}</h2>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className={label}>Data emiterii</label>
+              <label className={label}>{t("Data emiterii")}</label>
               <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} className={input} />
             </div>
             <div>
-              <label className={label}>Data limită de achitare</label>
-              <input type="date" value={dueDate} readOnly tabIndex={-1} title="Scadența este mereu ziua de 25 a lunii facturii" className={`${input} cursor-not-allowed opacity-80`} />
+              <label className={label}>{t("Data limită de achitare")}</label>
+              <input type="date" value={dueDate} readOnly tabIndex={-1} title={t("Scadența este mereu ziua de 25 a lunii facturii")} className={`${input} cursor-not-allowed opacity-80`} />
             </div>
           </div>
 
           <div>
-            <label className={label}>Client</label>
+            <label className={label}>{t("Client")}</label>
             <div className="flex gap-1.5">
               <select value={clientId} onChange={(e) => setClientId(e.target.value)} className={input}>
                 <option value="">—</option>
                 {clientList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
               {canCreateClient && !addingClient && (
-                <button type="button" onClick={() => setAddingClient(true)} className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-brand hover:bg-brand-soft" title="Adaugă client">
+                <button type="button" onClick={() => setAddingClient(true)} className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-brand hover:bg-brand-soft" title={t("Adaugă client")}>
                   <IconPlus className="size-4" />
                 </button>
               )}
@@ -234,7 +236,7 @@ export default function ApaCanalInvoiceForm({
               <div className="mt-1.5 flex gap-1.5">
                 <input autoFocus value={newClient} onChange={(e) => setNewClient(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); createClientInline(); } if (e.key === "Escape") { setAddingClient(false); setNewClient(""); } }}
-                  placeholder="Nume client…" className={input} />
+                  placeholder={t("Nume client…")} className={input} />
                 <button type="button" disabled={busy || !newClient.trim()} onClick={createClientInline} className="tap grid size-8 shrink-0 place-items-center rounded-lg bg-brand text-white hover:bg-brand-strong disabled:opacity-50"><IconCheck className="size-4" /></button>
                 <button type="button" onClick={() => { setAddingClient(false); setNewClient(""); }} className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)]"><IconX className="size-4" /></button>
               </div>
@@ -242,85 +244,85 @@ export default function ApaCanalInvoiceForm({
           </div>
 
           <div>
-            <label className={label}>Nume consumator (dacă diferă de client)</label>
-            <input value={consumerName} onChange={(e) => setConsumerName(e.target.value)} placeholder="ex. ANTONIU GHEORGHE TEODOR" className={input} />
+            <label className={label}>{t("Nume consumator (dacă diferă de client)")}</label>
+            <input value={consumerName} onChange={(e) => setConsumerName(e.target.value)} placeholder={t("ex. ANTONIU GHEORGHE TEODOR")} className={input} />
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className={label}>Cont personal{prefilled?.contPersonal && <span className="font-normal text-brand"> · din fișa plătitorului</span>}</label>
+              <label className={label}>Cont personal{prefilled?.contPersonal && <span className="font-normal text-brand"> {t("· din fișa plătitorului")}</span>}</label>
               <input value={contPersonal} onChange={(e) => setContPersonal(e.target.value)} placeholder="900616" className={input} />
             </div>
             <div>
-              <label className={label}>Sector nr.</label>
+              <label className={label}>{t("Sector nr.")}</label>
               <input value={sectorNr} onChange={(e) => setSectorNr(e.target.value)} placeholder="5sp" className={input} />
             </div>
           </div>
 
           <div>
-            <label className={label}>Adresa locului de consum{prefilled?.consumAddress && <span className="font-normal text-brand"> · din fișa plătitorului</span>}</label>
-            <input value={consumAddress} onChange={(e) => setConsumAddress(e.target.value)} placeholder="or.Cahul, STROESCU, 31" className={input} />
+            <label className={label}>Adresa locului de consum{prefilled?.consumAddress && <span className="font-normal text-brand"> {t("· din fișa plătitorului")}</span>}</label>
+            <input value={consumAddress} onChange={(e) => setConsumAddress(e.target.value)} placeholder={t("or.Cahul, STROESCU, 31")} className={input} />
           </div>
         </div>
 
         <div className={cardCls}>
-          <h2 className={h2Cls}>Contor și perioadă</h2>
+          <h2 className={h2Cls}>{t("Contor și perioadă")}</h2>
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className={label}>Nr. contor</label>
+              <label className={label}>{t("Nr. contor")}</label>
               <input value={meterNumber} onChange={(e) => setMeterNumber(e.target.value)} placeholder="294170" className={input} />
             </div>
             <div>
-              <label className={label}>Indici preced.</label>
+              <label className={label}>{t("Indici preced.")}</label>
               <input value={meterPrevReading} onChange={(e) => setMeterPrevReading(e.target.value)} placeholder="00647" className={input} />
             </div>
             <div>
-              <label className={label}>Indici actuali</label>
+              <label className={label}>{t("Indici actuali")}</label>
               <input value={meterCurrReading} onChange={(e) => setMeterCurrReading(e.target.value)} placeholder="00660" className={input} />
             </div>
           </div>
           <div className="grid grid-cols-[1fr_auto] items-end gap-2">
             <div>
-              <label className={label}>Perioada de calcul</label>
-              <input value={billingPeriodLabel} onChange={(e) => setBillingPeriodLabel(e.target.value)} placeholder="IULIE 2026" className={input} />
+              <label className={label}>{t("Perioada de calcul")}</label>
+              <input value={billingPeriodLabel} onChange={(e) => setBillingPeriodLabel(e.target.value)} placeholder={t("IULIE 2026")} className={input} />
             </div>
             <label className="flex h-8 items-center gap-1.5 text-xs">
               <input type="checkbox" checked={isEstimatedVolume} onChange={(e) => setIsEstimatedVolume(e.target.checked)} className="size-3.5 accent-[var(--color-brand)]" />
-              Volum estimativ
+              {t("Volum estimativ")}
             </label>
           </div>
         </div>
 
         <div className={cardCls}>
-          <h2 className={h2Cls}>Servicii</h2>
+          <h2 className={h2Cls}>{t("Servicii")}</h2>
           <div className="rounded-lg border border-[var(--color-line)] p-2">
             <div className="mb-1 flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold">Alimentare cu apă</p>
-              <p className="text-xs text-ink-soft">Sumă: <strong>{money(totals.apaSuma, currency)}</strong></p>
+              <p className="text-xs font-semibold">{t("Alimentare cu apă")}</p>
+              <p className="text-xs text-ink-soft">{t("Sumă:")} <strong>{money(totals.apaSuma, currency)}</strong></p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className={label}>Volum, m³</label>
+                <label className={label}>{t("Volum, m³")}</label>
                 <input type="number" inputMode="decimal" step="any" value={apaVolum} onChange={(e) => setApaVolum(e.target.value)} className={input} />
               </div>
               <div>
-                <label className={label}>Tarif, lei/m³</label>
+                <label className={label}>{t("Tarif, lei/m³")}</label>
                 <input type="number" inputMode="decimal" step="any" value={apaTarif} onChange={(e) => setApaTarif(e.target.value)} className={input} />
               </div>
             </div>
           </div>
           <div className="rounded-lg border border-[var(--color-line)] p-2">
             <div className="mb-1 flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold">Canalizare</p>
-              <p className="text-xs text-ink-soft">Sumă: <strong>{money(totals.canalSuma, currency)}</strong></p>
+              <p className="text-xs font-semibold">{t("Canalizare")}</p>
+              <p className="text-xs text-ink-soft">{t("Sumă:")} <strong>{money(totals.canalSuma, currency)}</strong></p>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className={label}>Volum, m³</label>
+                <label className={label}>{t("Volum, m³")}</label>
                 <input type="number" inputMode="decimal" step="any" value={canalVolum} onChange={(e) => setCanalVolum(e.target.value)} className={input} />
               </div>
               <div>
-                <label className={label}>Tarif, lei/m³</label>
+                <label className={label}>{t("Tarif, lei/m³")}</label>
                 <input type="number" inputMode="decimal" step="any" value={canalTarif} onChange={(e) => setCanalTarif(e.target.value)} className={input} />
               </div>
             </div>
@@ -328,29 +330,29 @@ export default function ApaCanalInvoiceForm({
 
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className={label}>Recalculări</label>
+              <label className={label}>{t("Recalculări")}</label>
               <input type="number" inputMode="decimal" step="any" value={recalculari} onChange={(e) => setRecalculari(e.target.value)} className={input} />
             </div>
             <div>
-              <label className={label}>Penalitate</label>
+              <label className={label}>{t("Penalitate")}</label>
               <input type="number" inputMode="decimal" step="any" value={penalitati} onChange={(e) => setPenalitati(e.target.value)} className={input} />
             </div>
             <div>
-              <label className={label}>Datorii(+)/avans(-)</label>
+              <label className={label}>{t("Datorii(+)/avans(-)")}</label>
               <input type="number" inputMode="decimal" step="any" value={datoriiAvans} onChange={(e) => setDatoriiAvans(e.target.value)} className={input} />
             </div>
           </div>
 
           <div className="flex items-center justify-between gap-3 border-t border-[var(--color-line)] pt-2 text-sm">
-            <span className="text-xs text-ink-soft">Calculată: <span className="tabular-nums">{money(totals.sumaCalculata, currency)}</span></span>
-            <span className="font-bold">Spre plată: <span className="tabular-nums">{money(totals.sumaSprePlata, currency)}</span></span>
+            <span className="text-xs text-ink-soft">{t("Calculată:")} <span className="tabular-nums">{money(totals.sumaCalculata, currency)}</span></span>
+            <span className="font-bold">{t("Spre plată:")} <span className="tabular-nums">{money(totals.sumaSprePlata, currency)}</span></span>
           </div>
         </div>
 
         <div className={`${cardCls} lg:col-span-2 xl:col-span-3`}>
           <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-            <h2 className={h2Cls}>Consum lunar (grafic pe factură)</h2>
-            <p className="text-[11px] text-ink-soft">m³ pe ultimele 12 luni (de la data emiterii) · gol = bara rămâne 0</p>
+            <h2 className={h2Cls}>{t("Consum lunar (grafic pe factură)")}</h2>
+            <p className="text-[11px] text-ink-soft">{t("m³ pe ultimele 12 luni (de la data emiterii) · gol = bara rămâne 0")}</p>
           </div>
           <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-12">
             {monthLabels.map((l, i) => (

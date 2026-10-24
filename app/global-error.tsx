@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useT } from "@/lib/i18n/context";
 
 // Vezi app/portal/(dashboard)/error.tsx pentru explicația detaliată — aceeași detecție, dar
 // aici pentru orice eroare care scapă de toate boundary-urile imbricate (inclusiv layout-ul
@@ -26,6 +27,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
   unstable_retry: () => void;
 }) {
+  const t = useT();
   const stale = isStaleDeployError(error);
 
   useEffect(() => {
@@ -78,19 +80,19 @@ export default function GlobalError({
           {stale ? (
             <>
               <h1 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: ".5rem" }}>
-                A apărut o actualizare a aplicației
+                {t("A apărut o actualizare a aplicației")}
               </h1>
               <p style={{ fontSize: ".9rem", color: "#64748b", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-                Pagina a rămas deschisă dintr-o versiune mai veche. Reîncarcă pagina ca să continui.
+                {t("Pagina a rămas deschisă dintr-o versiune mai veche. Reîncarcă pagina ca să continui.")}
               </p>
             </>
           ) : (
             <>
               <h1 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: ".5rem" }}>
-                Ceva nu a mers bine
+                {t("Ceva nu a mers bine")}
               </h1>
               <p style={{ fontSize: ".9rem", color: "#64748b", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-                A apărut o eroare neașteptată. Reîncarcă pagina — dacă problema persistă, contactează-ne.
+                {t("A apărut o eroare neașteptată. Reîncarcă pagina — dacă problema persistă, contactează-ne.")}
               </p>
             </>
           )}

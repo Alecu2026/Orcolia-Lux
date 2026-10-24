@@ -9,6 +9,7 @@ import { IconPencil, IconTrash, IconX } from "./icons";
 import { useToast } from "./toast";
 import { useMessages } from "@/lib/i18n/context";
 import type { CategoryLite } from "./types";
+import { useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 
@@ -50,6 +51,7 @@ export default function TaskTemplatesDialog({
   onUse: (id: string) => void;
   onClose: () => void;
 }) {
+  const tr = useT();
   const toast = useToast();
   const m = useMessages();
   const [editing, setEditing] = useState<(Omit<TaskTemplate, "id" | "type"> & { id?: string }) | null>(null);
@@ -90,10 +92,10 @@ export default function TaskTemplatesDialog({
       counter: Number(fd.get("counter") ?? 1) || 1,
     }).catch(() => null);
     setSaving(false);
-    if (!res) return setError(m.common.error);
-    if (!res.ok) return setError(res.error);
+    if (!res) return setError(tr(m.common.error));
+    if (!res.ok) return setError(tr(res.error));
     onChange(editing?.id ? templates.map((t) => (t.id === res.template.id ? res.template : t)) : [...templates, res.template].sort((a, b) => a.name.localeCompare(b.name, "ro")));
-    toast.success("Șablon salvat.");
+    toast.success(tr("Șablon salvat."));
     setEditing(null);
   }
 
@@ -117,9 +119,9 @@ export default function TaskTemplatesDialog({
         {!editing ? (
           <div className="flex flex-col gap-2">
             <p className="text-xs text-ink-soft">
-              Alegi un șablon, se deschide fereastra de creare deja completată (titlul cu numărul următor), schimbi doar ce e diferit și creezi.
+              {tr("Alegi un șablon, se deschide fereastra de creare deja completată (titlul cu numărul următor), schimbi doar ce e diferit și creezi.")}
             </p>
-            {templates.length === 0 && <p className="rounded-xl border border-dashed border-[var(--color-line)] p-4 text-center text-sm text-ink-soft">Nu ai niciun șablon încă.</p>}
+            {templates.length === 0 && <p className="rounded-xl border border-dashed border-[var(--color-line)] p-4 text-center text-sm text-ink-soft">{tr("Nu ai niciun șablon încă.")}</p>}
             {templates.map((t) => (
               <div key={t.id} className="flex items-center gap-2 rounded-xl border border-[var(--color-line)] p-2.5">
                 <div className="min-w-0 flex-1">
@@ -131,7 +133,7 @@ export default function TaskTemplatesDialog({
                   </p>
                 </div>
                 <button type="button" onClick={() => onUse(t.id)} className="tap h-8 shrink-0 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">
-                  Folosește
+                  {tr("Folosește")}
                 </button>
                 <button type="button" onClick={() => startEdit(t)} title={m.common.edit} className="tap grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-[var(--color-line)] hover:bg-brand-soft">
                   <IconPencil className="size-3.5" />
@@ -142,30 +144,30 @@ export default function TaskTemplatesDialog({
               </div>
             ))}
             <button type="button" onClick={() => startEdit(null)} className="tap mt-1 h-10 cursor-pointer rounded-xl border border-dashed border-brand text-sm font-semibold text-brand hover:bg-brand-soft">
-              + Șablon nou
+              {tr("+ Șablon nou")}
             </button>
           </div>
         ) : (
           <form onSubmit={save} className="flex flex-col gap-3" key={editing.id ?? "nou"}>
             <div>
-              <label className={label}>Numele șablonului (îl vezi doar în listă)</label>
-              <input name="name" defaultValue={form.name} maxLength={TEMPLATE_MAX_NAME} required autoFocus placeholder="ex. Citire lunară contoare" className={input} />
+              <label className={label}>{tr("Numele șablonului (îl vezi doar în listă)")}</label>
+              <input name="name" defaultValue={form.name} maxLength={TEMPLATE_MAX_NAME} required autoFocus placeholder={tr("ex. Citire lunară contoare")} className={input} />
             </div>
             <div>
               <label className={label}>Titlul {noun}-ului</label>
-              <input name="title" defaultValue={form.title} maxLength={TEMPLATE_MAX_TITLE} required placeholder="ex. Verificare contor #{contor} — {luna}" className={input} />
+              <input name="title" defaultValue={form.title} maxLength={TEMPLATE_MAX_TITLE} required placeholder={tr("ex. Verificare contor #{contor} — {luna}")} className={input} />
               <p className="mt-1 text-[11px] text-ink-soft">
                 Variabile (se înlocuiesc la creare, în titlu și în descriere): {TEMPLATE_VARIABLES.map((v) => <code key={v} className="mx-0.5 rounded bg-[var(--color-surface-2)] px-1">{v}</code>)}
-                — <b>{"{contor}"}</b> crește cu 1 la fiecare {noun} creat din șablon.
+                — <b>{tr("{contor}")}</b> crește cu 1 la fiecare {noun} creat din șablon.
               </p>
             </div>
             <div>
-              <label className={label}>Descriere</label>
+              <label className={label}>{tr("Descriere")}</label>
               <textarea name="description" defaultValue={form.description} rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-sm outline-none focus:border-brand" />
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <div>
-                <label className={label}>Prioritate</label>
+                <label className={label}>{tr("Prioritate")}</label>
                 <select name="priority" defaultValue={form.priority} className={input}>
                   <option value="LOW">{m.priority.LOW}</option>
                   <option value="MEDIUM">{m.priority.MEDIUM}</option>
@@ -181,7 +183,7 @@ export default function TaskTemplatesDialog({
                 </select>
               </div>
               <div>
-                <label className={label}>Proiect</label>
+                <label className={label}>{tr("Proiect")}</label>
                 <select name="projectId" defaultValue={form.projectId} className={input}>
                   <option value="">{m.tasks.noProject}</option>
                   {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -189,7 +191,7 @@ export default function TaskTemplatesDialog({
               </div>
               {clients.length > 0 && (
                 <div>
-                  <label className={label}>Client</label>
+                  <label className={label}>{tr("Client")}</label>
                   <select name="clientId" defaultValue={form.clientId} className={input}>
                     <option value="">{m.tasks.noClient}</option>
                     {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -198,14 +200,14 @@ export default function TaskTemplatesDialog({
               )}
             </div>
             <div>
-              <label className={label}>Adresă</label>
+              <label className={label}>{tr("Adresă")}</label>
               <AddressInput defaultValue={form.address} className={input} />
             </div>
             {canAssign && <MultiAssignPicker users={users} teams={teams} initialAssigneeIds={form.assigneeIds} initialTeamIds={form.teamIds} />}
             <div className="grid gap-2 sm:grid-cols-3">
               <div>
-                <label className={label}>Termen: peste … zile</label>
-                <input name="dueDays" type="number" min={0} max={3650} defaultValue={form.dueDays ?? ""} placeholder="fără termen" className={input} />
+                <label className={label}>{tr("Termen: peste … zile")}</label>
+                <input name="dueDays" type="number" min={0} max={3650} defaultValue={form.dueDays ?? ""} placeholder={tr("fără termen")} className={input} />
               </div>
               <div>
                 <label className={label}>{m.tasks.reminderLabel}</label>
@@ -222,14 +224,14 @@ export default function TaskTemplatesDialog({
                 </select>
               </div>
               <div>
-                <label className={label}>Următorul {"{contor}"}</label>
+                <label className={label}>Următorul {tr("{contor}")}</label>
                 <input name="counter" type="number" min={1} max={9999999} defaultValue={form.counter} className={input} />
               </div>
             </div>
             {error && <p className="text-sm text-st-cancelled">{error}</p>}
             <div className="flex gap-2">
               <button type="button" onClick={() => setEditing(null)} className="tap h-11 flex-1 cursor-pointer rounded-xl border border-[var(--color-line)] text-sm font-medium hover:bg-[var(--color-surface-2)]">
-                Înapoi
+                {tr("Înapoi")}
               </button>
               <button type="submit" disabled={saving} className="tap h-11 flex-[2] cursor-pointer rounded-xl bg-brand text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
                 {saving ? m.common.saving : "Salvează șablonul"}

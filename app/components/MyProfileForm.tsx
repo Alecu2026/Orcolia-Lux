@@ -9,6 +9,7 @@ import {
   type ProfileState,
 } from "@/app/actions/profile";
 import { useToast } from "./toast";
+import { useT } from "@/lib/i18n/context";
 
 const input =
   "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
@@ -23,6 +24,7 @@ export default function MyProfileForm({
   email: string;
   telegramChatId: string | null;
 }) {
+  const t = useT();
   const router = useRouter();
   const toast = useToast();
   const [state, action, pending] = useActionState<ProfileState, FormData>(updateMyProfile, undefined);
@@ -37,10 +39,10 @@ export default function MyProfileForm({
     setPwStep("sending");
     const res = await requestMyPasswordChangeCode();
     if (res?.error) {
-      toast.error(res.error);
+      toast.error(t(res.error));
       setPwStep("idle");
     } else {
-      toast.success("Cod trimis pe email.");
+      toast.success(t("Cod trimis pe email."));
       setPwStep("code");
     }
   }
@@ -51,7 +53,7 @@ export default function MyProfileForm({
 
   useEffect(() => {
     if (codeState?.ok) {
-      toast.success("Parolă schimbată.");
+      toast.success(t("Parolă schimbată."));
       setPwStep("idle");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -59,11 +61,11 @@ export default function MyProfileForm({
 
   return (
     <div className="card flex flex-col gap-5 p-5">
-      <h2 className="text-base font-bold">Profilul meu</h2>
+      <h2 className="text-base font-bold">{t("Profilul meu")}</h2>
 
       <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startTransition(() => action(fd)); }} className="flex flex-col gap-3">
         <div>
-          <label className={label}>Nume</label>
+          <label className={label}>{t("Nume")}</label>
           <input name="name" defaultValue={name} required className={input} />
         </div>
         <div>
@@ -71,12 +73,12 @@ export default function MyProfileForm({
           <input name="email" type="email" defaultValue={email} required className={input} />
         </div>
         <div>
-          <label className={label}>Telegram Chat ID (opțional)</label>
+          <label className={label}>{t("Telegram Chat ID (opțional)")}</label>
           <input name="telegramChatId" defaultValue={telegramChatId ?? ""} inputMode="numeric" className={input} />
         </div>
 
         {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
-        {state?.ok && <p className="text-sm text-st-done">Salvat.</p>}
+        {state?.ok && <p className="text-sm text-st-done">{t("Salvat.")}</p>}
 
         <button
           type="submit"
@@ -88,30 +90,30 @@ export default function MyProfileForm({
       </form>
 
       <div className="border-t border-[var(--color-line)] pt-4">
-        <p className="mb-2 text-sm font-semibold">Schimbă parola</p>
+        <p className="mb-2 text-sm font-semibold">{t("Schimbă parola")}</p>
 
         {pwStep === "idle" && (
           <button
             onClick={startPasswordChange}
             className="tap h-11 w-full rounded-xl border border-[var(--color-line)] font-semibold hover:bg-[var(--color-surface-2)]"
           >
-            Trimite cod de confirmare pe email
+            {t("Trimite cod de confirmare pe email")}
           </button>
         )}
 
         {pwStep === "sending" && (
           <button disabled className="tap h-11 w-full rounded-xl border border-[var(--color-line)] font-semibold opacity-60">
-            Se trimite codul…
+            {t("Se trimite codul…")}
           </button>
         )}
 
         {pwStep === "code" && (
           <form action={codeAction} className="flex flex-col gap-3">
             <p className="text-xs text-ink-soft">
-              Am trimis un cod de 6 cifre pe <strong>{email}</strong>. Introdu-l mai jos împreună cu parola nouă.
+              {t("Am trimis un cod de 6 cifre pe")} <strong>{email}</strong>{t(". Introdu-l mai jos împreună cu parola nouă.")}
             </p>
             <div>
-              <label className={label}>Cod (6 cifre)</label>
+              <label className={label}>{t("Cod (6 cifre)")}</label>
               <input
                 name="code"
                 inputMode="numeric"
@@ -121,11 +123,11 @@ export default function MyProfileForm({
               />
             </div>
             <div>
-              <label className={label}>Parolă nouă</label>
+              <label className={label}>{t("Parolă nouă")}</label>
               <input name="newPassword" type="password" required minLength={8} className={input} />
             </div>
             <div>
-              <label className={label}>Confirmă parola nouă</label>
+              <label className={label}>{t("Confirmă parola nouă")}</label>
               <input name="confirmPassword" type="password" required minLength={8} className={input} />
             </div>
 
@@ -137,7 +139,7 @@ export default function MyProfileForm({
                 onClick={() => setPwStep("idle")}
                 className="tap h-11 flex-1 rounded-xl border border-[var(--color-line)] font-semibold hover:bg-[var(--color-surface-2)]"
               >
-                Anulează
+                {t("Anulează")}
               </button>
               <button
                 type="submit"

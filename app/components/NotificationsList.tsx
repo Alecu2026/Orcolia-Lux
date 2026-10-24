@@ -10,6 +10,7 @@ import {
 import { useToast } from "./toast";
 import { IconCheck, IconTrash } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Row = {
   id: string;
@@ -43,6 +44,7 @@ export default function NotificationsList({
   ps: number;
   total: number;
 }) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const toast = useToast();
@@ -72,7 +74,7 @@ export default function NotificationsList({
         toast.success(m.notifications.clearReadDone);
         router.refresh();
       })
-      .catch(() => toast.error(m.common.error));
+      .catch(() => toast.error(t(m.common.error)));
   }
 
   function open(r: Row) {

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { IconX } from "./icons";
+import { useT } from "@/lib/i18n/context";
 
 /**
  * Factura reală (aceeași pagină publică pe care o vede clientul / din PDF) într-un pop-up.
@@ -16,6 +17,7 @@ export default function InvoicePreviewDialog({
   title?: string;
   onClose: () => void;
 }) {
+  const t = useT();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -42,9 +44,9 @@ export default function InvoicePreviewDialog({
               rel="noreferrer"
               className="tap inline-flex h-8 cursor-pointer items-center rounded-lg border border-[var(--color-line)] px-3 text-xs hover:bg-[var(--color-surface-2)]"
             >
-              Filă nouă ↗
+              {t("Filă nouă ↗")}
             </a>
-            <button type="button" onClick={onClose} className="tap grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide">
+            <button type="button" onClick={onClose} className="tap grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={t("Închide")}>
               <IconX className="size-4" />
             </button>
           </div>

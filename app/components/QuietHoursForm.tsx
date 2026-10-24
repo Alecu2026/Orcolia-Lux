@@ -5,6 +5,7 @@ import { updateQuietHours, type SettingsState } from "@/app/actions/settings";
 import type { QuietHoursConfig } from "@/lib/quiet-hours";
 import { useToast } from "./toast";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 const inp =
   "h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
@@ -16,6 +17,7 @@ export default function QuietHoursForm({
   config: QuietHoursConfig;
   canEdit: boolean;
 }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const [state, action, pending] = useActionState<SettingsState, FormData>(
@@ -25,7 +27,7 @@ export default function QuietHoursForm({
 
   useEffect(() => {
     if (state?.ok) toast.success(m.settings.quietHoursSaved);
-    else if (state?.error) toast.error(state.error);
+    else if (state?.error) toast.error(t(state.error));
   }, [state, toast, m]);
 
   return (
@@ -91,7 +93,7 @@ export default function QuietHoursForm({
                 type="text"
                 name="quietHoursTz"
                 defaultValue={config.quietHoursTz}
-                placeholder="Europe/Bucharest"
+                placeholder={t("Europe/Bucharest")}
                 className={inp}
               />
             </div>

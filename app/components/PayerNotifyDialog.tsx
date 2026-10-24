@@ -223,8 +223,8 @@ export default function PayerNotifyDialog({
     } catch {}
     try {
       const res = await sendTestNotificationAction({ ...payload(), testPhone });
-      if (res.ok) toast.success(res.message);
-      else toast.error(res.error);
+      if (res.ok) toast.success(tr(res.message));
+      else toast.error(tr(res.error));
     } catch {
       toast.error(tr("Nu am putut trimite testul. Încearcă din nou."));
     } finally {
@@ -582,8 +582,8 @@ export default function PayerNotifyDialog({
             </div>
 
             <div className="grid gap-2 sm:grid-cols-2">
-              {useEmail && <StatCard title="✉ Email" s={emailStats} />}
-              {useSms && <StatCard title="💬 SMS" s={smsStats} />}
+              {useEmail && <StatCard title={tr("✉ Email")} s={emailStats} />}
+              {useSms && <StatCard title={tr("💬 SMS")} s={smsStats} />}
               {useCall && <StatCard title={`📞 ${tr("Apel")}`} s={callStats} sentLabel={tr("Trimise la gateway")} />}
             </div>
 

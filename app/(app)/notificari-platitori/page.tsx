@@ -6,6 +6,7 @@ import { ssrPayerPage } from "@/lib/services/payer-cache";
 import { listPayerTemplates } from "@/lib/queries/payer-notify";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
 import PayerNotifyManager from "@/app/components/PayerNotifyManager";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 // Se aplică și server action-urilor de trimitere apelate din această pagină (un lot de 25 destinatari).
@@ -16,6 +17,7 @@ export default async function PayerNotificationsPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const t = await getT();
   const user = await requirePermission("payers.view");
   const sp = await searchParams;
 
@@ -34,7 +36,7 @@ export default async function PayerNotificationsPage({
       <div className="mb-4">
         <p className="text-sm text-ink-soft">
           Tabelul tuturor plătitorilor, cu filtre pe orice criteriu. Bifează destinatarii (sau ia-i pe toți din filtru) și trimite-le un
-          email și/sau SMS — cu {"{nume}"}, {"{suma}"}, {"{factura}"} completate automat pentru fiecare.
+          email și/sau SMS — cu {t("{nume}")}, {t("{suma}")}, {t("{factura}")} completate automat pentru fiecare.
         </p>
       </div>
       <PayerNotifyManager

@@ -8,6 +8,7 @@ import { IconX } from "./icons";
 import { DEFAULT_VOICE, voiceById } from "@/lib/payer-notify";
 import { wavToTelephony } from "@/lib/wav";
 import { markNotifyCallsExportedAction } from "@/app/actions/notify-calls";
+import { useT } from "@/lib/i18n/context";
 
 export type ExportRow = { id: string; phone: string; clientName: string; text: string };
 
@@ -28,6 +29,7 @@ const kb = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)} MB` :
  * Generarea durează câteva secunde pe plătitor și cere fila deschisă.
  */
 export default function AutoinformDialog({ rows, onClose, onExported }: { rows: ExportRow[]; onClose: () => void; onExported: (ids: string[]) => void }) {
+  const t = useT();
   const toast = useToast();
   const [voice, setVoice] = useState<string>(DEFAULT_VOICE);
   const [phase, setPhase] = useState<"idle" | "working" | "done">("idle");
@@ -111,7 +113,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
       setPhase("done");
     } catch (e) {
       console.error("[autoinformare] export:", e);
-      toast.error("Nu am putut genera audio (verifică conexiunea la internet — vocea se descarcă o dată).");
+      toast.error(t("Nu am putut genera audio (verifică conexiunea la internet — vocea se descarcă o dată)."));
       setPhase("idle");
     }
   }
@@ -136,25 +138,24 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
       <div className="card max-h-[94dvh] w-full max-w-xl overflow-auto rounded-b-none rounded-t-2xl p-4 sm:rounded-2xl">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-bold">Export pentru autoinformare (PBX Moldcell)</h2>
+            <h2 className="text-base font-bold">{t("Export pentru autoinformare (PBX Moldcell)")}</h2>
             <p className="text-xs text-ink-soft">{okRows.length} plătitori în coadă{rows.length !== okRows.length ? ` · ${rows.length - okRows.length} fără număr valid, omiși` : ""}</p>
           </div>
-          <button onClick={onClose} disabled={working} className="tap grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label="Închide"><IconX className="size-4" /></button>
+          <button onClick={onClose} disabled={working} className="tap grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label={t("Închide")}><IconX className="size-4" /></button>
         </div>
 
         {phase === "idle" && (
           <div className="flex flex-col gap-3">
             <div className="rounded-lg border border-[var(--color-line)] p-2.5 text-[13px]">
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Exemplu de mesaj (primul din coadă)</p>
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{t("Exemplu de mesaj (primul din coadă)")}</p>
               <p className="whitespace-pre-wrap">{sample || "—"}</p>
             </div>
             <VoicePicker voice={voice} text={sample} onChange={setVoice} />
             <p className="text-xs text-ink-soft">
-              Generez câte un fișier audio pentru fiecare plătitor (vocea aleasă, calitate de telefonie), plus lista de numere și fișierul de mapare. Durează câteva secunde
-              pe plătitor — ține fila deschisă. Prima dată se descarcă vocea (~60 MB).
+              {t("Generez câte un fișier audio pentru fiecare plătitor (vocea aleasă, calitate de telefonie), plus lista de numere și fișierul de mapare. Durează câteva secunde pe plătitor — ține fila deschisă. Prima dată se descarcă vocea (~60 MB).")}
             </p>
             <div className="flex justify-end gap-2">
-              <button type="button" onClick={onClose} className="tap h-10 cursor-pointer rounded-xl border border-[var(--color-line)] px-4 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">Anulează</button>
+              <button type="button" onClick={onClose} className="tap h-10 cursor-pointer rounded-xl border border-[var(--color-line)] px-4 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">{t("Anulează")}</button>
               <button type="button" disabled={okRows.length === 0} onClick={() => void run()} className="tap h-10 cursor-pointer rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">
                 Generează ({okRows.length})
               </button>
@@ -172,7 +173,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
               <div className="h-2.5 overflow-hidden rounded-full bg-[var(--color-surface-2)]"><div className="h-full rounded-full bg-brand transition-all" style={{ width: `${pct}%` }} /></div>
             </div>
             <div className="flex justify-end">
-              <button type="button" onClick={() => { stopRef.current = true; }} className="tap h-9 cursor-pointer rounded-xl border border-[var(--color-line)] px-4 text-sm hover:bg-[var(--color-surface-2)]">■ Oprește și folosește ce e gata</button>
+              <button type="button" onClick={() => { stopRef.current = true; }} className="tap h-9 cursor-pointer rounded-xl border border-[var(--color-line)] px-4 text-sm hover:bg-[var(--color-surface-2)]">{t("■ Oprește și folosește ce e gata")}</button>
             </div>
           </div>
         )}
@@ -180,7 +181,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
         {phase === "done" && (
           <div className="flex flex-col gap-3">
             {downloads.length === 0 ? (
-              <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">Nu s-a generat niciun fișier.</p>
+              <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{t("Nu s-a generat niciun fișier.")}</p>
             ) : (
               <>
                 <p className="text-sm font-semibold">{exportedIds.length} audio generate. Descarcă fișierele:</p>
@@ -188,23 +189,23 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
                   {downloads.map((d) => (
                     <li key={d.name} className="flex items-center gap-2 rounded-lg border border-[var(--color-line)] px-3 py-2 text-sm">
                       <span className="min-w-0 flex-1 truncate"><b>{d.name}</b> <span className="text-xs text-ink-soft">· {d.note} · {kb(d.size)}</span></span>
-                      <a href={d.url} download={d.name} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">⬇ Descarcă</a>
+                      <a href={d.url} download={d.name} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">{t("⬇ Descarcă")}</a>
                     </li>
                   ))}
                 </ul>
                 <ol className="list-decimal space-y-0.5 pl-5 text-xs text-ink-soft">
-                  <li>În PBX: Setări → Autoinformare → pornești funcția și alegi numerele de pe care se sună.</li>
-                  <li>Sarcini → „Adaugă sarcină” → încarci <b>numere.csv</b> (lista de numere).</li>
-                  <li>La mesaj alegi „audio diferit pentru fiecare client” și încarci arhiva ZIP (una pe sarcină, dacă sunt mai multe).</li>
-                  <li>Setezi programul, încercările și durata minimă de ascultare, apoi salvezi.</li>
+                  <li>{t("În PBX: Setări → Autoinformare → pornești funcția și alegi numerele de pe care se sună.")}</li>
+                  <li>{t("Sarcini → „Adaugă sarcină” → încarci")} <b>numere.csv</b> {t("(lista de numere).")}</li>
+                  <li>{t("La mesaj alegi „audio diferit pentru fiecare client” și încarci arhiva ZIP (una pe sarcină, dacă sunt mai multe).")}</li>
+                  <li>{t("Setezi programul, încercările și durata minimă de ascultare, apoi salvezi.")}</li>
                 </ol>
               </>
             )}
             {failures.length > 0 && <p className="rounded-lg bg-st-progress/10 px-3 py-2 text-xs text-st-progress">Nu s-a putut genera audio pentru: {failures.slice(0, 8).join(", ")}{failures.length > 8 ? ` și încă ${failures.length - 8}` : ""}. Rămân în coadă.</p>}
             <div className="flex flex-wrap justify-end gap-2">
-              <button type="button" onClick={onClose} className="tap h-10 cursor-pointer rounded-xl border border-[var(--color-line)] px-4 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">Închide</button>
+              <button type="button" onClick={onClose} className="tap h-10 cursor-pointer rounded-xl border border-[var(--color-line)] px-4 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">{t("Închide")}</button>
               {exportedIds.length > 0 && (
-                <button type="button" disabled={marking} onClick={() => void markExported()} className="tap h-10 cursor-pointer rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-50" title="Scoate rândurile din coadă, ca să nu fie exportate a doua oară">
+                <button type="button" disabled={marking} onClick={() => void markExported()} className="tap h-10 cursor-pointer rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-50" title={t("Scoate rândurile din coadă, ca să nu fie exportate a doua oară")}>
                   {marking ? "…" : `Am descărcat — marchează ${exportedIds.length} ca exportați`}
                 </button>
               )}

@@ -3,11 +3,13 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { clientLogin, type ClientAuthState } from "@/app/actions/client-auth";
+import { useT } from "@/lib/i18n/context";
 
 const input =
   "w-full h-12 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
 
 export default function PortalLoginForm() {
+  const t = useT();
   const [state, formAction, pending] = useActionState<ClientAuthState, FormData>(
     clientLogin,
     undefined,
@@ -19,14 +21,14 @@ export default function PortalLoginForm() {
       <input
         name="password"
         type="password"
-        placeholder="Parolă"
+        placeholder={t("Parolă")}
         autoComplete="current-password"
         required
         className={input}
       />
 
       <Link href="/portal/forgot-password" className="-mt-1 self-end text-xs text-brand hover:underline">
-        Ai uitat parola?
+        {t("Ai uitat parola?")}
       </Link>
 
       {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}

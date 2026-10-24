@@ -286,7 +286,7 @@ export default function UserDialog({
                 <input value={name} onChange={(e) => mark(setName)(e.target.value)} autoComplete="off" required className={`${input} mt-1 font-normal text-ink`} />
               </label>
               <label className="text-xs font-semibold text-ink-soft">
-                Email *
+                {t("Email *")}
                 <input value={email} onChange={(e) => mark(setEmail)(e.target.value)} type="email" autoComplete="off" required className={`${input} mt-1 font-normal text-ink`} />
               </label>
             </div>

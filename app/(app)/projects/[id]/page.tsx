@@ -11,6 +11,7 @@ import ProjectMap from "@/app/components/ProjectMapDynamic";
 import ProjectDetailHeader from "@/app/components/ProjectDetailHeader";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,7 @@ export default async function ProjectDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const tr = await getT();
   const user = await requirePermission("projects.view");
   const { id } = await params;
   const canEdit = can(user, "projects.edit");
@@ -115,21 +117,21 @@ export default async function ProjectDetailPage({
                   target="_blank" rel="noopener noreferrer"
                   className="tap inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface)]"
                 >
-                  🚗 Waze
+                  {tr("🚗 Waze")}
                 </a>
                 <a
                   href={`https://www.google.com/maps?q=${project.lat},${project.lng}`}
                   target="_blank" rel="noopener noreferrer"
                   className="tap inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface)]"
                 >
-                  🗺️ Google Maps
+                  {tr("🗺️ Google Maps")}
                 </a>
                 <a
                   href={`https://maps.apple.com/?ll=${project.lat},${project.lng}`}
                   target="_blank" rel="noopener noreferrer"
                   className="tap inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface)]"
                 >
-                  🍎 Apple Maps
+                  {tr("🍎 Apple Maps")}
                 </a>
               </>
             ) : project.address ? (
@@ -138,7 +140,7 @@ export default async function ProjectDetailPage({
                 target="_blank" rel="noopener noreferrer"
                 className="tap inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--color-surface)]"
               >
-                🗺️ Google Maps
+                {tr("🗺️ Google Maps")}
               </a>
             ) : null}
           </div>

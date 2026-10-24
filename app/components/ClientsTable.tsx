@@ -11,6 +11,7 @@ import { useToast } from "./toast";
 import { IconPencil, IconTrash } from "./icons";
 import { agoLabel } from "@/lib/payer-notify";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 export type ClientRow = {
   id: string;
@@ -37,6 +38,7 @@ const topBtn =
 
 /** Clienți (CRM) — același tabel dens, cu filtre locale, ca la Plătitori. Click pe rând = editare. */
 export default function ClientsTable({ items, openCreate, canEdit = true }: { items: ClientRow[]; openCreate?: boolean; canEdit?: boolean }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const [rows, setRows] = useState(items);
@@ -57,8 +59,8 @@ export default function ClientsTable({ items, openCreate, canEdit = true }: { it
     const prev = rows;
     setRows((cur) => cur.map((x) => (x.id === c.id ? { ...x, ...optimistic } : x)));
     updateClientFieldAction(c.id, patch)
-      .then((res) => { if (res?.error) { setRows(prev); toast.error(res.error); } })
-      .catch(() => { setRows(prev); toast.error(m.common.error); });
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(t(res.error)); } })
+      .catch(() => { setRows(prev); toast.error(t(m.common.error)); });
   }
 
   const columns: Col<ClientRow>[] = [
@@ -75,12 +77,12 @@ export default function ClientsTable({ items, openCreate, canEdit = true }: { it
       render: (c) => <EditableText value={c.email ?? ""} type="email" allowEmpty disabled={!canEdit} onSave={(v) => patchClient(c, { email: v || null }, { email: v || null })} />,
     },
     { key: "tgid", label: "ID Telegram", minW: 100, defaultHidden: true, sort: (c) => c.telegramChatId, render: (c) => c.telegramChatId ?? <span className="text-ink-soft/60">—</span> },
-    { key: "tg", label: "Telegram", minW: 70, render: (c) => (c.telegramChatId ? <span className="text-st-done">✓ conectat</span> : <span className="text-ink-soft/60">—</span>) },
+    { key: "tg", label: "Telegram", minW: 70, render: (c) => (c.telegramChatId ? <span className="text-st-done">{t("✓ conectat")}</span> : <span className="text-ink-soft/60">—</span>) },
     { key: "abs", label: m.clients.absences, minW: 60, right: true, sort: (c) => c.noShowCount, render: (c) => (c.noShowCount > 0 ? <span className="font-semibold text-st-noshow">{c.noShowCount}</span> : <span className="text-ink-soft/60">0</span>) },
     {
       key: "last", label: "Ultima programare", minW: 130,
       sort: (c) => (c.lastAppointmentAt ? new Date(c.lastAppointmentAt).getTime() : null),
-      render: (c) => (c.lastAppointmentAt ? <span>{fmtDay(c.lastAppointmentAt)} <span className="text-ink-soft">· {agoLabel(c.lastAppointmentAt)}</span></span> : <span className="text-ink-soft/60">niciodată</span>),
+      render: (c) => (c.lastAppointmentAt ? <span>{fmtDay(c.lastAppointmentAt)} <span className="text-ink-soft">· {agoLabel(c.lastAppointmentAt)}</span></span> : <span className="text-ink-soft/60">{t("niciodată")}</span>),
     },
     {
       key: "notes", label: "Notițe", minW: 180, maxW: 280,
@@ -145,7 +147,7 @@ export default function ClientsTable({ items, openCreate, canEdit = true }: { it
         columns={columns}
         filters={filters}
         defaultSort={{ key: "last", dir: "desc" }}
-        noun="clienți"
+        noun={t("clienți")}
         emptyText={m.clients.noClients}
         toolbar={
           <>

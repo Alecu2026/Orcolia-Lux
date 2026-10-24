@@ -11,6 +11,7 @@ import PayerNotifyManager from "@/app/components/PayerNotifyManager";
 import { timed } from "@/lib/timing";
 import { ssrPayerPage } from "@/lib/services/payer-cache";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
+import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ export default async function PayersPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
+  const t = await getT();
   const user = await requirePermission("payers.view");
   const canImport = can(user, "clients.create") && can(user, "clients.edit");
   // Sincronizarea din API creează și facturi, deci cere și permisiunea de creare facturi.
@@ -50,15 +52,15 @@ export default async function PayersPage({
     <div className="w-full">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold">Plătitori</h1>
-          <p className="mt-0.5 text-sm text-ink-soft">Plătitori Apă-Canal — click pe un rând pentru datele lui, facturi și notificări.</p>
+          <h1 className="text-xl font-bold">{t("Plătitori")}</h1>
+          <p className="mt-0.5 text-sm text-ink-soft">{t("Plătitori Apă-Canal — click pe un rând pentru datele lui, facturi și notificări.")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/platitori/tabel"
             className="tap inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]"
           >
-            Tabel 1C
+            {t("Tabel 1C")}
           </Link>
           {canSyncApi && <ApaCanalApiSync />}
           {canImport && <ImportButton entity="payers" hideAi />}

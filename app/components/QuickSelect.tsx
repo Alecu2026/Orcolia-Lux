@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useToast } from "./toast";
 import { IconPlus, IconCheck, IconX } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
+import { useT } from "@/lib/i18n/context";
 
 type Opt = { id: string; name: string };
 type QuickResult = { ok: true; id: string; name: string } | { ok: false; error: string };
@@ -32,6 +33,7 @@ export default function QuickSelect({
   onQuickCreate?: (name: string) => Promise<QuickResult>;
   defaultValue?: string;
 }) {
+  const t = useT();
   const toast = useToast();
   const m = useMessages();
   const [opts, setOpts] = useState<Opt[]>(options);
@@ -55,7 +57,7 @@ export default function QuickSelect({
       setAdding(false);
       toast.success(m.common.created);
     } else {
-      toast.error(res.error);
+      toast.error(t(res.error));
     }
   }
 

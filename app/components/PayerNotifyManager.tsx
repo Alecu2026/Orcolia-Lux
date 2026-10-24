@@ -209,7 +209,7 @@ export default function PayerNotifyManager({
     createPayerTemplateAction(d)
       .then((res) => {
         if (res.ok) setTemplates((ts) => ts.map((x) => (x.id === tmp ? res.template : x)));
-        else { setTemplates((ts) => ts.filter((x) => x.id !== tmp)); toast.error(res.error); }
+        else { setTemplates((ts) => ts.filter((x) => x.id !== tmp)); toast.error(t(res.error)); }
       })
       .catch(() => { setTemplates((ts) => ts.filter((x) => x.id !== tmp)); toast.error(t("Nu am putut salva șablonul.")); });
   }
@@ -399,7 +399,7 @@ export default function PayerNotifyManager({
       })
       .catch((e: Error) => {
         if (e.name === "AbortError") return;
-        setError(e.message);
+        setError(t(e.message));
         setLoading(false);
       });
     };
@@ -540,7 +540,7 @@ export default function PayerNotifyManager({
     try {
       const res = await resolveNotifyFilterAction(sanitizeFilters(filters));
       if (token !== resolveToken.current) return;
-      if (!res.ok) { toast.error(res.error); return; }
+      if (!res.ok) { toast.error(t(res.error)); return; }
       setSelected(new Map(res.contacts));
       toast.success(
         res.truncated

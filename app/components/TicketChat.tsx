@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CHAT_MAX_BODY, CHAT_POLL_MS, type ChatMessage, type ChatSender, type ChatState } from "@/lib/ticket-chat-shared";
+import { useT } from "@/lib/i18n/context";
 
 const TZ = "Europe/Chisinau";
 const GROUP_GAP_MS = 5 * 60_000;
@@ -56,6 +57,7 @@ export default function TicketChat({
   introMessage?: { body: string; createdAt: string; authorName: string } | null;
   heightClass?: string;
 }) {
+  const t = useT();
   const own: ChatSender = viewer === "client" ? "CLIENT" : "STAFF";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<Pending[]>([]);
@@ -201,9 +203,9 @@ export default function TicketChat({
     <div className="flex flex-col overflow-hidden rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)]">
       <div className="relative">
         <div ref={listRef} onScroll={onScroll} className={`${heightClass} overflow-y-auto overscroll-contain px-3 py-3`}>
-          {!meta && !loadError && <p className="py-10 text-center text-sm text-ink-soft">Se încarcă conversația…</p>}
+          {!meta && !loadError && <p className="py-10 text-center text-sm text-ink-soft">{t("Se încarcă conversația…")}</p>}
           {loadError && <p className="py-10 text-center text-sm text-st-cancelled">{loadError}</p>}
-          {meta && items.length === 0 && <p className="py-10 text-center text-sm text-ink-soft">Încă nu e niciun mesaj. Scrie primul mesaj mai jos.</p>}
+          {meta && items.length === 0 && <p className="py-10 text-center text-sm text-ink-soft">{t("Încă nu e niciun mesaj. Scrie primul mesaj mai jos.")}</p>}
 
           {items.map((it, i) => {
             const prev = items[i - 1];
@@ -235,8 +237,8 @@ export default function TicketChat({
                       {it.pending ? (
                         it.pending.failed ? (
                           <>
-                            <span className="text-st-cancelled">Netrimis</span>
-                            <button type="button" onClick={() => retry(it.pending!)} className="cursor-pointer font-semibold text-brand underline">Reîncearcă</button>
+                            <span className="text-st-cancelled">{t("Netrimis")}</span>
+                            <button type="button" onClick={() => retry(it.pending!)} className="cursor-pointer font-semibold text-brand underline">{t("Reîncearcă")}</button>
                           </>
                         ) : "Se trimite…"
                       ) : (
@@ -266,7 +268,7 @@ export default function TicketChat({
       </div>
 
       {meta?.status === "DONE" && viewer === "client" && meta.canWrite && (
-        <p className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-center text-[11px] text-ink-soft">Cerere finalizată. Dacă scrii un mesaj, se redeschide.</p>
+        <p className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-center text-[11px] text-ink-soft">{t("Cerere finalizată. Dacă scrii un mesaj, se redeschide.")}</p>
       )}
 
       {meta && !meta.canWrite ? (
@@ -293,14 +295,14 @@ export default function TicketChat({
                 send();
               }
             }}
-            placeholder="Scrie un mesaj…"
+            placeholder={t("Scrie un mesaj…")}
             disabled={!meta}
             className="max-h-[132px] min-h-10 flex-1 resize-none rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3.5 py-2 text-[14px] outline-none focus:border-brand"
           />
           <button
             type="submit"
             disabled={!draft.trim() || !meta}
-            aria-label="Trimite"
+            aria-label={t("Trimite")}
             className="tap grid size-10 shrink-0 cursor-pointer place-items-center rounded-full bg-brand text-lg text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40"
           >
             ➤

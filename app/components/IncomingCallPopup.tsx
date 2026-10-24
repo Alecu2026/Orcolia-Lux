@@ -6,6 +6,7 @@ import { savePbxCallNoteAction } from "@/app/actions/pbx";
 import type { CallerContext } from "@/lib/services/pbx";
 import { IconX } from "./icons";
 import { useToast } from "./toast";
+import { useT } from "@/lib/i18n/context";
 
 type ActiveCall = {
   callId: string;
@@ -104,6 +105,7 @@ export default function IncomingCallPopup({ canEdit = true }: { canEdit?: boolea
 }
 
 function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: boolean; onDismiss: () => void }) {
+  const tr = useT();
   const toast = useToast();
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -147,7 +149,7 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
             {c.operator ? `răspunde ${c.operator}${c.ext ? ` (ext. ${c.ext})` : ""}` : c.diversion ? `pe ${pretty(c.diversion)}` : ""}
           </p>
         </div>
-        <button onClick={onDismiss} className="tap grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label="Închide">
+        <button onClick={onDismiss} className="tap grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={tr("Închide")}>
           <IconX className="size-4" />
         </button>
       </div>
@@ -155,14 +157,14 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
       {ctx ? (
         <div className="mb-2 divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)] text-[12px]">
           <Row label={ctx.isPayer ? "Plătitor" : "Client CRM"}>{ctx.account ? `cont ${ctx.account}` : "—"}</Row>
-          {ctx.address && <Row label="Adresă">{ctx.address}</Row>}
+          {ctx.address && <Row label={tr("Adresă")}>{ctx.address}</Row>}
           {ctx.debt != null && (
-            <Row label="De achitat">
+            <Row label={tr("De achitat")}>
               <b className={ctx.debt > 0 ? "text-st-cancelled" : "text-st-done"}>{money(ctx.debt)}</b>
               {ctx.invoiceStatus && <span className="ml-1 text-ink-soft">({ctx.invoiceStatus.toLowerCase()})</span>}
             </Row>
           )}
-          <Row label="Cereri deschise">
+          <Row label={tr("Cereri deschise")}>
             {ctx.openTicketCount === 0 ? "niciunul" : (
               <span className="flex flex-col items-end gap-0.5">
                 {ctx.openTickets.map((t) => (
@@ -174,20 +176,20 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
               </span>
             )}
           </Row>
-          {ctx.lastNote && <Row label="Ultima notiță"><span className="line-clamp-2 text-left">{ctx.lastNote.body}</span></Row>}
+          {ctx.lastNote && <Row label={tr("Ultima notiță")}><span className="line-clamp-2 text-left">{ctx.lastNote.body}</span></Row>}
         </div>
       ) : (
         <p className="mb-2 rounded-lg bg-st-progress/10 px-2.5 py-1.5 text-[12px] text-st-progress">
-          Numărul nu e în clienți. Caută-l în Plătitori (formatul telefonului poate fi diferit) sau creează un client.
+          {tr("Numărul nu e în clienți. Caută-l în Plătitori (formatul telefonului poate fi diferit) sau creează un client.")}
         </p>
       )}
 
       <div className="mb-2 flex flex-wrap gap-1.5">
-        {ctx?.isPayer && <Link href={`/platitori/${ctx.clientId}`} className={`${btn} bg-brand text-white hover:bg-brand-strong`}>Fișa plătitorului →</Link>}
-        {q && <Link href={`/platitori?q=${q}`} className={btn}>🔎 Filtrează în Plătitori</Link>}
-        {!ctx && <Link href="/clients?create=1" className={btn}>+ Client nou</Link>}
-        {canEdit && <Link href={prefill("ticket")} className={btn}>🎫 Tichet</Link>}
-        {canEdit && <Link href={prefill("task")} className={btn}>✔ Task</Link>}
+        {ctx?.isPayer && <Link href={`/platitori/${ctx.clientId}`} className={`${btn} bg-brand text-white hover:bg-brand-strong`}>{tr("Fișa plătitorului →")}</Link>}
+        {q && <Link href={`/platitori?q=${q}`} className={btn}>{tr("🔎 Filtrează în Plătitori")}</Link>}
+        {!ctx && <Link href="/clients?create=1" className={btn}>{tr("+ Client nou")}</Link>}
+        {canEdit && <Link href={prefill("ticket")} className={btn}>{tr("🎫 Cerere")}</Link>}
+        {canEdit && <Link href={prefill("task")} className={btn}>{tr("✔ Sarcină")}</Link>}
       </div>
 
       {canEdit && (
@@ -198,7 +200,7 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
               value={note}
               onChange={(e) => setNote(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveNote(); } }}
-              placeholder="Notă despre apel (ce a cerut)… Enter = salvează"
+              placeholder={tr("Notă despre apel (ce a cerut)… Enter = salvează")}
               className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-[12px] outline-none focus:border-brand"
             />
             <button type="button" onClick={saveNote} disabled={saving || !note.trim()} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">
