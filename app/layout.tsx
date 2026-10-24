@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   // absolute corecte, indiferent de domeniul pe care rulează build-ul.
   metadataBase: new URL(env.appUrl),
   title: "CRM Proiecte",
-  description: "Gestionare proiecte, task-uri și tichete — rapid și simplu.",
+  description: "Gestionare proiecte, sarcini și cereri — rapid și simplu.",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "CRM" },
   icons: {

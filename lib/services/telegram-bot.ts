@@ -90,10 +90,10 @@ async function myOpenTasks(user: LinkedUser) {
 async function renderMyTasks(chatId: string | number, user: LinkedUser) {
   const tasks = await myOpenTasks(user);
   if (tasks.length === 0) {
-    await sendMessage(chatId, "📋 Nu ai task-uri active momentan.", menuFor(user));
+    await sendMessage(chatId, "📋 Nu ai sarcini active momentan.", menuFor(user));
     return;
   }
-  await sendMessage(chatId, `📋 <b>Task-urile tale</b> (${tasks.length})`, undefined);
+  await sendMessage(chatId, `📋 <b>Sarcinile tale</b> (${tasks.length})`, undefined);
   for (const t of tasks) {
     const line =
       `<b>${escapeHtml(t.title)}</b>\n` +
@@ -124,7 +124,7 @@ async function renderTaskDetail(chatId: string | number, user: LinkedUser, taskI
     },
   });
   if (!task) {
-    await sendMessage(chatId, "❌ Task inexistent sau nu este al tău.", menuFor(user));
+    await sendMessage(chatId, "❌ Sarcină inexistentă sau nu este al tău.", menuFor(user));
     return;
   }
   const tz = await getUserTimezone(user.userId);
@@ -198,10 +198,10 @@ async function renderWorkerDay(chatId: string | number, user: LinkedUser, dateKe
     take: 15,
   });
   if (tasks.length === 0) {
-    await sendMessage(chatId, `📅 <b>${label}</b>\nNu ai task-uri scadente în această zi.`, workerMenu());
+    await sendMessage(chatId, `📅 <b>${label}</b>\nNu ai sarcini scadente în această zi.`, workerMenu());
     return;
   }
-  await sendMessage(chatId, `📅 <b>${label}</b> — ${tasks.length} task-uri`, undefined);
+  await sendMessage(chatId, `📅 <b>${label}</b> — ${tasks.length} sarcini`, undefined);
   for (const t of tasks) {
     const line =
       `<b>${escapeHtml(t.title)}</b>\n` +
@@ -229,10 +229,10 @@ async function renderWorkerWeek(chatId: string | number, user: LinkedUser, tz: s
     take: 20,
   });
   if (tasks.length === 0) {
-    await sendMessage(chatId, "🗓 Niciun task scadent săptămâna aceasta.", workerMenu());
+    await sendMessage(chatId, "🗓 Nicio sarcină scadentă săptămâna aceasta.", workerMenu());
     return;
   }
-  const lines: string[] = ["🗓 <b>Task-uri săptămâna aceasta</b>", ""];
+  const lines: string[] = ["🗓 <b>Sarcini săptămâna aceasta</b>", ""];
   let lastDay = "";
   for (const t of tasks) {
     const dayKey = t.dueAt ? dateKeyOf(t.dueAt, tz) : "";
@@ -439,7 +439,7 @@ async function handleMessage(msg: Msg) {
 
   // Lucrătorii nu au acces la căutare client — afișăm meniul lor
   if (!user.isAdmin) {
-    await sendMessage(chatId, "📋 Apasa butonul [Task-urile mele] pentru a-ti vedea task-urile.", workerMenu());
+    await sendMessage(chatId, "📋 Apasa butonul [Sarcinile mele] pentru a-ti vedea sarcinile.", workerMenu());
     return;
   }
 
@@ -524,7 +524,7 @@ async function handleCallback(cb: Cb) {
   if (commMatch) {
     // Nu pornim fluxul de comentariu pentru un task la care nu are acces (butoanele pot ajunge la alții prin redirecționare).
     if (!(await userCanActOnTask(user.userId, commMatch[1]))) {
-      await sendMessage(chatId, "❌ Nu ai acces la acest task.");
+      await sendMessage(chatId, "❌ Nu ai acces la această sarcină.");
       return;
     }
     await prisma.telegramAccount
@@ -628,7 +628,7 @@ async function handleVoice(chatId: number, userId: string, fileId: string) {
 
     if (res.ok) {
       await notifyNewTask(res.id);
-      await sendMessage(chatId, `✅ <b>Task creat din voce</b>\n«${res.title}»`);
+      await sendMessage(chatId, `✅ <b>Sarcină creată din voce</b>\n«${res.title}»`);
     } else {
       await sendMessage(chatId, `❌ ${res.error}`);
     }

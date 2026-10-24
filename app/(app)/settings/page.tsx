@@ -40,7 +40,7 @@ export default async function SettingsPage() {
       {user.role === "ADMIN" && (
         <div className="card p-5 space-y-4">
           <div>
-            <h2 className="text-base font-bold">Statusuri tichete</h2>
+            <h2 className="text-base font-bold">Statusuri cereri</h2>
             <p className="text-sm text-ink-soft">
               Configurează etichetele, culorile și comportamentul notificărilor per status.
             </p>

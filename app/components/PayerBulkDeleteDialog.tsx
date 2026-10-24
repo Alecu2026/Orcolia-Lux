@@ -94,7 +94,7 @@ export default function PayerBulkDeleteDialog({
         {phase === "confirm" && (
           <div className="flex flex-col gap-3 text-sm">
             <p>
-              {t("Ai selectat {n} plătitori. Se șterg definitiv doar cei care nu au facturi, programări, proiecte sau task-uri și nici cont de portal activat; pe ceilalți îi omit automat.", { n: nf(total) })}
+              {t("Ai selectat {n} plătitori. Se șterg definitiv doar cei care nu au facturi, programări, proiecte sau sarcini și nici cont de portal activat; pe ceilalți îi omit automat.", { n: nf(total) })}
             </p>
             <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-xs text-st-cancelled">
               {t("Acțiunea nu poate fi anulată. Dacă acești plătitori vin din exportul 1C, o sincronizare următoare îi poate crea la loc.")}
@@ -143,7 +143,7 @@ export default function PayerBulkDeleteDialog({
             {skipped > 0 && (
               <ul className="list-disc pl-5 text-xs text-ink-soft">
                 {totals.withInvoices > 0 && <li>{t("{n} au facturi", { n: nf(totals.withInvoices) })}</li>}
-                {totals.withActivity > 0 && <li>{t("{n} au programări, proiecte sau task-uri", { n: nf(totals.withActivity) })}</li>}
+                {totals.withActivity > 0 && <li>{t("{n} au programări, proiecte sau sarcini", { n: nf(totals.withActivity) })}</li>}
                 {totals.activated > 0 && <li>{t("{n} au cont de portal activat", { n: nf(totals.activated) })}</li>}
                 {totals.missing > 0 && <li>{t("{n} nu mai existau", { n: nf(totals.missing) })}</li>}
               </ul>

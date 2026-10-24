@@ -35,7 +35,7 @@ export default async function PortalTicketsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-lg font-bold">Tichetele mele</h1>
+        <h1 className="text-lg font-bold">Cererile mele</h1>
         <p className="mt-0.5 text-xs text-ink-soft">{tickets.length} tichete în total</p>
       </div>
 
@@ -48,7 +48,7 @@ export default async function PortalTicketsPage() {
       </div>
 
       {tickets.length === 0 ? (
-        <div className="card p-6 text-center text-sm text-ink-soft">Nu ai creat încă niciun tichet.</div>
+        <div className="card p-6 text-center text-sm text-ink-soft">Nu ai creat încă nicio cerere.</div>
       ) : (
         <div className="flex flex-col gap-2">
           {tickets.map((t) => (

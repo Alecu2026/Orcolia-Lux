@@ -102,10 +102,10 @@ function taskUpdateTelegramText(
 ): string {
   const time = formatTime(new Date(), DEFAULT_TZ);
   return [
-    "🔔 <b>Actualizare task</b>",
+    "🔔 <b>Actualizare sarcină</b>",
     "",
     `Lucrător: ${escapeHtml(actorName)}`,
-    `Task: ${escapeHtml(taskTitle)} (${taskRef(seq, taskId)})`,
+    `Sarcină: ${escapeHtml(taskTitle)} (${taskRef(seq, taskId)})`,
     `${lineLabel}: <b>${escapeHtml(statusLabel)}</b>`,
     `Ora: ${time}`,
   ].join("\n");
@@ -115,9 +115,9 @@ function taskUpdateTelegramText(
 function taskOverdueTelegramText(taskTitle: string, taskId: string, seq: number | null | undefined): string {
   const time = formatTime(new Date(), DEFAULT_TZ);
   return [
-    "⏰ <b>Task în întârziere</b>",
+    "⏰ <b>Sarcină în întârziere</b>",
     "",
-    `Task: ${escapeHtml(taskTitle)} (${taskRef(seq, taskId)})`,
+    `Sarcină: ${escapeHtml(taskTitle)} (${taskRef(seq, taskId)})`,
     `Ora: ${time}`,
   ].join("\n");
 }
@@ -546,7 +546,7 @@ export async function changeTaskStatus(
   });
   if (!task) {
     console.error(`[tasks] changeTaskStatus: task ${taskId} nu există`);
-    return { ok: false as const, error: "Task inexistent." };
+    return { ok: false as const, error: "Sarcină inexistentă." };
   }
   if (task.status === newStatus) {
     console.log(`[tasks] changeTaskStatus: deja ${newStatus}, nimic de făcut`);
@@ -555,7 +555,7 @@ export async function changeTaskStatus(
 
   // Verifică dacă actorul are dreptul să modifice task-ul (din callback Telegram)
   if (opts.fromTelegram && !(await actorHasTaskAccess(actorId, task))) {
-    return { ok: false as const, error: "Nu ai acces la acest task." };
+    return { ok: false as const, error: "Nu ai acces la această sarcină." };
   }
 
   const closed = newStatus === "DONE" || newStatus === "CANCELLED";
@@ -566,12 +566,12 @@ export async function changeTaskStatus(
   if (closed) {
     const actorAcc = await prisma.user.findUnique({ where: { id: actorId }, select: { role: true, permissions: true } });
     if (actorAcc && !can(actorAcc, "tasks.close")) {
-      if (newStatus === "CANCELLED") return { ok: false as const, error: "Nu ai permisiunea de a anula / închide task-ul.", needsProof: false };
+      if (newStatus === "CANCELLED") return { ok: false as const, error: "Nu ai permisiunea de a anula / închide sarcina.", needsProof: false };
       const proofs = await prisma.taskAttachment.count({ where: { taskId, userId: actorId } });
       if (proofs === 0) {
         return {
           ok: false as const,
-          error: "Ca să finalizezi task-ul, atașează mai întâi o poză sau un fișier informativ (în detaliile task-ului), apoi finalizează-l.",
+          error: "Ca să finalizezi sarcina, atașează mai întâi o poză sau un fișier informativ (în detaliile sarcinii), apoi finalizează-l.",
           needsProof: true,
         };
       }
@@ -708,10 +708,10 @@ export async function changeTaskProgress(taskId: string, actorId: string, progre
   });
   if (!task) {
     console.error(`[tasks] changeTaskProgress: task ${taskId} nu există`);
-    return { ok: false as const, error: "Task inexistent." };
+    return { ok: false as const, error: "Sarcină inexistentă." };
   }
   if (opts.fromTelegram && !(await actorHasTaskAccess(actorId, task))) {
-    return { ok: false as const, error: "Nu ai acces la acest task." };
+    return { ok: false as const, error: "Nu ai acces la această sarcină." };
   }
   if (task.progress === p) {
     console.log(`[tasks] changeTaskProgress: deja ${p}%, nimic de făcut`);
@@ -792,11 +792,11 @@ export async function addTaskComment(
   });
   if (!task) {
     console.error(`[tasks] addTaskComment: task ${taskId} nu există`);
-    return { ok: false as const, error: "Task inexistent." };
+    return { ok: false as const, error: "Sarcină inexistentă." };
   }
   // Din Telegram nu există alt control de acces: verificăm aici (la fel ca la schimbarea statusului).
   if (source === "TELEGRAM" && !(await actorHasTaskAccess(actorId, task))) {
-    return { ok: false as const, error: "Nu ai acces la acest task." };
+    return { ok: false as const, error: "Nu ai acces la această sarcină." };
   }
 
   const comment = await prisma.taskComment.create({
@@ -981,7 +981,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
       project: { select: { name: true } },
     },
   });
-  if (!task) return { ok: false as const, error: "Task inexistent." };
+  if (!task) return { ok: false as const, error: "Sarcină inexistentă." };
 
   const data: Record<string, unknown> = {};
   if (input.title !== undefined) {
@@ -1141,10 +1141,10 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
             .map((c) => `• ${escapeHtml(c.field)}: ${escapeHtml(c.from ?? "—")} → ${escapeHtml(c.to ?? "—")}`)
             .join("\n");
           const text = [
-            "✏️ <b>Task modificat</b>",
+            "✏️ <b>Sarcină modificată</b>",
             "",
             `Lucrător: ${escapeHtml(actorName)}`,
-            `Task: ${escapeHtml(task.title)} (${taskRef(task.seq, taskId)})`,
+            `Sarcină: ${escapeHtml(task.title)} (${taskRef(task.seq, taskId)})`,
             "Modificări:",
             changeLines,
             `Ora: ${formatTime(new Date(), DEFAULT_TZ)}`,
@@ -1246,7 +1246,7 @@ export async function checkTaskReminders(): Promise<{ checked: number; notified:
 
           // Construiește mesaj detaliat (același format ca notifyNewTask)
           const header = isOverdue
-            ? `⏰ <b>Task în întârziere</b> (${taskRef(task.seq, task.id)})`
+            ? `⏰ <b>Sarcină în întârziere</b> (${taskRef(task.seq, task.id)})`
             : `🔔 <b>Reamintire ${TASK_TYPE_RO[task.type]}</b> (${taskRef(task.seq, task.id)})`;
 
           const lines = [
@@ -1384,7 +1384,7 @@ export async function notifyAttachmentTelegram(
     }
     if (!recipients.size) return;
 
-    const typeLabel = TASK_TYPE_RO[task.type] ?? "Task";
+    const typeLabel = TASK_TYPE_RO[task.type] ?? "Sarcină";
     const ref = task.seq != null ? `#${task.seq}` : taskId.slice(-6);
     const caption = `📎 <b>${escapeHtml(attName)}</b>\n${typeLabel} ${ref}: ${escapeHtml(task.title)}`;
     const keyboard = taskOpenButton(task.seq, taskId);

@@ -18,7 +18,7 @@ export default async function PortalLoginPage({
       <div className="card w-full max-w-sm p-7 shadow-sm">
         <div className="mb-6">
           <h1 className="text-lg font-bold leading-5">Portal client</h1>
-          <p className="mt-1 text-xs text-ink-soft">Apă-Canal — facturi și tichete</p>
+          <p className="mt-1 text-xs text-ink-soft">Apă-Canal — facturi și cereri</p>
         </div>
 
         {reset === "1" && (

@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "CRM Proiecte",
     short_name: "CRM",
-    description: "Gestionare proiecte, task-uri și tichete — rapid și simplu.",
+    description: "Gestionare proiecte, sarcini și cereri — rapid și simplu.",
     id: "/",
     start_url: "/dashboard",
     scope: "/",
@@ -24,14 +24,14 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       {
-        name: "Task nou",
-        short_name: "Task nou",
+        name: "Sarcină nouă",
+        short_name: "Sarcină nouă",
         url: "/tasks?create=task",
         icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
       },
       {
-        name: "Tichet nou",
-        short_name: "Tichet nou",
+        name: "Cerere nouă",
+        short_name: "Cerere nouă",
         url: "/tickets?create=ticket",
         icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
       },

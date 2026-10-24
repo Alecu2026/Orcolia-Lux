@@ -30,26 +30,26 @@ const ID_RE = /^[0-9a-f]{24}$/i;
  */
 export async function resolveChatAccess(taskId: string, as: "staff" | "client"): Promise<ChatAccess> {
   if (DEMO) return { ok: false, status: 404, error: "Mod demo." };
-  if (!ID_RE.test(taskId)) return { ok: false, status: 404, error: "Tichet inexistent." };
+  if (!ID_RE.test(taskId)) return { ok: false, status: 404, error: "Cerere inexistentă." };
 
   if (as === "staff") {
     const user = await getCurrentUser();
     if (!user) return { ok: false, status: 401, error: "Autentificare necesară." };
     if (!canViewTaskData(user)) return { ok: false, status: 403, error: "Fără permisiune." };
     const task = await loadTask(taskId);
-    if (!task || task.type !== "TICKET" || !canViewTask(user, task)) return { ok: false, status: 404, error: "Tichet inexistent." };
+    if (!task || task.type !== "TICKET" || !canViewTask(user, task)) return { ok: false, status: 404, error: "Cerere inexistentă." };
     let blockedReason: string | null = null;
-    if (!task.clientId) blockedReason = "Tichetul nu are un client asociat, deci nu are cui să scrii.";
-    else if (!canEditTask(user, task)) blockedReason = "Nu ai permisiunea să răspunzi la acest tichet.";
-    else if (task.status === "CANCELLED") blockedReason = "Tichetul e anulat.";
+    if (!task.clientId) blockedReason = "Cererea nu are un client asociat, deci nu are cui să scrii.";
+    else if (!canEditTask(user, task)) blockedReason = "Nu ai permisiunea să răspunzi la această cerere.";
+    else if (task.status === "CANCELLED") blockedReason = "Cererea e anulat.";
     return { ok: true, viewer: { kind: "staff", id: user.id, name: user.name, canWrite: blockedReason == null, blockedReason }, task };
   }
 
   const client = await getCurrentClient();
   if (!client) return { ok: false, status: 401, error: "Autentificare necesară." };
   const task = await loadTask(taskId);
-  if (!task || task.type !== "TICKET" || task.clientId !== client.id) return { ok: false, status: 404, error: "Tichet inexistent." };
-  const blockedReason = task.status === "CANCELLED" ? "Tichetul a fost anulat — nu mai poți scrie aici." : null;
+  if (!task || task.type !== "TICKET" || task.clientId !== client.id) return { ok: false, status: 404, error: "Cerere inexistentă." };
+  const blockedReason = task.status === "CANCELLED" ? "Cererea a fost anulat — nu mai poți scrie aici." : null;
   return { ok: true, viewer: { kind: "client", id: client.id, name: client.name, canWrite: blockedReason == null, blockedReason }, task };
 }
 
@@ -150,7 +150,7 @@ export async function notifyChatMessage(access: Extract<ChatAccess, { ok: true }
         await notifyUsers(
           ids,
           {
-            title: `💬 ${viewer.name}: mesaj nou la tichetul${task.seq != null ? ` #${task.seq}` : ""}`,
+            title: `💬 ${viewer.name}: mesaj nou la cererea${task.seq != null ? ` #${task.seq}` : ""}`,
             body: excerpt(message.body),
             url: `/tickets/${task.id}`,
             taskId: task.id,

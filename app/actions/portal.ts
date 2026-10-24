@@ -60,7 +60,7 @@ export async function createPortalTicket(
         await notifyUsers(
           ids,
           {
-            title: `📨 Tichet nou de la ${client.name}: ${title}`,
+            title: `📨 Cerere nouă de la ${client.name}: ${title}`,
             url: `/tickets/${ticket.id}`,
             taskId: ticket.id,
             seq: ticket.seq,

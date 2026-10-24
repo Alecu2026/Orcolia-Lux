@@ -10,7 +10,7 @@ export type InlineButton =
 
 /** Buton URL care deschide task-ul direct în PWA. */
 export function taskOpenButton(seq: number | null | undefined, taskId: string): InlineButton[][] {
-  const label = seq != null ? `🔗 Deschide task #${seq}` : "🔗 Deschide task";
+  const label = seq != null ? `🔗 Deschide sarcină #${seq}` : "🔗 Deschide sarcină";
   return [[{ text: label, url: `${env.appUrl}/tasks/${taskId}` }]];
 }
 
@@ -171,7 +171,7 @@ export function verifyLinkToken(token: string): string | null {
 export function mainMenu(): InlineButton[][] {
   return [
     [
-      { text: "📋 Task-urile mele", callback_data: "MY_TASKS" },
+      { text: "📋 Sarcinile mele", callback_data: "MY_TASKS" },
     ],
     [
       { text: "📅 Azi", callback_data: "TODAY" },
@@ -192,7 +192,7 @@ export function mainMenu(): InlineButton[][] {
 /** Meniu redus pentru lucrători fără acces CRM (task-uri + zile). */
 export function workerMenu(): InlineButton[][] {
   return [
-    [{ text: "📋 Task-urile mele", callback_data: "MY_TASKS" }],
+    [{ text: "📋 Sarcinile mele", callback_data: "MY_TASKS" }],
     [
       { text: "📅 Azi", callback_data: "TODAY" },
       { text: "📆 Mâine", callback_data: "TOMORROW" },
@@ -213,8 +213,8 @@ export const TASK_STATUS_RO: Record<string, string> = {
 };
 
 export const TASK_TYPE_RO: Record<string, string> = {
-  TASK: "Task",
-  TICKET: "Tichet",
+  TASK: "Sarcină",
+  TICKET: "Cerere",
 };
 
 export const TASK_PRIORITY_RO: Record<string, string> = {
@@ -226,7 +226,7 @@ export const TASK_PRIORITY_RO: Record<string, string> = {
 
 /** Buton unic pentru task finalizat/anulat — permite redeschiderea direct din mesaj. */
 export function taskReopenButton(taskId: string): InlineButton[][] {
-  return [[{ text: "↩️ Redeschide task", callback_data: `TST:IN_PROGRESS:${taskId}` }]];
+  return [[{ text: "↩️ Redeschide sarcină", callback_data: `TST:IN_PROGRESS:${taskId}` }]];
 }
 
 /** Butoane pentru muncitor (acțiuni + progres). */

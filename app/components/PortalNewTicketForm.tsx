@@ -28,14 +28,14 @@ export default function PortalNewTicketForm() {
       <textarea name="description" placeholder="Descriere (opțional)" rows={3} className={input} />
 
       {state?.error && <p className="text-sm text-st-cancelled">{state.error}</p>}
-      {state?.ok && <p className="text-sm text-brand-strong">Tichet trimis cu succes.</p>}
+      {state?.ok && <p className="text-sm text-brand-strong">Cerere trimisă cu succes.</p>}
 
       <button
         type="submit"
         disabled={pending}
         className="tap h-11 self-start rounded-xl bg-brand px-5 font-semibold text-white hover:bg-brand-strong disabled:opacity-60"
       >
-        {pending ? "Se trimite…" : "Trimite tichet"}
+        {pending ? "Se trimite…" : "Trimite cerere"}
       </button>
     </form>
   );

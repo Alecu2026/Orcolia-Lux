@@ -22,7 +22,7 @@ const STATUS_RO: Record<string, string> = {
   ACTIVE: "Activ", ARCHIVED: "Arhivat",
 };
 const PRIO_RO: Record<string, string> = { LOW: "Scăzută", MEDIUM: "Medie", HIGH: "Ridicată", URGENT: "Urgentă" };
-const TYPE_RO: Record<string, string> = { TASK: "Task", TICKET: "Tichet" };
+const TYPE_RO: Record<string, string> = { TASK: "Sarcină", TICKET: "Cerere" };
 
 function fmtDate(d: Date | null | undefined): string {
   if (!d) return "";

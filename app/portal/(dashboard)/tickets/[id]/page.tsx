@@ -53,7 +53,7 @@ export default async function PortalTicketPage({ params }: { params: Promise<{ i
 
       {t.description && (
         <details className="card px-3 py-2 text-sm" open={false}>
-          <summary className="cursor-pointer text-xs font-semibold text-ink-soft">Descrierea tichetului</summary>
+          <summary className="cursor-pointer text-xs font-semibold text-ink-soft">Descrierea cererii</summary>
           <p className="mt-1.5 whitespace-pre-wrap text-sm">{t.description}</p>
         </details>
       )}

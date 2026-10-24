@@ -321,7 +321,7 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
               <Item label={ctx.isPayer ? "Plătitor" : "Client CRM"}>{ctx.account ? `cont ${ctx.account}` : "—"}</Item>
               {ctx.address && <Item label="Adresă">{ctx.address}</Item>}
               {ctx.debt != null && <Item label="De achitat"><b className={ctx.debt > 0 ? "text-st-cancelled" : "text-st-done"}>{ctx.debt.toLocaleString("ro-RO", { minimumFractionDigits: 2 })} MDL</b></Item>}
-              <Item label="Tichete deschise">
+              <Item label="Cereri deschise">
                 {ctx.openTicketCount === 0 ? "niciunul" : ctx.openTickets.map((t) => (
                   <Link key={t.id} href={`/tickets/${t.id}`} className="block cursor-pointer text-brand hover:underline">{t.seq != null ? `#${t.seq} ` : ""}{t.title}</Link>
                 ))}

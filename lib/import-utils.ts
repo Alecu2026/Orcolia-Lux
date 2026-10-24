@@ -77,6 +77,9 @@ export const RO_TO_TASK_PRIORITY: Record<string, string> = {
 };
 
 export const RO_TO_TASK_TYPE: Record<string, string> = {
+  "Sarcină": "TASK",
+  "Cerere": "TICKET",
+  // denumirile vechi rămân acceptate (fișiere exportate înainte de schimbarea terminologiei)
   "Task": "TASK",
   "Tichet": "TICKET",
 };

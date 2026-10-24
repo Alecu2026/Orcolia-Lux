@@ -158,7 +158,7 @@ export default async function PayerDetailPage({
       <div>
         <h2 className="mb-2 text-base font-bold">Tichete ({tickets.length})</h2>
         {tickets.length === 0 ? (
-          <div className="card p-6 text-center text-sm text-ink-soft">Niciun tichet încă.</div>
+          <div className="card p-6 text-center text-sm text-ink-soft">Nicio cerere încă.</div>
         ) : (
           <div className="flex flex-col gap-2">
             {tickets.map((t) => (

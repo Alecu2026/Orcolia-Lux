@@ -45,7 +45,7 @@ const TASK_ST_RO: Record<string, string> = {
   ON_HOLD: "În așteptare", REVIEW: "În verificare", DONE: "Finalizat", CANCELLED: "Anulat",
 };
 const TYPE_BADGE: Record<string, string> = {
-  TASK: "Task", TICKET: "Tichet", APPT: "Programare",
+  TASK: "Sarcină", TICKET: "Cerere", APPT: "Programare",
 };
 
 function dot(item: CalItem) {

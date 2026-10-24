@@ -34,7 +34,7 @@ const ST: Record<string, { label: string; dot: string; badge: string }> = {
   CANCELLED:   { label: "Anulat",         dot: "bg-st-cancelled", badge: "bg-st-cancelled/15 text-st-cancelled" },
 };
 const PRIO_RO: Record<string, string> = { LOW: "Scăzută", MEDIUM: "Medie", HIGH: "Ridicată", URGENT: "Urgentă" };
-const TYPE_RO: Record<string, string>  = { TASK: "Task", TICKET: "Tichet" };
+const TYPE_RO: Record<string, string>  = { TASK: "Sarcină", TICKET: "Cerere" };
 
 function fmtDateTime(d: Date | string) {
   const date = new Date(d);
@@ -235,7 +235,7 @@ export default async function TaskDetailPage({
           href={task.type === "TICKET" ? "/tickets" : "/tasks"}
           className="inline-flex items-center gap-1 text-sm text-ink-soft hover:text-ink"
         >
-          {task.type === "TICKET" ? "← Înapoi la tichete" : "← Înapoi la task-uri"}
+          {task.type === "TICKET" ? "← Înapoi la cereri" : "← Înapoi la sarcini"}
         </Link>
         <TaskDetailActions
           task={{

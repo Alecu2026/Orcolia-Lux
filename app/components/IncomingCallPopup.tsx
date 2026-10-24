@@ -162,7 +162,7 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
               {ctx.invoiceStatus && <span className="ml-1 text-ink-soft">({ctx.invoiceStatus.toLowerCase()})</span>}
             </Row>
           )}
-          <Row label="Tichete deschise">
+          <Row label="Cereri deschise">
             {ctx.openTicketCount === 0 ? "niciunul" : (
               <span className="flex flex-col items-end gap-0.5">
                 {ctx.openTickets.map((t) => (

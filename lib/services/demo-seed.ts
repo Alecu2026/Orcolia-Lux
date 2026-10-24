@@ -23,7 +23,7 @@ export async function seedDemoData(userId: string): Promise<void> {
   const project = await prisma.project.create({
     data: {
       name: "Proiect Demo",
-      description: "Exemplu de proiect, pentru a arăta cum se leagă task-urile și facturile de un client.",
+      description: "Exemplu de proiect, pentru a arăta cum se leagă sarcinile și facturile de un client.",
       status: "ACTIVE",
       ownerId: userId,
       clientId: client.id,
@@ -34,8 +34,8 @@ export async function seedDemoData(userId: string): Promise<void> {
   });
 
   const task = await createTask(userId, {
-    title: "Task Demo — verificare instalație",
-    description: "Exemplu de task, legat de proiectul demo. Îl poți edita, schimba statusul sau șterge.",
+    title: "Sarcină Demo — verificare instalație",
+    description: "Exemplu de sarcină, legat de proiectul demo. Îl poți edita, schimba statusul sau șterge.",
     priority: "MEDIUM",
     assigneeId: userId,
     projectId: project.id,

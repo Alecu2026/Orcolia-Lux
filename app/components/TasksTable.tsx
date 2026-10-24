@@ -474,7 +474,7 @@ export default function TasksTable({
           key: "chat", label: "💬", minW: 60, sort: (t: Task) => (t.chatUnread ? 1 : 0),
           render: (t: Task) => (t.chatUnread
             ? <button type="button" onClick={() => setOpenId(t.id)} className="cursor-pointer rounded-full bg-brand px-1.5 text-[10px] font-semibold text-white" title="Clientul a scris — deschide conversația">● nou</button>
-            : t.clientId ? <span className="text-ink-soft/60" title="Tichet cu client: conversația se deschide din detalii">💬</span> : <span className="text-ink-soft/40">—</span>),
+            : t.clientId ? <span className="text-ink-soft/60" title="Cerere cu client: conversația se deschide din detalii">💬</span> : <span className="text-ink-soft/40">—</span>),
         } satisfies Col<Task>]
       : []),
     { key: "creator", label: "Creat de", minW: 100, maxW: 140, sort: (t) => t.creatorName, render: (t) => t.creatorName },

@@ -155,7 +155,7 @@ export async function notifyUsers(
             // Telegram respinge URL-uri localhost/127.0.0.1 în butoane inline
             const isValidHttpsUrl = fullUrl && /^https:\/\//i.test(fullUrl);
             const keyboard: InlineButton[][] | undefined = isValidHttpsUrl
-              ? [[{ text: payload.url?.includes("/ticket") ? "🎫 Deschide tichetul" : "🔗 Deschide", url: fullUrl }]]
+              ? [[{ text: payload.url?.includes("/ticket") ? "🎫 Deschide cererea" : "🔗 Deschide", url: fullUrl }]]
               : undefined;
 
             const res = await sendMessage(chat, msgText, keyboard);

@@ -71,8 +71,8 @@ export type TaskReminderEmailData = {
 
 function taskReminderTemplate(d: TaskReminderEmailData): string {
   const badge = d.isOverdue
-    ? `<div style="background:#fee2e2;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:#991b1b;font-weight:600">⏰ Task în întârziere</div>`
-    : `<div style="background:#ede9fe;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:#5b21b6;font-weight:600">🔔 Reamintire task</div>`;
+    ? `<div style="background:#fee2e2;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:#991b1b;font-weight:600">⏰ Sarcină în întârziere</div>`
+    : `<div style="background:#ede9fe;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:#5b21b6;font-weight:600">🔔 Reamintire sarcină</div>`;
   const ref = d.seq != null ? ` <span style="color:#6366f1">#${d.seq}</span>` : "";
   return `<!doctype html>
 <html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
@@ -105,12 +105,12 @@ export async function sendTaskReminderEmail(d: TaskReminderEmailData): Promise<v
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
   const from = env.smtp.from;
-  const subject = d.isOverdue ? `⏰ Task în întârziere: ${d.taskTitle}` : `🔔 Reamintire task: ${d.taskTitle}`;
+  const subject = d.isOverdue ? `⏰ Sarcină în întârziere: ${d.taskTitle}` : `🔔 Reamintire sarcină: ${d.taskTitle}`;
   await transporter.sendMail({
     from,
     to: d.to,
     subject,
-    text: `Bună, ${d.userName}. Task-ul „${d.taskTitle}"${d.seq != null ? ` (#${d.seq})` : ""} necesită atenția ta. ${d.taskUrl}`,
+    text: `Bună, ${d.userName}. Sarcina „${d.taskTitle}"${d.seq != null ? ` (#${d.seq})` : ""} necesită atenția ta. ${d.taskUrl}`,
     html: taskReminderTemplate(d),
   });
 }
@@ -344,11 +344,11 @@ export async function sendTicketMessageEmail(d: TicketMessageEmailData): Promise
   const company = escapeHtml(d.companyName?.trim() || "Apă-Canal");
   const ref = d.seq != null ? `#${d.seq}` : "";
   const excerpt = d.message.length > 700 ? `${d.message.slice(0, 700)}…` : d.message;
-  const subject = `Răspuns la tichetul ${ref} ${d.ticketTitle}`.replace(/\s+/g, " ").trim().slice(0, 200);
+  const subject = `Răspuns la cererea ${ref} ${d.ticketTitle}`.replace(/\s+/g, " ").trim().slice(0, 200);
   const text = [
     `Bună ziua, ${d.clientName},`,
     "",
-    `Ai primit un mesaj nou la tichetul ${ref} „${d.ticketTitle}” de la ${d.authorName}:`,
+    `Ai primit un mesaj nou la cererea ${ref} „${d.ticketTitle}” de la ${d.authorName}:`,
     "",
     excerpt,
     "",
@@ -362,7 +362,7 @@ export async function sendTicketMessageEmail(d: TicketMessageEmailData): Promise
         <tr><td style="background:#0d9488;padding:20px 28px;color:#fff;font-size:19px;font-weight:700">${company}</td></tr>
         <tr><td style="padding:28px;font-size:15px;line-height:1.6">
           <p style="margin:0 0 6px">Bună ziua, <b>${escapeHtml(d.clientName)}</b>,</p>
-          <p style="margin:0 0 16px;color:#475569">Ai primit un mesaj nou la tichetul <b>${escapeHtml(ref)} ${escapeHtml(d.ticketTitle)}</b>:</p>
+          <p style="margin:0 0 16px;color:#475569">Ai primit un mesaj nou la cererea <b>${escapeHtml(ref)} ${escapeHtml(d.ticketTitle)}</b>:</p>
           <div style="background:#f1f5f9;border-radius:14px;padding:14px 16px;margin:0 0 20px">
             <div style="font-size:12px;color:#64748b;margin-bottom:4px">${escapeHtml(d.authorName)}</div>
             <div>${escapeHtml(excerpt).replace(/\r?\n/g, "<br>")}</div>

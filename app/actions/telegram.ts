@@ -114,7 +114,7 @@ export async function approveTelegramContact(
   try {
     await sendMessage(
       contact.chatId,
-      "✅ <b>Contul tău a fost activat de administrator!</b>\nDe acum primești task-uri și notificări direct aici.",
+      "✅ <b>Contul tău a fost activat de administrator!</b>\nDe acum primești sarcini și notificări direct aici.",
     );
     await sendMessage(contact.chatId, "Alege o opțiune:", role === "ADMIN" ? mainMenu() : workerMenu());
   } catch (e) {
@@ -176,7 +176,7 @@ export async function linkTelegramToExistingUser(
   try {
     await sendMessage(
       contact.chatId,
-      "✅ <b>Contul tău a fost activat de administrator!</b>\nDe acum primești task-uri și notificări direct aici.",
+      "✅ <b>Contul tău a fost activat de administrator!</b>\nDe acum primești sarcini și notificări direct aici.",
     );
     await sendMessage(
       contact.chatId,

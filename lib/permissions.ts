@@ -58,7 +58,7 @@ export const PERMISSION_GROUPS: {
   items: { key: PermissionKey; label: string }[];
 }[] = [
   {
-    group: "Task-uri / Tichete",
+    group: "Sarcini / Cereri",
     items: [
       { key: "tasks.view", label: "Vizualizare" },
       { key: "tasks.create", label: "Creare" },
@@ -129,7 +129,7 @@ export const PERMISSION_GROUPS: {
     group: "Pagini (acces la ecran)",
     items: [
       { key: "dashboard.view", label: "Dashboard" },
-      { key: "tickets.view", label: "Tichete" },
+      { key: "tickets.view", label: "Cereri" },
       { key: "kanban.view", label: "Kanban" },
       { key: "calendar.view", label: "Calendar" },
       { key: "map.view", label: "Hartă" },

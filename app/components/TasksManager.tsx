@@ -111,7 +111,7 @@ function groupByStatus(tasks: Task[]): [Status, Task[]][] {
   }
   return order.map((s) => [s, map.get(s)!]);
 }
-const TYPE_RO: Record<string, string> = { TASK: "Task", TICKET: "Tichet", WORK_ORDER: "Task" };
+const TYPE_RO: Record<string, string> = { TASK: "Sarcină", TICKET: "Cerere", WORK_ORDER: "Sarcină" };
 const PRIO_RO = { LOW: "Scăzută", MEDIUM: "Medie", HIGH: "Ridicată", URGENT: "Urgentă" };
 export const STATUSES: Status[] = ["NEW", "ASSIGNED", "READ", "IN_PROGRESS", "ON_HOLD", "REVIEW", "DONE", "CANCELLED"];
 const PROGRESS = [0, 25, 50, 75, 100];

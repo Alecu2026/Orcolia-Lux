@@ -203,7 +203,7 @@ export async function POST(req: Request) {
       const categoryId = str(r["Categorie"]) ? (categoryByName.get(str(r["Categorie"]).toLowerCase()) ?? null) : null;
       const statusVal = (STATUS_MAP[str(r["Status"])] ?? "NEW") as import("@prisma/client").TaskStatus;
       const priorityVal = (PRIO_MAP[str(r["Prioritate"])] ?? "MEDIUM") as import("@prisma/client").TaskPriority;
-      const typeVal = (str(r["Tip"]) === "Tichet" ? "TICKET" : entity === "tickets" ? "TICKET" : "TASK") as import("@prisma/client").TaskType;
+      const typeVal = (str(r["Tip"]) === "Tichet" || str(r["Tip"]) === "Cerere" ? "TICKET" : entity === "tickets" ? "TICKET" : "TASK") as import("@prisma/client").TaskType;
 
       let dueAt: Date | null = null;
       if (str(r["Scadent"])) {

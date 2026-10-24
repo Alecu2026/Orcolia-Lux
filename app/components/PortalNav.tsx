@@ -6,7 +6,7 @@ import { IconFileText, IconTicket } from "./icons";
 
 const TABS = [
   { href: "/portal", label: "Facturi", icon: IconFileText },
-  { href: "/portal/tickets", label: "Tichete", icon: IconTicket },
+  { href: "/portal/tickets", label: "Cereri", icon: IconTicket },
 ];
 
 export default function PortalNav() {

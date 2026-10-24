@@ -301,13 +301,13 @@ export async function updateTaskAction(
     if (DEMO) return { error: "Mod demo: conectează o bază de date." };
 
     const id = String(formData.get("id") ?? "").trim();
-    if (!id) return { error: "ID task lipsă." };
+    if (!id) return { error: "ID sarcină lipsă." };
 
     const existing = await prisma.task.findUnique({
       where: { id },
       select: { creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true },
     });
-    if (!existing) return { error: "Task inexistent." };
+    if (!existing) return { error: "Sarcină inexistentă." };
     if (!canEditTask(user, existing)) return { error: "Nu ai permisiunea de editare." };
 
     const title = String(formData.get("title") ?? "").trim();
@@ -426,13 +426,13 @@ export async function updateTaskFieldAction(id: string, patch: TaskFieldPatch): 
   try {
     const user = await requireUser();
     if (DEMO) return { error: "Mod demo: conectează o bază de date." };
-    if (!OBJECT_ID.test(id ?? "")) return { error: "ID task invalid." };
+    if (!OBJECT_ID.test(id ?? "")) return { error: "ID sarcină invalidă." };
 
     const existing = await prisma.task.findUnique({
       where: { id },
       select: { creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true },
     });
-    if (!existing) return { error: "Task inexistent." };
+    if (!existing) return { error: "Sarcină inexistentă." };
     if (!canEditTask(user, existing)) return { error: "Nu ai permisiunea de editare." };
     if (patch.assigneeIds !== undefined || patch.teamIds !== undefined) {
       const nu = (patch.assigneeIds ?? []).filter((x) => OBJECT_ID.test(x));

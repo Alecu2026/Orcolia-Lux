@@ -266,7 +266,7 @@ export default function TicketChat({
       </div>
 
       {meta?.status === "DONE" && viewer === "client" && meta.canWrite && (
-        <p className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-center text-[11px] text-ink-soft">Tichet finalizat. Dacă scrii un mesaj, se redeschide.</p>
+        <p className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-center text-[11px] text-ink-soft">Cerere finalizată. Dacă scrii un mesaj, se redeschide.</p>
       )}
 
       {meta && !meta.canWrite ? (

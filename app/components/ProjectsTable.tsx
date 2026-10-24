@@ -117,7 +117,7 @@ export default function ProjectsTable({
       key: "desc", label: "Descriere", minW: 240, maxW: 340, defaultHidden: true, sort: (p) => p.description,
       render: (p) => <EditableText value={p.description ?? ""} allowEmpty disabled={!canEdit} onSave={(v) => patchProject(p, { description: v || null }, { description: v || null })} display={p.description ? <span title={p.description}>{p.description}</span> : undefined} />,
     },
-    { key: "tasks", label: "Task-uri", minW: 55, right: true, sort: (p) => p.taskCount, render: (p) => p.taskCount },
+    { key: "tasks", label: "Sarcini", minW: 55, right: true, sort: (p) => p.taskCount, render: (p) => p.taskCount },
     {
       key: "loc", label: "Locație", minW: 150, maxW: 220,
       render: (p) => <EditableText value={p.address ?? ""} allowEmpty disabled={!canEdit} onSave={(v) => patchProject(p, { address: v || null }, { address: v || null })} display={p.lat != null ? <span>📍 {p.address ?? ""}</span> : (p.address ?? dash)} />,
@@ -165,8 +165,8 @@ export default function ProjectsTable({
         test: (p, v) => (v === "none" ? !p.teamId : p.teamId === v),
       },
       {
-        kind: "select", key: "tasks", label: "Task-uri: toate",
-        options: [{ value: "has", label: "Cu task-uri" }, { value: "none", label: "Fără task-uri" }],
+        kind: "select", key: "tasks", label: "Sarcini: toate",
+        options: [{ value: "has", label: "Cu task-uri" }, { value: "none", label: "Fără sarcini" }],
         test: (p, v) => (v === "has" ? p.taskCount > 0 : p.taskCount === 0),
       },
       {
@@ -267,11 +267,11 @@ function ProjectDetailDialog({
           <Item label="Responsabil" value={assigneeName} />
           <Item label="Echipă" value={teamName} />
           <Item label="Locație" value={p.address ? `${p.lat != null ? "📍 " : ""}${p.address}` : p.lat != null ? "📍 pin pe hartă" : null} />
-          <Item label="Task-uri" value={String(p.taskCount)} />
+          <Item label="Sarcini" value={String(p.taskCount)} />
           {p.description && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">Descriere</p><p className="whitespace-pre-wrap text-[13px]">{p.description}</p></div>}
         </Box>
 
-        <Box title={`Task-uri${tasks ? ` (${tasks.length})` : ""}`}>
+        <Box title={`Sarcini${tasks ? ` (${tasks.length})` : ""}`}>
           {!tasks ? (
             <p className="px-2.5 py-2 text-sm text-ink-soft">{m.projects.loadingTasks}</p>
           ) : tasks.length === 0 ? (

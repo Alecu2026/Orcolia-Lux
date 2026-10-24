@@ -58,7 +58,7 @@ export async function POST(req: Request) {
 
   // ─── TASKS / TICHETE ──────────────────────────────────────────────────────
   if (entity === "tasks" || entity === "tickets") {
-    if (!can(user, "tasks.create")) return Response.json({ error: "Fără permisiune pentru import de task-uri." }, { status: 403 });
+    if (!can(user, "tasks.create")) return Response.json({ error: "Fără permisiune pentru import de sarcini." }, { status: 403 });
     // Pre-fetch lookup tables
     const [allUsers, allTeams, allProjects, allCategories, allClients] = await Promise.all([
       prisma.user.findMany({ select: { id: true, name: true } }),
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
         if (!mapped) {
           result.failed.push({
             row: rowNum,
-            error: `Tipul '${r["Tip"]}' nu este recunoscut. Valori acceptate: Task, Tichet.`,
+            error: `Tipul '${r["Tip"]}' nu este recunoscut. Valori acceptate: Sarcină, Cerere.`,
           });
           continue;
         }

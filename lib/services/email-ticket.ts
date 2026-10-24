@@ -264,7 +264,7 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
           fromEmail: env.smtp.user || "",
           toEmail: fromEmail,
           subject: `Re: ${subject}`,
-          body: `Confirmare automată recepție tichet #${ticket.seq ?? ""}`,
+          body: `Confirmare automată recepție cerere #${ticket.seq ?? ""}`,
           messageId: autoAckMsgId,
           sentAt: new Date(),
         },
@@ -288,7 +288,7 @@ async function notifyStaff(
   emailBody?: string,
 ) {
   const sender = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
-  const heading = type === "new" ? "📨 Tichet nou" : "↩️ Răspuns tichet";
+  const heading = type === "new" ? "📨 Cerere nouă" : "↩️ Răspuns cerere";
   const seqLabel = seq != null ? ` #${seq}` : "";
   const url = `/tickets/${taskId}`;
 
@@ -389,7 +389,7 @@ export async function sendEmailReply(opts: {
       status: true,
     },
   });
-  if (!ticket?.fromEmail) throw new Error("Tichetul nu are email client asociat.");
+  if (!ticket?.fromEmail) throw new Error("Cererea nu are email client asociat.");
 
   const transport = getTransport();
   if (!transport) throw new Error("SMTP neconfigurat.");
@@ -524,7 +524,7 @@ export async function checkUnansweredEmailTickets(): Promise<number> {
     await notifyUsers(
       admins,
       {
-        title: `🔕 Tichet nerăspuns${seqLabel}: ${t.title.slice(0, 60)}`,
+        title: `🔕 Cerere nerăspunsă${seqLabel}: ${t.title.slice(0, 60)}`,
         body: "Clientul aşteaptă răspuns.",
         taskId: t.id,
         seq: t.seq ?? null,
@@ -590,7 +590,7 @@ export async function checkAutoCloseEmailTickets(): Promise<number> {
     // Notificăm clientul că tichetul a fost închis
     if (transport && t.fromEmail) {
       const subject = `Re: ${t.title}`;
-      const body = `Bună,\n\nTichetul dumneavoastră a fost închis automat deoarece nu am primit niciun răspuns în ultimele 48 de ore.\n\nDacă mai aveți nevoie de ajutor, scrieți-ne oricând și vom deschide un nou tichet.\n\n— ${fromName}`;
+      const body = `Bună,\n\nCererea dumneavoastră a fost închisă automat deoarece nu am primit niciun răspuns în ultimele 48 de ore.\n\nDacă mai aveți nevoie de ajutor, scrieți-ne oricând și vom deschide o nouă cerere.\n\n— ${fromName}`;
       const msgId = `<autoclose-${t.id}-${Date.now()}@${msgDomain()}>`;
       await transport.sendMail({
         from: `${fromName} <${fromAddr}>`,

@@ -412,7 +412,7 @@ export default function UserDialog({
               <p className="mb-2 text-[11px] text-ink-soft">
                 {isAdminRole
                   ? t("Administratorul primește notificări despre tot ce se întâmplă în aplicație. Poți limita tipurile de evenimente (și sursa, mai jos). Notificările care îl privesc direct vin mereu.")
-                  : t("Angajatul primește MEREU, fără nicio bifă, notificările despre task-urile lui: i s-a dat un task, cineva a comentat sau a schimbat statusul la un task al lui, task-ul lui a întârziat. Bifele de mai jos adaugă notificări despre lucruri în care NU e implicat (ex. orice task sau factură nouă din firmă).")}
+                  : t("Angajatul primește MEREU, fără nicio bifă, notificările despre sarcinile lui: i s-a dat o sarcină, cineva a comentat sau a schimbat statusul la o sarcină al lui, sarcina lui a întârziat. Bifele de mai jos adaugă notificări despre lucruri în care NU e implicat (ex. orice sarcină sau factură nouă din firmă).")}
               </p>
               <Toggle
                 checked={allEvents}
@@ -423,7 +423,7 @@ export default function UserDialog({
               {!allEvents && (
                 <div className="mt-2">
                   <p className="mb-2 rounded-lg bg-brand-soft/40 px-3 py-2 text-[11px] text-ink-soft">
-                    {t("Fiecare bifă de mai jos înseamnă: la ORICE task, factură sau proiect din firmă, nu doar la cele ale lui. Ex. „Comentariu nou pe task” = primește comentariile de la toate task-urile; fără bifă, doar de la task-urile unde e creator sau asignat.")}
+                    {t("Fiecare bifă de mai jos înseamnă: la ORICE sarcină, factură sau proiect din firmă, nu doar la cele ale lui. Ex. „Comentariu nou pe sarcină” = primește comentariile de la toate sarcinile; fără bifă, doar de la sarcinile unde e creator sau asignat.")}
                   </p>
                   <div className="mb-1.5 flex items-center gap-1.5">
                     <button type="button" className={chip} onClick={() => { setTouched(true); setEvents(new Set(ALL_EVENT_KEYS)); }}>{t("Bifează toate")}</button>
@@ -439,7 +439,7 @@ export default function UserDialog({
                     <p className="mt-2 text-[11px] text-st-progress">
                       {isAdminRole
                         ? t("Niciun tip bifat: administratorul va primi TOATE tipurile (listă goală = toate). Bifează „Toate tipurile” dacă asta vrei.")
-                        : t("Nimic bifat: primește doar notificările despre task-urile lui (asignat, comentarii, întârziere). Nu primește nimic despre task-urile, facturile sau proiectele altora.")}
+                        : t("Nimic bifat: primește doar notificările despre sarcinile lui (asignat, comentarii, întârziere). Nu primește nimic despre sarcinile, facturile sau proiectele altora.")}
                     </p>
                   )}
                 </div>
@@ -483,7 +483,7 @@ export default function UserDialog({
                 </label>
                 <label className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-sm ${!viewAll ? "border-brand bg-brand-soft/40" : "border-[var(--color-line)]"}`}>
                   <input type="radio" name="viewScope" checked={!viewAll} onChange={() => { setTouched(true); setViewAll(false); }} className="mt-0.5 size-4 accent-[var(--color-brand)]" />
-                  <span>{t("Doar anumite echipe / persoane")}<span className="block text-[11px] text-ink-soft">{t("+ task-urile lui (create sau asignate lui), mereu vizibile")}</span></span>
+                  <span>{t("Doar anumite echipe / persoane")}<span className="block text-[11px] text-ink-soft">{t("+ sarcinile lui (create sau asignate lui), mereu vizibile")}</span></span>
                 </label>
               </div>
               {!viewAll && (
@@ -497,7 +497,7 @@ export default function UserDialog({
                     <PickList items={staffOptions} selected={viewMembers} onToggle={(id, on) => { setTouched(true); setViewMembers((p) => toggleIn(p, id, on)); }} empty={m.users.noStaff} />
                   </div>
                   {viewTeams.size === 0 && viewMembers.size === 0 && (
-                    <p className="text-[11px] text-st-progress">{t("Nimic ales: va vedea doar task-urile create de el sau asignate lui.")}</p>
+                    <p className="text-[11px] text-st-progress">{t("Nimic ales: va vedea doar sarcinile create de el sau asignate lui.")}</p>
                   )}
                 </div>
               )}
