@@ -58,7 +58,6 @@ export default function TaskTemplatesDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY);
-  const noun = type === "TICKET" ? "tichet" : "task";
   const catName = (id: string) => categories.find((c) => c.id === id)?.name;
 
   function startEdit(t: (Omit<TaskTemplate, "id" | "type"> & { id?: string }) | null) {
@@ -100,7 +99,7 @@ export default function TaskTemplatesDialog({
   }
 
   async function remove(t: TaskTemplate) {
-    if (!confirm(`Ștergi șablonul „${t.name}"?`)) return;
+    if (!confirm(tr("Ștergi șablonul „{name}”?", { name: t.name }))) return;
     const res = await deleteTaskTemplateAction(t.id).catch(() => null);
     if (!res || !res.ok) return toast.error(res && !res.ok ? res.error : m.common.error);
     onChange(templates.filter((x) => x.id !== t.id));
@@ -110,7 +109,7 @@ export default function TaskTemplatesDialog({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="card max-h-[92dvh] w-full max-w-xl overflow-auto rounded-b-none rounded-t-2xl p-5 sm:rounded-2xl">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-bold">{editing ? (editing.id ? "Editează șablonul" : "Șablon nou") : `Șabloane de ${noun}-uri`.replace("tichet-uri", "tichete")}</h2>
+          <h2 className="text-base font-bold">{editing ? (editing.id ? tr("Editează șablonul") : tr("Șablon nou")) : type === "TICKET" ? tr("Șabloane de cereri") : tr("Șabloane de sarcini")}</h2>
           <button type="button" onClick={onClose} className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={m.common.close}>
             <IconX className="size-4" />
           </button>
@@ -154,11 +153,11 @@ export default function TaskTemplatesDialog({
               <input name="name" defaultValue={form.name} maxLength={TEMPLATE_MAX_NAME} required autoFocus placeholder={tr("ex. Citire lunară contoare")} className={input} />
             </div>
             <div>
-              <label className={label}>Titlul {noun}-ului</label>
+              <label className={label}>{type === "TICKET" ? tr("Titlul cererii") : tr("Titlul sarcinii")}</label>
               <input name="title" defaultValue={form.title} maxLength={TEMPLATE_MAX_TITLE} required placeholder={tr("ex. Verificare contor #{contor} — {luna}")} className={input} />
               <p className="mt-1 text-[11px] text-ink-soft">
-                Variabile (se înlocuiesc la creare, în titlu și în descriere): {TEMPLATE_VARIABLES.map((v) => <code key={v} className="mx-0.5 rounded bg-[var(--color-surface-2)] px-1">{v}</code>)}
-                — <b>{tr("{contor}")}</b> crește cu 1 la fiecare {noun} creat din șablon.
+                {tr("Variabile (se înlocuiesc la creare, în titlu și în descriere):")} {TEMPLATE_VARIABLES.map((v) => <code key={v} className="mx-0.5 rounded bg-[var(--color-surface-2)] px-1">{v}</code>)}
+                — {tr("{contor} crește cu 1 la fiecare creare din șablon.")}
               </p>
             </div>
             <div>
@@ -224,7 +223,7 @@ export default function TaskTemplatesDialog({
                 </select>
               </div>
               <div>
-                <label className={label}>Următorul {tr("{contor}")}</label>
+                <label className={label}>{tr("Următorul {contor}")}</label>
                 <input name="counter" type="number" min={1} max={9999999} defaultValue={form.counter} className={input} />
               </div>
             </div>
@@ -234,7 +233,7 @@ export default function TaskTemplatesDialog({
                 {tr("Înapoi")}
               </button>
               <button type="submit" disabled={saving} className="tap h-11 flex-[2] cursor-pointer rounded-xl bg-brand text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
-                {saving ? m.common.saving : "Salvează șablonul"}
+                {saving ? m.common.saving : tr("Salvează șablonul")}
               </button>
             </div>
           </form>

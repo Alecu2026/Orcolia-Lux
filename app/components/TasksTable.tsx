@@ -573,7 +573,7 @@ export default function TasksTable({
       )}
       {dataset && ds.error && !ds.rows && (
         <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-st-cancelled/40 bg-st-cancelled/5 px-3 py-1.5 text-xs">
-          <span>Nu am putut încărca toată lista ({dataset.total.toLocaleString("ro-RO")}); se văd doar cele mai noi rânduri.</span>
+          <span>{tr("Nu am putut încărca toată lista ({v1}); se văd doar cele mai noi rânduri.", { v1: dataset.total.toLocaleString("ro-RO") })}</span>
           <button type="button" onClick={() => window.location.reload()} className="cursor-pointer rounded border border-[var(--color-line)] px-2 py-0.5 font-semibold hover:bg-[var(--color-surface-2)]">{tr("Reîncarcă")}</button>
         </div>
       )}
@@ -585,7 +585,7 @@ export default function TasksTable({
         defaultSort={{ key: "created", dir: "desc" }}
         presetValues={presetValues}
         pending={dataset && !ds.rows && !ds.error ? { total: dataset.total } : undefined}
-        noun={ticketMode ? t("cereri") : t("sarcini")}
+        noun={ticketMode ? tr("cereri") : tr("sarcini")}
         emptyText={m.tasks.noTasks}
         rowClassName={(t) => (overdue(t) ? "bg-st-cancelled/5" : "")}
         toolbar={
@@ -773,7 +773,7 @@ function TaskDetailDialog({
               {t.title}
             </h2>
             <p className="mt-0.5 text-xs text-ink-soft">
-              {t.type === "TICKET" ? m.tasks.typeTicket : m.tasks.typeTask} · creat de {t.creatorName} · {dmy(t.createdAt)}
+              {tr("{v1} · creat de {creatorName} · {v2}", { v1: t.type === "TICKET" ? m.tasks.typeTicket : m.tasks.typeTask, creatorName: t.creatorName, v2: dmy(t.createdAt) })}
             </p>
           </div>
           <button onClick={onClose} className="tap grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={m.common.close}>
@@ -783,8 +783,7 @@ function TaskDetailDialog({
 
         <div className="mb-3 flex flex-wrap items-center gap-1.5 border-y border-[var(--color-line)] py-2">
           <Link href={`${t.type === "TICKET" ? "/tickets" : "/tasks"}/${t.id}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">
-            Pagina {basePath === "/tickets" ? "tichetului" : "task-ului"} →
-          </Link>
+            {basePath === "/tickets" ? tr("Pagina cererii →") : tr("Pagina sarcinii →")}</Link>
           {canEdit && <button type="button" onClick={onEdit} className={miniBtn}>✎ {m.common.edit}</button>}
           {canDelete && <button type="button" onClick={onDelete} className={`${miniBtn} text-st-cancelled`}>🗑 {m.common.delete}</button>}
           <span className="ml-auto flex items-center gap-2">

@@ -134,7 +134,7 @@ export default async function EditInvoicePage({
         <Link href="/invoices" className="inline-flex items-center gap-1 text-xs text-ink-soft hover:text-ink">
           <IconChevronLeft className="size-3.5" /> {t("Facturi")}
         </Link>
-        <h1 className="text-lg font-bold">Editează {invoice.number}</h1>
+        <h1 className="text-lg font-bold">{t("Editează {number}", { number: invoice.number })}</h1>
       </div>
       <InvoiceForm
         clients={clients}

@@ -60,8 +60,7 @@ function Section({
             </ul>
             {total > limit && (
               <p className="mt-1 text-[11px] text-ink-soft">
-                Afișate primele {nf(limit)} din {nf(total)}.
-              </p>
+                {t("Afișate primele {v1} din {v2}.", { v1: nf(limit), v2: nf(total) })}</p>
             )}
           </>
         )}
@@ -111,9 +110,7 @@ export default function ApaCanalSyncReport({ report, committed }: { report: Sync
           </tbody>
         </table>
         <p className="mt-2 text-[11px] text-ink-soft">
-          Un document = chitanța unui abonat pe o lună. Contoarele, citirile și liniile de calcul sunt mai multe pentru că
-          un abonat poate avea mai multe contoare și mai multe servicii (apă, canal).
-          {report.documenteRepetate > 0 && ` Atenție: ${nf(report.documenteRepetate)} documente au un UID repetat — se folosește doar ultimul.`}
+          {tr("Un document = chitanța unui abonat pe o lună. Contoarele, citirile și liniile de calcul sunt mai multe pentru că un abonat poate avea mai multe contoare și mai multe servicii (apă, canal).{v1}", { v1: report.documenteRepetate > 0 ? tr(" Atenție: {n} documente au un UID repetat — se folosește doar ultimul.", { n: nf(report.documenteRepetate) }) : "" })}
         </p>
       </div>
 

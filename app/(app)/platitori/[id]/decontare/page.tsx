@@ -44,7 +44,7 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
 
       {/* Antet — ca fișa "Абонент / Лицевой счет / ..." din raportul lor, cu câmpurile pe care le avem noi. */}
       <div className="card overflow-hidden p-0">
-        <div className="bg-[var(--color-surface-2)] px-4 py-2 text-sm font-bold">Decontare — {client.name}</div>
+        <div className="bg-[var(--color-surface-2)] px-4 py-2 text-sm font-bold">{t("Decontare — {name}", { name: client.name })}</div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 p-4 text-sm sm:grid-cols-4">
           <div>
             <p className="text-xs text-ink-soft">{t("Cont personal")}</p>
@@ -71,7 +71,7 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
                   <th className={thNum}>{t("Index curent")}</th>
                   <th className={thNum}>{t("Apă (m³)")}</th>
                   <th className={thNum}>{t("Canal (m³)")}</th>
-                  <th className={thNum}>Calculat ({currency})</th>
+                  <th className={thNum}>{t("Calculat ({currency})", { currency })}</th>
                   <th className={thNum}>{t("Sold anterior / regularizare")}</th>
                   <th className={thNum}>{t("Recalculări")}</th>
                   <th className={thNum}>{t("Penalități")}</th>

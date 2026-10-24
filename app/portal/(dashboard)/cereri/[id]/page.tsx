@@ -46,7 +46,7 @@ export default async function PortalTicketPage({ params }: { params: Promise<{ i
             {t.seq ? <span className="text-ink-soft">#{t.seq} · </span> : ""}
             {t.title}
           </h1>
-          <p className="mt-0.5 text-xs text-ink-soft">Deschis pe {fmtDate(t.createdAt)}</p>
+          <p className="mt-0.5 text-xs text-ink-soft">{tr("Deschis pe {v1}", { v1: fmtDate(t.createdAt) })}</p>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CLS[t.status] ?? "bg-[var(--color-surface-2)] text-ink-soft"}`}>
           {TASK_STATUS_RO[t.status] ?? t.status}
@@ -62,8 +62,7 @@ export default async function PortalTicketPage({ params }: { params: Promise<{ i
 
       <TicketChat ticketId={t.id} viewer="client" ownName={client.name} heightClass="h-[min(34rem,calc(100dvh-17rem))] min-h-[18rem]" />
       <p className="text-center text-[11px] text-ink-soft">
-        Răspunsurile echipei apar aici imediat și îți sosesc și pe email{client.email ? ` (${client.email})` : ""}.
-      </p>
+        {tr("Răspunsurile echipei apar aici imediat și îți sosesc și pe email{v1}.", { v1: client.email ? ` (${client.email})` : "" })}</p>
     </div>
   );
 }

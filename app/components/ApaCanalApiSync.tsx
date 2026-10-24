@@ -250,7 +250,7 @@ export default function ApaCanalApiSync() {
                   <input id="api-url" value={url} onChange={(e) => setUrl(e.target.value)} disabled={!canEdit || locked} placeholder="https://server.exemplu.md/api/platitori" inputMode="url" autoComplete="off" className={fld} />
                 </div>
                 <div>
-                  <label className={lbl} htmlFor="api-period">Perioadă (parametrul „{PERIOD_PARAM}” din link)</label>
+                  <label className={lbl} htmlFor="api-period">{t("Perioadă (parametrul „{PERIOD_PARAM}” din link)", { PERIOD_PARAM })}</label>
                   <input
                     id="api-period"
                     type="date"
@@ -289,10 +289,10 @@ export default function ApaCanalApiSync() {
 
                 {cfg.lastSyncAt && (
                   <p className={`rounded-lg px-3 py-2 text-xs ${cfg.lastSyncOk ? "bg-brand-soft text-brand-strong" : "bg-st-cancelled/10 text-st-cancelled"}`}>
-                    Ultima încercare: {new Date(cfg.lastSyncAt).toLocaleString("ro-RO")} — {cfg.lastSyncMessage}
+                    {t("Ultima încercare: {v1} — {lastSyncMessage}", { v1: new Date(cfg.lastSyncAt).toLocaleString("ro-RO"), lastSyncMessage: cfg.lastSyncMessage ?? "" })}
                   </p>
                 )}
-                {cfg.lastSuccessAt && <p className="text-[11px] text-ink-soft">Ultima dată când s-au scris date din API: {new Date(cfg.lastSuccessAt).toLocaleString("ro-RO")}.</p>}
+                {cfg.lastSuccessAt && <p className="text-[11px] text-ink-soft">{t("Ultima dată când s-au scris date din API: {v1}.", { v1: new Date(cfg.lastSuccessAt).toLocaleString("ro-RO") })}</p>}
 
                 <div className="rounded-xl border border-[var(--color-line)] p-3">
                   <label className="flex items-start gap-2.5 text-sm">
@@ -358,9 +358,7 @@ export default function ApaCanalApiSync() {
                 </ul>
                 {applied && (
                   <p className="mt-2 text-xs text-brand-strong">
-                    Scrise: {applied.clientsCreated} clienți noi, {applied.clientsUpdated} actualizați, {applied.invoicesCreated} facturi noi ({applied.itemsCreated} linii)
-                    {applied.invoicesUpdated ? `, ${applied.invoicesUpdated} facturi existente actualizate` : ""}.
-                  </p>
+                    {t("Scrise: {clientsCreated} clienți noi, {clientsUpdated} actualizați, {invoicesCreated} facturi noi ({itemsCreated} linii){v1}.", { clientsCreated: applied.clientsCreated, clientsUpdated: applied.clientsUpdated, invoicesCreated: applied.invoicesCreated, itemsCreated: applied.itemsCreated, v1: applied.invoicesUpdated ? `, ${applied.invoicesUpdated} facturi existente actualizate` : "" })}</p>
                 )}
               </div>
             )}

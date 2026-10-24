@@ -35,9 +35,7 @@ export default async function PayerNotificationsPage({
     <div className="w-full">
       <div className="mb-4">
         <p className="text-sm text-ink-soft">
-          Tabelul tuturor plătitorilor, cu filtre pe orice criteriu. Bifează destinatarii (sau ia-i pe toți din filtru) și trimite-le un
-          email și/sau SMS — cu {t("{nume}")}, {t("{suma}")}, {t("{factura}")} completate automat pentru fiecare.
-        </p>
+          {t("Tabelul tuturor plătitorilor, cu filtre pe orice criteriu. Bifează destinatarii (sau ia-i pe toți din filtru) și trimite-le un email și/sau SMS — cu {nume}, {suma}, {factura} completate automat pentru fiecare.")}</p>
       </div>
       <PayerNotifyManager
         initial={{ filters, page, perPage, items, total }}

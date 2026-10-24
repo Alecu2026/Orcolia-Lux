@@ -410,8 +410,7 @@ export default function InvoiceForm({
       </div>
       {lockedStatus && (
         <p className="text-center text-xs text-ink-soft">
-          Această factură are statusul „{INVOICE_STATUS[lockedStatus].label}" — salvarea modificărilor nu îi schimbă statusul. Îl poți schimba separat din lista de facturi.
-        </p>
+          {tr("Această factură are statusul „{label}\" — salvarea modificărilor nu îi schimbă statusul. Îl poți schimba separat din lista de facturi.", { label: INVOICE_STATUS[lockedStatus].label })}</p>
       )}
     </div>
   );

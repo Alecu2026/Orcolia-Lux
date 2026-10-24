@@ -119,8 +119,7 @@ export default function ApplyTariffButton({ hasSavedTariff }: { hasSavedTariff: 
               <>
                 <h2 className="mb-1 text-base font-semibold">{t("Aplică tarif nou la facturile existente")}</h2>
                 <p className="mb-4 text-xs text-ink-soft">
-                  Tarif: apă {tarife.apa} lei/m³ · canalizare {tarife.canal} lei/m³ — se aplică doar facturilor NEACHITATE.
-                </p>
+                  {t("Tarif: apă {apa} lei/m³ · canalizare {canal} lei/m³ — se aplică doar facturilor NEACHITATE.", { apa: tarife.apa, canal: tarife.canal })}</p>
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
                   <Stat label={t("Facturi eligibile (neachitate)")} value={stats.invoicesEligible} />
                   <Stat label={t("Vor fi modificate")} value={stats.invoicesChanged} />
@@ -158,8 +157,7 @@ export default function ApplyTariffButton({ hasSavedTariff }: { hasSavedTariff: 
               <>
                 <p className="mb-2 text-sm font-semibold text-st-done">{t("Actualizare finalizată")}</p>
                 <p className="mb-4 text-sm text-ink-soft">
-                  Facturi actualizate: {applied.invoicesUpdated}, linii: {applied.itemsUpdated}.
-                </p>
+                  {t("Facturi actualizate: {invoicesUpdated}, linii: {itemsUpdated}.", { invoicesUpdated: applied.invoicesUpdated, itemsUpdated: applied.itemsUpdated })}</p>
                 <button type="button" onClick={close} className="tap h-11 w-full rounded-xl bg-[var(--color-surface-2)] text-sm font-medium hover:bg-[var(--color-line)]">
                   {t("Închide")}
                 </button>

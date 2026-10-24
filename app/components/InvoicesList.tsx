@@ -301,7 +301,7 @@ export default function InvoicesList({
           }`}
           aria-label={t("Status")}
         >
-          <option value="">Status: {m.invoices.filterAll.toLowerCase()}</option>
+          <option value="">{t("Status: {v1}", { v1: m.invoices.filterAll.toLowerCase() })}</option>
           {INVOICE_STATUS_LIST.map((s) => (
             <option key={s} value={s}>{INVOICE_STATUS[s].label}</option>
           ))}
@@ -331,7 +331,7 @@ export default function InvoicesList({
       <div className="mb-1 flex flex-wrap items-center gap-x-3 text-xs">
         <span>
           <b>{view.total.toLocaleString("ro-RO")}</b> facturi
-          {view.total > 0 && <span className="text-ink-soft"> · afișate {from.toLocaleString("ro-RO")}–{to.toLocaleString("ro-RO")} · pagina {page}/{totalPages}</span>}
+          {view.total > 0 && <span className="text-ink-soft"> {t("· afișate {v1}–{v2} · pagina {page}/{totalPages}", { v1: from.toLocaleString("ro-RO"), v2: to.toLocaleString("ro-RO"), page, totalPages })}</span>}
         </span>
         <span className="text-ink-soft">{t("Σ pagină:")} <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
         {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}

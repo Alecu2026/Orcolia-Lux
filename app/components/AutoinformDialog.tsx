@@ -139,7 +139,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-bold">{t("Export pentru autoinformare (PBX Moldcell)")}</h2>
-            <p className="text-xs text-ink-soft">{okRows.length} plătitori în coadă{rows.length !== okRows.length ? ` · ${rows.length - okRows.length} fără număr valid, omiși` : ""}</p>
+            <p className="text-xs text-ink-soft">{t("{length} plătitori în coadă{v1}", { length: okRows.length, v1: rows.length !== okRows.length ? ` · ${rows.length - okRows.length} fără număr valid, omiși` : "" })}</p>
           </div>
           <button onClick={onClose} disabled={working} className="tap grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label={t("Închide")}><IconX className="size-4" /></button>
         </div>
@@ -157,8 +157,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
             <div className="flex justify-end gap-2">
               <button type="button" onClick={onClose} className="tap h-10 cursor-pointer rounded-xl border border-[var(--color-line)] px-4 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">{t("Anulează")}</button>
               <button type="button" disabled={okRows.length === 0} onClick={() => void run()} className="tap h-10 cursor-pointer rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">
-                Generează ({okRows.length})
-              </button>
+                {t("Generează ({length})", { length: okRows.length })}</button>
             </div>
           </div>
         )}
@@ -184,7 +183,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
               <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{t("Nu s-a generat niciun fișier.")}</p>
             ) : (
               <>
-                <p className="text-sm font-semibold">{exportedIds.length} audio generate. Descarcă fișierele:</p>
+                <p className="text-sm font-semibold">{t("{length} audio generate. Descarcă fișierele:", { length: exportedIds.length })}</p>
                 <ul className="flex flex-col gap-1.5">
                   {downloads.map((d) => (
                     <li key={d.name} className="flex items-center gap-2 rounded-lg border border-[var(--color-line)] px-3 py-2 text-sm">
@@ -201,7 +200,7 @@ export default function AutoinformDialog({ rows, onClose, onExported }: { rows: 
                 </ol>
               </>
             )}
-            {failures.length > 0 && <p className="rounded-lg bg-st-progress/10 px-3 py-2 text-xs text-st-progress">Nu s-a putut genera audio pentru: {failures.slice(0, 8).join(", ")}{failures.length > 8 ? ` și încă ${failures.length - 8}` : ""}. Rămân în coadă.</p>}
+            {failures.length > 0 && <p className="rounded-lg bg-st-progress/10 px-3 py-2 text-xs text-st-progress">{t("Nu s-a putut genera audio pentru: {v1}{v2}. Rămân în coadă.", { v1: failures.slice(0, 8).join(", "), v2: failures.length > 8 ? ` și încă ${failures.length - 8}` : "" })}</p>}
             <div className="flex flex-wrap justify-end gap-2">
               <button type="button" onClick={onClose} className="tap h-10 cursor-pointer rounded-xl border border-[var(--color-line)] px-4 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">{t("Închide")}</button>
               {exportedIds.length > 0 && (

@@ -95,7 +95,7 @@ export default async function PayerDetailPage({
       </div>
 
       <div>
-        <h2 className="mb-2 text-base font-bold">Notițe ({notes.length + (payer.notes ? 1 : 0)})</h2>
+        <h2 className="mb-2 text-base font-bold">{tr("Notițe ({v1})", { v1: notes.length + (payer.notes ? 1 : 0) })}</h2>
         <div className="card p-3">
           <PayerNotes
             payerId={payer.id}
@@ -116,7 +116,7 @@ export default async function PayerDetailPage({
       />
 
       <div>
-        <h2 className="mb-2 text-base font-bold">Facturi pe luni ({invoices.length})</h2>
+        <h2 className="mb-2 text-base font-bold">{tr("Facturi pe luni ({length})", { length: invoices.length })}</h2>
         {invoices.length === 0 ? (
           <div className="card p-6 text-center text-sm text-ink-soft">{tr("Nicio factură încă.")}</div>
         ) : (
@@ -136,7 +136,7 @@ export default async function PayerDetailPage({
                     </p>
                     {isAc && (
                       <p className="text-xs text-ink-soft">
-                        Calculat {money(inv.subtotal, inv.currency)} · Datorie/avans {money(inv.datoriiAvans ?? 0, inv.currency)}
+                        {tr("Calculat {v1} · Datorie/avans {v2}", { v1: money(inv.subtotal, inv.currency), v2: money(inv.datoriiAvans ?? 0, inv.currency) })}
                       </p>
                     )}
                   </div>
@@ -158,7 +158,7 @@ export default async function PayerDetailPage({
       </div>
 
       <div>
-        <h2 className="mb-2 text-base font-bold">Tichete ({tickets.length})</h2>
+        <h2 className="mb-2 text-base font-bold">{tr("Cereri ({length})", { length: tickets.length })}</h2>
         {tickets.length === 0 ? (
           <div className="card p-6 text-center text-sm text-ink-soft">{tr("Nicio cerere încă.")}</div>
         ) : (

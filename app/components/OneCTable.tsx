@@ -131,7 +131,7 @@ export default function OneCTable() {
         >
           <option value="latest">{tr("Luna cea mai recentă (un rând per abonat)")}</option>
           {data?.months.map((m) => (
-            <option key={m.month} value={m.month}>Doar {monthLabel(m.month)} ({m.count.toLocaleString("ro-RO")})</option>
+            <option key={m.month} value={m.month}>{tr("Doar {v1} ({v2})", { v1: monthLabel(m.month), v2: m.count.toLocaleString("ro-RO") })}</option>
           ))}
           <option value="all">{tr("Toate lunile (un rând per abonat și lună)")}</option>
         </select>
@@ -144,8 +144,7 @@ export default function OneCTable() {
         </select>
         {activeFilters > 0 && (
           <button type="button" onClick={() => { appliedRef.current = {}; setFilters({}); setApplied({}); setOnlyDiff(false); setPage(1); }} className="tap h-9 rounded-lg border border-[var(--color-line)] px-3 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">
-            Resetează filtrele ({activeFilters})
-          </button>
+            {tr("Resetează filtrele ({activeFilters})", { activeFilters })}</button>
         )}
         <details className="relative ml-auto">
           <summary className="tap inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong">
@@ -340,7 +339,7 @@ function DetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="truncate text-lg font-bold">{d?.nume ?? "Se încarcă…"}</h2>
-            {d && <p className="break-all text-xs text-ink-soft">UID: {d.uid} · Factură: {d.invoiceNumber ?? "—"}</p>}
+            {d && <p className="break-all text-xs text-ink-soft">{t("UID: {uid} · Factură: {v1}", { uid: d.uid, v1: d.invoiceNumber ?? "—" })}</p>}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {d?.payerId && <Link href={`/platitori/${d.payerId}`} className="tap rounded-lg border border-[var(--color-line)] px-3 py-1.5 text-sm hover:bg-[var(--color-surface-2)]">{t("Fișa plătitorului")}</Link>}

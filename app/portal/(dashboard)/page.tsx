@@ -44,7 +44,7 @@ export default async function PortalDashboardPage({
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold">{t("Facturile mele")}</h1>
-          <p className="mt-0.5 text-xs text-ink-soft">{allInvoices.length} facturi în total</p>
+          <p className="mt-0.5 text-xs text-ink-soft">{t("{length} facturi în total", { length: allInvoices.length })}</p>
         </div>
         <Link
           href="/portal/cereri"

@@ -282,7 +282,7 @@ export default async function TaskDetailPage({
           </span>
           {isOverdue && (
             <span className="rounded bg-st-cancelled/15 px-2 py-0.5 text-[11px] font-semibold text-st-cancelled">
-              ⏰ Întârziere {fmtDuration(overdueMs)}
+              {tr("⏰ Întârziere {v1}", { v1: fmtDuration(overdueMs) })}
             </span>
           )}
         </div>
@@ -359,7 +359,7 @@ export default async function TaskDetailPage({
       {task.type === "TICKET" && (
         <div className="card mb-3 p-4">
           <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-            <h2 className="text-sm font-bold">💬 Conversație cu clientul{chatClient ? ` — ${chatClient.name}` : ""}</h2>
+            <h2 className="text-sm font-bold">{tr("💬 Conversație cu clientul{v1}", { v1: chatClient ? ` — ${chatClient.name}` : "" })}</h2>
             {chatClient && (
               <p className="text-[11px] text-ink-soft">
                 {chatClient.email ? `Răspunsurile tale ajung și pe email (${chatClient.email}).` : "Clientul nu are email — nu primește notificare pe email."}
@@ -494,8 +494,7 @@ export default async function TaskDetailPage({
 
                   {ev.durationMs !== undefined && ev.durationMs > 0 && (
                     <p className="mt-0.5 text-[10px] text-ink-soft/60">
-                      ⏱ {fmtDuration(ev.durationMs)} de la evenimentul anterior
-                    </p>
+                      {tr("⏱ {v1} de la evenimentul anterior", { v1: fmtDuration(ev.durationMs) })}</p>
                   )}
                 </div>
               </li>

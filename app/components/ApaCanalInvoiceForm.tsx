@@ -357,7 +357,7 @@ export default function ApaCanalInvoiceForm({
           <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-12">
             {monthLabels.map((l, i) => (
               <div key={i}>
-                <label className="mb-0.5 block text-[10px] font-semibold text-ink-soft">Luna {l}</label>
+                <label className="mb-0.5 block text-[10px] font-semibold text-ink-soft">{t("Luna {l}", { l })}</label>
                 <input
                   type="number"
                   inputMode="decimal"
@@ -377,8 +377,7 @@ export default function ApaCanalInvoiceForm({
         {error && <p className="text-sm text-st-cancelled">{error}</p>}
         {lockedStatus && (
           <p className="text-xs text-ink-soft">
-            Statusul rămâne „{INVOICE_STATUS[lockedStatus].label}” — salvarea nu îl schimbă.
-          </p>
+            {t("Statusul rămâne „{label}” — salvarea nu îl schimbă.", { label: INVOICE_STATUS[lockedStatus].label })}</p>
         )}
         <div className="ml-auto flex gap-2">
           {lockedStatus ? (

@@ -312,20 +312,18 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
               </datalist>
             </label>
             <button type="button" disabled={queued.length === 0} onClick={() => setExportOpen(true)} className={`${topBtn} border-brand text-brand disabled:cursor-default disabled:opacity-40`} title={tr("Pregătește ZIP-ul (numere + audio per plătitor) pentru PBX → Autoinformare")}>
-              ⬇ Export autoinformare ({queued.length})
-            </button>
+              {tr("⬇ Export autoinformare ({length})", { length: queued.length })}</button>
             {bulk.phase === "idle" || bulk.phase === "done" ? (
               <button type="button" disabled={queued.length === 0 || !activeOperator} onClick={() => setBulk((b) => ({ ...b, phase: "confirm" }))} className={`${topBtn} disabled:cursor-default disabled:opacity-40`} title={activeOperator ? "Pornește apelurile pe rând, prin operatorul ales" : "Alege întâi apelantul (robotul)"}>
-                📞 Sună toți din coadă ({queued.length})
-              </button>
+                {tr("📞 Sună toți din coadă ({length})", { length: queued.length })}</button>
             ) : bulk.phase === "confirm" ? (
               <>
-                <button type="button" onClick={() => void dialAll()} className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-2 text-[11px] font-semibold text-white hover:bg-brand-strong">Confirmă: sună {queued.length} prin „{activeOperator}”</button>
+                <button type="button" onClick={() => void dialAll()} className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-2 text-[11px] font-semibold text-white hover:bg-brand-strong">{tr("Confirmă: sună {length} prin „{activeOperator}”", { length: queued.length, activeOperator })}</button>
                 <button type="button" onClick={() => setBulk((b) => ({ ...b, phase: "idle" }))} className={topBtn}>{tr("Anulează")}</button>
               </>
             ) : (
               <>
-                <span className="text-[11px] text-ink-soft">Se sună… {bulk.done + bulk.failed}/{bulk.total}</span>
+                <span className="text-[11px] text-ink-soft">{tr("Se sună… {v1}/{total}", { v1: bulk.done + bulk.failed, total: bulk.total })}</span>
                 <button type="button" onClick={() => { stopBulk.current = true; }} className={topBtn}>{tr("■ Oprește")}</button>
               </>
             )}
@@ -335,10 +333,9 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
       />
       {bulk.phase === "done" && (
         <p className={`mt-1.5 text-[11px] ${bulk.failed ? "text-st-progress" : "text-st-done"}`}>
-          Apeluri pornite: {bulk.done} din {bulk.total}{bulk.failed ? ` · eșuate: ${bulk.failed}${bulk.lastError ? ` (${bulk.lastError})` : ""}` : ""}.
-        </p>
+          {tr("Apeluri pornite: {done} din {total}{v1}.", { done: bulk.done, total: bulk.total, v1: bulk.failed ? ` · eșuate: ${bulk.failed}${bulk.lastError ? ` (${bulk.lastError})` : ""}` : "" })}</p>
       )}
-      {usersError && <p className="mt-1.5 text-[11px] text-st-progress">Lista de operatori nu s-a încărcat ({usersError}) — scrie loginul sau numărul scurt al robotului în câmpul „Apelant”.</p>}
+      {usersError && <p className="mt-1.5 text-[11px] text-st-progress">{tr("Lista de operatori nu s-a încărcat ({usersError}) — scrie loginul sau numărul scurt al robotului în câmpul „Apelant”.", { usersError })}</p>}
       {exportOpen && (
         <AutoinformDialog
           rows={queued.map((r) => ({ id: r.id, phone: r.phone, clientName: r.clientName, text: r.text }))}
@@ -391,7 +388,7 @@ function Detail({
         <div className="mb-3 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-bold">{c.clientName}</h2>
-            <p className="text-xs text-ink-soft">{c.phone} · în coadă din {fmtDateTime(c.at)}</p>
+            <p className="text-xs text-ink-soft">{t("{phone} · în coadă din {v1}", { phone: c.phone, v1: fmtDateTime(c.at) })}</p>
           </div>
           <button onClick={onClose} className="tap grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={t("Închide")}><IconX className="size-4" /></button>
         </div>

@@ -377,7 +377,7 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
 
         <section className="overflow-hidden rounded-lg border border-[var(--color-line)]">
           <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
-            Mesaje primite{events ? ` (${events.length})` : ""}
+            {tr("Mesaje primite{v1}", { v1: events ? ` (${events.length})` : "" })}
           </h3>
           {!events ? (
             <p className="px-2.5 py-2 text-sm text-ink-soft">{tr("Se încarcă…")}</p>
