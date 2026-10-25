@@ -1731,4 +1731,8 @@ export const RU: Record<string, string> = {
   "✍ Altă cerere (scriu eu)…": "✍ Другая заявка (напишу сам)…",
   "Vezi cererile mele": "Мои заявки",
   "Cerere pentru factura {nr}": "Заявка по счёту {nr}",
+  "Alege tipul cererii": "Выберите тип заявки",
+  "✍ Altă cerere (scriu eu)": "✍ Другая заявка (напишу сам)",
+  "Schimbă": "Изменить",
+  "Subiect (ex: Scurgere la contor)": "Тема (напр. Протечка у счётчика)",
 };
