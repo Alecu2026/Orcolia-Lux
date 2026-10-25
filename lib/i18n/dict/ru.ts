@@ -1704,4 +1704,11 @@ export const RU: Record<string, string> = {
   "📋 Alege un șablon (opțional)…": "📋 Выберите шаблон (необязательно)…",
   "📋 Șablon…": "📋 Шаблон…",
   "✕ Fără șablon": "✕ Без шаблона",
+  "Canalul pe care s-a trimis (sau nu) notificarea; se combină cu perioada de mai jos": "Канал, по которому уведомление было (или не было) отправлено; сочетается с периодом ниже",
+  "Notificați sau nu": "Уведомлены или нет",
+  "Cine a primit notificarea, sau cine NU a primit-o (pe canalul ales, în perioada aleasă)": "Кто получил уведомление или кто НЕ получил (по выбранному каналу, за выбранный период)",
+  "Notificați / nenotificați": "Уведомлены / не уведомлены",
+  "Notificați": "Уведомлены",
+  "Nenotificați": "Не уведомлены",
+  "SMS": "SMS",
 };

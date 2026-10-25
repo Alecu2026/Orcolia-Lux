@@ -82,6 +82,15 @@ export const VIA_OPTIONS: { value: Exclude<NotifyFilters["via"], "">; label: str
   { value: "!CALL", label: "Nenotificați prin apel" },
 ];
 
+/** „via" e compus din două alegeri: canalul (EMAIL/SMS/CALL) și dacă s-a primit sau nu notificare ("!" în față). */
+export const viaChannel = (via: NotifyFilters["via"]): "" | "EMAIL" | "SMS" | "CALL" => {
+  const c = via.replace(/^!/, "");
+  return c === "EMAIL" || c === "SMS" || c === "CALL" ? c : "";
+};
+export const viaMode = (via: NotifyFilters["via"]): "" | "yes" | "no" => (!via ? "" : via.startsWith("!") ? "no" : "yes");
+export const composeVia = (channel: string, mode: string): NotifyFilters["via"] =>
+  (!channel && !mode ? "" : `${mode === "no" ? "!" : ""}${channel || "ANY"}`) as NotifyFilters["via"];
+
 /** Criteriul „canal + perioadă" din filtre (null = inactiv). Perioada fără canal înseamnă „orice canal". */
 export type NotifyCriterion = { negate: boolean; channel: "EMAIL" | "SMS" | "CALL" | null; from: string; to: string };
 export function notifyCriterion(f: Pick<NotifyFilters, "via" | "notifiedFrom" | "notifiedTo">): NotifyCriterion | null {

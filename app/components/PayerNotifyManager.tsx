@@ -7,7 +7,9 @@ import {
   DEFAULT_PER_PAGE,
   EMPTY_FILTERS,
   NOTIFIED_OPTIONS,
-  VIA_OPTIONS,
+  viaChannel,
+  viaMode,
+  composeVia,
   notifyCriterion,
   notifyCriterionKey,
   NOTIFY_MAX_RECIPIENTS,
@@ -689,9 +691,16 @@ export default function PayerNotifyManager({
           <option value="">{t("Notificat: oricând")}</option>
           {NOTIFIED_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
         </select>
-        <select value={filters.via} onChange={(e) => setFilter({ via: e.target.value as NotifyFilters["via"] })} className={fld(filters.via)} aria-label={t("Canal notificare")} title={t("Cine a primit (sau nu) o notificare pe acest canal; se combină cu perioada de mai jos")}>
+        <select value={viaChannel(filters.via)} onChange={(e) => setFilter({ via: composeVia(e.target.value, viaMode(filters.via)) })} className={fld(viaChannel(filters.via))} aria-label={t("Canal notificare")} title={t("Canalul pe care s-a trimis (sau nu) notificarea; se combină cu perioada de mai jos")}>
           <option value="">{t("Canal: email, SMS, apel")}</option>
-          {VIA_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+          <option value="EMAIL">{t("Email")}</option>
+          <option value="SMS">{t("SMS")}</option>
+          <option value="CALL">{t("Apel")}</option>
+        </select>
+        <select value={viaMode(filters.via)} onChange={(e) => setFilter({ via: composeVia(viaChannel(filters.via), e.target.value) })} className={fld(viaMode(filters.via))} aria-label={t("Notificați sau nu")} title={t("Cine a primit notificarea, sau cine NU a primit-o (pe canalul ales, în perioada aleasă)")}>
+          <option value="">{t("Notificați / nenotificați")}</option>
+          <option value="yes">{t("Notificați")}</option>
+          <option value="no">{t("Nenotificați")}</option>
         </select>
         <span className="flex items-center gap-1">
           <input
