@@ -1711,4 +1711,8 @@ export const EN: Record<string, string> = {
   "Notificați": "Notified",
   "Nenotificați": "Not notified",
   "SMS": "SMS",
+  "Pentru finalizare trimite o poză sau un fișier": "To complete, send a photo or a file",
+  "Nu ai permisiunea „Închidere / finalizare”, așa că finalizezi doar după ce atașezi o poză sau un fișier informativ. După trimitere, finalizarea se face automat.": "You do not have the “Close / complete” permission, so you can only complete this after attaching an informative photo or file. Once it is sent, the completion happens automatically.",
+  "Se trimite… {n}%": "Sending… {n}%",
+  "📎 Alege poza / fișierul": "📎 Choose the photo / file",
 };

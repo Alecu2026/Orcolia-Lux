@@ -22,6 +22,7 @@ import { DateTimePick, EditableSelect, EditableText, MultiPick, PopEditor } from
 import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
 import TaskAttachmentsPanel from "./TaskAttachmentsPanel";
+import { useProofPrompt } from "./ProofDialog";
 import {
   Comments,
   CreateDialog,
@@ -193,6 +194,7 @@ export default function TasksTable({
   }
   if (items !== seenItems) { setSeenItems(items); if (!(dataset && ds.rows)) setRows(items); }
   // ── Șabloane: listă locală, meniul „Șabloane”, fereastra de gestionare și șablonul aplicat în fereastra de creare ──
+  const proof = useProofPrompt();
   const [tpls, setTpls] = useState(templates);
   const [tplMenu, setTplMenu] = useState(false);
   const [tplManage, setTplManage] = useState(false);
@@ -271,9 +273,9 @@ export default function TasksTable({
       .then((res) => {
         if (res?.error) {
           setRows(prev);
-          toast.error(tr(res.error));
-          // Finalizarea cere o poză / un fișier: deschidem detaliile, unde se atașează.
-          if (res.needsProof) setOpenId(id);
+          // Finalizarea cere o poză / un fișier: o cerem chiar acum, iar după trimitere finalizarea se reia singură.
+          if (res.needsProof) proof.ask(id, () => changeStatus(id, next), prev.find((t) => t.id === id)?.projectName);
+          else toast.error(tr(res.error));
         } else toast.success(`Status: ${m.status[next]}`);
       })
       .catch(() => { setRows(prev); toast.error(tr(m.common.error)); })
@@ -658,6 +660,7 @@ export default function TasksTable({
         />
       )}
 
+      {proof.node}
       {tplManage && (
         <TaskTemplatesDialog
           type={ticketMode ? "TICKET" : "TASK"}

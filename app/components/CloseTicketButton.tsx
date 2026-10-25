@@ -5,6 +5,7 @@ import { setTaskStatus } from "@/app/actions/tasks";
 import { useRouter } from "next/navigation";
 import { useMessages } from "@/lib/i18n/context";
 import { useToast } from "./toast";
+import { useProofPrompt } from "./ProofDialog";
 import { useT } from "@/lib/i18n/context";
 
 export default function CloseTicketButton({ taskId }: { taskId: string }) {
@@ -14,13 +15,15 @@ export default function CloseTicketButton({ taskId }: { taskId: string }) {
   const [done, setDone] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const proof = useProofPrompt();
 
   function handleClose() {
     startTransition(async () => {
       const res = await setTaskStatus(taskId, "DONE");
       // Fără permisiunea de închidere, tichetul se finalizează doar după ce atașezi o poză / un fișier: spunem de ce nu s-a închis.
       if (res?.error) {
-        toast.error(t(res.error));
+        if (res.needsProof) proof.ask(taskId, handleClose);
+        else toast.error(t(res.error));
         return;
       }
       setDone(true);
@@ -31,6 +34,8 @@ export default function CloseTicketButton({ taskId }: { taskId: string }) {
   if (done) return null;
 
   return (
+    <>
+    {proof.node}
     <button
       onClick={handleClose}
       disabled={isPending}
@@ -38,5 +43,6 @@ export default function CloseTicketButton({ taskId }: { taskId: string }) {
     >
       {isPending ? m.tasks.closingTicket : m.tasks.closeTicketBtn}
     </button>
+    </>
   );
 }

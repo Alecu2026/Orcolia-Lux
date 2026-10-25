@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { setTaskStatus } from "@/app/actions/tasks";
 import { useToast } from "./toast";
+import { useProofPrompt } from "./ProofDialog";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
 
@@ -41,6 +42,7 @@ export default function TaskStatusChanger({
   const t = useT();
   const router = useRouter();
   const toast = useToast();
+  const proof = useProofPrompt();
   const m = useMessages();
   const [, startTransition] = useTransition();
   const [status, setStatus] = useState(initialStatus as Status);
@@ -61,7 +63,8 @@ export default function TaskStatusChanger({
       const res = await setTaskStatus(taskId, next);
       if (res?.error) {
         setStatus(prev);
-        toast.error(t(res.error));
+        if (res.needsProof) proof.ask(taskId, () => void change(next));
+        else toast.error(t(res.error));
       } else {
         toast.success(`Status: ${m.status[next]}`);
         startTransition(() => router.refresh());
@@ -73,6 +76,7 @@ export default function TaskStatusChanger({
 
   return (
     <div className="flex flex-wrap gap-1.5">
+      {proof.node}
       {STATUSES.map((s) => {
         const isActive = s.value === status;
         return (

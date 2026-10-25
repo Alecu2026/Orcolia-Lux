@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { setTaskStatus } from "@/app/actions/tasks";
 import { useToast } from "./toast";
+import { useProofPrompt } from "./ProofDialog";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
 
@@ -106,6 +107,7 @@ export default function TaskKanban({
 }) {
   const tr = useT();
   const toast = useToast();
+  const proof = useProofPrompt();
   const m = useMessages();
   const [tasks, setTasks] = useState(items);
   useEffect(() => setTasks(items), [items]);
@@ -188,13 +190,18 @@ export default function TaskKanban({
     const prev = tasks;
     setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, status } : t)));
     setTaskStatus(id, status).then((res) => {
-      if (res?.error) { setTasks(prev); toast.error(tr(res.error)); }
+      if (res?.error) {
+        setTasks(prev);
+        if (res.needsProof) proof.ask(id, () => move(id, status), task.projectName);
+        else toast.error(tr(res.error));
+      }
       else toast.success(`${m.kanban.moved} „${m.status[status]}"`);
     });
   }
 
   return (
     <>
+      {proof.node}
       {/* Quick filters */}
       <div className="mb-2 flex flex-wrap gap-2">
         {QUICK_KEYS.map((key) => (

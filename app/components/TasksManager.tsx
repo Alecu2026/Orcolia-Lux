@@ -29,6 +29,7 @@ import AddressInput from "./AddressInput";
 import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
 import TaskAttachmentsPanel from "./TaskAttachmentsPanel";
+import { useProofPrompt } from "./ProofDialog";
 import { quickCreateProject } from "@/app/actions/projects";
 import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
@@ -327,6 +328,7 @@ export default function TasksManager({
 
   const [editTask, setEditTask] = useState<Task | null>(null);
 
+  const proof = useProofPrompt();
   const [statusPending, setStatusPending] = useState<string | null>(null);
   const [progressPending, setProgressPending] = useState<string | null>(null);
 
@@ -403,8 +405,11 @@ export default function TasksManager({
     setStatusPending(id);
     setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, status: next } : t)));
     setTaskStatus(id, next).then((res) => {
-      if (res?.error) { setTasks(prev); toast.error(tr(res.error)); }
-      else {
+      if (res?.error) {
+        setTasks(prev);
+        if (res.needsProof) proof.ask(id, () => changeStatus(id, next), prev.find((t) => t.id === id)?.projectName);
+        else toast.error(tr(res.error));
+      } else {
         toast.success(`Status: ${m.status[next]}`);
         setHistory((h) => { if (!h[id]) return h; const { [id]: _, ...rest } = h; return rest; });
         if (openId === id) {
@@ -441,6 +446,7 @@ export default function TasksManager({
 
   return (
     <>
+      {proof.node}
       {scopeOptions && scopeOptions.length > 0 && (
         <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
           {scopeOptions.map((s) => (
