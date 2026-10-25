@@ -1726,4 +1726,9 @@ export const RU: Record<string, string> = {
   "Situația facturilor tale, lună cu lună.": "Состояние ваших счетов, месяц за месяцем.",
   "Doar administratorul poate edita șabloanele pentru clienți.": "Только администратор может редактировать шаблоны для клиентов.",
   "Titlul e obligatoriu.": "Заголовок обязателен.",
+  "Cerere despre această factură": "Заявка по этому счёту",
+  "📋 Cerere despre factură…": "📋 Заявка по счёту…",
+  "✍ Altă cerere (scriu eu)…": "✍ Другая заявка (напишу сам)…",
+  "Vezi cererile mele": "Мои заявки",
+  "Cerere pentru factura {nr}": "Заявка по счёту {nr}",
 };

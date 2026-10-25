@@ -2,10 +2,10 @@ import Link from "next/link";
 import { requireClient } from "@/lib/client-dal";
 import { prisma } from "@/lib/prisma";
 import { money, fmtDate, INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatusKey } from "@/app/components/invoice-meta";
-import { IconTicket } from "@/app/components/icons";
 import { getT } from "@/lib/i18n/server-t";
 import { listPortalTemplates } from "@/lib/queries/portal-templates";
-import PortalTemplateJump from "@/app/components/PortalTemplateJump";
+import PortalRequestPanel from "@/app/components/PortalRequestPanel";
+import InvoiceRequestMenu from "@/app/components/InvoiceRequestMenu";
 
 export const dynamic = "force-dynamic";
 
@@ -49,17 +49,9 @@ export default async function PortalDashboardPage({
           <h1 className="text-lg font-bold">{t("Facturile mele")}</h1>
           <p className="mt-0.5 text-xs text-ink-soft">{t("{length} facturi în total", { length: allInvoices.length })}</p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <PortalTemplateJump templates={templates} />
-          <Link
-            href="/portal/cereri"
-            className="tap flex h-10 items-center gap-1.5 rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-strong"
-          >
-            <IconTicket className="size-4" />
-            {t("Creează cerere")}
-          </Link>
-        </div>
       </div>
+
+      <PortalRequestPanel templates={templates} />
 
       {allInvoices.length > 0 && (
         <div className="card flex items-center justify-between p-4">
@@ -93,10 +85,10 @@ export default async function PortalDashboardPage({
           {invoices.map((inv) => {
             const st = INVOICE_STATUS[inv.status as InvoiceStatusKey];
             return (
+              <div key={inv.id} className="card p-4 hover:border-brand">
               <Link
-                key={inv.id}
                 href={`/invoice/public/${inv.publicToken}`}
-                className="card tap flex items-center justify-between p-4 hover:border-brand"
+                className="tap flex items-center justify-between"
               >
                 <div>
                   <p className="text-sm font-semibold">{inv.number}</p>
@@ -112,6 +104,10 @@ export default async function PortalDashboardPage({
                   </span>
                 </div>
               </Link>
+              <div className="mt-2.5 flex justify-end border-t border-[var(--color-line)]/60 pt-2.5">
+                <InvoiceRequestMenu templates={templates} invoiceNumber={inv.number} />
+              </div>
+              </div>
             );
           })}
         </div>

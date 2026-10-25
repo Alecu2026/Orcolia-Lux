@@ -12,20 +12,27 @@ const input =
 export default function PortalNewTicketForm({
   templates = [],
   initialTemplateId = "",
+  invoiceNumber,
+  onSent,
 }: {
   /** Șabloanele create de administrator: alegerea completează titlul și descrierea (clientul le poate modifica). */
   templates?: PortalTemplate[];
   initialTemplateId?: string;
+  /** Cererea privește o factură: numărul ei se adaugă la descriere, ca să știe cine o citește despre ce e vorba. */
+  invoiceNumber?: string;
+  /** Apelat după ce cererea a plecat (panoul din pagina cu facturi se închide). */
+  onSent?: () => void;
 }) {
   const t = useT();
   const router = useRouter();
+  const withInvoice = (d: string) => (invoiceNumber ? `${d ? d + "\n\n" : ""}Factura: ${invoiceNumber}` : d);
   const first = templates.find((x) => x.id === initialTemplateId);
   const [tplId, setTplId] = useState(first?.id ?? "");
   const [title, setTitle] = useState(first?.title ?? "");
-  const [description, setDescription] = useState(first?.description ?? "");
+  const [description, setDescription] = useState(withInvoice(first?.description ?? ""));
   const [state, formAction, pending] = useActionState<PortalTicketState, FormData>(async (prev, fd) => {
     const res = await createPortalTicket(prev, fd);
-    if (res?.ok) { setTplId(""); setTitle(""); setDescription(""); } // cererea a plecat: formularul revine gol
+    if (res?.ok) { setTplId(""); setTitle(""); setDescription(withInvoice("")); onSent?.(); } // cererea a plecat: formularul revine gol
     return res;
   }, undefined);
 
@@ -33,7 +40,7 @@ export default function PortalNewTicketForm({
     setTplId(id);
     const tpl = templates.find((x) => x.id === id);
     setTitle(tpl?.title ?? "");
-    setDescription(tpl?.description ?? "");
+    setDescription(withInvoice(tpl?.description ?? ""));
   }
 
   useEffect(() => {

@@ -1726,4 +1726,9 @@ export const EN: Record<string, string> = {
   "Situația facturilor tale, lună cu lună.": "The status of your invoices, month by month.",
   "Doar administratorul poate edita șabloanele pentru clienți.": "Only the administrator can edit the client templates.",
   "Titlul e obligatoriu.": "The title is required.",
+  "Cerere despre această factură": "Request about this invoice",
+  "📋 Cerere despre factură…": "📋 Request about the invoice…",
+  "✍ Altă cerere (scriu eu)…": "✍ Another request (I will write it)…",
+  "Vezi cererile mele": "See my requests",
+  "Cerere pentru factura {nr}": "Request for invoice {nr}",
 };
