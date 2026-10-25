@@ -5,7 +5,7 @@ import { money, fmtDate, INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatus
 import { getT } from "@/lib/i18n/server-t";
 import { listPortalTemplates } from "@/lib/queries/portal-templates";
 import PortalRequestPanel from "@/app/components/PortalRequestPanel";
-import InvoiceRequestMenu from "@/app/components/InvoiceRequestMenu";
+import { IconChevronDown } from "@/app/components/icons";
 
 export const dynamic = "force-dynamic";
 
@@ -67,51 +67,58 @@ export default async function PortalDashboardPage({
         </div>
       )}
 
-      {allInvoices.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          <StatusChip href="/portal" active={!statusFilter} label={t("Toate")} />
-          {INVOICE_STATUS_LIST.filter((s) => allInvoices.some((i) => i.status === s)).map((s) => (
-            <StatusChip key={s} href={`/portal?status=${s}`} active={statusFilter === s} label={INVOICE_STATUS[s].label} />
-          ))}
-        </div>
-      )}
+      {/* Facturile stau într-o listă care se deschide la apăsare (închisă la început; se deschide singură dacă ai ales un filtru de status). */}
+      <details open={!!statusFilter} className="card group p-0">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
+          <span className="text-sm font-semibold">
+            {t("Facturi")} <span className="font-normal text-ink-soft">({allInvoices.length})</span>
+          </span>
+          <IconChevronDown className="size-4 text-ink-soft transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-[var(--color-line)] p-3">
+          {allInvoices.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              <StatusChip href="/portal" active={!statusFilter} label={t("Toate")} />
+              {INVOICE_STATUS_LIST.filter((s) => allInvoices.some((i) => i.status === s)).map((s) => (
+                <StatusChip key={s} href={`/portal?status=${s}`} active={statusFilter === s} label={INVOICE_STATUS[s].label} />
+              ))}
+            </div>
+          )}
 
-      {invoices.length === 0 ? (
-        <div className="card p-6 text-center text-sm text-ink-soft">
-          {allInvoices.length === 0 ? t("Nu ai încă nicio factură.") : t("Nicio factură cu acest status.")}
+          {invoices.length === 0 ? (
+            <p className="p-3 text-center text-sm text-ink-soft">
+              {allInvoices.length === 0 ? t("Nu ai încă nicio factură.") : t("Nicio factură cu acest status.")}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {invoices.map((inv) => {
+                const st = INVOICE_STATUS[inv.status as InvoiceStatusKey];
+                return (
+                  <Link
+                    key={inv.id}
+                    href={`/invoice/public/${inv.publicToken}`}
+                    className="tap flex items-center justify-between rounded-xl border border-[var(--color-line)] p-3 hover:border-brand"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">{inv.number}</p>
+                      <p className="text-xs text-ink-soft">
+                        {t("Emisă:")} {fmtDate(inv.issueDate)}
+                        {inv.dueDate && <> {t("· Scadență:")} {fmtDate(inv.dueDate)}</>}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold tabular-nums">{money(inv.grandTotal, inv.currency)}</p>
+                      <span className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>
+                        {t(st.label)}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {invoices.map((inv) => {
-            const st = INVOICE_STATUS[inv.status as InvoiceStatusKey];
-            return (
-              <div key={inv.id} className="card p-4 hover:border-brand">
-              <Link
-                href={`/invoice/public/${inv.publicToken}`}
-                className="tap flex items-center justify-between"
-              >
-                <div>
-                  <p className="text-sm font-semibold">{inv.number}</p>
-                  <p className="text-xs text-ink-soft">
-                    {t("Emisă:")} {fmtDate(inv.issueDate)}
-                    {inv.dueDate && <> {t("· Scadență:")} {fmtDate(inv.dueDate)}</>}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold tabular-nums">{money(inv.grandTotal, inv.currency)}</p>
-                  <span className={`mt-1 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>
-                    {t(st.label)}
-                  </span>
-                </div>
-              </Link>
-              <div className="mt-2.5 flex justify-end border-t border-[var(--color-line)]/60 pt-2.5">
-                <InvoiceRequestMenu templates={templates} invoiceNumber={inv.number} />
-              </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      </details>
     </div>
   );
 }
