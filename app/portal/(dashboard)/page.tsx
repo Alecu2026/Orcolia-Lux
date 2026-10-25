@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { money, fmtDate, INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatusKey } from "@/app/components/invoice-meta";
 import { IconTicket } from "@/app/components/icons";
 import { getT } from "@/lib/i18n/server-t";
+import { listPortalTemplates } from "@/lib/queries/portal-templates";
+import PortalTemplateJump from "@/app/components/PortalTemplateJump";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +19,7 @@ export default async function PortalDashboardPage({
   const { status } = await searchParams;
   const statusFilter = INVOICE_STATUS_LIST.includes(status as InvoiceStatusKey) ? (status as InvoiceStatusKey) : undefined;
 
+  const templates = await listPortalTemplates();
   const allInvoices = await prisma.invoice.findMany({
     // DRAFT rămâne intern (nerevizuit încă de staff) — nu trebuie să apară în portal.
     where: { clientId: client.id, status: { not: "DRAFT" } },
@@ -46,13 +49,16 @@ export default async function PortalDashboardPage({
           <h1 className="text-lg font-bold">{t("Facturile mele")}</h1>
           <p className="mt-0.5 text-xs text-ink-soft">{t("{length} facturi în total", { length: allInvoices.length })}</p>
         </div>
-        <Link
-          href="/portal/cereri"
-          className="tap flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-strong"
-        >
-          <IconTicket className="size-4" />
-          {t("Creează cerere")}
-        </Link>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <PortalTemplateJump templates={templates} />
+          <Link
+            href="/portal/cereri"
+            className="tap flex h-10 items-center gap-1.5 rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-strong"
+          >
+            <IconTicket className="size-4" />
+            {t("Creează cerere")}
+          </Link>
+        </div>
       </div>
 
       {allInvoices.length > 0 && (

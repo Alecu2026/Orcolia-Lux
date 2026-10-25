@@ -6,6 +6,7 @@ import { fmtDate } from "@/app/components/invoice-meta";
 import PortalNewTicketForm from "@/app/components/PortalNewTicketForm";
 import { IconTicket } from "@/app/components/icons";
 import { getT } from "@/lib/i18n/server-t";
+import { listPortalTemplates } from "@/lib/queries/portal-templates";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,11 @@ const TICKET_STATUS_CLS: Record<string, string> = {
   CANCELLED: "bg-st-cancelled/12 text-st-cancelled",
 };
 
-export default async function PortalTicketsPage() {
+export default async function PortalTicketsPage({ searchParams }: { searchParams: Promise<{ sablon?: string }> }) {
   const tr = await getT();
   const client = await requireClient();
+  const { sablon } = await searchParams;
+  const templates = await listPortalTemplates();
 
   const rows = await prisma.task.findMany({
     where: { clientId: client.id, type: "TICKET" },
@@ -46,7 +49,7 @@ export default async function PortalTicketsPage() {
           <IconTicket className="size-4 text-brand" />
           {tr("Creează o cerere nouă")}
         </h2>
-        <PortalNewTicketForm />
+        <PortalNewTicketForm key={sablon ?? "nou"} templates={templates} initialTemplateId={sablon ?? ""} />
       </div>
 
       {tickets.length === 0 ? (

@@ -191,3 +191,13 @@ export function IconLogout({ className = "size-4" }: IconProps) {
     </svg>
   );
 }
+
+/** Tabel / fișă de decontare. */
+export function IconScale({ className = "size-4" }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 10h18M3 15h18M9 4v16" />
+    </svg>
+  );
+}

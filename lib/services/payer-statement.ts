@@ -17,6 +17,8 @@ const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
 export type PayerStatementRow = {
   invoiceId: string;
+  /** Linkul public al facturii (portalul deschide factura prin el). */
+  publicToken: string;
   number: string;
   status: InvoiceStatus;
   issueDate: Date;
@@ -43,7 +45,8 @@ export type PayerStatement = {
   totals: { apaQty: number; canalQty: number; subtotal: number; datoriiAvans: number; recalculari: number; penalitati: number; grandTotal: number };
 };
 
-export async function getPayerStatement(clientId: string): Promise<PayerStatement | null> {
+/** `forPortal`: ce vede clientul în cabinetul personal — fără facturile ciornă (încă nerevizuite de staff). */
+export async function getPayerStatement(clientId: string, opts: { forPortal?: boolean } = {}): Promise<PayerStatement | null> {
   const client = await prisma.client.findFirst({
     where: { id: clientId },
     select: { id: true, name: true, meterSeries: true, consumAddress: true },
@@ -51,10 +54,10 @@ export async function getPayerStatement(clientId: string): Promise<PayerStatemen
   if (!client) return null;
 
   const invoices = await prisma.invoice.findMany({
-    where: { clientId: client.id, kind: "APA_CANAL" },
+    where: { clientId: client.id, kind: "APA_CANAL", ...(opts.forPortal ? { status: { not: "DRAFT" as const } } : {}) },
     orderBy: { issueDate: "asc" },
     select: {
-      id: true, number: true, status: true, issueDate: true, billingPeriodLabel: true, sectorNr: true, contPersonal: true,
+      id: true, publicToken: true, number: true, status: true, issueDate: true, billingPeriodLabel: true, sectorNr: true, contPersonal: true,
       meterPrevReading: true, meterCurrReading: true, subtotal: true, datoriiAvans: true, recalculari: true,
       penalitati: true, grandTotal: true, currency: true,
       items: { select: { description: true, quantity: true, unitPrice: true } },
@@ -74,6 +77,7 @@ export async function getPayerStatement(clientId: string): Promise<PayerStatemen
     totals.grandTotal += inv.grandTotal;
     return {
       invoiceId: inv.id,
+      publicToken: inv.publicToken,
       number: inv.number,
       status: inv.status,
       issueDate: inv.issueDate,

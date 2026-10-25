@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconFileText, IconTicket } from "./icons";
+import { IconFileText, IconTicket, IconScale } from "./icons";
 import { useT } from "@/lib/i18n/context";
 
 const TABS = [
   { href: "/portal", label: "Facturi", icon: IconFileText },
+  { href: "/portal/decontare", label: "Decontare", icon: IconScale },
   { href: "/portal/cereri", label: "Cereri", icon: IconTicket },
 ];
 

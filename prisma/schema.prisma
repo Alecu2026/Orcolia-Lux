@@ -1044,6 +1044,20 @@ model TaskTemplate {
   @@index([type, name])
 }
 
+// Șabloane de cereri pentru clienți (cabinetul personal / portal): create de administrator, alese de client dintr-o listă la crearea unei cereri.
+// Titlul și descrierea completează formularul; clientul le poate modifica înainte de trimitere.
+model PortalRequestTemplate {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  title       String
+  description String   @default("")
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sortOrder, name])
+}
+
 // Coada de apeluri de notificare către plătitori (canalul „Apel" din /notificari-platitori): un rând per plătitor de sunat.
 // Trimiterea creează rândurile „queued"; din /pbx (fila „Notificări apel") operatorul apasă „Sună" → makecall la PBX Moldcell
 // (sună întâi operatorul, apoi îl leagă cu plătitorul) și `callId` leagă rândul de apelul din PbxCall (stare, durată, înregistrare).
