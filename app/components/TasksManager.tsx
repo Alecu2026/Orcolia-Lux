@@ -1226,7 +1226,7 @@ function fmtFileSize(bytes: number): string {
 }
 
 export function CreateDialog({
-  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialDescription, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated,
+  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialAddress, initialDescription, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated,
 }: {
   initialType: "TASK" | "TICKET" | "WORK_ORDER";
   users: Opt[];
@@ -1241,6 +1241,7 @@ export function CreateDialog({
   /** Preîncărcări (ex. din popup-ul de apel): client, titlu, descriere. */
   initialClientId?: string;
   initialTitle?: string;
+  initialAddress?: string;
   initialDescription?: string;
   /** Câmpuri completate dintr-un șablon (titlu cu {contor} înlocuit, categorie, responsabili…). */
   prefill?: TemplatePrefill;
@@ -1360,7 +1361,7 @@ export function CreateDialog({
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
-          <AddressInput defaultValue={prefill?.address ?? ""} className={dlgInput} />
+          <AddressInput defaultValue={prefill?.address ?? initialAddress ?? ""} className={dlgInput} />
           <MultiAssignPicker users={users} teams={teams} initialAssigneeIds={prefill?.assigneeIds} initialTeamIds={prefill?.teamIds} />
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.dueDate}</label>

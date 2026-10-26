@@ -94,8 +94,33 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
     return () => clearInterval(t);
   }, [router]);
 
+  /** „+” de pe rând: sarcină nouă din apel (client + titlu + descriere); adresa plătitorului o completează pagina de sarcini. */
+  const taskHref = (c: PbxCallRow) => {
+    const sp = new URLSearchParams({
+      create: "task",
+      ...(c.clientId ? { client: c.clientId } : {}),
+      title: tr("Apel de la {who}", { who: c.clientName ?? pretty(c.phone) }),
+      desc: `${c.direction === "out" ? tr("Apel efectuat către") : tr("Apel primit de la")} ${pretty(c.phone)} (${fmtDateTime(c.at)}).`,
+    });
+    return `/tasks?${sp.toString()}`;
+  };
   const dash = <span className="text-ink-soft/60">—</span>;
   const columns: Col<PbxCallRow>[] = [
+    {
+      key: "mk", label: "", minW: 34,
+      render: (c) => (
+        <Link
+          href={taskHref(c)}
+          prefetch={false}
+          onClick={(e) => e.stopPropagation()}
+          title={tr("Creează sarcină din acest apel (adresa se completează singură)")}
+          aria-label={tr("Creează sarcină din acest apel (adresa se completează singură)")}
+          className="tap grid size-6 place-items-center rounded-md bg-brand text-sm font-bold leading-none text-white hover:bg-brand-strong"
+        >
+          +
+        </Link>
+      ),
+    },
     { key: "at", label: "Data și ora", minW: 150, sticky: true, sort: (c) => c.at, render: (c) => <span className="whitespace-nowrap">{fmtDateTime(c.at)}</span> },
     {
       key: "dir", label: "Direcție", minW: 80, sort: (c) => c.direction,

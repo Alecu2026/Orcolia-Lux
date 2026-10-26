@@ -1735,4 +1735,6 @@ export const RU: Record<string, string> = {
   "✍ Altă cerere (scriu eu)": "✍ Другая заявка (напишу сам)",
   "Schimbă": "Изменить",
   "Subiect (ex: Scurgere la contor)": "Тема (напр. Протечка у счётчика)",
+  "Creează sarcină din acest apel (adresa se completează singură)": "Создать задачу по этому звонку (адрес заполнится сам)",
+  "Creează sarcină pentru acest plătitor (adresa se completează singură)": "Создать задачу для этого плательщика (адрес заполнится сам)",
 };

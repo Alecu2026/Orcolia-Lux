@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import type { PayerRow } from "@/lib/queries/payers";
 import {
   CONTACT_OPTIONS,
@@ -107,6 +108,7 @@ export default function PayerNotifyManager({
   months,
   initialTemplates,
   canSend: canSendProp,
+  canTask = false,
   emailEnabled,
   smsEnabled,
   callEnabled = false,
@@ -123,6 +125,8 @@ export default function PayerNotifyManager({
   months: { month: string; count: number }[];
   initialTemplates: PayerTemplate[];
   canSend: boolean;
+  /** Are „Sarcini – Creare": rândul are „+" pentru o sarcină nouă (clientul și adresa se completează singure). */
+  canTask?: boolean;
   emailEnabled: boolean;
   smsEnabled: boolean;
   /** Apeluri vocale automate configurate (Twilio + VOICE_FROM). */
@@ -608,7 +612,12 @@ export default function PayerNotifyManager({
   const pageButtons = buildPageButtons(page, totalPages);
   const from = view.total === 0 ? 0 : (page - 1) * uiPerPage + 1;
   const to = Math.min(page * uiPerPage, view.total);
-  const colCount = 12 + (canSelect ? 1 : 0) + (canSend ? 1 : 0);
+  const colCount = 12 + (canSelect ? 1 : 0) + (canSend ? 1 : 0) + (canTask ? 1 : 0);
+  /** Sarcină nouă pentru plătitor: pagina de sarcini deschide fereastra de creare cu clientul ales și adresa lui completată. */
+  const taskHref = (r: PayerRow) => {
+    const sp = new URLSearchParams({ create: "task", client: r.id, desc: [r.name, r.meterSeries ?? r.contract, r.phone].filter(Boolean).join(" · ") });
+    return `/tasks?${sp.toString()}`;
+  };
 
   return (
     <div>
@@ -950,6 +959,11 @@ export default function PayerNotifyManager({
                       ✉ {t("Trimite")}
                     </button>
                   )}
+                  {canTask && (
+                    <Link href={taskHref(r)} prefetch={false} className="tap inline-flex h-7 items-center rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft">
+                      + {t("Sarcină")}
+                    </Link>
+                  )}
                 </div>
               </CompactCard>
             );
@@ -968,11 +982,12 @@ export default function PayerNotifyManager({
         className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}
         style={{ maxHeight: rowCount > 50 ? "max(78vh, 890px)" : undefined }}
       >
-        <table className="min-w-full table-fixed border-separate border-spacing-0 text-[11px] leading-[14px]" style={{ width: COL_W.reduce((a, b) => a + b, 0) + (canSelect ? 28 : 0) + (canSend ? 32 : 0) }}>
+        <table className="min-w-full table-fixed border-separate border-spacing-0 text-[11px] leading-[14px]" style={{ width: COL_W.reduce((a, b) => a + b, 0) + (canSelect ? 28 : 0) + (canSend ? 32 : 0) + (canTask ? 28 : 0) }}>
           <colgroup>
             {canSelect && <col style={{ width: 28 }} />}
             {COL_W.map((w, i) => <col key={i} style={{ width: w }} />)}
             {canSend && <col style={{ width: 32 }} />}
+            {canTask && <col style={{ width: 28 }} />}
           </colgroup>
           <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
             <tr>
@@ -1007,6 +1022,7 @@ export default function PayerNotifyManager({
               <Th minW={45} right>{t("Facturi")}</Th>
               <Th minW={95}>{t("Ultima notificare")}</Th>
               {canSend && <Th minW={32}> </Th>}
+              {canTask && <Th minW={28}> </Th>}
             </tr>
           </thead>
           <tbody>
@@ -1084,6 +1100,19 @@ export default function PayerNotifyManager({
                       >
                         ✉
                       </button>
+                    </td>
+                  )}
+                  {canTask && (
+                    <td className="border-b border-[var(--color-line)] px-1.5 py-px" onClick={(e) => e.stopPropagation()}>
+                      <Link
+                        href={taskHref(r)}
+                        prefetch={false}
+                        title={t("Creează sarcină pentru acest plătitor (adresa se completează singură)")}
+                        aria-label={t("Creează sarcină pentru acest plătitor (adresa se completează singură)")}
+                        className="grid size-4 place-items-center rounded bg-brand text-[11px] font-bold leading-none text-white hover:bg-brand-strong"
+                      >
+                        +
+                      </Link>
                     </td>
                   )}
                 </tr>

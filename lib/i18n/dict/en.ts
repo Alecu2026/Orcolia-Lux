@@ -1735,4 +1735,6 @@ export const EN: Record<string, string> = {
   "✍ Altă cerere (scriu eu)": "✍ Another request (I will write it)",
   "Schimbă": "Change",
   "Subiect (ex: Scurgere la contor)": "Subject (e.g. Leak at the meter)",
+  "Creează sarcină din acest apel (adresa se completează singură)": "Create a task from this call (the address fills in by itself)",
+  "Creează sarcină pentru acest plătitor (adresa se completează singură)": "Create a task for this payer (the address fills in by itself)",
 };

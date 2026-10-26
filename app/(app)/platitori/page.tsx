@@ -69,6 +69,7 @@ export default async function PayersPage({
       <PayerNotifyManager
         basePath="/platitori"
         browseOnly
+        canTask={can(user, "tasks.create")}
         nameFixCount={nameFixCount}
         initial={{ filters, page, perPage, items, total }}
         months={months}

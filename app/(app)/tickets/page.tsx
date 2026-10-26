@@ -10,6 +10,7 @@ import { crmClientOptionsPlus } from "@/lib/queries/clients";
 import { listCategories } from "@/lib/queries/categories";
 import { listTaskTemplates } from "@/lib/queries/task-templates";
 import { env } from "@/lib/env";
+import { payerAddress } from "@/lib/queries/payer-address";
 import TasksTable from "@/app/components/TasksTable";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +65,8 @@ export default async function TicketsPage({
   ] as const;
   const scopeOptions = SCOPES.filter((s) => (canUseAllScope(user) ? true : s.key !== "all"));
 
+  const initialAddress = initialCreate && can(user, "tasks.create") ? await payerAddress(sp.client) : undefined;
+
   return (
     <div className="w-full">
       <TasksTable
@@ -87,6 +90,7 @@ export default async function TicketsPage({
         initialProjectId={can(user, "tasks.create") ? initialProjectId : undefined}
         initialClientId={sp.client && /^[0-9a-f]{24}$/i.test(sp.client) ? sp.client : undefined}
         initialTitle={sp.title?.slice(0, 200)}
+        initialAddress={initialAddress}
         initialDescription={sp.desc?.slice(0, 1000)}
         initialOpenId={initialOpenId}
         scopeOptions={[...scopeOptions]}

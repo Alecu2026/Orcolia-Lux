@@ -132,6 +132,7 @@ export default function TasksTable({
   initialProjectId,
   initialClientId,
   initialTitle,
+  initialAddress,
   initialDescription,
   initialOpenId,
   scopeOptions,
@@ -161,6 +162,8 @@ export default function TasksTable({
   initialProjectId?: string;
   initialClientId?: string;
   initialTitle?: string;
+  /** Adresa plătitorului din apel: completează câmpul „Adresă” la creare. */
+  initialAddress?: string;
   initialDescription?: string;
   initialOpenId?: string;
   scopeOptions?: { key: string; label: string }[];
@@ -695,6 +698,7 @@ export default function TasksTable({
           initialProjectId={initialProjectId}
           initialClientId={initialClientId}
           initialTitle={initialTitle}
+          initialAddress={initialAddress}
           initialDescription={initialDescription}
           onClose={closeCreate}
           onCreated={(id) => {
