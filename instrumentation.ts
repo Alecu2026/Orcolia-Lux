@@ -3,6 +3,8 @@
 // costă o singură interogare.
 export function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  // Pe Vercel fiecare instanță nouă ar rula interogarea (cold start-uri dese, bază de date partajată): acolo scadențele le aduce la zi cron-ul zilnic.
+  if (process.env.VERCEL) return;
   setTimeout(() => {
     import("./lib/services/apa-canal-due")
       .then((m) => m.normalizeApaCanalDueDates())

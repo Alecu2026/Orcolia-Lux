@@ -242,6 +242,13 @@ function AppShellInner({
   const [drawer, setDrawer] = useState(false);
   const realPath = usePathname();
   const [pending, setPending] = useState<Pending>(null);
+  // Navigarea s-a terminat (ruta reală s-a schimbat): „pending” nu mai are rost. Fără asta rămânea setat și, când ajungeai din nou pe pagina
+  // de plecare pe alt drum (un link din tabel, „înapoi”), antetul și meniul arătau vechea destinație (ex. „PBX”) peste conținutul altei pagini.
+  const [lastPath, setLastPath] = useState(realPath);
+  if (realPath !== lastPath) {
+    setLastPath(realPath);
+    setPending(null);
+  }
   const path = pending && pending.from === realPath ? pending.href : realPath;
   const m = useMessages();
 
