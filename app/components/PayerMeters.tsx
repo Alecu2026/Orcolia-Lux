@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { type MeterRowBase } from "@/lib/meters";
+import CollapsibleSection from "./CollapsibleSection";
 import MeterDetailDialog from "./MeterDetailDialog";
 import { peekMeterRows } from "./useMeterDataset";
 import { useLocale, useT } from "@/lib/i18n/context";
@@ -42,43 +43,47 @@ export default function PayerMeters({
     `/tasks?${new URLSearchParams({ create: "task", client: r.clientId ?? "", desc: [`${t("Contor")} ${r.contor}`, r.name, r.account ?? r.contract, r.phone].filter(Boolean).join(" · ") }).toString()}`;
 
   return (
-    <div>
-      <h2 className="mb-2 text-base font-bold">{t("Contoarele plătitorului ({n})", { n: rows.length })}</h2>
+    <CollapsibleSection
+      id="payer-meters"
+      title={t("Contoarele plătitorului")}
+      count={rows.length}
+      summary={rows.length > 0 ? t("{n} active", { n: rows.filter((r) => !r.removedAt).length }) : undefined}
+    >
       {rows.length === 0 ? (
-        <div className="card p-6 text-center text-sm text-ink-soft">{t("Niciun contor pentru acest plătitor.")}</div>
+        <div className="p-4 text-center text-sm text-ink-soft">{t("Niciun contor pentru acest plătitor.")}</div>
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full min-w-[760px] text-[13px]">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-[12px]">
             <thead className="bg-[var(--color-surface-2)] text-left text-[11px] text-ink-soft">
               <tr>
-                <th className="px-3 py-1.5 font-semibold">{t("Nr. contor")}</th>
-                <th className="px-3 py-1.5 font-semibold">{t("Status")}</th>
-                <th className="px-3 py-1.5 font-semibold">{t("Consumator")}</th>
-                <th className="px-3 py-1.5 font-semibold">{t("Instalat")}</th>
-                <th className="px-3 py-1.5 text-right font-semibold">{t("Citire curentă")}</th>
-                <th className="px-3 py-1.5 font-semibold">{t("Data citirii")}</th>
-                <th className="px-3 py-1.5 text-right font-semibold">{t("Consum (m³)")}</th>
-                <th className="px-3 py-1.5" />
+                <th className="px-2.5 py-1 font-semibold">{t("Nr. contor")}</th>
+                <th className="px-2.5 py-1 font-semibold">{t("Status")}</th>
+                <th className="px-2.5 py-1 font-semibold">{t("Consumator")}</th>
+                <th className="px-2.5 py-1 font-semibold">{t("Instalat")}</th>
+                <th className="px-2.5 py-1 text-right font-semibold">{t("Citire curentă")}</th>
+                <th className="px-2.5 py-1 font-semibold">{t("Data citirii")}</th>
+                <th className="px-2.5 py-1 text-right font-semibold">{t("Consum (m³)")}</th>
+                <th className="px-2.5 py-1" />
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-line)]">
               {rows.map((r) => {
                 return (
                   <tr key={r.id} onClick={() => setOpen(r)} className={`cursor-pointer hover:bg-brand-soft/30 ${r.removedAt ? "text-ink-soft" : ""}`}>
-                    <td className="whitespace-nowrap px-3 py-2 font-mono font-semibold">{r.contor}</td>
-                    <td className="px-3 py-2">
+                    <td className="whitespace-nowrap px-2.5 py-1 font-mono font-semibold">{r.contor}</td>
+                    <td className="px-2.5 py-1">
                       {r.removedAt ? (
                         <span className="rounded-full bg-st-cancelled/12 px-1.5 text-[10px] font-medium text-st-cancelled" title={`${t("Scos la")} ${dmy(r.removedAt)}`}>{t("Scos")}</span>
                       ) : (
                         <span className="rounded-full bg-st-done/12 px-1.5 text-[10px] font-medium text-st-done">{t("Activ")}</span>
                       )}
                     </td>
-                    <td className="max-w-[220px] truncate px-3 py-2" title={r.consumator ?? ""}>{r.consumator ?? "—"}</td>
-                    <td className="whitespace-nowrap px-3 py-2">{dmy(r.installedAt)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.curr != null ? `${nf(r.curr)} m³` : "—"}</td>
-                    <td className="whitespace-nowrap px-3 py-2">{dmy(r.currDate)}</td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${r.consum != null && r.consum > 0 ? "font-semibold" : ""}`}>{r.consum != null ? `${nf(r.consum)} m³` : "—"}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
+                    <td className="max-w-[220px] truncate px-2.5 py-1" title={r.consumator ?? ""}>{r.consumator ?? "—"}</td>
+                    <td className="whitespace-nowrap px-2.5 py-1">{dmy(r.installedAt)}</td>
+                    <td className="px-2.5 py-1 text-right tabular-nums">{r.curr != null ? `${nf(r.curr)} m³` : "—"}</td>
+                    <td className="whitespace-nowrap px-2.5 py-1">{dmy(r.currDate)}</td>
+                    <td className={`px-2.5 py-1 text-right tabular-nums ${r.consum != null && r.consum > 0 ? "font-semibold" : ""}`}>{r.consum != null ? `${nf(r.consum)} m³` : "—"}</td>
+                    <td className="whitespace-nowrap px-2.5 py-1 text-right" onClick={(e) => e.stopPropagation()}>
                       <button type="button" onClick={() => setOpen(r)} className="tap mr-1.5 h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-xs font-medium hover:bg-brand-soft">
                         {t("Fișa")}
                       </button>
@@ -93,7 +98,6 @@ export default function PayerMeters({
           </table>
         </div>
       )}
-
       {open && (
         <MeterDetailDialog
           row={open}
@@ -106,6 +110,6 @@ export default function PayerMeters({
           onClose={() => setOpen(null)}
         />
       )}
-    </div>
+    </CollapsibleSection>
   );
 }

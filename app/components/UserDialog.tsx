@@ -127,7 +127,12 @@ export default function UserDialog({
   const [notifyScope, setNotifyScope] = useState(user?.notifyScope ?? "ALL");
   const [notifyTeams, setNotifyTeams] = useState<Set<string>>(() => new Set(user?.notifyTeamIds ?? []));
   const [notifyMembers, setNotifyMembers] = useState<Set<string>>(() => new Set(user?.notifyMemberIds ?? []));
-  const [viewAll, setViewAll] = useState((user?.taskViewScope ?? "ALL") !== "RESTRICTED");
+  // Ce sarcini vede: ALL = toate; OWN = doar create de el / asignate lui (implicit la conturile NOI); CUSTOM = + echipele / persoanele alese.
+  // OWN și CUSTOM fără nimic ales se salvează la fel (RESTRICTED fără liste), deci la editare se recunosc după liste.
+  const [viewMode, setViewMode] = useState<"ALL" | "OWN" | "CUSTOM">(() =>
+    !user ? "OWN" : user.taskViewScope !== "RESTRICTED" ? "ALL" : (user.taskViewTeamIds?.length ?? 0) + (user.taskViewMemberIds?.length ?? 0) > 0 ? "CUSTOM" : "OWN",
+  );
+  const [viewTouched, setViewTouched] = useState(false);
   const [viewTeams, setViewTeams] = useState<Set<string>>(() => new Set(user?.taskViewTeamIds ?? []));
   const [viewMembers, setViewMembers] = useState<Set<string>>(() => new Set(user?.taskViewMemberIds ?? []));
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +145,13 @@ export default function UserDialog({
   const isAdminRole = role === "ADMIN";
   const hasFullAccess = perms.has("admin");
 
+  /** Schimbă rolul. La un cont nou, „ce sarcini vede” urmează rolul (administrator = toate, angajat = doar ale lui) cât timp nu a fost ales explicit. */
+  function changeRole(r: "ADMIN" | "STAFF") {
+    setTouched(true);
+    setRole(r);
+    if (!user && !viewTouched) setViewMode(r === "ADMIN" ? "ALL" : "OWN");
+  }
+
   const mark = <T,>(set: (v: T) => void) => (v: T) => {
     setTouched(true);
     setError(null);
@@ -149,6 +161,16 @@ export default function UserDialog({
   // ── Permisiuni ──
   function setPerm(key: string, on: boolean) {
     setTouched(true);
+    // „Acces administrativ (tot)” = rolul Administrator: rolul trece singur pe „Administrator (tot)” (dacă are voie cine editează), iar bifa nu mai e necesară
+    if (key === "admin" && on && !roleLocked && !adminOptionLocked) {
+      changeRole("ADMIN");
+      setPerms((prev) => {
+        const next = new Set(prev);
+        next.delete("admin");
+        return next;
+      });
+      return;
+    }
     setPerms((prev) => {
       const next = new Set(prev);
       if (on) {
@@ -216,8 +238,8 @@ export default function UserDialog({
       if (notifyScope === "TEAMS") for (const id of notifyTeams) fd.append("notifyTeamIds", id);
       if (notifyScope === "MEMBERS") for (const id of notifyMembers) fd.append("notifyMemberIds", id);
     }
-    fd.set("taskViewScope", viewAll ? "ALL" : "RESTRICTED");
-    if (!viewAll) {
+    fd.set("taskViewScope", viewMode === "ALL" ? "ALL" : "RESTRICTED");
+    if (viewMode === "CUSTOM") {
       for (const id of viewTeams) fd.append("taskViewTeamIds", id);
       for (const id of viewMembers) fd.append("taskViewMemberIds", id);
     }
@@ -328,7 +350,7 @@ export default function UserDialog({
                       key={r}
                       type="button"
                       disabled={roleLocked || (r === "ADMIN" && adminOptionLocked)}
-                      onClick={() => { setTouched(true); setRole(r); }}
+                      onClick={() => changeRole(r)}
                       className={`h-9 cursor-pointer rounded-lg px-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${role === r ? "bg-brand text-white" : "text-ink-soft hover:bg-[var(--color-surface)]"}`}
                     >
                       {r === "STAFF" ? m.users.roleEmployee : m.users.roleAdmin}
@@ -476,17 +498,24 @@ export default function UserDialog({
             <h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">4 · {m.users.taskViewLabel}</h3>
             <div className={card}>
               <p className="mb-2 text-[11px] text-ink-soft">{m.users.taskViewHint}</p>
-              <div className="mb-2 grid gap-1.5 sm:grid-cols-2">
-                <label className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-sm ${viewAll ? "border-brand bg-brand-soft/40" : "border-[var(--color-line)]"}`}>
-                  <input type="radio" name="viewScope" checked={viewAll} onChange={() => { setTouched(true); setViewAll(true); }} className="mt-0.5 size-4 accent-[var(--color-brand)]" />
+              <div className="mb-2 grid gap-1.5 sm:grid-cols-3">
+                <label className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-sm ${viewMode === "ALL" ? "border-brand bg-brand-soft/40" : "border-[var(--color-line)]"}`}>
+                  <input type="radio" name="viewScope" checked={viewMode === "ALL"} onChange={() => { setTouched(true); setViewTouched(true); setViewMode("ALL"); }} className="mt-0.5 size-4 accent-[var(--color-brand)]" />
                   <span>{m.users.taskViewAllLabel}</span>
                 </label>
-                <label className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-sm ${!viewAll ? "border-brand bg-brand-soft/40" : "border-[var(--color-line)]"}`}>
-                  <input type="radio" name="viewScope" checked={!viewAll} onChange={() => { setTouched(true); setViewAll(false); }} className="mt-0.5 size-4 accent-[var(--color-brand)]" />
+                <label className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-sm ${viewMode === "OWN" ? "border-brand bg-brand-soft/40" : "border-[var(--color-line)]"}`}>
+                  <input type="radio" name="viewScope" checked={viewMode === "OWN"} onChange={() => { setTouched(true); setViewTouched(true); setViewMode("OWN"); }} className="mt-0.5 size-4 accent-[var(--color-brand)]" />
+                  <span>
+                    {t("Vede doar ale lui")} <span className="rounded bg-brand/10 px-1 py-px text-[10px] font-semibold text-brand">{t("implicit")}</span>
+                    <span className="block text-[11px] text-ink-soft">{t("Doar sarcinile create de el sau asignate lui")}</span>
+                  </span>
+                </label>
+                <label className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2 text-sm ${viewMode === "CUSTOM" ? "border-brand bg-brand-soft/40" : "border-[var(--color-line)]"}`}>
+                  <input type="radio" name="viewScope" checked={viewMode === "CUSTOM"} onChange={() => { setTouched(true); setViewTouched(true); setViewMode("CUSTOM"); }} className="mt-0.5 size-4 accent-[var(--color-brand)]" />
                   <span>{t("Doar anumite echipe / persoane")}<span className="block text-[11px] text-ink-soft">{t("+ sarcinile lui (create sau asignate lui), mereu vizibile")}</span></span>
                 </label>
               </div>
-              {!viewAll && (
+              {viewMode === "CUSTOM" && (
                 <div className="flex flex-col gap-3">
                   <div>
                     <p className="mb-1 text-[11px] font-semibold uppercase text-ink-soft">{m.users.taskViewTeamsLabel} ({viewTeams.size})</p>

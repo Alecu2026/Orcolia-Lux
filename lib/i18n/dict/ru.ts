@@ -2087,4 +2087,13 @@ export const RU: Record<string, string> = {
   "Se afișează cele mai noi {cap} din {total} jurnale. Restrânge filtrele (perioadă, utilizator, modul) sau exportă.": "Показаны {cap} самых новых из {total} записей. Сузьте фильтры (период, пользователь, модуль) или выполните экспорт.",
   "toate încărcate": "всё загружено",
   "încărcate {n} din {total}…": "загружено {n} из {total}…",
+  "Doar sarcinile create de el sau asignate lui": "Только задачи, созданные им или назначенные ему",
+  "Vede doar ale lui": "Видит только свои",
+  "implicit": "по умолчанию",
+  "Citiri": "Показания",
+  "Contoarele plătitorului": "Счётчики плательщика",
+  "Datorie/avans": "Долг/аванс",
+  "Facturi pe luni": "Счета по месяцам",
+  "Ultima": "Последний",
+  "{n} active": "{n} активных",
 };
