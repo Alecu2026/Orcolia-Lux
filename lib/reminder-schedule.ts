@@ -21,8 +21,8 @@ export type ReminderSchedule =
 
 export const REMINDER_UNITS: ReminderUnit[] = ["minutes", "hours", "days", "weeks"];
 const UNIT_MS: Record<ReminderUnit, number> = { minutes: 60_000, hours: 3_600_000, days: 86_400_000, weeks: 7 * 86_400_000 };
-/** Cea mai deasă reamintire acceptată: 5 minute. */
-export const MIN_EVERY_MS = 5 * 60_000;
+/** Cea mai deasă reamintire acceptată: 1 minut (verificarea sarcinilor rulează la fiecare minut). */
+export const MIN_EVERY_MS = 60_000;
 
 const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
 

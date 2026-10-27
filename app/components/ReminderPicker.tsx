@@ -51,6 +51,10 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
   const [unit, setUnit] = useState<ReminderUnit>(init?.kind === "every" ? init.unit : "hours");
   const [startDate, setStartDate] = useState(anchor ? `${anchor.year}-${pad(anchor.month)}-${pad(anchor.day)}` : "");
   const [startTime, setStartTime] = useState(anchor ? `${pad(anchor.hour)}:${pad(anchor.minute)}` : "");
+  const today = (() => {
+    const p = zonedParts(new Date(), DEFAULT_TZ);
+    return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
+  })();
   const [until, setUntil] = useState(init && init.kind !== "once" ? (init.until ?? "") : "");
 
   // programarea curentă, ca obiect (null = nu e programată sau e incompletă)
@@ -62,9 +66,10 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
     if (mode === "monthly") return parseReminderSchedule({ kind: "monthly", day: monthDay, time, ...u });
     if (mode === "every") {
       // cu început ales → ancora = începutul; la editare fără modificări începutul din formular reproduce exact ancora salvată
-      return parseReminderSchedule({ kind: "every", every, unit, ...(startDate && startTime ? { startDate, startTime } : {}), ...u });
+      return parseReminderSchedule({ kind: "every", every, unit, ...(startDate || startTime ? { startDate: startDate || today, startTime: startTime || "00:00" } : {}), ...u });
     }
     return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, date, time, days, monthDay, every, unit, startDate, startTime, until]);
 
   const next = built ? computeNextRun(built, new Date()) : null;
@@ -187,7 +192,7 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
                   <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${inp} mt-0.5 w-full`} />
                 </label>
                 <label className="text-[11px] font-semibold text-ink-soft">
-                  {t("Ora de început")}
+                  {t("Ora de început (opțional)")}
                   <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={`${inp} mt-0.5 w-full`} />
                 </label>
               </div>
@@ -201,7 +206,10 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
             </label>
           )}
 
-          {incomplete && <p className="text-xs text-st-progress">{t("Completează toate câmpurile: reamintirea nu se va salva până atunci.")}</p>}
+          {incomplete && mode === "every" && (
+            <p className="text-xs text-st-progress">{t("Alege un număr întreg de cel puțin 1 (maximum 366 de zile). Începutul e opțional: fără el, prima reamintire vine peste un interval.")}</p>
+          )}
+          {incomplete && mode !== "every" && <p className="text-xs text-st-progress">{t("Completează toate câmpurile: reamintirea nu se va salva până atunci.")}</p>}
           {built && (
             <p className="text-xs text-ink-soft">
               <b className="text-ink">{describeSchedule(built, t, tag)}</b>

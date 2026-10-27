@@ -96,8 +96,8 @@ type TextKey = "q" | "street" | "minDebt" | "maxDebt";
  * „Toate" înseamnă 19.000 de rânduri în memorie, dar în DOM stau doar cele vizibile (virtualizare): fără ea, desenarea tuturor era
  * sute de mii de noduri (măsurat: 343.000 de noduri și 220 MB pe telefon → fila pica, iar alegerea salvată se reaplica la fiecare deschidere).
  */
-/** Lățimile coloanelor tabelului (px): plătitor, cont, adresă, email, telefon, factură, scadență, de achitat, status, portal, facturi, ultima notificare. */
-const COL_W = [200, 108, 190, 190, 108, 120, 80, 90, 72, 58, 52, 110];
+/** Lățimile coloanelor tabelului (px): adresă (fixă la derulare orizontală), plătitor, cont, email, telefon, factură, scadență, de achitat, status, portal, facturi, ultima notificare. */
+const COL_W = [220, 200, 108, 190, 108, 120, 80, 90, 72, 58, 52, 110];
 const SERVER_MAX_ROWS = 200; // doar cât timp lista completă nu e încă în browser (răspunsul vine de pe server)
 const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
 const ROW_H = 24; // înălțimea fixă a unui rând de tabel (necesară virtualizării)
@@ -1006,11 +1006,11 @@ export default function PayerNotifyManager({
                   />
                 </th>
               )}
-              <Th sticky={canSelect ? "left-7" : "left-0"} minW={190}>
+              <Th sticky={canSelect ? "left-7" : "left-0"} minW={220}>{t("Adresă")}</Th>
+              <Th minW={200}>
                 <button type="button" onClick={() => setFilter({ sort: "" })} className="font-semibold hover:text-brand">{t("Plătitor")}</button>
               </Th>
               <Th minW={108}>{t("Cont / contract")}</Th>
-              <Th minW={160}>{t("Adresă")}</Th>
               <Th minW={160}>{t("Email")}</Th>
               <Th minW={108}>{t("Telefon")}</Th>
               <Th minW={120}>{t("Factură")}</Th>
@@ -1058,13 +1058,13 @@ export default function PayerNotifyManager({
                       <input type="checkbox" checked={sel} readOnly tabIndex={-1} className="pointer-events-none block size-3 accent-[var(--color-brand)]" aria-label={`${t("Selectează")} ${r.name}`} />
                     </td>
                   )}
-                  <td className={`sticky ${canSelect ? "left-7" : "left-0"} z-10 border-b border-[var(--color-line)] px-1.5 py-px font-medium ${bg}`} style={{ maxWidth: 220 }}>
+                  <td className={`sticky ${canSelect ? "left-7" : "left-0"} z-10 border-b border-r border-[var(--color-line)] px-1.5 py-px ${bg}`} style={{ maxWidth: 220 }}>
+                    <div className="truncate" title={r.consumAddress ?? ""}>{r.consumAddress ?? <Dash />}</div>
+                  </td>
+                  <td className="border-b border-[var(--color-line)] px-1.5 py-px font-medium" style={{ maxWidth: 200 }}>
                     <div className="truncate hover:text-brand" title={r.name}>{r.name}</div>
                   </td>
                   <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" title={r.meterSeries ?? r.contract ?? ""}>{r.meterSeries ?? r.contract ?? "—"}</td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" style={{ maxWidth: 190 }}>
-                    <div className="truncate" title={r.consumAddress ?? ""}>{r.consumAddress ?? <Dash />}</div>
-                  </td>
                   <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" style={{ maxWidth: 190 }}>
                     {r.email ? (
                       <div className={`truncate ${flags & 1 ? "" : "text-st-progress"}`} title={flags & 1 ? r.email : `${t("Adresă invalidă")}: ${r.email}`}>{r.email}</div>

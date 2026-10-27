@@ -2082,4 +2082,9 @@ export const EN: Record<string, string> = {
   "Locație citire": "Reading location",
   "Distanță față de citirea anterioară": "Distance from previous reading",
   "Adresă scrisă din teren": "Address entered in the field",
+  "Alege un număr întreg de cel puțin 1 (maximum 366 de zile). Începutul e opțional: fără el, prima reamintire vine peste un interval.": "Choose a whole number of at least 1 (up to 366 days). The start is optional: without it, the first reminder comes after one interval.",
+  "Ora de început (opțional)": "Start time (optional)",
+  "Se afișează cele mai noi {cap} din {total} jurnale. Restrânge filtrele (perioadă, utilizator, modul) sau exportă.": "Showing the newest {cap} of {total} logs. Narrow the filters (period, user, module) or export.",
+  "toate încărcate": "all loaded",
+  "încărcate {n} din {total}…": "loaded {n} of {total}…",
 };

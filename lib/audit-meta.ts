@@ -273,7 +273,25 @@ export function countActiveAuditFilters(f: AuditFilterState): number {
   return (f.user ? 1 : 0) + (f.role ? 1 : 0) + (f.module ? 1 : 0) + (f.action ? 1 : 0) + (f.from || f.to ? 1 : 0) + (f.q ? 1 : 0) + (f.changes ? 1 : 0);
 }
 
-export function auditStateToParams(f: AuditFilterState, extra?: { page?: number; ps?: number }): URLSearchParams {
+/** Câte jurnale pe pagină (numeric) sau „all” = toate, încărcate pe bucăți și afișate cu virtualizare. */
+export const AUDIT_PAGE_SIZES = [20, 50, 100, 200, 500, 1000] as const;
+export const AUDIT_DEFAULT_PAGE_SIZE = 50;
+export type AuditPs = number | "all";
+/** „Toate” se oprește la atâtea jurnale (cele mai noi): peste, restrânge filtrele sau exportă. */
+export const AUDIT_ALL_CAP = 50_000;
+/** Mărimea bucăților în care se aduc „Toate”: prima mică (apare repede), următoarele mari. */
+export const AUDIT_FIRST_CHUNK = 1000;
+export const AUDIT_NEXT_CHUNK = 5000;
+/** Cookie citit de server: câte pe pagină a ales utilizatorul (prima afișare vine cu mărimea potrivită). */
+export const AUDIT_PS_COOKIE = "audit-ps";
+
+export function normalizeAuditPs(v: unknown): AuditPs {
+  if (v === "all") return "all";
+  const n = Number(v);
+  return (AUDIT_PAGE_SIZES as readonly number[]).includes(n) ? n : AUDIT_DEFAULT_PAGE_SIZE;
+}
+
+export function auditStateToParams(f: AuditFilterState, extra?: { page?: number; ps?: AuditPs }): URLSearchParams {
   const p = new URLSearchParams();
   if (f.user) p.set("user", f.user);
   if (f.role) p.set("role", f.role);
@@ -284,6 +302,6 @@ export function auditStateToParams(f: AuditFilterState, extra?: { page?: number;
   if (f.q) p.set("q", f.q);
   if (f.changes) p.set("changes", "1");
   if (extra?.page && extra.page > 1) p.set("page", String(extra.page));
-  if (extra?.ps && extra.ps !== 50) p.set("ps", String(extra.ps));
+  if (extra?.ps && extra.ps !== AUDIT_DEFAULT_PAGE_SIZE) p.set("ps", String(extra.ps));
   return p;
 }
