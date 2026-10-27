@@ -63,7 +63,7 @@ export async function getFieldList(): Promise<{ period: string; rows: FieldTuple
     // luna aceasta + cele două dinainte: citirile din teren mai noi decât indexul din 1C
     prisma.meterReading.findMany({
       where: { period: { gte: shiftPeriod(period, 2) } },
-      select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true },
+      select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, distanceM: true },
     }),
   ]);
   const thisMonth = new Map<string, (typeof recent)[number]>();
@@ -87,6 +87,7 @@ export async function getFieldList(): Promise<{ period: string; rows: FieldTuple
       r.id, r.contor, r.name, r.address,
       useField ? fb.value : r.curr, useField ? fbDate : r.currDate,
       cur ? cur.value : null, cur ? cur.readAt.getTime() : null, cur?.photoUrl ? 1 : 0,
+      cur ? cur.userName : null, cur ? cur.distanceM : null,
     ];
   });
   return { period, rows };

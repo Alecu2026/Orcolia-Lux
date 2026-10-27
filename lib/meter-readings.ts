@@ -48,9 +48,9 @@ export function parseIndex(raw: string): number | null {
 
 /**
  * Un contor din lista de teren, ca tuplu: 0 id, 1 nr. contor, 2 abonat, 3 adresă, 4 ultimul index cunoscut (m³), 5 data lui („YYYY-MM-DD"),
- * 6 indexul citit luna aceasta (null = necitit), 7 când a fost citit (ms), 8 are poză (0/1).
+ * 6 indexul citit luna aceasta (null = necitit), 7 când a fost citit (ms), 8 are poză (0/1), 9 cine a citit, 10 distanța (m) față de locația citirii anterioare.
  */
-export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1];
+export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null];
 
 export type FieldRow = {
   id: string;
@@ -62,9 +62,21 @@ export type FieldRow = {
   value: number | null;
   readAt: number | null;
   photo: boolean;
+  /** Cine a făcut citirea (luna aceasta). */
+  by: string | null;
+  /** Distanța (m) față de locația citirii anterioare — mare = de verificat. */
+  distanceM: number | null;
+  /** Consumul = indexul citit − ultimul index cunoscut (m³), sau null dacă lipsește unul dintre ele. */
+  consum: number | null;
   /** Text de căutare (litere mici). */
   _h: string;
+  /** Adresa în litere mici (filtrul „Stradă / adresă”). */
+  _a: string;
 };
+
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+/** Consumul unui rând: indexul de luna aceasta minus ultimul index cunoscut. */
+export const fieldConsum = (value: number | null, lastIndex: number | null): number | null => (value != null && lastIndex != null ? round3(value - lastIndex) : null);
 
 export function decodeField(t: FieldTuple[]): FieldRow[] {
   return t.map((x) => ({
@@ -77,8 +89,99 @@ export function decodeField(t: FieldTuple[]): FieldRow[] {
     value: x[6],
     readAt: x[7],
     photo: x[8] === 1,
+    by: x[9] ?? null,
+    distanceM: x[10] ?? null,
+    consum: fieldConsum(x[6], x[4]),
     _h: [x[1], x[2], x[3]].filter(Boolean).join("\n").toLowerCase(),
+    _a: (x[3] ?? "").toLowerCase(),
   }));
+}
+
+// ── Filtre + sortare pentru tabelul „Citiri teren” (rulează în browser, pe toată lista) ───────────────────────────────
+
+export type FieldFilters = {
+  q: string;
+  /** Stradă / adresă (conține). */
+  street: string;
+  /** „unread” = necitite luna aceasta (implicit), „read” = citite, „all” = toate. */
+  status: "unread" | "read" | "all";
+  photo: "" | "yes" | "no";
+  /** De verificat: consum negativ / neobișnuit de mare / zero, sau citit departe de locația anterioară. */
+  check: "" | "lower" | "high" | "zero" | "far";
+  /** Cine a citit (numele). */
+  by: string;
+  sort: "" | "contor" | "name" | "readDesc" | "consumDesc" | "consumAsc";
+};
+
+export const EMPTY_FIELD_FILTERS: FieldFilters = { q: "", street: "", status: "unread", photo: "", check: "", by: "", sort: "" };
+
+const oneOf = <T extends string>(v: unknown, allowed: readonly T[], dflt: T): T => (typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : dflt);
+
+export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters {
+  const txt = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 80) : "");
+  return {
+    q: txt(raw.q),
+    street: txt(raw.street),
+    status: oneOf(raw.status, ["unread", "read", "all"] as const, "unread"),
+    photo: oneOf(raw.photo, ["", "yes", "no"] as const, ""),
+    check: oneOf(raw.check, ["", "lower", "high", "zero", "far"] as const, ""),
+    by: txt(raw.by),
+    sort: oneOf(raw.sort, ["", "contor", "name", "readDesc", "consumDesc", "consumAsc"] as const, ""),
+  };
+}
+
+/** Câte filtre sunt active (față de starea implicită: necitite, fără alte filtre). Sortarea nu se numără. */
+export function countActiveFieldFilters(f: FieldFilters): number {
+  return (f.q ? 1 : 0) + (f.street ? 1 : 0) + (f.status !== "unread" ? 1 : 0) + (f.photo ? 1 : 0) + (f.check ? 1 : 0) + (f.by ? 1 : 0);
+}
+
+export function fieldFiltersToParams(f: FieldFilters): URLSearchParams {
+  const p = new URLSearchParams();
+  if (f.q) p.set("q", f.q);
+  if (f.street) p.set("street", f.street);
+  if (f.status !== "unread") p.set("status", f.status);
+  if (f.photo) p.set("photo", f.photo);
+  if (f.check) p.set("check", f.check);
+  if (f.by) p.set("by", f.by);
+  if (f.sort) p.set("sort", f.sort);
+  return p;
+}
+
+const collator = new Intl.Collator("ro", { numeric: true });
+
+/** Rândul e „de verificat”? (consum negativ, salt mare sau citit departe de locația anterioară) */
+export const fieldSuspect = (r: FieldRow): "lower" | "high" | "far" | null =>
+  r.consum != null && r.consum < 0 ? "lower" : r.consum != null && r.consum > JUMP_CONFIRM_M3 ? "high" : r.distanceM != null && r.distanceM > FAR_METERS ? "far" : null;
+
+/** Filtrează și sortează lista completă. Fără sortare explicită păstrează ordinea adreselor (cea de pe server). */
+export function filterField(rows: FieldRow[], f: FieldFilters): FieldRow[] {
+  const tokens = f.q.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5);
+  const street = f.street.toLowerCase();
+  const out = rows.filter((r) => {
+    if (f.status === "unread" ? r.value != null : f.status === "read" ? r.value == null : false) return false;
+    if (f.photo === "yes" ? !r.photo : f.photo === "no" ? r.photo : false) return false;
+    if (f.by && r.by !== f.by) return false;
+    if (street && !r._a.includes(street)) return false;
+    for (const tk of tokens) if (!r._h.includes(tk)) return false;
+    if (f.check) {
+      if (r.value == null) return false;
+      const ok =
+        f.check === "lower" ? r.consum != null && r.consum < 0
+        : f.check === "high" ? r.consum != null && r.consum > JUMP_CONFIRM_M3
+        : f.check === "zero" ? r.consum === 0
+        : r.distanceM != null && r.distanceM > FAR_METERS;
+      if (!ok) return false;
+    }
+    return true;
+  });
+  switch (f.sort) {
+    case "contor": return out.sort((a, b) => collator.compare(a.contor, b.contor));
+    case "name": return out.sort((a, b) => collator.compare(a.name, b.name));
+    case "readDesc": return out.sort((a, b) => (b.readAt ?? -1) - (a.readAt ?? -1));
+    case "consumDesc": return out.sort((a, b) => (b.consum ?? -Infinity) - (a.consum ?? -Infinity));
+    case "consumAsc": return out.sort((a, b) => (a.consum ?? Infinity) - (b.consum ?? Infinity));
+    default: return out;
+  }
 }
 
 /** O citire salvată, așa cum o primește interfața. */
