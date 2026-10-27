@@ -39,7 +39,7 @@ export type PermissionKey =
   | "kanban.view"
   | "calendar.view"
   | "map.view"
-  // Plătitori (pagina Plătitori, fișa, decontarea, Notificări plătitori)
+  // Plătitori (pagina Plătitori, fișa, decontarea, Notificări plătitori, Contoare)
   | "payers.view"
   | "payers.edit"
   | "payers.notify"
@@ -112,7 +112,7 @@ export const PERMISSION_GROUPS: {
   {
     group: "Plătitori",
     items: [
-      { key: "payers.view", label: "Vizualizare (pagina Plătitori, fișa, decontarea)" },
+      { key: "payers.view", label: "Vizualizare (paginile Plătitori și Contoare, fișa, decontarea)" },
       { key: "payers.edit", label: "Editare (date, notițe)" },
       { key: "payers.notify", label: "Notificări (trimitere SMS/email/apel, șabloane)" },
       { key: "payers.delete", label: "Ștergere" },

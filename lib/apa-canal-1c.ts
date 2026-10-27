@@ -199,8 +199,8 @@ export function makeNameFixer(
   };
 }
 
-const SVC_WATER = "Потребление воды";
-const SVC_SEWER = "Сброс канализации";
+export const SVC_WATER = "Потребление воды";
+export const SVC_SEWER = "Сброс канализации";
 // Valorile enumerate (tip sector, sursa citirii, tip serviciu) rămân EXACT ca în 1C — tabelul e făcut
 // pentru ca ei să-și recunoască datele, nu pentru traducere.
 

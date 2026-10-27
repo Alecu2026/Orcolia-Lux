@@ -7,6 +7,7 @@ import { notifyUsers, filteredAdminRecipients } from "@/lib/services/notificatio
 import { checkUnansweredEmailTickets, checkAutoCloseEmailTickets } from "@/lib/services/email-ticket";
 import { pollInbox } from "@/lib/services/imap-poller";
 import { prewarmPayers } from "@/lib/services/payer-cache";
+import { prewarmMeters } from "@/lib/services/meter-cache";
 import { normalizeApaCanalDueDates } from "@/lib/services/apa-canal-due";
 import { prewarmInvoices } from "@/lib/services/invoice-cache";
 import { TASK_STATUS_RO, TASK_TYPE_RO } from "@/lib/telegram";
@@ -50,6 +51,7 @@ async function run() {
     checkAutoCloseEmailTickets(),
     pollInbox(),
     prewarmPayers().catch((e) => console.error("[cron] pre-încălzirea listei de plătitori:", e)),
+    prewarmMeters().catch((e) => console.error("[cron] pre-încălzirea listei de contoare:", e)),
     prewarmInvoices().catch((e) => console.error("[cron] pre-încălzirea listei de facturi:", e)),
   ]);
 

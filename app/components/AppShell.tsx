@@ -56,6 +56,7 @@ const NAV: NavItem[] = [
   { href: "/clients",          labelKey: "clients",     icon: usersIcon(),     perm: "clients.view" },
   { href: "/platitori",        labelKey: "payers",      icon: invoiceIcon(),   perm: "payers.view" },
   { href: "/notificari-platitori", labelKey: "payerNotify", icon: bellIcon(),  perm: "payers.view" },
+  { href: "/contoare",         labelKey: "meters",     icon: meterIcon(),     perm: "payers.view" },
   { href: "/pbx",              labelKey: "pbx",         icon: phoneIcon(),     perm: "pbx.view" },
   { href: "/invoices",         labelKey: "invoices",    icon: invoiceIcon(),   perm: "invoices.view" },
   { href: "/users",            labelKey: "users",       icon: userIcon(),      perm: "users.manage" },
@@ -451,6 +452,9 @@ function invoiceIcon() {
 }
 function phoneIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/></svg>;
+}
+function meterIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l3.5-5"/><path d="M3 20h18"/></svg>;
 }
 function bellIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>;

@@ -15,6 +15,7 @@ const en: Messages = {
     clients: "Clients",
     payers: "Payers",
     payerNotify: "Notifications",
+    meters: "Meters",
     pbx: "PBX",
     users: "Users",
     auditLogs: "Audit Logs",

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { prefetchPayerDataset } from "./usePayerDataset";
 import { prefetchInvoiceDataset } from "./useInvoiceDataset";
+import { prefetchMeterDataset } from "./useMeterDataset";
 
 /**
  * Cine are acces la Plătitori / Facturi primește listele în IndexedDB în fundal, după ce pagina curentă s-a liniștit: când deschide pagina,
@@ -17,6 +18,7 @@ export default function PayersPrefetch({ payers = true, invoices = false }: { pa
       const p = location.pathname;
       if (payers && !p.startsWith("/platitori") && !p.startsWith("/notificari-platitori")) void prefetchPayerDataset();
       if (invoices && !p.startsWith("/invoices")) setTimeout(() => void prefetchInvoiceDataset(), 1500);
+      if (payers && !p.startsWith("/contoare")) setTimeout(() => void prefetchMeterDataset(), 3000);
     }, 3000);
     return () => window.clearTimeout(id);
   }, [payers, invoices]);

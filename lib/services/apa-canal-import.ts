@@ -761,6 +761,8 @@ export async function importApaCanalBuffer(buf: Buffer, opts: { ownerId: string;
   const applied = await applyApaCanalPlan(prisma, plan);
   try {
     await syncOneCRecords(prisma, data);
+    // Lista de contoare (/contoare) se construiește din aceste înregistrări: o reconstruim în fundal.
+    await import("./meter-cache").then((m) => m.invalidateMeters()).catch((e) => console.error("[apa-canal-import] nu am putut marca lista de contoare:", e));
   } catch (e) {
     console.error("[apa-canal-import] sincronizarea Tabelului 1C a eșuat:", e);
   }

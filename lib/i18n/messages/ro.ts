@@ -13,6 +13,7 @@
     clients: "Clienți",
     payers: "Plătitori",
     payerNotify: "Notificări",
+    meters: "Contoare",
     pbx: "PBX",
     users: "Utilizatori",
     auditLogs: "Audit Logs",

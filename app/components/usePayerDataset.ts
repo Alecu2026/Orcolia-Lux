@@ -27,7 +27,7 @@ function openDb(): Promise<IDBDatabase> {
     req.onerror = () => reject(req.error);
   });
 }
-async function idbGet<T>(key: string): Promise<T | undefined> {
+export async function idbGet<T>(key: string): Promise<T | undefined> {
   try {
     const db = await openDb();
     return await new Promise<T | undefined>((resolve, reject) => {
@@ -39,7 +39,7 @@ async function idbGet<T>(key: string): Promise<T | undefined> {
     return undefined;
   }
 }
-async function idbSet(key: string, value: unknown): Promise<void> {
+export async function idbSet(key: string, value: unknown): Promise<void> {
   try {
     const db = await openDb();
     await new Promise<void>((resolve, reject) => {
