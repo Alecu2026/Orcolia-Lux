@@ -44,6 +44,8 @@ export type PermissionKey =
   | "payers.edit"
   | "payers.notify"
   | "payers.delete"
+  // Citiri lunare din teren (introducere index, locație, poză) — fără acces la datele plătitorilor
+  | "meters.read"
   // PBX / apeluri
   | "pbx.view"
   | "pbx.manage"
@@ -116,6 +118,7 @@ export const PERMISSION_GROUPS: {
       { key: "payers.edit", label: "Editare (date, notițe)" },
       { key: "payers.notify", label: "Notificări (trimitere SMS/email/apel, șabloane)" },
       { key: "payers.delete", label: "Ștergere" },
+      { key: "meters.read", label: "Citiri contoare (introducere index lunar, locație, poză) — pagina Citiri teren" },
     ],
   },
   {
@@ -210,7 +213,7 @@ export function homePath(user: PermissionSubject): string {
   const order: [PermissionKey, string][] = [
     ["dashboard.view", "/dashboard"], ["tasks.view", "/tasks"], ["tickets.view", "/tickets"], ["appointments.view", "/appointments"],
     ["projects.view", "/projects"], ["kanban.view", "/kanban"], ["calendar.view", "/calendar"], ["payers.view", "/platitori"],
-    ["clients.view", "/clients"], ["invoices.view", "/invoices"], ["pbx.view", "/pbx"], ["map.view", "/harta"], ["teams.view", "/team"],
+    ["clients.view", "/clients"], ["invoices.view", "/invoices"], ["pbx.view", "/pbx"], ["map.view", "/harta"], ["teams.view", "/team"], ["meters.read", "/contoare/citiri"],
     ["users.manage", "/users"],
   ];
   for (const [k, path] of order) if (can(user, k)) return path;

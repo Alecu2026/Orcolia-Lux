@@ -16,6 +16,7 @@ const ru: Messages = {
     payers: "Плательщики",
     payerNotify: "Уведомления",
     meters: "Счётчики",
+    fieldReadings: "Показания с выезда",
     pbx: "АТС",
     users: "Пользователи",
     auditLogs: "Журнал аудита",

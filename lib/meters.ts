@@ -349,3 +349,13 @@ export function enumLabel(raw: string | null | undefined, t: (ro: string) => str
   const key = ONEC_ENUM[raw.trim()];
   return key ? t(key) : raw;
 }
+
+/**
+ * Consumul mediu lunar din ultimele `n` citiri (cele mai noi primele în `history`). „Среднее значение" din 1C nu e bun pentru asta: e 0 la citirile
+ * reale și se completează doar la consumul estimat — media se calculează din consumurile efective.
+ */
+export function averageConsum(history: { consum: number }[], n = 12): { avg: number; count: number } | null {
+  const last = history.slice(0, n).filter((h) => Number.isFinite(h.consum));
+  if (last.length === 0) return null;
+  return { avg: last.reduce((s, h) => s + h.consum, 0) / last.length, count: last.length };
+}

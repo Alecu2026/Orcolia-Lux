@@ -14,6 +14,7 @@
     payers: "Plătitori",
     payerNotify: "Notificări",
     meters: "Contoare",
+    fieldReadings: "Citiri teren",
     pbx: "PBX",
     users: "Utilizatori",
     auditLogs: "Audit Logs",

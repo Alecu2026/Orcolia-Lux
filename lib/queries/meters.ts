@@ -208,7 +208,24 @@ export type MeterHistoryItem = {
   sursa: string;
 };
 
+/** Datele contorului pe o lună (luna citirii; dacă n-are citire — luna documentului 1C): citirea și liniile de calcul din documentul 1C respectiv. */
+export type MeterMonth = {
+  /** „YYYY-MM” */
+  month: string;
+  docDate: string | null;
+  prev: number | null;
+  prevDate: string | null;
+  curr: number | null;
+  currDate: string | null;
+  consum: number | null;
+  medie: number | null;
+  sursa: string | null;
+  lines: OneCLine[];
+};
+
 export type MeterDetail = {
+  /** Datele pe luni (cele mai noi primele). */
+  months: MeterMonth[];
   /** Câmpurile brute din registrul de contoare 1C (perioadă, sub-abonat, sub-contract…). */
   meter: OneCMeter | null;
   reading: OneCReading | null;
@@ -230,7 +247,7 @@ export type MeterDetail = {
 /** Răspunsul rutei de detalii: detaliile contorului + referința facturii curente (pentru „Vezi” / „Editează”). */
 export type MeterDetailResponse = MeterDetail & { invoice: { id: string; publicToken: string } | null };
 
-const EMPTY_DETAIL: MeterDetail = { meter: null, reading: null, lines: [], consumer: null, history: [], subscriber: null };
+const EMPTY_DETAIL: MeterDetail = { months: [], meter: null, reading: null, lines: [], consumer: null, history: [], subscriber: null };
 
 /** Împarte id-ul `<cheie abonat>~<nr. contor>~<k>` (nr. contor și k sunt după ultimele două „~”). */
 export function parseMeterId(id: string): { subKey: string; contor: string; k: number } | null {
@@ -277,8 +294,30 @@ export async function getMeterDetail(id: string, opts: { historyLimit?: number }
 
   const history: MeterHistoryItem[] = [];
   const seenRead = new Set<string>();
+  const byMonth = new Map<string, MeterMonth>();
   for (const m of recs) {
     const mine = arr<OneCReading>(m.readings).filter((r) => r.contor === it.meter.contor && (!it.meter.consumator || r.consumator === it.meter.consumator));
+    // luna: a citirii cea mai recentă din document; fără citire — luna documentului
+    let top: OneCReading | null = null;
+    for (const r of mine) if (!top || (r.dataCitire ?? "") >= (top.dataCitire ?? "")) top = r;
+    const month = (top?.dataCitire ?? m.dataDoc ?? "").slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(month)) {
+      const prevM = byMonth.get(month);
+      if (!prevM || (m.dataDoc ?? "") > (prevM.docDate ?? "")) {
+        byMonth.set(month, {
+          month,
+          docDate: m.dataDoc,
+          prev: top ? top.citirePrec : null,
+          prevDate: top?.dataPrec ?? null,
+          curr: top ? top.citire : null,
+          currDate: top?.dataCitire ?? null,
+          consum: top ? top.consum : null,
+          medie: top ? top.medie : null,
+          sursa: top?.sursa || null,
+          lines: arr<OneCLine>(m.lines).filter((l) => l.contor === it.meter.contor && (!it.meter.consumator || l.consumator === it.meter.consumator)),
+        });
+      }
+    }
     for (const r of mine) {
       const key = `${r.dataCitire}|${r.citire}|${r.sursa}`;
       if (seenRead.has(key)) continue;
@@ -289,6 +328,7 @@ export async function getMeterDetail(id: string, opts: { historyLimit?: number }
   history.sort((a, b) => (b.currDate ?? b.docDate ?? "").localeCompare(a.currDate ?? a.docDate ?? ""));
 
   return {
+    months: [...byMonth.values()].sort((a, b) => b.month.localeCompare(a.month)),
     meter: it.meter,
     reading: it.reading,
     lines: it.lines,

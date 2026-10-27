@@ -1163,3 +1163,39 @@ model PayerCacheEntry {
   /// {"v":2,"at":ms,"sorted":true,"rows":[tupluri],"months":[...]} comprimat gzip
   gz       Bytes
 }
+
+// Citiri lunare din teren: persoana responsabilă merge la fiecare contor, scrie indexul (m³) pe luna curentă; se păstrează locația (GPS) de la
+// momentul citirii și, opțional, o poză cu contorul. O citire pe contor și lună (se poate corecta în aceeași lună). Fără relații: istoricul rămâne
+// chiar dacă utilizatorul sau abonatul sunt șterși (numele operatorului e copiat aici). `meterId` = id-ul stabil din lista de contoare
+// (vezi lib/queries/meters.ts: „<cheie abonat>~<nr. contor>~<k>” sau „a:<idClient>”).
+model MeterReading {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  meterId      String
+  contor       String
+  clientId     String?  @db.ObjectId
+  /// luna citirii, „YYYY-MM” (fusul orar al firmei)
+  period       String
+  /// indexul contorului, în m³
+  value        Float
+  /// indexul anterior cunoscut în momentul citirii (1C sau o citire din teren mai veche) — pentru consum
+  prevValue    Float?
+  readAt       DateTime
+  lat          Float?
+  lng          Float?
+  /// precizia locației, în metri
+  accuracy     Float?
+  /// distanța față de locația ultimei citiri a aceluiași contor, în metri (semnal de verificare)
+  distanceM    Float?
+  photoUrl     String?
+  photoName    String?
+  note         String?
+  userId       String   @db.ObjectId
+  userName     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([meterId, period])
+  @@index([period, readAt])
+  @@index([meterId, readAt])
+  @@index([userId, period])
+}

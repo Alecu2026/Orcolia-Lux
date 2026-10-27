@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { MeterDetailResponse } from "@/lib/queries/meters";
 import InvoiceViewButton from "./InvoiceViewButton";
-import { addressKey, enumLabel, type MeterRow, type MeterRowBase } from "@/lib/meters";
+import { addressKey, averageConsum, enumLabel, type MeterRow, type MeterRowBase } from "@/lib/meters";
 import { INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import { IconX } from "./icons";
 import { useLocale, useT } from "@/lib/i18n/context";
@@ -93,6 +93,7 @@ export default function MeterDetailDialog({
   const rd = detail?.reading ?? null;
   const sub = detail?.subscriber ?? null;
   const cons = detail?.consumer ?? null;
+  const avg = detail ? averageConsum(detail.history) : null;
   const hasSub = !!m && !!(m.subAbonat || m.subContract || m.subCont || m.subConsumator || m.subContor);
 
   return (
@@ -158,7 +159,7 @@ export default function MeterDetailDialog({
           <Item label={t("Citire anterioară")} value={row.prev != null ? `${nf(row.prev)} m³${row.prevDate ? ` · ${dmy(row.prevDate)}` : ""}` : null} />
           <Item label={t("Citire curentă")} value={row.curr != null ? <b>{`${nf(row.curr)} m³${row.currDate ? ` · ${dmy(row.currDate)}` : ""}`}</b> : null} />
           <Item label={t("Consum (m³)")} value={row.consum != null ? <b>{nf(row.consum)} m³</b> : null} />
-          <Item label={t("Consum mediu")} value={rd ? `${nf(rd.medie)} m³` : null} loading={pending} />
+          <Item label={t("Consum mediu lunar")} value={avg ? t("{v} m³ (din ultimele {n} citiri)", { v: nf(avg.avg), n: avg.count }) : null} loading={pending} />
           <Item label={t("Consum sub-contoare")} value={rd && rd.consumSubcontoare ? `${nf(rd.consumSubcontoare)} m³` : null} loading={pending} />
           <Item label={t("Sursa citirii")} value={enumLabel(row.sursa, t)} />
         </Section>

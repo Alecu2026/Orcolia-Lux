@@ -622,6 +622,8 @@ export default function MetersManager({
 const MeterTr = memo(function MeterTr({ r, canTask, onOpen }: { r: MeterRowBase; canTask: boolean; onOpen: (r: MeterRowBase) => void }) {
   const t = useT();
   const { num, money } = getFmt(dateTag(useLocale()));
+  // Pagina contorului se pregătește în fundal când treci cu mouse-ul / atingi numărul, ca la click să se deschidă instant (ca la meniul din stânga).
+  const [intent, setIntent] = useState(false);
   const dmy = (d: string | null) => (d ? d.slice(0, 10).split("-").reverse().join(".") : "");
   const st = r.invoice ? INVOICE_STATUS[r.invoice.status as InvoiceStatusKey] : null;
   const water = (vol: number | null, sum: number | null) => (vol == null && sum == null ? null : `${vol == null ? "—" : num(vol)} m³ · ${sum == null ? "—" : `${money(sum)} MDL`}`);
@@ -648,7 +650,7 @@ const MeterTr = memo(function MeterTr({ r, canTask, onOpen }: { r: MeterRowBase;
       style={{ gridTemplateColumns: canTask ? GRID_TASK : GRID, height: ROW_H, contain: "layout style" }}
     >
       <div role="cell" className={`${CELL} sticky left-0 z-10 bg-[var(--color-surface)] font-mono font-medium`}>
-        <Link href={`/contoare/${encodeURIComponent(r.id)}`} prefetch={false} onClick={(e) => e.stopPropagation()} title={t("Deschide pagina contorului")} className="hover:text-brand hover:underline">{r.contor}</Link>
+        <Link href={`/contoare/${encodeURIComponent(r.id)}`} prefetch={intent ? true : null} onMouseEnter={() => setIntent(true)} onTouchStart={() => setIntent(true)} onFocus={() => setIntent(true)} onClick={(e) => e.stopPropagation()} title={t("Deschide pagina contorului")} className="hover:text-brand hover:underline">{r.contor}</Link>
       </div>
       <div role="cell" className={CELL} title={r.name}>{r.name}</div>
       <div role="cell" className={CELL}>{r.account ?? r.contract ?? "—"}</div>

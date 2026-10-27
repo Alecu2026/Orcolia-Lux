@@ -57,6 +57,7 @@ const NAV: NavItem[] = [
   { href: "/platitori",        labelKey: "payers",      icon: invoiceIcon(),   perm: "payers.view" },
   { href: "/notificari-platitori", labelKey: "payerNotify", icon: bellIcon(),  perm: "payers.view" },
   { href: "/contoare",         labelKey: "meters",     icon: meterIcon(),     perm: "payers.view" },
+  { href: "/contoare/citiri",  labelKey: "fieldReadings", icon: pinIcon(),    perm: "meters.read" },
   { href: "/pbx",              labelKey: "pbx",         icon: phoneIcon(),     perm: "pbx.view" },
   { href: "/invoices",         labelKey: "invoices",    icon: invoiceIcon(),   perm: "invoices.view" },
   { href: "/users",            labelKey: "users",       icon: userIcon(),      perm: "users.manage" },
@@ -148,7 +149,9 @@ function NavList({
   return (
     <nav className="flex flex-col gap-1">
       {visibleNav(items, perms).map((item) => {
-        const active = path === item.href || path.startsWith(`${item.href}/`);
+        // „/contoare” nu se luminează și pe „/contoare/citiri”: câștigă elementul cu adresa cea mai specifică
+        const hit = (h: string) => path === h || path.startsWith(`${h}/`);
+        const active = hit(item.href) && !items.some((o) => o.href.length > item.href.length && hit(o.href));
         const label = m.nav[item.labelKey];
         return (
           <NavLink
@@ -260,9 +263,9 @@ function AppShellInner({
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [realPath]);
-  const current = NAV.find((n) => path.startsWith(n.href))
-    ? m.nav[NAV.find((n) => path.startsWith(n.href))!.labelKey]
-    : m.nav.dashboard;
+  // titlul: elementul de meniu cu adresa cea mai specifică (ex. „Citiri teren” înainte de „Contoare”)
+  const hit = NAV.filter((n) => path.startsWith(n.href)).sort((a, b) => b.href.length - a.href.length)[0];
+  const current = hit ? m.nav[hit.labelKey] : m.nav.dashboard;
 
   return (
     <ToastProvider>
@@ -455,6 +458,9 @@ function phoneIcon() {
 }
 function meterIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l3.5-5"/><path d="M3 20h18"/></svg>;
+}
+function pinIcon() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/></svg>;
 }
 function bellIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>;
