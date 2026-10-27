@@ -129,6 +129,13 @@ export type ExistingClientLite = {
   name: string;
   /** Telefonul din aplicație — datele din 1C îl suprascriu mereu (când 1C are unul). */
   phone?: string | null;
+  /** Instantaneul datelor 1C de pe fișa plătitorului — comparat cu 1C la fiecare sincronizare (oglindire). */
+  consumAddress?: string | null;
+  meterNumber?: string | null;
+  meterCurrReading?: number | null;
+  meterReadingEstimated?: boolean | null;
+  lastInvoiceGrandTotal?: number | null;
+  lastInvoiceSectorNr?: string | null;
   meterSeries: string | null;
   portalActivatedAt: Date | null;
   /** Data ultimei facturi (instantaneul din Client) — un import mai vechi nu are voie să o dea înapoi. */
@@ -149,6 +156,10 @@ export type ExistingInvoiceLite = {
   datoriiAvans?: number | null;
   grandTotal?: number | null;
   dueDate?: Date | null;
+  consumAddress?: string | null;
+  consumerName?: string | null;
+  sectorNr?: string | null;
+  isEstimatedVolume?: boolean | null;
 };
 
 // Scadența facturilor Apă-Canal = ziua de 25 a lunii facturii (vezi lib/apa-canal-due.ts).
@@ -309,19 +320,58 @@ export function buildApaCanalPlan(
       };
     });
 
-  // Datele din 1C câștigă MEREU: telefonul de acolo suprascrie ce s-a scris în aplicație (și o schimbare făcută de mână se strică la următoarea sincronizare). Dacă 1C n-are telefon (câmp gol), numărul din aplicație rămâne — nu îl ștergem.
-  // Numele la fel, dar doar dacă 1C nu l-a pierdut: exportul înlocuiește Ș/Ț cu „?”, iar un nume cu „?” ar strica numele corectat în aplicație.
-  const overwriteFrom1C = (c: ExistingClientLite, name: string, phone: string | null): Prisma.ClientUpdateInput => {
-    const u: Prisma.ClientUpdateInput = {};
-    if (phone && phone !== (c.phone ?? null)) {
-      u.phone = phone;
-      c.phone = phone;
+  // Oglindire: datele din 1C câștigă MEREU și se aplică zilnic — ce e în 1C e și în aplicație. Câmpurile care există DOAR în aplicație (notițe, email, Telegram, parolă portal, programări...) nu se ating.
+  // Un câmp GOL în 1C nu șterge valoarea din aplicație. Numele se suprascrie doar dacă 1C nu l-a pierdut: exportul înlocuiește Ș/Ț cu „?”, iar un nume cu „?” ar strica numele corectat în aplicație.
+  type ClientChange = { camp: string; api: string; aplicatie: string };
+  const mirrorClient = (
+    c: ExistingClientLite,
+    v: { name: string; phone: string | null; snapshot?: { consumAddress: string | null; meterNumber: string | null; meterCurrReading: number | null; meterReadingEstimated: boolean; grandTotal: number; sectorNr: string | null } },
+  ): { upd: Prisma.ClientUpdateInput; changes: ClientChange[] } => {
+    const upd: Prisma.ClientUpdateInput = {};
+    const changes: ClientChange[] = [];
+    const chg = (camp: string, api: string, app: string | null | undefined) => changes.push({ camp: `Plătitor: ${camp}`, api, aplicatie: app || "—" });
+    if (v.phone && v.phone !== (c.phone ?? null)) {
+      chg("Telefon", v.phone, c.phone);
+      upd.phone = v.phone;
+      c.phone = v.phone;
     }
-    if (name && !name.includes("?") && name !== c.name) {
-      u.name = name;
-      c.name = name;
+    if (v.name && !v.name.includes("?") && v.name !== c.name) {
+      chg("Nume", v.name, c.name);
+      upd.name = v.name;
+      c.name = v.name;
     }
-    return u;
+    const sn = v.snapshot;
+    if (sn) {
+      if (sn.consumAddress && sn.consumAddress !== (c.consumAddress ?? null)) {
+        chg("Adresă", sn.consumAddress, c.consumAddress);
+        upd.consumAddress = sn.consumAddress;
+        c.consumAddress = sn.consumAddress;
+      }
+      if (sn.meterNumber && sn.meterNumber !== (c.meterNumber ?? null)) {
+        chg("Nr. contor", sn.meterNumber, c.meterNumber);
+        upd.meterNumber = sn.meterNumber;
+        c.meterNumber = sn.meterNumber;
+      }
+      if (sn.meterCurrReading !== null && sn.meterCurrReading !== (c.meterCurrReading ?? null)) {
+        chg("Citire curentă", String(sn.meterCurrReading), c.meterCurrReading == null ? null : String(c.meterCurrReading));
+        upd.meterCurrReading = sn.meterCurrReading;
+        c.meterCurrReading = sn.meterCurrReading;
+      }
+      if (sn.meterReadingEstimated !== (c.meterReadingEstimated ?? false)) {
+        upd.meterReadingEstimated = sn.meterReadingEstimated;
+        c.meterReadingEstimated = sn.meterReadingEstimated;
+      }
+      if (Math.abs(sn.grandTotal - (c.lastInvoiceGrandTotal ?? 0)) > 0.005) {
+        chg("Sold (MDL)", sn.grandTotal.toFixed(2), (c.lastInvoiceGrandTotal ?? 0).toFixed(2));
+        upd.lastInvoiceGrandTotal = sn.grandTotal;
+        c.lastInvoiceGrandTotal = sn.grandTotal;
+      }
+      if (sn.sectorNr && sn.sectorNr !== (c.lastInvoiceSectorNr ?? null)) {
+        upd.lastInvoiceSectorNr = sn.sectorNr;
+        c.lastInvoiceSectorNr = sn.sectorNr;
+      }
+    }
+    return { upd, changes };
   };
 
   let skippedNoDoc = 0;
@@ -406,6 +456,22 @@ export function buildApaCanalPlan(
         num("Calculat (MDL)", apiValues.calculat, stored.subtotal);
         num("Datorie/avans (MDL)", apiValues.datorie, stored.datoriiAvans);
         num("De achitat (MDL)", apiValues.deAchitat, stored.grandTotal);
+        txt("Adresă consum", consumAddress, stored.consumAddress);
+        txt("Sector", sectorNr, stored.sectorNr);
+        if (name && !name.includes("?") && name !== (stored.consumerName ?? null)) diffs.push({ camp: "Nume", api: name, aplicatie: stored.consumerName || "—" });
+        if (reading && meterReadingEstimated !== (stored.isEstimatedVolume ?? false)) diffs.push({ camp: "Volum estimat", api: meterReadingEstimated ? "da" : "nu", aplicatie: stored.isEstimatedVolume ? "da" : "nu" });
+      }
+      // Fișa plătitorului: oglindă 1C (doar de la cea mai nouă factură a lui — o lună veche are date vechi), independent de diferențele facturii.
+      const owner = stored?.clientId ? clientById.get(stored.clientId) : undefined;
+      let ownerChanges: ClientChange[] = [];
+      if (owner && (!owner.lastInvoiceIssueDate || issueDate >= owner.lastInvoiceIssueDate)) {
+        const m = mirrorClient(owner, {
+          name,
+          phone,
+          snapshot: { consumAddress, meterNumber, meterCurrReading: meterCurrReadingNum, meterReadingEstimated, grandTotal: apiValues.deAchitat, sectorNr },
+        });
+        ownerChanges = m.changes;
+        if (Object.keys(m.upd).length) clientUpdates.push({ id: owner.id, data: m.upd });
       }
       if (stored?.id && diffs.length) {
         invoiceUpdates.push({
@@ -420,33 +486,17 @@ export function buildApaCanalPlan(
             grandTotal: apiValues.deAchitat,
             dueDate: dueDateFrom(stored.issueDate),
             ...(sectorNr ? { sectorNr } : {}),
+            ...(consumAddress ? { consumAddress } : {}),
+            ...(name && !name.includes("?") ? { consumerName: name } : {}),
             ...(reading ? { monthlyConsumption: [{ label: String(issueDate.getUTCMonth() + 1), value: round2(reading.total) }] } : {}),
           },
           items: amountsChanged ? buildItems(stored.id, items) : null,
         });
-        // Instantaneul de pe fișa plătitorului (contor, sold) — doar dacă e factura lui cea mai nouă.
-        const owner = stored.clientId ? clientById.get(stored.clientId) : undefined;
-        if (owner && (!owner.lastInvoiceIssueDate || issueDate >= owner.lastInvoiceIssueDate)) {
-          clientUpdates.push({
-            id: owner.id,
-            data: {
-              ...(meterNumber ? { meterNumber } : {}),
-              meterCurrReading: meterCurrReadingNum,
-              meterReadingEstimated,
-              lastInvoiceGrandTotal: apiValues.deAchitat,
-              ...(sectorNr ? { lastInvoiceSectorNr: sectorNr } : {}),
-            },
-          });
-        }
-        docs.push({ ...docBase, status: "actualizat", diffs });
+        docs.push({ ...docBase, status: "actualizat", diffs: [...diffs, ...ownerChanges] });
+      } else if (ownerChanges.length) {
+        docs.push({ ...docBase, status: "actualizat", diffs: ownerChanges });
       } else {
         docs.push({ ...docBase, status: "existent" });
-      }
-      // Sincronizarea zilnică retrimite lunile deja importate: telefonul / numele din 1C se aplică și aici (doar de la cea mai nouă factură a plătitorului — o lună veche are date vechi).
-      const stableOwner = stored?.clientId ? clientById.get(stored.clientId) : undefined;
-      if (stableOwner && (!stableOwner.lastInvoiceIssueDate || issueDate >= stableOwner.lastInvoiceIssueDate)) {
-        const idUpd = overwriteFrom1C(stableOwner, name, phone);
-        if (Object.keys(idUpd).length) clientUpdates.push({ id: stableOwner.id, data: idUpd });
       }
       continue;
     }
@@ -514,7 +564,7 @@ export function buildApaCanalPlan(
         existing.apaCanalContract = contractRaw;
         clientByContract.set(contractRaw, existing);
       }
-      if (newest) Object.assign(upd, overwriteFrom1C(existing, name, phone));
+      if (newest) Object.assign(upd, mirrorClient(existing, { name, phone }).upd);
       clientUpdates.push({ id: existing.id, data: upd });
     } else {
       createdNew++;
@@ -764,12 +814,16 @@ export async function importApaCanalBuffer(buf: Buffer, opts: { ownerId: string;
     // iar plătitorii aparțin celui care i-a importat prima dată — altfel, la o sincronizare pornită de
     // altcineva, toți ar părea "noi" și s-ar dubla.
     prisma.client.findMany({
-      select: { id: true, name: true, phone: true, meterSeries: true, portalActivatedAt: true, lastInvoiceIssueDate: true, apaCanalContract: true },
+      select: {
+        id: true, name: true, phone: true, meterSeries: true, portalActivatedAt: true, lastInvoiceIssueDate: true, apaCanalContract: true,
+        consumAddress: true, meterNumber: true, meterCurrReading: true, meterReadingEstimated: true, lastInvoiceGrandTotal: true, lastInvoiceSectorNr: true,
+      },
     }),
     prisma.invoice.findMany({
       select: {
         id: true, number: true, clientId: true, issueDate: true, meterNumber: true, meterPrevReading: true,
         meterCurrReading: true, subtotal: true, datoriiAvans: true, grandTotal: true, dueDate: true,
+        consumAddress: true, consumerName: true, sectorNr: true, isEstimatedVolume: true,
       },
     }),
   ]);
