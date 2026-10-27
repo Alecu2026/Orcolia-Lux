@@ -127,6 +127,8 @@ export function parseApaCanalBuffer(input: Buffer): ApaCanalRawData {
 export type ExistingClientLite = {
   id: string;
   name: string;
+  /** Telefonul din aplicație — datele din 1C îl suprascriu mereu (când 1C are unul). */
+  phone?: string | null;
   meterSeries: string | null;
   portalActivatedAt: Date | null;
   /** Data ultimei facturi (instantaneul din Client) — un import mai vechi nu are voie să o dea înapoi. */
@@ -307,6 +309,21 @@ export function buildApaCanalPlan(
       };
     });
 
+  // Datele din 1C câștigă MEREU: telefonul de acolo suprascrie ce s-a scris în aplicație (și o schimbare făcută de mână se strică la următoarea sincronizare). Dacă 1C n-are telefon (câmp gol), numărul din aplicație rămâne — nu îl ștergem.
+  // Numele la fel, dar doar dacă 1C nu l-a pierdut: exportul înlocuiește Ș/Ț cu „?”, iar un nume cu „?” ar strica numele corectat în aplicație.
+  const overwriteFrom1C = (c: ExistingClientLite, name: string, phone: string | null): Prisma.ClientUpdateInput => {
+    const u: Prisma.ClientUpdateInput = {};
+    if (phone && phone !== (c.phone ?? null)) {
+      u.phone = phone;
+      c.phone = phone;
+    }
+    if (name && !name.includes("?") && name !== c.name) {
+      u.name = name;
+      c.name = name;
+    }
+    return u;
+  };
+
   let skippedNoDoc = 0;
   let meterSeriesCollisions = 0;
   let preservedActivated = 0;
@@ -425,6 +442,12 @@ export function buildApaCanalPlan(
       } else {
         docs.push({ ...docBase, status: "existent" });
       }
+      // Sincronizarea zilnică retrimite lunile deja importate: telefonul / numele din 1C se aplică și aici (doar de la cea mai nouă factură a plătitorului — o lună veche are date vechi).
+      const stableOwner = stored?.clientId ? clientById.get(stored.clientId) : undefined;
+      if (stableOwner && (!stableOwner.lastInvoiceIssueDate || issueDate >= stableOwner.lastInvoiceIssueDate)) {
+        const idUpd = overwriteFrom1C(stableOwner, name, phone);
+        if (Object.keys(idUpd).length) clientUpdates.push({ id: stableOwner.id, data: idUpd });
+      }
       continue;
     }
 
@@ -491,6 +514,7 @@ export function buildApaCanalPlan(
         existing.apaCanalContract = contractRaw;
         clientByContract.set(contractRaw, existing);
       }
+      if (newest) Object.assign(upd, overwriteFrom1C(existing, name, phone));
       clientUpdates.push({ id: existing.id, data: upd });
     } else {
       createdNew++;
@@ -740,7 +764,7 @@ export async function importApaCanalBuffer(buf: Buffer, opts: { ownerId: string;
     // iar plătitorii aparțin celui care i-a importat prima dată — altfel, la o sincronizare pornită de
     // altcineva, toți ar părea "noi" și s-ar dubla.
     prisma.client.findMany({
-      select: { id: true, name: true, meterSeries: true, portalActivatedAt: true, lastInvoiceIssueDate: true, apaCanalContract: true },
+      select: { id: true, name: true, phone: true, meterSeries: true, portalActivatedAt: true, lastInvoiceIssueDate: true, apaCanalContract: true },
     }),
     prisma.invoice.findMany({
       select: {

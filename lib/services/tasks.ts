@@ -17,7 +17,9 @@ import { formatTime, formatDate, DEFAULT_TZ } from "../date";
 import { can } from "../permissions";
 import { env } from "../env";
 import { notifyUsers, observerRecipients, filteredAdminRecipients } from "./notifications";
+import { Prisma } from "@prisma/client";
 import type { TaskStatus, TaskType, TaskPriority, CreatedFrom } from "@prisma/client";
+import { computeNextRun, parseReminderSchedule, type ReminderSchedule } from "../reminder-schedule";
 
 /** Contor atomic (MongoDB nu are autoincrement nativ) — folosit pentru Task.seq. */
 async function nextSeq(name: string): Promise<number> {
@@ -68,6 +70,8 @@ export type CreateTaskInput = {
   /** Adresa locului intervenției (text). */
   address?: string | null;
   reminderIntervalMinutes?: number | null;
+  /** Reamintire programată (are prioritate față de intervalul fix). */
+  reminderSchedule?: ReminderSchedule | null;
   bypassQuietHours?: boolean;
 };
 
@@ -369,8 +373,9 @@ export async function createTask(
   const status: TaskStatus = assigneeId || teamId ? "ASSIGNED" : "NEW";
   const seq = await nextSeq("task");
 
-  const intervalMin = input.reminderIntervalMinutes || null;
-  const nextReminderAt = intervalMin ? new Date(Date.now() + intervalMin * 60_000) : null;
+  const schedule = input.reminderSchedule ?? null;
+  const intervalMin = schedule ? null : input.reminderIntervalMinutes || null;
+  const nextReminderAt = schedule ? computeNextRun(schedule, new Date()) : intervalMin ? new Date(Date.now() + intervalMin * 60_000) : null;
 
   const task = await prisma.task.create({
     data: {
@@ -393,6 +398,7 @@ export async function createTask(
       createdFrom: source,
       status,
       reminderIntervalMinutes: intervalMin,
+      ...(schedule ? { reminderSchedule: schedule as unknown as Prisma.InputJsonValue } : {}),
       nextReminderAt,
       bypassQuietHours: input.bypassQuietHours ?? false,
     },
@@ -550,6 +556,7 @@ export async function changeTaskStatus(
       telegramChatId: true,
       telegramMessageId: true,
       reminderIntervalMinutes: true,
+      reminderSchedule: true,
       assignee: { select: { teamIds: true } },
       project: { select: { lat: true, lng: true, address: true } },
     },
@@ -588,7 +595,15 @@ export async function changeTaskStatus(
     }
   }
   // Redeschis (din finalizat/anulat) un task cu reamintiri periodice: reamintirile pornesc din nou (la închidere se opriseră).
-  const restartReminderAt = wasClosed && !closed && task.reminderIntervalMinutes ? new Date(Date.now() + task.reminderIntervalMinutes * 60_000) : null;
+  const savedSchedule = parseReminderSchedule(task.reminderSchedule);
+  const restartReminderAt =
+    wasClosed && !closed
+      ? savedSchedule
+        ? computeNextRun(savedSchedule, new Date())
+        : task.reminderIntervalMinutes
+          ? new Date(Date.now() + task.reminderIntervalMinutes * 60_000)
+          : null
+      : null;
   await prisma.task.update({
     where: { id: taskId },
     data: { status: newStatus, ...(closed ? { nextReminderAt: null } : restartReminderAt ? { nextReminderAt: restartReminderAt } : {}) },
@@ -965,6 +980,8 @@ export type UpdateTaskInput = {
   priority?: TaskPriority;
   dueAt?: Date | null;
   reminderIntervalMinutes?: number | null;
+  /** Reamintire programată (null = fără); când e dată, înlocuiește intervalul fix. */
+  reminderSchedule?: ReminderSchedule | null;
   bypassQuietHours?: boolean;
 };
 
@@ -1025,10 +1042,13 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
     // Termen nou: o eventuală notificare de întârziere trebuie să poată pleca din nou când noul termen trece.
     if ((input.dueAt?.getTime() ?? null) !== (task.dueAt?.getTime() ?? null)) data.overdueNotifiedAt = null;
   }
-  if ("reminderIntervalMinutes" in input) {
-    const intervalMin = input.reminderIntervalMinutes || null;
+  if ("reminderIntervalMinutes" in input || "reminderSchedule" in input) {
+    const schedule = input.reminderSchedule ?? null;
+    const intervalMin = schedule ? null : input.reminderIntervalMinutes || null;
     data.reminderIntervalMinutes = intervalMin;
-    data.nextReminderAt = intervalMin ? new Date(Date.now() + intervalMin * 60_000) : null;
+    // fără programare: null (pe MongoDB, `Prisma.DbNull` e refuzat la câmpurile Json)
+    data.reminderSchedule = schedule ? (schedule as unknown as Prisma.InputJsonValue) : null;
+    data.nextReminderAt = schedule ? computeNextRun(schedule, new Date()) : intervalMin ? new Date(Date.now() + intervalMin * 60_000) : null;
   }
   if ("bypassQuietHours" in input) data.bypassQuietHours = input.bypassQuietHours ?? false;
 
@@ -1198,24 +1218,28 @@ export async function checkTaskReminders(): Promise<{ checked: number; notified:
   if (DEMO) return { checked: 0, notified: 0 };
   const now = new Date();
 
-  const { loadStatusConfigs } = await import("../queries/ticket-status-config");
-  const { getStatusConfig } = await import("../ticket-status-config");
-  const statusCfgs = await loadStatusConfigs();
-
   const candidates = await prisma.task.findMany({
-    where: { status: { notIn: ["DONE", "CANCELLED"] }, nextReminderAt: { lte: now } },
+    // `not: null` e necesar: filtrul `lte` al lui Prisma pe MongoDB potrivește și documentele cu nextReminderAt = null (o programare „o singură dată” deja trimisă ar pleca la nesfârșit)
+    where: { status: { notIn: ["DONE", "CANCELLED"] }, AND: [{ nextReminderAt: { not: null } }, { nextReminderAt: { lte: now } }] },
     select: {
       id: true, seq: true, title: true, description: true,
       type: true, status: true, priority: true,
-      dueAt: true, reminderIntervalMinutes: true,
+      dueAt: true, reminderIntervalMinutes: true, reminderSchedule: true, nextReminderAt: true,
       creatorId: true, assigneeId: true, teamId: true,
       reminderMsgChatId: true, reminderMsgId: true,
       assignee: { select: { name: true, teamIds: true } },
       project: { select: { name: true, lat: true, lng: true, address: true } },
     },
   });
+  // Cron-ul rulează des (la 1–5 minute): cea mai mare parte a rulărilor nu au nimic scadent — ies aici, fără alte interogări.
+  if (candidates.length === 0) return { checked: 0, notified: 0 };
+
+  const { loadStatusConfigs } = await import("../queries/ticket-status-config");
+  const { getStatusConfig } = await import("../ticket-status-config");
+  const statusCfgs = await loadStatusConfigs();
   const tasks = candidates.filter((t) => {
-    if (!t.reminderIntervalMinutes) return false;
+    if (!t.nextReminderAt) return false;
+    if (!t.reminderIntervalMinutes && !parseReminderSchedule(t.reminderSchedule)) return false;
     const cfg = getStatusConfig(statusCfgs, t.status);
     if (cfg?.suppressAll) return false;
     return true;
@@ -1227,8 +1251,12 @@ export async function checkTaskReminders(): Promise<{ checked: number; notified:
   for (const task of tasks) {
     try {
       // Actualizăm nextReminderAt ÎNAINTE de trimitere — previne duble la rulare paralelă
-      const nextAt = new Date(now.getTime() + task.reminderIntervalMinutes! * 60_000);
-      await prisma.task.update({ where: { id: task.id }, data: { nextReminderAt: nextAt } });
+      // Programată: următoarea potrivită din programare (null după o reamintire „o singură dată” sau după „până la”); altfel intervalul fix.
+      const schedule = parseReminderSchedule(task.reminderSchedule);
+      const nextAt = schedule ? computeNextRun(schedule, now) : new Date(now.getTime() + task.reminderIntervalMinutes! * 60_000);
+      // „Revendicare” atomică: doar cine reușește să mute nextReminderAt (încă egal cu valoarea citită) trimite — altfel altă rulare (cron / temporizator) a trimis deja.
+      const claimed = await prisma.task.updateMany({ where: { id: task.id, nextReminderAt: task.nextReminderAt }, data: { nextReminderAt: nextAt } });
+      if (claimed.count === 0) continue;
 
       const isOverdue = task.dueAt && task.dueAt < now;
 

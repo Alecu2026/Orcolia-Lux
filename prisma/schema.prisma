@@ -335,6 +335,9 @@ model Task {
   // Reamintire periodică: interval în minute (null = dezactivat). nextReminderAt = ora trimiterii următoare.
   reminderIntervalMinutes Int?
   nextReminderAt          DateTime?
+  // Reamintire programată (alternativă la intervalul fix): o singură dată / zilnic / săptămânal / lunar / la interval personalizat, la o oră anume.
+  // JSON — vezi lib/reminder-schedule.ts. Când e setată, reminderIntervalMinutes e null; nextReminderAt = următoarea reamintire calculată din ea.
+  reminderSchedule        Json?
 
   // Ultimul mesaj de reamintire Telegram trimis asignatului (pentru a-l șterge la reamintirea următoare)
   reminderMsgChatId String?
@@ -383,6 +386,8 @@ model Task {
   @@index([updatedAt])
   @@index([emailThreadId])
   @@index([emailSource, status])
+  // cron-ul de reamintiri (la 1–5 minute) caută sarcinile cu reamintire scadentă
+  @@index([nextReminderAt])
 }
 
 // Mesaje email legate de un tichet (inbound = de la client, outbound = răspuns staff)

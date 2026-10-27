@@ -18,6 +18,8 @@ export type TaskRow = {
   progress: number;
   dueAt: Date | null;
   reminderIntervalMinutes: number | null;
+  /** Reamintire programată (JSON), vezi lib/reminder-schedule.ts. */
+  reminderSchedule: string | null;
   creatorId: string;
   assigneeId: string | null;
   teamId: string | null;
@@ -54,6 +56,7 @@ const TASK_SELECT = {
   progress: true,
   dueAt: true,
   reminderIntervalMinutes: true,
+  reminderSchedule: true,
   creatorId: true,
   assigneeId: true,
   teamId: true,
@@ -156,6 +159,7 @@ function toRow(t: TaskDbRow, l: Lookups): TaskRow {
     progress: t.progress,
     dueAt: t.dueAt,
     reminderIntervalMinutes: t.reminderIntervalMinutes ?? null,
+    reminderSchedule: t.reminderSchedule ? JSON.stringify(t.reminderSchedule) : null,
     creatorId: t.creatorId,
     assigneeId: t.assigneeId,
     teamId: t.teamId,
@@ -475,6 +479,7 @@ function toTuple(t: TaskDbRow): TaskTuple {
     t.chatLastSender === "CLIENT" && !!t.chatLastMsgAt && (!t.chatStaffReadAt || t.chatStaffReadAt < t.chatLastMsgAt) ? 1 : 0,
     t.type === "TICKET" ? (t.fromName || t.fromEmail || "").trim() : "",
     t.address ?? "",
+    t.reminderSchedule ? JSON.stringify(t.reminderSchedule) : null,
   ];
 }
 

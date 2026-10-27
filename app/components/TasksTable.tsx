@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { describeSchedule, parseReminderSchedule } from "@/lib/reminder-schedule";
 import Link from "next/link";
 import {
   getTaskRowAction,
@@ -45,7 +46,8 @@ import { addDaysToKey, dateKeyOf, formatTime, todayKey, zonedToUtc } from "@/lib
 import TicketChat from "./TicketChat";
 import { useMessages } from "@/lib/i18n/context";
 import type { CategoryLite } from "./types";
-import { useT } from "@/lib/i18n/context";
+import { useLocale, useT } from "@/lib/i18n/context";
+import { dateTag } from "@/lib/i18n/t";
 
 const PRIO_RANK = { LOW: 1, MEDIUM: 2, HIGH: 3, URGENT: 4 } as const;
 const PRIO_CLS: Record<Task["priority"], string> = {
@@ -184,6 +186,7 @@ export default function TasksTable({
   canClose?: boolean;
 }) {
   const tr = useT();
+  const locale = useLocale();
   const toast = useToast();
   const m = useMessages();
   const [rows, setRows] = useState(items);
@@ -488,8 +491,16 @@ export default function TasksTable({
     },
     { key: "type", label: "Tip", minW: 70, defaultHidden: true, sort: (t) => t.type, render: (t) => (t.type === "TICKET" ? m.tasks.typeTicket : m.tasks.typeTask) },
     {
-      key: "remind", label: "Reamintire", minW: 90, defaultHidden: true, sort: (t) => t.reminderIntervalMinutes,
+      key: "remind", label: "Reamintire", minW: 90, defaultHidden: true, sort: (t) => t.reminderIntervalMinutes ?? (t.reminderSchedule ? Number.MAX_SAFE_INTEGER : null),
       render: (t) => {
+        if (t.reminderSchedule) {
+          let text = "";
+          try {
+            const sch = parseReminderSchedule(JSON.parse(t.reminderSchedule));
+            text = sch ? describeSchedule(sch, tr, dateTag(locale)) : "";
+          } catch {}
+          return text ? <span title={text}>{text}</span> : dash;
+        }
         const n = t.reminderIntervalMinutes;
         if (!n) return dash;
         return n >= 1440 ? tr("la {n} zile", { n: Math.round(n / 1440) }) : n >= 60 ? tr("la {n} h", { n: Math.round(n / 60) }) : tr("la {n} min", { n });

@@ -249,6 +249,7 @@ export default async function TaskDetailPage({
             priority: task.priority,
             dueAt: task.dueAt ? task.dueAt.toISOString() : null,
             reminderIntervalMinutes: task.reminderIntervalMinutes ?? null,
+            reminderSchedule: task.reminderSchedule ? JSON.stringify(task.reminderSchedule) : null,
             assigneeId: task.assigneeId ?? null,
             teamId: task.teamId ?? null,
             extraAssigneeIds: (task.extraAssigneeIds ?? []) as string[],

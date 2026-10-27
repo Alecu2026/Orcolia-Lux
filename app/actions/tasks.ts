@@ -8,6 +8,7 @@ import { canWorkOnTaskById } from "@/lib/services/task-access";
 import { can, canAny, canUseAllScope, canEditTask, canViewTask, canViewTaskData } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { zonedToUtc } from "@/lib/date";
+import { parseReminderSchedule, type ReminderSchedule } from "@/lib/reminder-schedule";
 import {
   createTask,
   changeTaskStatus,
@@ -79,6 +80,17 @@ const moduleForType = (t: TaskType) => (t === "TICKET" ? "Tickets" : "Tasks");
 const prefixForType = (t: TaskType) => (t === "TICKET" ? "ticket" : "task");
 
 const TYPES: TaskType[] = ["TASK", "TICKET"];
+
+/** Reamintirea programată trimisă de formular (JSON în câmpul „reminderSchedule”) — validată; orice nu e valid = fără programare. */
+function readSchedule(fd: FormData): ReminderSchedule | null {
+  const raw = fd.get("reminderSchedule");
+  if (typeof raw !== "string" || !raw.trim() || raw.length > 2000) return null;
+  try {
+    return parseReminderSchedule(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
 const PRIORITIES: TaskPriority[] = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 const STATUSES: TaskStatus[] = [
   "NEW",
@@ -120,7 +132,8 @@ export async function createTaskAction(
       : null;
 
     const reminderRaw = Number(formData.get("reminderIntervalMinutes") ?? 0);
-    const reminderIntervalMinutes = reminderRaw > 0 ? reminderRaw : null;
+    const reminderSchedule = readSchedule(formData);
+    const reminderIntervalMinutes = !reminderSchedule && reminderRaw > 0 ? reminderRaw : null;
 
     const assigneeIds = formData.getAll("assigneeIds").map(String).filter(Boolean);
     const teamIds = formData.getAll("teamIds").map(String).filter(Boolean);
@@ -156,6 +169,7 @@ export async function createTaskAction(
         categoryId: (formData.get("categoryId") as string) || null,
         address: String(formData.get("address") ?? "").trim().slice(0, 300) || null,
         reminderIntervalMinutes,
+        reminderSchedule,
         bypassQuietHours: formData.get("bypassQuietHours") === "on",
       },
       "WEB",
@@ -324,7 +338,8 @@ export async function updateTaskAction(
       : "MEDIUM";
 
     const reminderRaw = Number(formData.get("reminderIntervalMinutes") ?? 0);
-    const reminderIntervalMinutes = reminderRaw > 0 ? reminderRaw : null;
+    const reminderSchedule = readSchedule(formData);
+    const reminderIntervalMinutes = !reminderSchedule && reminderRaw > 0 ? reminderRaw : null;
 
     const assigneeIds = formData.getAll("assigneeIds").map(String).filter(Boolean);
     const teamIds = formData.getAll("teamIds").map(String).filter(Boolean);
@@ -362,6 +377,7 @@ export async function updateTaskAction(
       priority,
       dueAt,
       reminderIntervalMinutes,
+      reminderSchedule,
       bypassQuietHours: formData.get("bypassQuietHours") === "on",
     });
     if (!res.ok) return { error: res.error };

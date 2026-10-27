@@ -33,6 +33,7 @@ export type TaskTuple = [
   0 | 1, // 21 chatUnread
   string, // 22 solicitantul (tichete din email/portal: fromName sau fromEmail), altfel ""
   string, // 23 adresa (text) sau ""
+  string | null, // 24 reminderSchedule (JSON) — lipsește în listele salvate înainte de această versiune
 ];
 
 export type TaskNames = {
@@ -62,6 +63,7 @@ export type DecodedTask = {
   progress: number;
   dueAt: string | null;
   reminderIntervalMinutes: number | null;
+  reminderSchedule: string | null;
   creatorId: string;
   assigneeId: string | null;
   teamId: string | null;
@@ -105,6 +107,7 @@ export function decodeTasks(tuples: TaskTuple[], names: TaskNames): DecodedTask[
       progress: r[7],
       dueAt: r[8] == null ? null : new Date(r[8]).toISOString(),
       reminderIntervalMinutes: r[9],
+      reminderSchedule: r[24] ?? null,
       creatorId: r[10],
       assigneeId: r[11],
       teamId: r[12],

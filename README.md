@@ -82,6 +82,11 @@ GET /api/cron/reminders   Header: Authorization: Bearer <CRON_SECRET>
 Trimite reminderele scadente (24h și 3h înainte, configurabil în Setări).
 Retry până la 3 încercări, apoi `FAILED`.
 
+Același apel trimite și **reamintirile sarcinilor / tichetelor** (interval fix sau programate: o singură dată, zilnic, săptămânal, lunar, la interval personalizat, la o oră anume).
+Precizia orei = frecvența cron-ului (la 5 min, reamintirea pleacă în cel mult 5 min după ora aleasă). Pe Vercel Hobby cron-ul poate rula doar zilnic —
+folosește Vercel Pro sau un scheduler extern (ex. cron-job.org) la 5 min. Pe un server propriu (fără Vercel) procesul verifică singur la fiecare minut
+(dezactivare: `DISABLE_TASK_REMINDER_TIMER=1`).
+
 ### AI voice-to-task
 Microfon în aplicație sau mesaj vocal în Telegram → transcriere (Whisper) →
 extragere `{client, dată, oră, categorie...}` → **preview + confirmare** înainte de salvare.

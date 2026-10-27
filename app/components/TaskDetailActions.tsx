@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useActionState, useEffect, useTransition } from "react";
+import ReminderPicker from "./ReminderPicker";
 import { useRouter } from "next/navigation";
 import { updateTaskAction, deleteTask, type TaskState } from "@/app/actions/tasks";
 import { dateKeyOf, formatTime } from "@/lib/date";
@@ -24,6 +25,7 @@ export type TaskForEdit = {
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   dueAt: string | null;
   reminderIntervalMinutes: number | null;
+  reminderSchedule?: string | null;
   assigneeId: string | null;
   teamId: string | null;
   extraAssigneeIds: string[];
@@ -266,17 +268,7 @@ function EditDialog({
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.reminderLabel}</label>
-            <select name="reminderIntervalMinutes" defaultValue={task.reminderIntervalMinutes ?? 0} className={dlgInput}>
-              <option value={0}>{m.tasks.reminderNever}</option>
-              <option value={10}>{m.tasks.reminder10m}</option>
-              <option value={30}>{m.tasks.reminder30m}</option>
-              <option value={60}>{m.tasks.reminder1h}</option>
-              <option value={180}>{m.tasks.reminder3h}</option>
-              <option value={360}>{m.tasks.reminder6h}</option>
-              <option value={720}>{m.tasks.reminder12h}</option>
-              <option value={1440}>{m.tasks.reminder24h}</option>
-              <option value={10080}>{m.tasks.reminder7d}</option>
-            </select>
+            <ReminderPicker interval={task.reminderIntervalMinutes ?? null} schedule={task.reminderSchedule ?? null} />
           </div>
           {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
           <button

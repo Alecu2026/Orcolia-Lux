@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import ReminderPicker from "./ReminderPicker";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useMessages } from "@/lib/i18n/context";
@@ -66,6 +67,8 @@ export type Task = {
   progress: number;
   dueAt: string | Date | null;
   reminderIntervalMinutes: number | null;
+  /** Reamintire programată (JSON), vezi lib/reminder-schedule.ts. */
+  reminderSchedule?: string | null;
   creatorId: string;
   assigneeId: string | null;
   teamId: string | null;
@@ -1207,17 +1210,7 @@ export function EditDialog({
           </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.reminderLabel}</label>
-            <select name="reminderIntervalMinutes" defaultValue={task.reminderIntervalMinutes ?? 0} className={dlgInput}>
-              <option value={0}>{m.tasks.reminderNever}</option>
-              <option value={10}>{m.tasks.reminder10m}</option>
-              <option value={30}>{m.tasks.reminder30m}</option>
-              <option value={60}>{m.tasks.reminder1h}</option>
-              <option value={180}>{m.tasks.reminder3h}</option>
-              <option value={360}>{m.tasks.reminder6h}</option>
-              <option value={720}>{m.tasks.reminder12h}</option>
-              <option value={1440}>{m.tasks.reminder24h}</option>
-              <option value={10080}>{m.tasks.reminder7d}</option>
-            </select>
+            <ReminderPicker interval={task.reminderIntervalMinutes ?? null} schedule={task.reminderSchedule ?? null} />
           </div>
           {quietHoursEnabled && (
             <label className="flex cursor-pointer items-center gap-2 text-sm">
@@ -1391,17 +1384,7 @@ export function CreateDialog({
           <CategoryChips categories={categories} value={categoryId} onChange={setCategoryId} />
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.reminderLabel}</label>
-            <select name="reminderIntervalMinutes" defaultValue={prefill?.reminderIntervalMinutes ?? 0} className={dlgInput}>
-              <option value={0}>{m.tasks.reminderNever}</option>
-              <option value={10}>{m.tasks.reminder10m}</option>
-              <option value={30}>{m.tasks.reminder30m}</option>
-              <option value={60}>{m.tasks.reminder1h}</option>
-              <option value={180}>{m.tasks.reminder3h}</option>
-              <option value={360}>{m.tasks.reminder6h}</option>
-              <option value={720}>{m.tasks.reminder12h}</option>
-              <option value={1440}>{m.tasks.reminder24h}</option>
-              <option value={10080}>{m.tasks.reminder7d}</option>
-            </select>
+            <ReminderPicker interval={prefill?.reminderIntervalMinutes ?? null} schedule={null} />
           </div>
           {quietHoursEnabled && (
             <label className="flex cursor-pointer items-center gap-2 text-sm">

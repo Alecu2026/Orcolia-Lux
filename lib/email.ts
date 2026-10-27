@@ -1,6 +1,7 @@
 import "server-only";
 import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "./env";
+import { prisma } from "./prisma";
 
 let cached: Transporter | null = null;
 
@@ -67,9 +68,13 @@ export type TaskReminderEmailData = {
   seq: number | null | undefined;
   taskUrl: string;
   isOverdue?: boolean;
+  /** Numele companiei din Setări (antetul emailului); lipsă → „Apă-Canal Cahul”. */
+  companyName?: string | null;
 };
 
-function taskReminderTemplate(d: TaskReminderEmailData): string {
+function taskReminderTemplate(raw: TaskReminderEmailData): string {
+  const d = { ...raw, userName: escHtml(raw.userName), taskTitle: escHtml(raw.taskTitle), taskUrl: escHtml(raw.taskUrl) };
+  const company = escHtml(raw.companyName?.trim() || "Apă-Canal Cahul");
   const badge = d.isOverdue
     ? `<div style="background:#fee2e2;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:#991b1b;font-weight:600">⏰ Sarcină în întârziere</div>`
     : `<div style="background:#ede9fe;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:#5b21b6;font-weight:600">🔔 Reamintire sarcină</div>`;
@@ -80,7 +85,7 @@ function taskReminderTemplate(d: TaskReminderEmailData): string {
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
         <tr><td style="background:#6366f1;padding:20px 24px;color:#fff;font-size:18px;font-weight:700">
-          Stefan CRM
+          ${company}
         </td></tr>
         <tr><td style="padding:24px">
           <p style="margin:0 0 14px;font-size:16px">Bună, <b>${d.userName}</b>.</p>
@@ -105,13 +110,16 @@ export async function sendTaskReminderEmail(d: TaskReminderEmailData): Promise<v
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
   const from = env.smtp.from;
+  const companyName =
+    d.companyName ??
+    (await prisma.companySettings.findUnique({ where: { singleton: "main" }, select: { companyName: true } }).catch(() => null))?.companyName;
   const subject = d.isOverdue ? `⏰ Sarcină în întârziere: ${d.taskTitle}` : `🔔 Reamintire sarcină: ${d.taskTitle}`;
   await transporter.sendMail({
     from,
     to: d.to,
     subject,
     text: `Bună, ${d.userName}. Sarcina „${d.taskTitle}"${d.seq != null ? ` (#${d.seq})` : ""} necesită atenția ta. ${d.taskUrl}`,
-    html: taskReminderTemplate(d),
+    html: taskReminderTemplate({ ...d, companyName }),
   });
 }
 

@@ -10,4 +10,18 @@ export function register() {
       .then((m) => m.normalizeApaCanalDueDates())
       .catch((e) => console.error("[startup] scadența facturilor Apă-Canal:", e));
   }, 3000);
+
+  // Reamintirile sarcinilor programate la o oră anume (o singură dată / zilnic / săptămânal / lunar / la interval) au nevoie de o verificare deasă. Pe un server propriu
+  // o face procesul însuși, la fiecare minut (idempotent: o reamintire se „revendică” atomic, deci nu pleacă de două ori nici dacă rulează și un cron extern).
+  // Dezactivare: DISABLE_TASK_REMINDER_TIMER=1. Pe Vercel (fără proces permanent) se apelează /api/cron/reminders din cron la 5–15 minute.
+  if (process.env.DISABLE_TASK_REMINDER_TIMER === "1") return;
+  setTimeout(() => {
+    const tick = () =>
+      import("./lib/services/tasks")
+        .then((m) => m.checkTaskReminders())
+        .catch((e) => console.error("[startup] reamintirile sarcinilor:", e));
+    void tick();
+    const timer = setInterval(() => void tick(), 60_000);
+    timer.unref?.();
+  }, 20_000);
 }
