@@ -1,11 +1,6 @@
 import { requireSuperAdmin } from "@/lib/dal";
-import { exportAuditLogs } from "@/lib/queries/audit";
-import { actionLabel, moduleLabel } from "@/lib/audit-meta";
-
-function toDate(s: string | null, end = false): Date | undefined {
-  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return undefined;
-  return new Date(`${s}T${end ? "23:59:59.999" : "00:00:00.000"}Z`);
-}
+import { exportAuditLogs, filterFromState } from "@/lib/queries/audit";
+import { actionLabel, describeAgent, moduleLabel, parseDetails, sanitizeAuditState } from "@/lib/audit-meta";
 
 function fmtDate(d: Date): string {
   const p = new Intl.DateTimeFormat("ro-RO", {
@@ -15,15 +10,16 @@ function fmtDate(d: Date): string {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
     hour12: false,
   }).formatToParts(d);
   const get = (t: string) => p.find((x) => x.type === t)?.value ?? "";
-  return `${get("day")}.${get("month")}.${get("year")} ${get("hour")}:${get("minute")}`;
+  return `${get("day")}.${get("month")}.${get("year")} ${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
 function csvEscape(v: string): string {
   const s = String(v ?? "");
-  if (s.includes('"') || s.includes(",") || s.includes("\n")) {
+  if (s.includes('"') || s.includes(",") || s.includes("\n") || s.includes("\r")) {
     return `"${s.replace(/"/g, '""')}"`;
   }
   return `"${s}"`;
@@ -44,9 +40,13 @@ const HEADERS = [
   "Modul",
   "Acțiune",
   "Obiect",
+  "ID obiect",
   "Valoare veche",
   "Valoare nouă",
+  "Modificări (câmp: vechi → nou)",
+  "Pagina",
   "IP",
+  "Dispozitiv",
 ];
 
 export async function GET(req: Request) {
@@ -56,27 +56,27 @@ export async function GET(req: Request) {
   const format = sp.get("format") ?? "csv";
   const today = new Date().toISOString().slice(0, 10);
 
-  const rows = await exportAuditLogs({
-    userId: sp.get("user") || undefined,
-    role: sp.get("role") || undefined,
-    action: sp.get("action") || undefined,
-    module: sp.get("module") || undefined,
-    from: toDate(sp.get("from")),
-    to: toDate(sp.get("to"), true),
-    search: sp.get("q") || undefined,
-  });
+  const rows = await exportAuditLogs(filterFromState(sanitizeAuditState(Object.fromEntries(sp.entries()))));
 
-  const data = rows.map((r) => [
-    fmtDate(r.createdAt),
-    r.userName,
-    r.userRole,
-    moduleLabel(r.module),
-    actionLabel(r.action),
-    r.objectName ?? "",
-    r.oldValue ?? "",
-    r.newValue ?? "",
-    r.ip ?? "",
-  ]);
+  const data = rows.map((r) => {
+    const d = parseDetails(r.details);
+    const ua = describeAgent(r.userAgent);
+    return [
+      fmtDate(r.createdAt),
+      r.userName,
+      r.userRole,
+      moduleLabel(r.module),
+      actionLabel(r.action),
+      r.objectName ?? "",
+      r.objectId ?? "",
+      r.oldValue ?? "",
+      r.newValue ?? "",
+      (d?.changes ?? []).map((c) => `${c.label}: ${c.old ?? "—"} → ${c.new ?? "—"}`).join(" | "),
+      r.path ?? "",
+      r.ip ?? "",
+      ua ? `${ua.browser} · ${ua.os} · ${ua.device}` : "",
+    ];
+  });
 
   if (format === "excel") {
     const thRow = HEADERS.map((h) => `<th>${htmlEscape(h)}</th>`).join("");
@@ -93,7 +93,7 @@ export async function GET(req: Request) {
   }
 
   // CSV cu BOM UTF-8 pentru compatibilitate Excel
-  const BOM = "﻿";
+  const BOM = "\uFEFF";
   const csvRows = [HEADERS, ...data].map((row) => row.map(csvEscape).join(","));
   return new Response(BOM + csvRows.join("\r\n"), {
     headers: {

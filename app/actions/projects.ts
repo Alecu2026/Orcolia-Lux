@@ -7,6 +7,7 @@ import { requireUser, type CurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
+import { PROJECT_SPEC, diffFields, resolveIdNames } from "@/lib/services/audit-diff";
 import { notifyUsers, observerRecipients } from "@/lib/services/notifications";
 import type { ProjectStatus } from "@prisma/client";
 
@@ -123,7 +124,7 @@ export async function updateProject(
   const id = String(formData.get("id") ?? "");
   const d = parse(formData);
   if (!d.name) return { error: "Numele e obligatoriu." };
-  const before = await prisma.project.findUnique({ where: { id }, select: { name: true, status: true } });
+  const before = await prisma.project.findUnique({ where: { id }, select: { name: true, status: true, description: true, address: true, clientId: true, assigneeId: true, teamId: true } });
   await prisma.project.update({
     where: { id },
     data: {
@@ -145,6 +146,14 @@ export async function updateProject(
     objectName: d.name,
     oldValue: before ? JSON.stringify(before) : null,
     newValue: JSON.stringify({ name: d.name, status: d.status }),
+    details: before
+      ? {
+          changes: await resolveIdNames(
+            diffFields(before, { name: d.name, description: d.description, status: d.status, clientId: d.clientId, assigneeId: d.assigneeId, teamId: d.teamId, address: d.address }, PROJECT_SPEC),
+            { clientId: "client", assigneeId: "user", teamId: "team" },
+          ),
+        }
+      : null,
   });
   revalidatePath("/projects");
   updateTag("projects");
@@ -181,7 +190,7 @@ export async function updateProjectFieldAction(id: string, patch: ProjectFieldPa
   if (DEMO) return { error: "Mod demo." };
   const OID = /^[0-9a-f]{24}$/i;
   if (!OID.test(id ?? "")) return { error: "Proiect invalid." };
-  const before = await prisma.project.findUnique({ where: { id }, select: { name: true, status: true } });
+  const before = await prisma.project.findUnique({ where: { id }, select: { name: true, status: true, description: true, address: true, clientId: true, assigneeId: true, teamId: true } });
   if (!before) return { error: "Proiect inexistent." };
 
   const data: Record<string, unknown> = {};
@@ -210,6 +219,7 @@ export async function updateProjectFieldAction(id: string, patch: ProjectFieldPa
     objectName: (data.name as string | undefined) ?? before.name,
     oldValue: JSON.stringify(before),
     newValue: JSON.stringify(data),
+    details: { changes: await resolveIdNames(diffFields(before, data, PROJECT_SPEC), { clientId: "client", assigneeId: "user", teamId: "team" }) },
   });
   revalidatePath("/projects");
   updateTag("projects");

@@ -9,6 +9,7 @@ import { can } from "@/lib/permissions";
 import { clientSchema } from "@/lib/validation";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
+import { CLIENT_SPEC, diffFields } from "@/lib/services/audit-diff";
 
 export type ClientState = { ok?: boolean; error?: string; id?: string } | undefined;
 
@@ -113,7 +114,7 @@ export async function updateClient(
   const id = String(formData.get("id") ?? "");
   const owned = await prisma.client.findFirst({
     where: { id },
-    select: { id: true, name: true, phone: true, email: true },
+    select: { id: true, name: true, phone: true, email: true, telegramChatId: true, notes: true },
   });
   if (!owned) return { error: "Client inexistent." };
 
@@ -146,6 +147,9 @@ export async function updateClient(
     objectName: d.name,
     oldValue: JSON.stringify({ name: owned.name, phone: owned.phone, email: owned.email }),
     newValue: JSON.stringify({ name: d.name, phone: d.phone || null, email: d.email || null }),
+    details: {
+      changes: diffFields(owned, { name: d.name, phone: d.phone || null, email: d.email || null, telegramChatId: d.telegramChatId || null, notes: d.notes || null }, CLIENT_SPEC),
+    },
   });
   revalidatePath("/clients");
   updateTag("clients");
@@ -208,6 +212,7 @@ export async function updateClientFieldAction(id: string, patch: ClientFieldPatc
     objectName: d.name,
     oldValue: JSON.stringify({ name: owned.name, phone: owned.phone, email: owned.email }),
     newValue: JSON.stringify(data),
+    details: { changes: diffFields(owned, data, CLIENT_SPEC) },
   });
   revalidatePath("/clients");
   updateTag("clients");

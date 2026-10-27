@@ -1,327 +1,382 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { rowSummary, moduleLabel, AUDIT_MODULES, ACTION_OPTIONS } from "@/lib/audit-meta";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ACTION_OPTIONS,
+  AUDIT_MODULES,
+  EMPTY_AUDIT_FILTERS,
+  auditStateToParams,
+  countActiveAuditFilters,
+  moduleLabel,
+  parseJsonObject,
+  rowSummary,
+  sanitizeAuditState,
+  type AuditFilterState,
+} from "@/lib/audit-meta";
 import { deleteAllAuditLogs } from "@/app/actions/audit";
 import { IconChevronLeft, IconChevronRight, IconTrash } from "./icons";
 import { useToast } from "./toast";
-import { useMessages } from "@/lib/i18n/context";
-import { useT } from "@/lib/i18n/context";
+import { useLocale, useMessages, useT } from "@/lib/i18n/context";
+import { dateTag } from "@/lib/i18n/t";
+import AuditDetailDialog from "./AuditDetailDialog";
+import { fmtStamp, moduleCls, roleCls, roleLabel, type AuditRow } from "./audit-shared";
 
 type Opt = { id: string; name: string };
-type Row = {
-  id: string;
-  userId: string | null;
-  userName: string;
-  userRole: string;
-  action: string;
-  module: string;
-  objectId: string | null;
-  objectName: string | null;
-  oldValue: string | null;
-  newValue: string | null;
-  ip: string | null;
-  userAgent: string | null;
-  createdAt: string | Date;
-};
-type Filters = {
-  user: string;
-  role: string;
-  action: string;
-  module: string;
-  ps?: string;
-};
+type Page = { items: AuditRow[]; total: number; page: number; pageSize: number; totalPages: number };
 
-const fldCls = (val: string) =>
+const PAGE_SIZES = [20, 50, 100, 200, 500] as const;
+const STORAGE_KEY = "filters:audit";
+
+const fldCls = (val: string | boolean) =>
   `h-8 min-w-0 max-w-full appearance-none sel-arrow rounded-lg border pl-2 pr-7 text-xs outline-none focus:border-brand ${
-    val
-      ? "border-brand bg-brand/10 font-semibold text-brand"
-      : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"
+    val ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"
+  }`;
+const txtCls = (val: string) =>
+  `h-8 min-w-0 rounded-lg border px-2 text-xs outline-none focus:border-brand ${
+    val ? "border-brand bg-brand/10 font-semibold text-brand placeholder:font-normal" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"
   }`;
 
-function fmtTime(d: string | Date): string {
-  const dt = new Date(d);
-  const day = String(dt.getDate()).padStart(2, "0");
-  const mon = String(dt.getMonth() + 1).padStart(2, "0");
-  const yr = dt.getFullYear();
-  const hh = String(dt.getHours()).padStart(2, "0");
-  const mm = String(dt.getMinutes()).padStart(2, "0");
-  return `${day}.${mon}.${yr} ${hh}:${mm}`;
+/** O valoare veche / nouă pentru rândul din listă: JSON-ul (obiect) nu se afișează — se vede în pop-up. */
+function shortVal(v: string | null): string | null {
+  if (v == null) return null;
+  return parseJsonObject(v) ? null : v;
 }
 
-function roleLabel(r: string): string {
-  if (r.includes("SUPER")) return "Super";
-  if (r.includes("ADMIN")) return "Admin";
-  if (r.includes("STAFF")) return "Staff";
-  return r.slice(0, 5);
+function buildPageButtons(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set<number>([1, total]);
+  for (let i = Math.max(2, current - 2); i <= Math.min(total - 1, current + 2); i++) pages.add(i);
+  const sorted = [...pages].sort((a, b) => a - b);
+  const out: (number | "…")[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) out.push("…");
+    out.push(sorted[i]);
+  }
+  return out;
 }
 
-function roleCls(r: string): string {
-  if (r.includes("SUPER")) return "bg-purple-100 text-purple-700";
-  if (r.includes("ADMIN")) return "bg-brand/10 text-brand";
-  return "bg-[var(--color-surface-2)] text-ink-soft";
-}
+/** Un rând al listei (memoizat: la schimbarea paginii se refac doar rândurile noi). */
+const AuditTr = memo(function AuditTr({ r, first, tag, onOpen }: { r: AuditRow; first: boolean; tag: string; onOpen: (id: string) => void }) {
+  const t = useT();
+  const oldV = shortVal(r.oldValue);
+  const newV = shortVal(r.newValue);
+  const summary = rowSummary({ action: r.action, oldValue: oldV, newValue: newV }, t);
+  return (
+    <div
+      role="row"
+      tabIndex={0}
+      onClick={() => onOpen(r.id)}
+      onKeyDown={(e) => e.key === "Enter" && onOpen(r.id)}
+      className={`flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-1.5 text-[13px] outline-none hover:bg-[var(--color-surface-2)] focus-visible:bg-[var(--color-surface-2)] lg:grid lg:grid-cols-[150px_180px_112px_minmax(0,1.5fr)_minmax(0,1fr)_110px] lg:items-center lg:gap-3 ${first ? "" : "border-t border-[var(--color-line)]"}`}
+    >
+      <span className="shrink-0 font-mono text-[11px] tabular-nums text-ink-soft">{fmtStamp(r.createdAt, tag)}</span>
+      <span className="hidden min-w-0 items-center gap-1.5 lg:flex">
+        <span className="truncate font-medium">{r.userName}</span>
+        <span className={`shrink-0 rounded px-1 py-px text-[10px] font-semibold ${roleCls(r.userRole)}`}>{roleLabel(r.userRole)}</span>
+      </span>
+      <span className="hidden lg:block">
+        <span className={`inline-block max-w-full truncate rounded-full px-2 py-px text-[10px] font-semibold ${moduleCls(r.module)}`}>{moduleLabel(r.module, t)}</span>
+      </span>
+      <span className="min-w-0 flex-1 truncate lg:flex-none">
+        <span className="font-medium lg:hidden">{r.userName}: </span>
+        {summary}
+        {r.hasDetails && <span className="ml-1.5 rounded bg-brand/10 px-1 py-px text-[10px] font-semibold text-brand" title={t("Are modificări detaliate — apasă pe rând")}>{t("detalii")}</span>}
+      </span>
+      <span className="hidden min-w-0 truncate text-ink-soft lg:block" title={r.objectName ?? ""}>
+        {r.objectName ?? <span className="italic">—</span>}
+      </span>
+      <span className="hidden truncate font-mono text-[11px] text-ink-soft lg:block" title={r.ip ?? ""}>{r.ip ?? "—"}</span>
+    </div>
+  );
+});
 
 export default function AuditLogsClient({
-  items,
+  initial,
   users,
-  page,
-  hasMore,
-  filters,
-  totalPages = 1,
+  initialFilters,
+  initialPage,
+  initialPageSize,
 }: {
-  items: Row[];
+  initial: Page;
   users: Opt[];
-  page: number;
-  hasMore: boolean;
-  filters: Filters;
-  totalPages?: number;
+  initialFilters: AuditFilterState;
+  initialPage: number;
+  initialPageSize: number;
 }) {
   const t = useT();
-  const router = useRouter();
   const toast = useToast();
   const m = useMessages();
+  const tag = dateTag(useLocale());
+  const nf = (n: number) => n.toLocaleString(tag);
+
+  const [filters, setFilters] = useState<AuditFilterState>(initialFilters);
+  const [draftQ, setDraftQ] = useState(initialFilters.q);
+  const [page, setPage] = useState(initialPage);
+  const [ps, setPs] = useState(initialPageSize);
+  const [data, setData] = useState<Page>(initial);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [selId, setSelId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [tick, setTick] = useState(0);
+  const qTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Persistenţă filtre ──────────────────────────────────
-  const auditFiltersEmpty = !filters.user && !filters.role && !filters.action && !filters.module;
-  const auditIsFirstSave = useRef(true);
+  const key = useMemo(() => auditStateToParams(filters, { page, ps }).toString(), [filters, page, ps]);
+  const loadedKey = useRef(auditStateToParams(initialFilters, { page: initialPage, ps: initialPageSize }).toString());
+
+  // Restaurează filtrele salvate (doar dacă adresa nu are propriile filtre).
   useEffect(() => {
-    if (auditFiltersEmpty) {
+    if (key === "") {
       try {
-        const saved = localStorage.getItem("filters:audit");
-        if (saved) router.replace(`/admin/audit-logs?${saved}`);
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const sp = new URLSearchParams(saved);
+          const f = sanitizeAuditState(Object.fromEntries(sp.entries()));
+          const savedPs = Number(sp.get("ps"));
+          // eslint-disable-next-line react-hooks/set-state-in-effect
+          setFilters(f);
+          setDraftQ(f.q);
+          if ((PAGE_SIZES as readonly number[]).includes(savedPs)) setPs(savedPs);
+        }
       } catch {}
     }
+    setReady(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Adresa (link de partajat) + filtrele salvate; fără navigare.
   useEffect(() => {
-    if (auditIsFirstSave.current) { auditIsFirstSave.current = false; if (auditFiltersEmpty) return; }
+    if (!ready) return;
+    const p = auditStateToParams(filters, { ps });
     try {
-      const sp = new URLSearchParams();
-      if (filters.user) sp.set("user", filters.user);
-      if (filters.role) sp.set("role", filters.role);
-      if (filters.action) sp.set("action", filters.action);
-      if (filters.module) sp.set("module", filters.module);
-      if (filters.ps && filters.ps !== "20") sp.set("ps", filters.ps);
-      const str = sp.toString();
-      if (str) localStorage.setItem("filters:audit", str);
-      else localStorage.removeItem("filters:audit");
+      if (p.toString()) localStorage.setItem(STORAGE_KEY, p.toString());
+      else localStorage.removeItem(STORAGE_KEY);
     } catch {}
+    window.history.replaceState(null, "", `/admin/audit-logs${key ? `?${key}` : ""}`);
+  }, [key, filters, ps, ready]);
+
+  // Pagina cerută de la server doar când se schimbă ceva; o cerere nouă o anulează pe cea veche. Rândurile vechi rămân vizibile (estompate) până sosesc cele noi.
+  useEffect(() => {
+    if (!ready) return;
+    if (key === loadedKey.current && tick === 0) return;
+    const ctl = new AbortController();
+    setLoading(true);
+    setError(null);
+    fetch(`/api/admin/audit?${key}`, { signal: ctl.signal })
+      .then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
+        return j as Page;
+      })
+      .then((j) => {
+        loadedKey.current = key;
+        setData(j);
+        setLoading(false);
+        if (j.page !== page) setPage(j.page);
+      })
+      .catch((e: Error) => {
+        if (e.name === "AbortError") return;
+        setError(e.message);
+        setLoading(false);
+      });
+    return () => ctl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.user, filters.role, filters.action, filters.module, filters.ps]);
+  }, [key, ready, tick]);
 
-  function apply(patch: Partial<Filters & { page: number }>) {
-    const next: Record<string, string> = {
-      user: filters.user,
-      role: filters.role,
-      action: filters.action,
-      module: filters.module,
-      ps: filters.ps ?? "",
-      ...Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, String(v ?? "")])),
-    };
-    if (!("page" in patch)) next.page = "1";
-    const usp = new URLSearchParams();
-    for (const [k, v] of Object.entries(next)) {
-      if (!v || v === "1") continue;
-      if (k === "ps" && v === "20") continue;
-      usp.set(k, v);
-    }
-    if (next.page && next.page !== "1") usp.set("page", next.page);
-    const qs = usp.toString();
-    router.push(`/admin/audit-logs${qs ? `?${qs}` : ""}`);
+  function setFilter(patch: Partial<AuditFilterState>) {
+    setFilters((f) => ({ ...f, ...patch }));
+    setPage(1);
+  }
+  function onSearch(v: string) {
+    setDraftQ(v);
+    if (qTimer.current) clearTimeout(qTimer.current);
+    qTimer.current = setTimeout(() => setFilter({ q: v.trim() }), 300);
+  }
+  function clearAll() {
+    if (qTimer.current) clearTimeout(qTimer.current);
+    setFilters(EMPTY_AUDIT_FILTERS);
+    setDraftQ("");
+    setPage(1);
   }
 
-  function exportUrl(format: "csv" | "excel"): string {
-    const sp = new URLSearchParams({ format });
-    if (filters.user) sp.set("user", filters.user);
-    if (filters.role) sp.set("role", filters.role);
-    if (filters.action) sp.set("action", filters.action);
-    if (filters.module) sp.set("module", filters.module);
-    return `/api/admin/audit/export?${sp.toString()}`;
-  }
+  const active = countActiveAuditFilters({ ...filters, q: draftQ.trim() });
+  const exportQs = auditStateToParams(filters).toString();
+  const exportUrl = (format: "csv" | "excel") => `/api/admin/audit/export?format=${format}${exportQs ? `&${exportQs}` : ""}`;
 
   async function handleDeleteAll() {
     setDeleting(true);
     try {
       const res = await deleteAllAuditLogs();
       if (res?.error) toast.error(t(res.error));
-      else { toast.success(m.auditLogs.allDeleted); setConfirmDelete(false); router.refresh(); }
+      else {
+        toast.success(m.auditLogs.allDeleted);
+        setConfirmDelete(false);
+        loadedKey.current = "";
+        setTick((n) => n + 1);
+      }
     } finally {
       setDeleting(false);
     }
   }
 
-  const activeFilters = Boolean(filters.user || filters.role || filters.action || filters.module);
+  const items = data.items;
+  const from = data.total === 0 ? 0 : (data.page - 1) * data.pageSize + 1;
+  const to = Math.min(data.page * data.pageSize, data.total);
+  const buttons = buildPageButtons(data.page, data.totalPages);
+  const selIdx = selId ? items.findIndex((r) => r.id === selId) : -1;
+  const onOpen = useCallback((id: string) => setSelId(id), [setSelId]);
 
   return (
     <>
-      {/* Bară filtre + acțiuni */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <select value={filters.user} onChange={(e) => apply({ user: e.target.value })} className={fldCls(filters.user)}>
+      {/* ── Filtre ─────────────────────────────────────────────────────────── */}
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <input
+          value={draftQ}
+          onChange={(e) => onSearch(e.target.value)}
+          placeholder={t("Caută: utilizator, obiect, IP, valori…")}
+          title={t("Minimum 2 caractere. Caută în numele utilizatorului, obiect, IP și în valorile veche / nouă.")}
+          aria-label={t("Căutare")}
+          className={`${txtCls(draftQ)} min-w-52 flex-1`}
+        />
+        <select value={filters.user} onChange={(e) => setFilter({ user: e.target.value })} className={fldCls(filters.user)} aria-label={m.auditLogs.filterUser}>
           <option value="">{m.auditLogs.filterUser}</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
-        <select value={filters.role} onChange={(e) => apply({ role: e.target.value })} className={fldCls(filters.role)}>
+        <select value={filters.role} onChange={(e) => setFilter({ role: e.target.value as AuditFilterState["role"] })} className={fldCls(filters.role)} aria-label={m.auditLogs.filterRole}>
           <option value="">{m.auditLogs.filterRole}</option>
           <option value="ADMIN">{m.auditLogs.roleAdmin}</option>
           <option value="STAFF">{m.auditLogs.roleStaff}</option>
+          <option value="SUPER">{t("Super-admin")}</option>
         </select>
-        <select value={filters.module} onChange={(e) => apply({ module: e.target.value })} className={fldCls(filters.module)}>
+        <select value={filters.module} onChange={(e) => setFilter({ module: e.target.value })} className={fldCls(filters.module)} aria-label={m.auditLogs.filterModule}>
           <option value="">{m.auditLogs.filterModule}</option>
           {AUDIT_MODULES.map((mod) => <option key={mod} value={mod}>{moduleLabel(mod, t)}</option>)}
         </select>
-        <select value={filters.action} onChange={(e) => apply({ action: e.target.value })} className={fldCls(filters.action)}>
+        <select value={filters.action} onChange={(e) => setFilter({ action: e.target.value })} className={fldCls(filters.action)} aria-label={m.auditLogs.filterAction}>
           <option value="">{m.auditLogs.filterAction}</option>
           {ACTION_OPTIONS.map((a) => <option key={a.key} value={a.key}>{t(a.label)}</option>)}
         </select>
-        <button
-          onClick={() => { try { localStorage.removeItem("filters:audit"); } catch {} router.push("/admin/audit-logs"); }}
-          className="tap h-8 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]"
-        >
-          {m.auditLogs.clearFilters}
-        </button>
+        <span className="flex items-center gap-1" title={t("Perioada (ziua în fusul orar al firmei)")}>
+          <input type="date" value={filters.from} max={filters.to || undefined} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t("De la data")} className={txtCls(filters.from)} />
+          <span className="text-ink-soft">–</span>
+          <input type="date" value={filters.to} min={filters.from || undefined} onChange={(e) => setFilter({ to: e.target.value })} aria-label={t("Până la data")} className={txtCls(filters.to)} />
+        </span>
+        <label className={`flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2 text-xs ${filters.changes ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"}`} title={t("Arată doar jurnalele care au modificări pe câmpuri (ce s-a schimbat)")}>
+          <input type="checkbox" checked={filters.changes} onChange={(e) => setFilter({ changes: e.target.checked })} className="size-3 accent-[var(--color-brand)]" />
+          {t("Cu modificări detaliate")}
+        </label>
+        {(active > 0) && (
+          <button type="button" onClick={clearAll} className="tap h-8 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]">
+            {m.auditLogs.clearFilters}{` (${active})`}
+          </button>
+        )}
+      </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <a
-            href={exportUrl("csv")}
-            download
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]"
-          >
+      {/* ── Sumar + acțiuni ─────────────────────────────────────────────────── */}
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <span><b>{nf(data.total)}</b> {t("jurnale")}{active > 0 ? ` ${t("(filtrat)")}` : ""}</span>
+        {data.total > 0 && (
+          <span className="text-ink-soft">
+            {t("afișate {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(data.total) })}
+            {data.totalPages > 1 ? ` · ${t("pagina {cur}/{pages}", { cur: data.page, pages: data.totalPages })}` : ""}
+          </span>
+        )}
+        {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}
+        <button type="button" onClick={() => { loadedKey.current = ""; setTick((n) => n + 1); }} disabled={loading} title={t("Reîncarcă jurnalul")} className="tap cursor-pointer text-ink-soft hover:text-brand disabled:cursor-default">
+          ↻ {t("Reîmprospătează")}
+        </button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-ink-soft">
+            {t("Afișează")}
+            <select value={ps} onChange={(e) => { setPs(Number(e.target.value)); setPage(1); }} className={fldCls(ps === 50 ? "" : "x")} aria-label={m.auditLogs.perPage}>
+              {PAGE_SIZES.map((n) => <option key={n} value={n}>{t("{n} / pagină", { n })}</option>)}
+            </select>
+          </label>
+          <a href={exportUrl("csv")} download className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]" title={t("Exportă jurnalele filtrate (maximum 10.000)")}>
             {m.auditLogs.exportCsv}
           </a>
-          <a
-            href={exportUrl("excel")}
-            download
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]"
-          >
+          <a href={exportUrl("excel")} download className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]" title={t("Exportă jurnalele filtrate (maximum 10.000)")}>
             {m.auditLogs.exportExcel}
           </a>
-          <button
-            onClick={() => setConfirmDelete(true)}
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 hover:bg-red-50"
-          >
+          <button onClick={() => setConfirmDelete(true)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 px-3 text-xs font-medium text-red-600 hover:bg-red-50">
             <IconTrash className="size-3.5" />
             {m.auditLogs.deleteAll}
           </button>
         </div>
       </div>
 
-      {/* Confirmare ștergere */}
       {confirmDelete && (
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5">
-          <span className="flex-1 text-sm text-red-700">
-            {m.auditLogs.deleteWarning}
-          </span>
-          <button
-            onClick={handleDeleteAll}
-            disabled={deleting}
-            className="h-7 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60"
-          >
+          <span className="flex-1 text-sm text-red-700">{m.auditLogs.deleteWarning}</span>
+          <button onClick={handleDeleteAll} disabled={deleting} className="h-7 rounded-lg bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-60">
             {deleting ? m.auditLogs.deleting : m.auditLogs.confirmDelete}
           </button>
-          <button
-            onClick={() => setConfirmDelete(false)}
-            disabled={deleting}
-            className="h-7 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-60"
-          >
+          <button onClick={() => setConfirmDelete(false)} disabled={deleting} className="h-7 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-60">
             {m.common.cancel}
           </button>
         </div>
       )}
 
-      {/* Rânduri compacte */}
+      {error && (
+        <p className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
+          {t(error)}
+          <button type="button" onClick={() => { loadedKey.current = ""; setTick((n) => n + 1); }} className="tap shrink-0 font-semibold underline">{t("Reîncearcă")}</button>
+        </p>
+      )}
+      {loading && <div className="mb-1 h-0.5 animate-pulse rounded-full bg-brand opacity-60" />}
+
+      {/* ── Lista ──────────────────────────────────────────────────────────── */}
       {items.length === 0 ? (
         <div className="card grid place-items-center p-10 text-center text-sm text-ink-soft">
-          {activeFilters ? m.auditLogs.noResultsFiltered : m.auditLogs.noResults}
+          {active > 0 ? m.auditLogs.noResultsFiltered : m.auditLogs.noResults}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-[var(--color-line)]">
-          {/* Header — doar desktop */}
-          <div className="hidden grid-cols-[130px_170px_160px_1fr] border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-soft lg:grid">
+        <div role="table" className={`overflow-hidden rounded-xl border border-[var(--color-line)] transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
+          <div role="row" className="hidden grid-cols-[150px_180px_112px_minmax(0,1.5fr)_minmax(0,1fr)_110px] gap-3 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-ink-soft lg:grid">
             <span>{m.auditLogs.colDate}</span>
             <span>{m.auditLogs.colUser}</span>
-            <span>{m.auditLogs.colObject}</span>
+            <span>{t("Modul")}</span>
             <span>{m.auditLogs.colAction}</span>
+            <span>{m.auditLogs.colObject}</span>
+            <span>IP</span>
           </div>
-
-          {items.map((r, i) => (
-            <div
-              key={r.id}
-              className={`flex items-baseline gap-2 px-3 py-1.5 text-[13px] hover:bg-[var(--color-surface-2)] lg:grid lg:grid-cols-[130px_170px_160px_1fr] lg:items-center lg:gap-3 ${
-                i > 0 ? "border-t border-[var(--color-line)]" : ""
-              }`}
-            >
-              {/* Timestamp */}
-              <span className="shrink-0 font-mono text-[11px] tabular-nums text-ink-soft">
-                {fmtTime(r.createdAt)}
-              </span>
-
-              {/* Utilizator + rol */}
-              <span className="hidden min-w-0 items-center gap-1.5 lg:flex">
-                <span className="truncate font-medium">{r.userName}</span>
-                <span className={`shrink-0 rounded px-1 py-px text-[10px] font-semibold ${roleCls(r.userRole)}`}>
-                  {roleLabel(r.userRole)}
-                </span>
-              </span>
-
-              {/* Obiect */}
-              <span className="hidden min-w-0 truncate text-ink-soft lg:block">
-                {r.objectName ?? <span className="italic">—</span>}
-              </span>
-
-              {/* Acțiune */}
-              <span className="min-w-0 flex-1 truncate lg:flex-none">
-                <span className="font-medium lg:hidden">{r.userName}: </span>
-                {rowSummary(r, t)}
-                {r.objectName && (
-                  <span className="ml-1 lg:hidden text-ink-soft">— {r.objectName}</span>
-                )}
-              </span>
-            </div>
-          ))}
+          {items.map((r, i) => <AuditTr key={r.id} r={r} first={i === 0} tag={tag} onOpen={onOpen} />)}
         </div>
       )}
 
-      {/* Paginare */}
-      {(page > 1 || hasMore || filters.ps) && (
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-1">
-          <button
-            disabled={page <= 1}
-            onClick={() => apply({ page: page - 1 })}
-            className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
-            aria-label={m.common.prev}
-          >
+      {/* ── Paginare numerică ───────────────────────────────────────────────── */}
+      {data.total > 0 && data.totalPages > 1 && (
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-1">
+          <button disabled={data.page <= 1} onClick={() => setPage(data.page - 1)} className="tap grid size-8 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label={m.common.prev}>
             <IconChevronLeft className="size-4" />
           </button>
-          {totalPages > 1 && (
-            <span className="px-2 text-sm text-ink-soft">{page} / {totalPages}</span>
+          {buttons.map((b, i) =>
+            b === "…" ? (
+              <span key={`e${i}`} className="flex h-8 w-6 items-center justify-center text-sm text-ink-soft">…</span>
+            ) : (
+              <button key={b} onClick={() => setPage(b)} className={`tap h-8 min-w-[32px] rounded-lg px-2 text-xs font-medium ${b === data.page ? "bg-brand text-white" : "border border-[var(--color-line)] text-ink hover:bg-[var(--color-surface-2)]"}`}>
+                {b}
+              </button>
+            ),
           )}
-          <button
-            disabled={!hasMore}
-            onClick={() => apply({ page: page + 1 })}
-            className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
-            aria-label={m.common.next}
-          >
+          <button disabled={data.page >= data.totalPages} onClick={() => setPage(data.page + 1)} className="tap grid size-8 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label={m.common.next}>
             <IconChevronRight className="size-4" />
           </button>
-          <select
-            value={filters.ps || "20"}
-            onChange={(e) => apply({ ps: e.target.value, page: 1 } as Partial<Filters & { page: number }>)}
-            className="ml-2 h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-xs outline-none focus:border-brand"
-            title={m.auditLogs.perPage}
-          >
-            <option value="20">{t("20 / pag.")}</option>
-            <option value="50">{t("50 / pag.")}</option>
-            <option value="100">{t("100 / pag.")}</option>
-            <option value="200">{t("200 / pag.")}</option>
-            <option value="500">{t("500 / pag.")}</option>
-            <option value="1000">{t("1000 / pag.")}</option>
-            <option value="all">{m.common.allPages}</option>
-          </select>
         </div>
+      )}
+
+      {selId && (
+        <AuditDetailDialog
+          key={selId}
+          id={selId}
+          preview={items.find((r) => r.id === selId) ?? null}
+          onClose={() => setSelId(null)}
+          onPrev={selIdx > 0 ? () => setSelId(items[selIdx - 1].id) : undefined}
+          onNext={selIdx >= 0 && selIdx < items.length - 1 ? () => setSelId(items[selIdx + 1].id) : undefined}
+          onOpen={setSelId}
+        />
       )}
     </>
   );

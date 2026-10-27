@@ -21,6 +21,7 @@ import {
 } from "@/lib/services/tasks";
 import { listTasks, taskHistory, taskViewFilter, type TaskHistoryRow, type TaskRow } from "@/lib/queries/tasks";
 import { logAudit } from "@/lib/services/audit";
+import { fromTaskChanges } from "@/lib/services/audit-diff";
 import { TASK_STATUS_RO } from "@/lib/telegram";
 import type { TaskStatus, TaskType, TaskPriority } from "@prisma/client";
 import type { AssignmentSetting } from "@/lib/services/tasks";
@@ -384,7 +385,7 @@ export async function updateTaskAction(
 
     await logAudit(
       { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
-      { action: `${prefixForType(res.type)}.edit`, module: moduleForType(res.type), objectId: id, objectName: res.title },
+      { action: `${prefixForType(res.type)}.edit`, module: moduleForType(res.type), objectId: id, objectName: res.title, details: { changes: fromTaskChanges(res.changes) } },
     );
     revalidateTasks();
     return { ok: true, id };
@@ -492,7 +493,7 @@ export async function updateTaskFieldAction(id: string, patch: TaskFieldPatch): 
 
     await logAudit(
       { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
-      { action: `${prefixForType(res.type)}.edit`, module: moduleForType(res.type), objectId: id, objectName: res.title },
+      { action: `${prefixForType(res.type)}.edit`, module: moduleForType(res.type), objectId: id, objectName: res.title, details: { changes: fromTaskChanges(res.changes) } },
     );
     revalidateTasks();
     return { ok: true, id };

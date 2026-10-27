@@ -22,7 +22,7 @@ import { useToast } from "./toast";
 import ReadingForm from "./ReadingForm";
 import VirtualList from "./VirtualList";
 import { useFieldDataset } from "./useFieldDataset";
-import { mapsUrl, type MeterLocationDto } from "@/lib/meter-readings";
+import { MAX_LOC_ACCURACY, mapsUrl, type MeterLocationDto } from "@/lib/meter-readings";
 
 const STORAGE_KEY = "filters:/contoare/citiri";
 type TextKey = "q" | "street" | "consumMin" | "consumMax";
@@ -268,7 +268,7 @@ export default function FieldReadings({
 
   const onSaved = useCallback(
     (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean, loc?: MeterLocationDto) => {
-      ds.patchRow(id, { ...patch, by, distanceM, geo, ...(loc ? { address: loc.address, lat: loc.lat, lng: loc.lng, addrField: loc.addrField } : {}) });
+      ds.patchRow(id, { ...patch, by, distanceM, geo, ...(loc ? { address: loc.address, lat: loc.lat, lng: loc.lng, addrField: loc.addrField, locAcc: loc.accuracy } : {}) });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ds.patchRow],
@@ -562,7 +562,16 @@ const FieldTr = memo(function FieldTr({ r, onOpen, compact }: { r: FieldRow; onO
       )}
       <div role="cell" className={`${CELL} text-center`} onClick={(e) => e.stopPropagation()}>
         {r.lat != null && r.lng != null ? (
-          <a href={mapsUrl(r.lat, r.lng)} target="_blank" rel="noreferrer" title={t("Locația contorului pe hartă")} aria-label={t("Locația contorului pe hartă")} className="hover:opacity-70">📍</a>
+          <a
+            href={mapsUrl(r.lat, r.lng)}
+            target="_blank"
+            rel="noreferrer"
+            title={r.locAcc != null && r.locAcc > MAX_LOC_ACCURACY ? `${t("Locația contorului pe hartă")} · ${t("precizie slabă")} (±${Math.round(r.locAcc)} m)` : r.locAcc != null ? `${t("Locația contorului pe hartă")} (±${Math.round(r.locAcc)} m)` : t("Locația contorului pe hartă")}
+            aria-label={t("Locația contorului pe hartă")}
+            className={r.locAcc != null && r.locAcc > MAX_LOC_ACCURACY ? "opacity-50 hover:opacity-80" : "hover:opacity-70"}
+          >
+            {r.locAcc != null && r.locAcc > MAX_LOC_ACCURACY ? "⚠" : "📍"}
+          </a>
         ) : (
           <Dash />
         )}
@@ -785,6 +794,7 @@ function ReadingDialog({
           addressEditable={!row.address || row.addrField}
           meterLat={row.lat}
           meterLng={row.lng}
+          meterAcc={row.locAcc}
           lastIndex={row.lastIndex}
           lastDate={row.lastDate}
           initialValue={row.value}

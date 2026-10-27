@@ -224,8 +224,13 @@ model AuditLog {
   newValue   String?               // valoare nouă
   ip         String?
   userAgent  String?
+  /// detalii structurate (JSON, vezi lib/audit-meta.ts → AuditDetails): modificările pe câmpuri + informații suplimentare
+  details    String?
+  /// pagina din care s-a făcut acțiunea (calea din Referer)
+  path       String?
   createdAt  DateTime @default(now())
 
+  @@index([objectId, createdAt])
   @@index([createdAt])
   @@index([userId, createdAt])
   @@index([action, createdAt])

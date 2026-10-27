@@ -8,6 +8,7 @@ import { can, ALL_PERMISSION_KEYS, PERMISSIONS_V2 } from "@/lib/permissions";
 import { hashPassword } from "@/lib/password";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
+import { USER_SPEC, diffFields } from "@/lib/services/audit-diff";
 import { invalidateSuperAdminCheck, otherActiveSuperAdmins } from "@/lib/services/super-admin";
 import { NOTIFY_EVENT_KEYS } from "@/lib/notify-meta";
 
@@ -149,7 +150,7 @@ export async function updateUser(
     prisma.user.findUnique({ where: { email }, select: { id: true } }),
     prisma.user.findUnique({
       where: { id },
-      select: { name: true, role: true, isActive: true, isSuperAdmin: true, permissions: true, notifyEvents: true },
+      select: { name: true, email: true, role: true, isActive: true, isSuperAdmin: true, permissions: true, notifyEvents: true },
     }),
   ]);
   if (emailOwner && emailOwner.id !== id) return { error: "Există deja un cont cu acest email." };
@@ -223,6 +224,12 @@ export async function updateUser(
     objectName: name,
     oldValue: before ? JSON.stringify({ role: before.role, isActive: before.isActive }) : null,
     newValue: JSON.stringify({ role, isActive }),
+    details: before
+      ? {
+          changes: diffFields(before, { name, email, role, isActive }, USER_SPEC),
+          extra: newPassword.length >= 8 ? [{ label: "Parolă", value: "schimbată de administrator" }] : undefined,
+        }
+      : null,
   });
   // Log dedicat la schimbarea permisiunilor
   if (before && !sameSet(before.permissions, newPerms)) {

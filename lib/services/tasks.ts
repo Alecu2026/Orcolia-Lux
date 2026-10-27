@@ -1001,11 +1001,12 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
     select: {
       id: true, seq: true, title: true, type: true,
       description: true, priority: true, dueAt: true,
-      assigneeId: true, teamId: true, projectId: true,
+      assigneeId: true, teamId: true, projectId: true, address: true,
       creatorId: true, extraAssigneeIds: true, extraTeamIds: true,
       assignee: { select: { name: true, teamIds: true } },
       team: { select: { name: true } },
       project: { select: { name: true } },
+      category: { select: { name: true } },
     },
   });
   if (!task) return { ok: false as const, error: "Sarcină inexistentă." };
@@ -1076,6 +1077,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
   }
 
   // Compute diff for audit trail (best-effort, non-blocking)
+  let auditChanges: { field: string; from: string | null; to: string | null }[] = [];
   try {
     type Change = { field: string; from: string | null; to: string | null };
     const changes: Change[] = [];
@@ -1130,6 +1132,18 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
         : null;
       changes.push({ field: "Proiect", from: task.project?.name ?? null, to: newProjectName });
     }
+
+    if ("address" in input) {
+      const na = input.address?.trim().slice(0, 300) || null;
+      if (na !== (task.address ?? null)) changes.push({ field: "Adresă", from: task.address ?? null, to: na });
+    }
+    if ("categoryId" in input) {
+      const nc = input.categoryId || null;
+      const oldCat = task.category?.name ?? null;
+      const newCat = nc ? ((await prisma.category.findUnique({ where: { id: nc }, select: { name: true } }))?.name ?? null) : null;
+      if (newCat !== oldCat) changes.push({ field: "Categorie", from: oldCat, to: newCat });
+    }
+    auditChanges = changes;
 
     if (changes.length > 0) {
       await prisma.taskActivity
@@ -1207,7 +1221,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
     // non-blocking
   }
 
-  return { ok: true as const, title: (input.title?.trim() ?? task.title), type: task.type };
+  return { ok: true as const, title: (input.title?.trim() ?? task.title), type: task.type, changes: auditChanges };
 }
 
 /**

@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { headers } from "next/headers";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
+import type { AuditDetails } from "../audit-meta";
 
 export type AuditActor = {
   id: string;
@@ -18,6 +19,8 @@ export type AuditInput = {
   objectName?: string | null;
   oldValue?: string | null;
   newValue?: string | null;
+  /** Modificări pe câmpuri + informații suplimentare (se văd în pop-up-ul din Audit Logs). */
+  details?: AuditDetails | null;
 };
 
 /**
@@ -31,10 +34,14 @@ export async function logAudit(actor: AuditActor, input: AuditInput): Promise<vo
 
   let ip: string | null = null;
   let userAgent: string | null = null;
+  let path: string | null = null;
   try {
     const h = await headers();
     ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? h.get("x-real-ip") ?? null;
     userAgent = h.get("user-agent");
+    // pagina din care s-a făcut acțiunea (la acțiunile de server, Referer = pagina deschisă în browser)
+    const ref = h.get("referer");
+    if (ref) path = new URL(ref).pathname.slice(0, 200);
   } catch {
     // în afara unui request scope — ignorăm meta
   }
@@ -51,6 +58,8 @@ export async function logAudit(actor: AuditActor, input: AuditInput): Promise<vo
     newValue: input.newValue ?? null,
     ip,
     userAgent,
+    path,
+    details: serializeDetails(input.details),
   };
 
   const write = () => prisma.auditLog.create({ data }).then(() => undefined).catch(() => undefined);
@@ -61,3 +70,14 @@ export async function logAudit(actor: AuditActor, input: AuditInput): Promise<vo
     void write();
   }
 }
+
+/** Detaliile ca JSON (maximum ~20 KB: un câmp enorm nu are voie să umfle jurnalul); fără nimic de arătat → null. */
+function serializeDetails(d: AuditDetails | null | undefined): string | null {
+  if (!d) return null;
+  const changes = (d.changes ?? []).slice(0, 60).map((c) => ({ ...c, old: clip(c.old), new: clip(c.new) }));
+  const extra = (d.extra ?? []).slice(0, 30).map((x) => ({ label: x.label, value: clip(x.value) ?? "" }));
+  if (!changes.length && !extra.length) return null;
+  const json = JSON.stringify({ ...(changes.length ? { changes } : {}), ...(extra.length ? { extra } : {}) });
+  return json.length > 20_000 ? json.slice(0, 20_000) : json;
+}
+const clip = (v: string | null | undefined) => (v == null ? null : v.length > 1500 ? `${v.slice(0, 1500)}…` : v);

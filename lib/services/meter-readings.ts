@@ -7,6 +7,7 @@ import {
   FAR_METERS,
   JUMP_CONFIRM_M3,
   MAX_ADDRESS,
+  MAX_LOC_ACCURACY,
   MAX_INDEX,
   currentPeriod,
   distanceMeters,
@@ -65,10 +66,10 @@ export async function getFieldList(): Promise<{ period: string; rows: FieldTuple
     // luna aceasta + cele două dinainte: citirile din teren mai noi decât indexul din 1C
     prisma.meterReading.findMany({
       where: { period: { gte: shiftPeriod(period, 2) } },
-      select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, distanceM: true, lat: true, lng: true },
+      select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, distanceM: true, lat: true, lng: true, accuracy: true },
     }),
     // adresa / locația contoarelor completate din teren (o înregistrare mică pe contor)
-    prisma.meterLocation.findMany({ select: { meterId: true, address: true, lat: true, lng: true } }),
+    prisma.meterLocation.findMany({ select: { meterId: true, address: true, lat: true, lng: true, accuracy: true } }),
   ]);
   const locBy = new Map(locs.map((l) => [l.meterId, l]));
   const thisMonth = new Map<string, (typeof recent)[number]>();
@@ -93,12 +94,14 @@ export async function getFieldList(): Promise<{ period: string; rows: FieldTuple
     // 1C câștigă: adresa din teren se folosește doar cât timp 1C n-are una
     const fieldAddr = !r.address && loc?.address ? loc.address : null;
     const useField = fb && (!r.currDate || (fbDate ?? "") > r.currDate);
+    // Locația afișată: cea salvată pentru contor; altfel GPS-ul citirii de luna aceasta sau al ultimei citiri (citirile făcute înainte să existe „locația contorului”)
+    const geo = loc?.lat != null && loc.lng != null ? loc : cur?.lat != null && cur.lng != null ? cur : fb?.lat != null && fb.lng != null ? fb : null;
     return [
       r.id, r.contor, r.name, r.address || fieldAddr,
       useField ? fb.value : r.curr, useField ? fbDate : r.currDate,
       cur ? cur.value : null, cur ? cur.readAt.getTime() : null, cur?.photoUrl ? 1 : 0,
       cur ? cur.userName : null, cur ? cur.distanceM : null, cur && cur.lat != null && cur.lng != null ? 1 : 0,
-      loc?.lat ?? null, loc?.lng ?? null, fieldAddr ? 1 : 0,
+      geo?.lat ?? null, geo?.lng ?? null, fieldAddr ? 1 : 0, geo?.accuracy ?? null,
     ];
   });
   return { period, rows };
@@ -197,7 +200,7 @@ async function updateMeterLocation(
   const addr = (input.address ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_ADDRESS) || null;
   const data: { address?: string; lat?: number; lng?: number; accuracy?: number | null } = {};
   if (addr && !row.address && addr !== (cur?.address ?? null)) data.address = addr;
-  if (input.lat != null && input.lng != null) {
+  if (input.lat != null && input.lng != null && (input.accuracy == null || input.accuracy <= MAX_LOC_ACCURACY)) {
     const better = cur?.lat == null || cur.lng == null || (input.accuracy != null && (cur.accuracy == null || input.accuracy <= cur.accuracy));
     if (better) {
       data.lat = input.lat;
@@ -214,7 +217,7 @@ async function updateMeterLocation(
     });
   }
   const fieldAddr = !row.address && next?.address ? next.address : null;
-  return { address: row.address || fieldAddr, lat: next?.lat ?? null, lng: next?.lng ?? null, addrField: !!fieldAddr };
+  return { address: row.address || fieldAddr, lat: next?.lat ?? null, lng: next?.lng ?? null, accuracy: next?.accuracy ?? null, addrField: !!fieldAddr };
 }
 
 /** Pune poza unei citiri; întoarce poza veche (de șters din stocare), sau null dacă citirea nu există. */

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { saveMeterReadingAction, uploadMeterPhotoAction } from "@/app/actions/meter-readings";
-import { MAX_ADDRESS, mapsUrl, parseIndex, type MeterLocationDto, type ReadingDto } from "@/lib/meter-readings";
+import { MAX_ADDRESS, MAX_LOC_ACCURACY, mapsUrl, parseIndex, type MeterLocationDto, type ReadingDto } from "@/lib/meter-readings";
 import { optimizeImage } from "@/lib/image-optimize";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
@@ -32,6 +32,7 @@ export default function ReadingForm({
   addressEditable = false,
   meterLat = null,
   meterLng = null,
+  meterAcc = null,
   lastIndex,
   lastDate,
   initialValue,
@@ -48,6 +49,8 @@ export default function ReadingForm({
   /** Locația GPS a contorului, dacă a fost deja salvată. */
   meterLat?: number | null;
   meterLng?: number | null;
+  /** Precizia (m) a locației de mai sus. */
+  meterAcc?: number | null;
   /** Ultimul index cunoscut (m³) și data lui — pentru consumul calculat pe loc. */
   lastIndex: number | null;
   lastDate: string | null;
@@ -246,7 +249,7 @@ export default function ReadingForm({
       )}
       {meterLat != null && meterLng != null && (
         <p className="mb-3 text-xs text-ink-soft">
-          📌 {t("Locația contorului:")} {meterLat.toFixed(5)}, {meterLng.toFixed(5)} ·{" "}
+          📌 {t("Locația contorului:")} {meterLat.toFixed(5)}, {meterLng.toFixed(5)}{meterAcc != null ? ` (±${Math.round(meterAcc)} m${meterAcc > MAX_LOC_ACCURACY ? ` — ${t("imprecisă")}` : ""})` : ""} ·{" "}
           <a href={mapsUrl(meterLat, meterLng)} target="_blank" rel="noreferrer" className="font-semibold text-brand underline">{t("Vezi pe hartă")}</a>
         </p>
       )}
@@ -279,7 +282,12 @@ export default function ReadingForm({
 
       <div className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-[13px] ${geo.state === "ok" ? "border-st-done/40 bg-st-done/5" : geo.state === "asking" ? "border-[var(--color-line)]" : "border-st-progress/40 bg-st-progress/10"}`} role="status">
         <span aria-hidden>{geo.state === "ok" ? "📍" : geo.state === "asking" ? "⏳" : "⚠️"}</span>
-        <span className="min-w-0 flex-1">{geoText}</span>
+        <span className="min-w-0 flex-1">
+          {geoText}
+          {geo.state === "ok" && geo.acc > MAX_LOC_ACCURACY && (
+            <span className="mt-0.5 block text-st-progress">{t("Precizie slabă (±{acc} m): nu se salvează ca poziție a contorului. Ieși într-un loc deschis și apasă „Reia”.", { acc: Math.round(geo.acc) })}</span>
+          )}
+        </span>
         {geo.state !== "asking" && (
           <button type="button" onClick={locate} className="tap shrink-0 font-semibold text-brand underline">
             {t("Reia")}

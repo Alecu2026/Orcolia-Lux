@@ -7,6 +7,7 @@ import { can } from "@/lib/permissions";
 import { clientSchema } from "@/lib/validation";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
+import { CLIENT_SPEC, diffFields } from "@/lib/services/audit-diff";
 import { invalidatePayers } from "@/lib/services/payer-cache";
 import { invalidateInvoices } from "@/lib/services/invoice-cache";
 
@@ -23,7 +24,7 @@ export async function updatePayer(
   if (DEMO) return { error: "Mod demo: conectează o bază de date." };
 
   const id = String(formData.get("id") ?? "");
-  const existing = await prisma.client.findFirst({ where: { id, OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] }, select: { id: true, name: true } });
+  const existing = await prisma.client.findFirst({ where: { id, OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] }, select: { id: true, name: true, phone: true, email: true, notes: true } });
   if (!existing) return { error: "Plătitor inexistent." };
 
   const parsed = clientSchema.safeParse({
@@ -52,7 +53,19 @@ export async function updatePayer(
   if (d.name !== existing.name) {
     await prisma.invoice.updateMany({ where: { clientId: id }, data: { consumerName: d.name } });
   }
-  await logAudit(actor(user), { action: "client.update", module: "Payers", objectId: id, objectName: d.name });
+  await logAudit(actor(user), {
+    action: "client.update",
+    module: "Payers",
+    objectId: id,
+    objectName: d.name,
+    details: {
+      changes: diffFields(
+        existing,
+        { name: d.name, phone: d.phone || null, email: d.email || null, ...(formData.has("notes") ? { notes: d.notes || null } : {}) },
+        CLIENT_SPEC,
+      ),
+    },
+  });
   revalidatePath(`/platitori/${id}`);
   revalidatePath("/platitori");
   await invalidatePayers();

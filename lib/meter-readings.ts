@@ -48,9 +48,9 @@ export function parseIndex(raw: string): number | null {
 
 /**
  * Un contor din lista de teren, ca tuplu: 0 id, 1 nr. contor, 2 abonat, 3 adresă, 4 ultimul index cunoscut (m³), 5 data lui („YYYY-MM-DD"),
- * 6 indexul citit luna aceasta (null = necitit), 7 când a fost citit (ms), 8 are poză (0/1), 9 cine a citit, 10 distanța (m) față de locația citirii anterioare, 11 citirea are locație GPS (0/1), 12–13 latitudine / longitudine a CONTORULUI (din teren), 14 adresa vine din teren (1C n-are una) (0/1).
+ * 6 indexul citit luna aceasta (null = necitit), 7 când a fost citit (ms), 8 are poză (0/1), 9 cine a citit, 10 distanța (m) față de locația citirii anterioare, 11 citirea are locație GPS (0/1), 12–13 latitudine / longitudine a CONTORULUI (din teren), 14 adresa vine din teren (1C n-are una) (0/1), 15 precizia (m) a locației afișate.
  */
-export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1];
+export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null];
 
 export type FieldRow = {
   id: string;
@@ -75,6 +75,8 @@ export type FieldRow = {
   lng: number | null;
   /** Adresa a fost scrisă din teren (1C nu are una pentru acest contor). */
   addrField: boolean;
+  /** Precizia (m) a locației lat/lng — mare (> MAX_LOC_ACCURACY) = locație nesigură. */
+  locAcc: number | null;
   /** Localitatea (primul segment al adresei), pentru filtrul „Localitate”. */
   locality: string;
   /** Ziua citirii („YYYY-MM-DD”, în fusul firmei), pentru filtrul pe perioadă. */
@@ -112,6 +114,7 @@ export function decodeField(t: FieldTuple[]): FieldRow[] {
     lat: x[12] ?? null,
     lng: x[13] ?? null,
     addrField: x[14] === 1,
+    locAcc: x[15] ?? null,
     locality: localityOf(x[3]),
     _day: x[7] != null ? dayOf(x[7]) : null,
     _h: [x[1], x[2], x[3]].filter(Boolean).join("\n").toLowerCase(),
@@ -284,7 +287,10 @@ export type ReadingDto = {
 };
 
 /** Adresa (din 1C sau din teren) și locația GPS a contorului, după o salvare. */
-export type MeterLocationDto = { address: string | null; lat: number | null; lng: number | null; addrField: boolean };
+export type MeterLocationDto = { address: string | null; lat: number | null; lng: number | null; accuracy: number | null; addrField: boolean };
+
+/** O locație mai puțin precisă (metri) nu devine poziția contorului: o citire cu GPS slab (ex. ±15 km, din rețea) ar muta contorul pe hartă. */
+export const MAX_LOC_ACCURACY = 100;
 
 /** Lungimea maximă a adresei scrise din teren. */
 export const MAX_ADDRESS = 200;

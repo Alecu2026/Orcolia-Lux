@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
+import { COMPANY_SPEC, diffFields } from "@/lib/services/audit-diff";
 import { sanitizeApaCanalLayout, type ApaCanalLayout } from "@/lib/apa-canal-layout";
 
 export type CompanyState = { ok?: boolean; error?: string; message?: string } | undefined;
@@ -92,6 +93,8 @@ export async function updateCompanySettings(
     apaCanalTarifCanal: tarifCanal,
   };
 
+  // starea de dinainte, pentru jurnal (logo-urile mari se compară doar ca „schimbat”)
+  const beforeRow = await prisma.companySettings.findUnique({ where: { singleton: "main" } }).catch(() => null);
   try {
     await saveCompanyRow(data);
   } catch (e) {
@@ -101,7 +104,20 @@ export async function updateCompanySettings(
 
   await logAudit(
     { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
-    { action: "settings.update", module: "Settings", objectName: companyName },
+    {
+      action: "settings.update",
+      module: "Settings",
+      objectName: companyName,
+      details: beforeRow
+        ? {
+            changes: [
+              ...diffFields(beforeRow, data, COMPANY_SPEC),
+              ...((beforeRow.logo ?? null) !== data.logo ? [{ field: "logo", label: "Logo", old: beforeRow.logo ? "setat" : null, new: data.logo ? "schimbat" : null }] : []),
+              ...((beforeRow.apaCanalLogo ?? null) !== data.apaCanalLogo ? [{ field: "apaCanalLogo", label: "Logo Apă-Canal", old: beforeRow.apaCanalLogo ? "setat" : null, new: data.apaCanalLogo ? "schimbat" : null }] : []),
+            ],
+          }
+        : null,
+    },
   );
 
   revalidatePath("/settings");

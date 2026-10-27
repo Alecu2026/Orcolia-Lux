@@ -5,6 +5,7 @@ import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { parseIndex, type PhotoResult, type SaveReadingResult } from "@/lib/meter-readings";
 import { getReading, saveReading, setReadingPhoto } from "@/lib/services/meter-readings";
+import { logAudit } from "@/lib/services/audit";
 
 /**
  * Citiri lunare din teren — acțiuni pentru persoana responsabilă (permisiunea „Citiri contoare”). Logica stă în lib/services/meter-readings.ts
@@ -25,7 +26,7 @@ export async function saveMeterReadingAction(formData: FormData): Promise<SaveRe
   if (!meterId || meterId.length > 300) return { ok: false, error: "Contor invalid." };
   const value = parseIndex(String(formData.get("value") ?? ""));
   if (value == null) return { ok: false, error: "Index invalid. Scrie un număr (m³), ex. 1234,5." };
-  return saveReading(
+  const res = await saveReading(
     { id: user.id, name: user.name },
     {
       meterId,
@@ -37,6 +38,31 @@ export async function saveMeterReadingAction(formData: FormData): Promise<SaveRe
       address: typeof formData.get("address") === "string" ? String(formData.get("address")) : null,
     },
   );
+  if (res.ok) {
+    const r = res.reading;
+    const consum = r.prevValue != null ? Math.round((r.value - r.prevValue) * 1000) / 1000 : null;
+    await logAudit(
+      { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
+      {
+        action: "meter.reading",
+        module: "Meters",
+        objectId: meterId,
+        objectName: r.contor,
+        oldValue: r.prevValue != null ? `${r.prevValue} m³` : null,
+        newValue: `${r.value} m³`,
+        details: {
+          extra: [
+            { label: "Perioada", value: r.period },
+            ...(consum != null ? [{ label: "Consum", value: `${consum} m³` }] : []),
+            ...(r.lat != null && r.lng != null ? [{ label: "Locație citire", value: `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}${r.accuracy != null ? ` (±${Math.round(r.accuracy)} m)` : ""}` }] : [{ label: "Locație citire", value: "fără locație" }]),
+            ...(r.distanceM != null ? [{ label: "Distanță față de citirea anterioară", value: `${r.distanceM} m` }] : []),
+            ...(res.location.addrField && res.location.address ? [{ label: "Adresă scrisă din teren", value: res.location.address }] : []),
+          ],
+        },
+      },
+    );
+  }
+  return res;
 }
 
 const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);

@@ -12,6 +12,7 @@ import { invalidatePayers } from "@/lib/services/payer-cache";
 import { invalidateInvoices, syncInvoiceToCache } from "@/lib/services/invoice-cache";
 import { getSettings } from "@/lib/queries/settings";
 import { logAudit } from "@/lib/services/audit";
+import { INVOICE_SPEC, diffFields } from "@/lib/services/audit-diff";
 import { notifyUsers, observerRecipients } from "@/lib/services/notifications";
 import { sendInvoiceEmail } from "@/lib/email";
 import { env } from "@/lib/env";
@@ -125,7 +126,7 @@ export async function saveInvoice(payload: InvoicePayload): Promise<InvoiceActio
   const previousClient = payload.id
     ? await prisma.invoice.findUnique({
         where: { id: payload.id },
-        select: { clientId: true, client: { select: { name: true, email: true } } },
+        select: { clientId: true, status: true, issueDate: true, dueDate: true, grandTotal: true, notes: true, client: { select: { name: true, email: true } } },
       })
     : null;
 
@@ -150,13 +151,24 @@ export async function saveInvoice(payload: InvoicePayload): Promise<InvoiceActio
     : await createInvoice(user.id, input);
 
   if (!res.ok) return { ok: false, error: res.error };
-  const inv = await prisma.invoice.findUnique({ where: { id: res.id }, select: { number: true } });
+  const inv = await prisma.invoice.findUnique({ where: { id: res.id }, select: { number: true, status: true, issueDate: true, dueDate: true, grandTotal: true, notes: true, client: { select: { name: true } } } });
   await logAudit(actor(user), {
     action: payload.id ? "invoice.update" : "invoice.create",
     module: "Invoices",
     objectId: res.id,
     objectName: inv?.number ?? null,
     newValue: status,
+    details: inv
+      ? payload.id && previousClient
+        ? { changes: diffFields({ ...previousClient, client: previousClient.client?.name ?? null }, { ...inv, client: inv.client?.name ?? null }, INVOICE_SPEC) }
+        : {
+            extra: [
+              { label: "Client", value: inv.client?.name ?? "—" },
+              { label: "Total", value: `${inv.grandTotal.toFixed(2)} ${payload.kind === "APA_CANAL" ? "MDL" : ""}`.trim() },
+              { label: "Rânduri", value: String(payload.items.length) },
+            ],
+          }
+      : null,
   });
   if (!payload.id) {
     notifyInvoiceEvent("invoice.created", `Factură nouă: ${inv?.number ?? ""}`.trim(), user.id);
