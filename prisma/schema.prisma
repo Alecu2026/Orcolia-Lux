@@ -1173,6 +1173,23 @@ model PayerCacheEntry {
 // momentul citirii și, opțional, o poză cu contorul. O citire pe contor și lună (se poate corecta în aceeași lună). Fără relații: istoricul rămâne
 // chiar dacă utilizatorul sau abonatul sunt șterși (numele operatorului e copiat aici). `meterId` = id-ul stabil din lista de contoare
 // (vezi lib/queries/meters.ts: „<cheie abonat>~<nr. contor>~<k>” sau „a:<idClient>”).
+/// Locația și adresa unui contor, completate din teren (1C nu trimite adresa multor abonați, mai ales firme): adresa se scrie o dată la prima citire, iar locația GPS
+/// se ia de la telefon. O înregistrare pe contor; datele din 1C câștigă mereu (adresa de aici se folosește doar cât timp 1C n-are una).
+model MeterLocation {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  meterId   String   @unique
+  contor    String
+  address   String?
+  lat       Float?
+  lng       Float?
+  /// precizia locației, în metri
+  accuracy  Float?
+  userId    String?  @db.ObjectId
+  userName  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model MeterReading {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
   meterId      String

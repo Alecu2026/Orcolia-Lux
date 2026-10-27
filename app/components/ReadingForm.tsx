@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { saveMeterReadingAction, uploadMeterPhotoAction } from "@/app/actions/meter-readings";
-import { parseIndex, type ReadingDto } from "@/lib/meter-readings";
+import { MAX_ADDRESS, mapsUrl, parseIndex, type MeterLocationDto, type ReadingDto } from "@/lib/meter-readings";
 import { optimizeImage } from "@/lib/image-optimize";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
@@ -17,6 +17,8 @@ type Geo =
 
 export type ReadingPatch = Partial<{ value: number; readAt: number; photo: boolean }>;
 
+const addrCls = "h-10 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
+
 const inputCls = "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-lg font-semibold tabular-nums outline-none focus:border-brand";
 
 /**
@@ -27,6 +29,9 @@ const inputCls = "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[v
 export default function ReadingForm({
   meterId,
   address,
+  addressEditable = false,
+  meterLat = null,
+  meterLng = null,
   lastIndex,
   lastDate,
   initialValue,
@@ -38,13 +43,18 @@ export default function ReadingForm({
   meterId: string;
   /** Adresa contorului — se arată ca să fie clar unde se face citirea (locația GPS se salvează împreună cu indexul). */
   address?: string | null;
+  /** Contorul n-are adresă în 1C: se poate scrie aici (de pe teren) și rămâne salvată pentru lunile următoare. */
+  addressEditable?: boolean;
+  /** Locația GPS a contorului, dacă a fost deja salvată. */
+  meterLat?: number | null;
+  meterLng?: number | null;
   /** Ultimul index cunoscut (m³) și data lui — pentru consumul calculat pe loc. */
   lastIndex: number | null;
   lastDate: string | null;
   /** Indexul deja citit luna aceasta (la corectare). */
   initialValue: number | null;
   initialPhotoUrl?: string | null;
-  onSaved?: (patch: ReadingPatch, reading: ReadingDto) => void;
+  onSaved?: (patch: ReadingPatch, reading: ReadingDto, location?: MeterLocationDto) => void;
   /** Dacă există: după salvare apare „Următorul contor”. */
   onNext?: () => void;
   onClose?: () => void;
@@ -53,7 +63,9 @@ export default function ReadingForm({
   const toast = useToast();
   const tag = dateTag(useLocale());
   const idxId = useId();
+  const addrId = useId();
   const nf = (n: number) => n.toLocaleString(tag, { maximumFractionDigits: 3 });
+  const [addr, setAddr] = useState(address ?? "");
   const [value, setValue] = useState(initialValue != null ? String(initialValue).replace(".", ",") : "");
   const [geo, setGeo] = useState<Geo>({ state: "asking" });
   const [saved, setSaved] = useState<ReadingDto | null>(null);
@@ -146,6 +158,7 @@ export default function ReadingForm({
       const fd = new FormData();
       fd.set("meterId", meterId);
       fd.set("value", value);
+      if (addressEditable && addr.trim()) fd.set("address", addr.trim());
       if (geo.state === "ok") {
         fd.set("lat", String(geo.lat));
         fd.set("lng", String(geo.lng));
@@ -170,7 +183,7 @@ export default function ReadingForm({
       }
       setSaved(res.reading);
       setPhotoUrl(res.reading.photoUrl);
-      onSaved?.({ value: res.reading.value, readAt: new Date(res.reading.readAt).getTime(), photo: !!res.reading.photoUrl }, res.reading);
+      onSaved?.({ value: res.reading.value, readAt: new Date(res.reading.readAt).getTime(), photo: !!res.reading.photoUrl }, res.reading, res.location);
       toast.success(t("Citirea a fost salvată."));
       if (photo) await uploadPhoto(res.reading.id, photo, res.reading);
     } catch {
@@ -207,10 +220,34 @@ export default function ReadingForm({
 
   return (
     <div>
-      {address && (
-        <p className="mb-3 flex items-start gap-1.5 text-sm">
-          <span aria-hidden>🏠</span>
-          <span className="min-w-0">{address}</span>
+      {addressEditable ? (
+        <div className="mb-3">
+          <label htmlFor={addrId} className="mb-1 block text-xs font-semibold text-ink-soft">
+            🏠 {t("Adresa contorului")}
+          </label>
+          <input
+            id={addrId}
+            value={addr}
+            onChange={(e) => setAddr(e.target.value)}
+            maxLength={MAX_ADDRESS}
+            autoComplete="off"
+            disabled={!!saved}
+            placeholder={t("Localitate, strada, nr. (1C nu are adresa acestui contor)")}
+            className={addrCls}
+          />
+        </div>
+      ) : (
+        address && (
+          <p className="mb-3 flex items-start gap-1.5 text-sm">
+            <span aria-hidden>🏠</span>
+            <span className="min-w-0">{address}</span>
+          </p>
+        )
+      )}
+      {meterLat != null && meterLng != null && (
+        <p className="mb-3 text-xs text-ink-soft">
+          📌 {t("Locația contorului:")} {meterLat.toFixed(5)}, {meterLng.toFixed(5)} ·{" "}
+          <a href={mapsUrl(meterLat, meterLng)} target="_blank" rel="noreferrer" className="font-semibold text-brand underline">{t("Vezi pe hartă")}</a>
         </p>
       )}
       <div className="mb-3 grid grid-cols-2 gap-2 text-sm">

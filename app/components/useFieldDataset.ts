@@ -15,7 +15,7 @@ type Memo = { rows: FieldRow[]; tuples: FieldTuple[]; period: string; at: number
 let memo: Memo | null = null;
 
 /** Ce se schimbă pe un rând când se salvează o citire. */
-export type FieldPatch = { value: number; readAt: number; photo: boolean; by?: string | null; distanceM?: number | null; geo?: boolean };
+export type FieldPatch = { value: number; readAt: number; photo: boolean; by?: string | null; distanceM?: number | null; geo?: boolean; address?: string | null; lat?: number | null; lng?: number | null; addrField?: boolean };
 
 /**
  * Lista „Citiri teren” în memoria browserului: întâi din IndexedDB (instant, doar dacă e din luna curentă), apoi reîmprospătată de pe server în fundal
@@ -117,6 +117,10 @@ export function useFieldDataset() {
       distanceM: patch.distanceM !== undefined ? patch.distanceM : old.distanceM,
       consum: fieldConsum(value, old.lastIndex),
       geo: patch.geo ?? old.geo,
+      address: patch.address !== undefined ? patch.address : old.address,
+      lat: patch.lat !== undefined ? patch.lat : old.lat,
+      lng: patch.lng !== undefined ? patch.lng : old.lng,
+      addrField: patch.addrField ?? old.addrField,
       _day: (patch.readAt ?? old.readAt) != null ? dayOf((patch.readAt ?? old.readAt) as number) : null,
     };
     const rows = memo.rows.slice();
@@ -129,6 +133,10 @@ export function useFieldDataset() {
     tu[9] = next.by;
     tu[10] = next.distanceM;
     tu[11] = next.geo ? 1 : 0;
+    tu[3] = next.address;
+    tu[12] = next.lat;
+    tu[13] = next.lng;
+    tu[14] = next.addrField ? 1 : 0;
     tuples[i] = tu;
     // ETag-ul vechi nu mai descrie lista locală: la următoarea verificare serverul trimite lista întreagă (sigur corectă).
     memo = { ...memo, rows, tuples, etag: null };

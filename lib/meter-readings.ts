@@ -48,9 +48,9 @@ export function parseIndex(raw: string): number | null {
 
 /**
  * Un contor din lista de teren, ca tuplu: 0 id, 1 nr. contor, 2 abonat, 3 adresă, 4 ultimul index cunoscut (m³), 5 data lui („YYYY-MM-DD"),
- * 6 indexul citit luna aceasta (null = necitit), 7 când a fost citit (ms), 8 are poză (0/1), 9 cine a citit, 10 distanța (m) față de locația citirii anterioare, 11 citirea are locație GPS (0/1).
+ * 6 indexul citit luna aceasta (null = necitit), 7 când a fost citit (ms), 8 are poză (0/1), 9 cine a citit, 10 distanța (m) față de locația citirii anterioare, 11 citirea are locație GPS (0/1), 12–13 latitudine / longitudine a CONTORULUI (din teren), 14 adresa vine din teren (1C n-are una) (0/1).
  */
-export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1];
+export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1];
 
 export type FieldRow = {
   id: string;
@@ -70,6 +70,11 @@ export type FieldRow = {
   consum: number | null;
   /** Citirea de luna aceasta are locație GPS. */
   geo: boolean;
+  /** Locația GPS a contorului (luată de la telefon la o citire), sau null dacă n-a fost salvată încă. */
+  lat: number | null;
+  lng: number | null;
+  /** Adresa a fost scrisă din teren (1C nu are una pentru acest contor). */
+  addrField: boolean;
   /** Localitatea (primul segment al adresei), pentru filtrul „Localitate”. */
   locality: string;
   /** Ziua citirii („YYYY-MM-DD”, în fusul firmei), pentru filtrul pe perioadă. */
@@ -104,6 +109,9 @@ export function decodeField(t: FieldTuple[]): FieldRow[] {
     distanceM: x[10] ?? null,
     consum: fieldConsum(x[6], x[4]),
     geo: x[11] === 1,
+    lat: x[12] ?? null,
+    lng: x[13] ?? null,
+    addrField: x[14] === 1,
     locality: localityOf(x[3]),
     _day: x[7] != null ? dayOf(x[7]) : null,
     _h: [x[1], x[2], x[3]].filter(Boolean).join("\n").toLowerCase(),
@@ -136,12 +144,14 @@ export type FieldFilters = {
   consumMax: string;
   /** Citirea are / nu are locație GPS. */
   geo: "" | "yes" | "no";
-  /** Contorul are / nu are adresă în 1C. */
+  /** Contorul are / nu are adresă (din 1C sau din teren). */
   address: "" | "has" | "none";
+  /** Locația GPS a contorului e / nu e cunoscută. */
+  meterLoc: "" | "yes" | "no";
   sort: "" | "contor" | "name" | "readDesc" | "consumDesc" | "consumAsc" | "lastOld";
 };
 
-export const EMPTY_FIELD_FILTERS: FieldFilters = { q: "", street: "", status: "unread", photo: "", check: "", by: "", locality: "", from: "", to: "", lastIndex: "", consumMin: "", consumMax: "", geo: "", address: "", sort: "" };
+export const EMPTY_FIELD_FILTERS: FieldFilters = { q: "", street: "", status: "unread", photo: "", check: "", by: "", locality: "", from: "", to: "", lastIndex: "", consumMin: "", consumMax: "", geo: "", address: "", meterLoc: "", sort: "" };
 
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], dflt: T): T => (typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : dflt);
 
@@ -164,6 +174,7 @@ export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters
     consumMax: numTxt(raw.consumMax),
     geo: oneOf(raw.geo, ["", "yes", "no"] as const, ""),
     address: oneOf(raw.address, ["", "has", "none"] as const, ""),
+    meterLoc: oneOf(raw.meterLoc, ["", "yes", "no"] as const, ""),
     sort: oneOf(raw.sort, ["", "contor", "name", "readDesc", "consumDesc", "consumAsc", "lastOld"] as const, ""),
   };
 }
@@ -171,7 +182,7 @@ export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters
 /** Câte filtre sunt active (față de starea implicită: necitite, fără alte filtre). Sortarea nu se numără. */
 export function countActiveFieldFilters(f: FieldFilters): number {
   return (f.q ? 1 : 0) + (f.street ? 1 : 0) + (f.status !== "unread" ? 1 : 0) + (f.photo ? 1 : 0) + (f.check ? 1 : 0) + (f.by ? 1 : 0) +
-    (f.locality ? 1 : 0) + (f.from || f.to ? 1 : 0) + (f.lastIndex ? 1 : 0) + (f.consumMin || f.consumMax ? 1 : 0) + (f.geo ? 1 : 0) + (f.address ? 1 : 0);
+    (f.locality ? 1 : 0) + (f.from || f.to ? 1 : 0) + (f.lastIndex ? 1 : 0) + (f.consumMin || f.consumMax ? 1 : 0) + (f.geo ? 1 : 0) + (f.address ? 1 : 0) + (f.meterLoc ? 1 : 0);
 }
 
 export function fieldFiltersToParams(f: FieldFilters): URLSearchParams {
@@ -190,6 +201,7 @@ export function fieldFiltersToParams(f: FieldFilters): URLSearchParams {
   if (f.consumMax) p.set("consumMax", f.consumMax);
   if (f.geo) p.set("geo", f.geo);
   if (f.address) p.set("address", f.address);
+  if (f.meterLoc) p.set("meterLoc", f.meterLoc);
   if (f.sort) p.set("sort", f.sort);
   return p;
 }
@@ -223,6 +235,7 @@ export function filterField(rows: FieldRow[], f: FieldFilters): FieldRow[] {
     if (f.by && r.by !== f.by) return false;
     if (f.locality && r.locality !== f.locality) return false;
     if (f.address === "has" ? !r.address : f.address === "none" ? !!r.address : false) return false;
+    if (f.meterLoc === "yes" ? r.lat == null : f.meterLoc === "no" ? r.lat != null : false) return false;
     if (f.from && !(r._day && r._day >= f.from)) return false;
     if (f.to && !(r._day && r._day <= f.to)) return false;
     if (f.lastIndex === "none" ? r.lastIndex != null : f.lastIndex ? !(r.lastDate && r.lastDate.slice(0, 10) < cutoff) : false) return false;
@@ -270,8 +283,14 @@ export type ReadingDto = {
   userName: string;
 };
 
+/** Adresa (din 1C sau din teren) și locația GPS a contorului, după o salvare. */
+export type MeterLocationDto = { address: string | null; lat: number | null; lng: number | null; addrField: boolean };
+
+/** Lungimea maximă a adresei scrise din teren. */
+export const MAX_ADDRESS = 200;
+
 export type SaveReadingResult =
-  | { ok: true; reading: ReadingDto }
+  | { ok: true; reading: ReadingDto; location: MeterLocationDto }
   /** `confirm`: citirea pare greșită (mai mică decât cea anterioară / un salt mare) — se salvează abia după confirmare. */
   | { ok: false; error: string; confirm?: "lower" | "high" };
 

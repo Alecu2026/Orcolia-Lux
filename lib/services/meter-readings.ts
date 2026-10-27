@@ -6,11 +6,13 @@ import { getMeterSnap } from "./meter-cache";
 import {
   FAR_METERS,
   JUMP_CONFIRM_M3,
+  MAX_ADDRESS,
   MAX_INDEX,
   currentPeriod,
   distanceMeters,
   shiftPeriod,
   type FieldTuple,
+  type MeterLocationDto,
   type ReadingDto,
   type SaveReadingResult,
 } from "../meter-readings";
@@ -58,14 +60,17 @@ export async function listMeterReadings(meterId: string, limit = 36): Promise<Re
 export async function getFieldList(): Promise<{ period: string; rows: FieldTuple[] }> {
   const period = currentPeriod();
   if (DEMO) return { period, rows: [] };
-  const [snap, recent] = await Promise.all([
+  const [snap, recent, locs] = await Promise.all([
     getMeterSnap(),
     // luna aceasta + cele două dinainte: citirile din teren mai noi decât indexul din 1C
     prisma.meterReading.findMany({
       where: { period: { gte: shiftPeriod(period, 2) } },
       select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, distanceM: true, lat: true, lng: true },
     }),
+    // adresa / locația contoarelor completate din teren (o înregistrare mică pe contor)
+    prisma.meterLocation.findMany({ select: { meterId: true, address: true, lat: true, lng: true } }),
   ]);
+  const locBy = new Map(locs.map((l) => [l.meterId, l]));
   const thisMonth = new Map<string, (typeof recent)[number]>();
   const lastBefore = new Map<string, (typeof recent)[number]>();
   for (const r of recent) {
@@ -84,12 +89,16 @@ export async function getFieldList(): Promise<{ period: string; rows: FieldTuple
     const fb = lastBefore.get(r.id);
     // ultimul index cunoscut: cel mai recent între 1C și o citire din teren
     const fbDate = fb ? fb.readAt.toISOString().slice(0, 10) : null;
+    const loc = locBy.get(r.id);
+    // 1C câștigă: adresa din teren se folosește doar cât timp 1C n-are una
+    const fieldAddr = !r.address && loc?.address ? loc.address : null;
     const useField = fb && (!r.currDate || (fbDate ?? "") > r.currDate);
     return [
-      r.id, r.contor, r.name, r.address,
+      r.id, r.contor, r.name, r.address || fieldAddr,
       useField ? fb.value : r.curr, useField ? fbDate : r.currDate,
       cur ? cur.value : null, cur ? cur.readAt.getTime() : null, cur?.photoUrl ? 1 : 0,
       cur ? cur.userName : null, cur ? cur.distanceM : null, cur && cur.lat != null && cur.lng != null ? 1 : 0,
+      loc?.lat ?? null, loc?.lng ?? null, fieldAddr ? 1 : 0,
     ];
   });
   return { period, rows };
@@ -103,6 +112,8 @@ export type SaveInput = {
   accuracy: number | null;
   /** Utilizatorul a confirmat o citire care pare greșită (mai mică decât cea anterioară / salt mare). */
   confirmed: boolean;
+  /** Adresa contorului scrisă din teren — se păstrează doar dacă 1C n-are adresă pentru acest contor. */
+  address?: string | null;
 };
 
 /** Salvează (sau corectează) citirea de luna aceasta a unui contor. */
@@ -169,7 +180,41 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     create: { meterId: input.meterId, period, ...data },
     update: data,
   });
-  return { ok: true, reading: toReadingDto(saved) };
+  const location = await updateMeterLocation(actor, row, { address: input.address ?? null, lat, lng, accuracy });
+  return { ok: true, reading: toReadingDto(saved), location };
+}
+
+/**
+ * Salvează adresa scrisă din teren (doar dacă 1C n-are adresă) și locația GPS a contorului: se ia la prima citire cu locație, iar mai târziu doar dacă e mai precisă
+ * (locația unei singure citiri proaste nu strică poziția contorului; fiecare citire își păstrează oricum propria locație).
+ */
+async function updateMeterLocation(
+  actor: Actor,
+  row: { id: string; contor: string; address: string | null },
+  input: { address: string | null; lat: number | null; lng: number | null; accuracy: number | null },
+): Promise<MeterLocationDto> {
+  const cur = await prisma.meterLocation.findUnique({ where: { meterId: row.id } });
+  const addr = (input.address ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_ADDRESS) || null;
+  const data: { address?: string; lat?: number; lng?: number; accuracy?: number | null } = {};
+  if (addr && !row.address && addr !== (cur?.address ?? null)) data.address = addr;
+  if (input.lat != null && input.lng != null) {
+    const better = cur?.lat == null || cur.lng == null || (input.accuracy != null && (cur.accuracy == null || input.accuracy <= cur.accuracy));
+    if (better) {
+      data.lat = input.lat;
+      data.lng = input.lng;
+      data.accuracy = input.accuracy;
+    }
+  }
+  let next = cur;
+  if (Object.keys(data).length) {
+    next = await prisma.meterLocation.upsert({
+      where: { meterId: row.id },
+      create: { meterId: row.id, contor: row.contor, userId: actor.id, userName: actor.name, ...data },
+      update: { userId: actor.id, userName: actor.name, ...data },
+    });
+  }
+  const fieldAddr = !row.address && next?.address ? next.address : null;
+  return { address: row.address || fieldAddr, lat: next?.lat ?? null, lng: next?.lng ?? null, addrField: !!fieldAddr };
 }
 
 /** Pune poza unei citiri; întoarce poza veche (de șters din stocare), sau null dacă citirea nu există. */

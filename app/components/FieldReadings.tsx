@@ -22,6 +22,7 @@ import { useToast } from "./toast";
 import ReadingForm from "./ReadingForm";
 import VirtualList from "./VirtualList";
 import { useFieldDataset } from "./useFieldDataset";
+import { mapsUrl, type MeterLocationDto } from "@/lib/meter-readings";
 
 const STORAGE_KEY = "filters:/contoare/citiri";
 type TextKey = "q" | "street" | "consumMin" | "consumMax";
@@ -37,11 +38,11 @@ const txtFld = (val: string) =>
   }`;
 
 /** Lățimile coloanelor (px): contor, abonat, adresă, index anterior, data lui, index curent, consum, citit la, citit de, poză, locație, buton. */
-const COL_W = [118, 200, 270, 100, 84, 108, 92, 100, 130, 48, 84, 92];
+const COL_W = [118, 200, 270, 100, 84, 108, 92, 100, 130, 48, 84, 56, 92];
 const GRID = COL_W.map((w) => `${w}px`).join(" ");
 const GRID_W = COL_W.reduce((x, y) => x + y, 0);
 /** La „Necitite” coloanele de citire (index curent, consum, citit la/de, poză, locație) ar fi goale: rămân contor, abonat, adresă, index anterior, data lui și butonul. */
-const COL_W_COMPACT = [118, 260, 380, 110, 90, 92];
+const COL_W_COMPACT = [118, 250, 360, 100, 84, 56, 92];
 const GRID_COMPACT = COL_W_COMPACT.map((w) => `${w}px`).join(" ");
 const GRID_W_COMPACT = COL_W_COMPACT.reduce((x, y) => x + y, 0);
 const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
@@ -243,13 +244,13 @@ export default function FieldReadings({
       const s = v == null ? "" : typeof v === "number" ? String(v).replace(".", ",") : v;
       return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const head = ["Nr. contor", "Abonat", "Adresă", "Index anterior (m³)", "Data indexului anterior", "Index curent (m³)", "Consum (m³)", "Citit la", "Citit de", "Poză", "Distanță față de citirea anterioară (m)"].map((h) => esc(t(h)));
+    const head = ["Nr. contor", "Abonat", "Adresă", "Index anterior (m³)", "Data indexului anterior", "Index curent (m³)", "Consum (m³)", "Citit la", "Citit de", "Poză", "Distanță față de citirea anterioară (m)", "Latitudine contor", "Longitudine contor"].map((h) => esc(t(h)));
     const lines = [head.join(";")];
     for (const r of list) {
       lines.push(
         [
           r.contor, r.name, r.address, r.lastIndex, dmy(r.lastDate), r.value, r.consum,
-          r.readAt ? new Date(r.readAt).toLocaleString(tag) : "", r.by, r.photo ? t("da") : "", r.distanceM,
+          r.readAt ? new Date(r.readAt).toLocaleString(tag) : "", r.by, r.photo ? t("da") : "", r.distanceM, r.lat, r.lng,
         ].map(esc).join(";"),
       );
     }
@@ -266,8 +267,8 @@ export default function FieldReadings({
   }
 
   const onSaved = useCallback(
-    (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean) => {
-      ds.patchRow(id, { ...patch, by, distanceM, geo });
+    (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean, loc?: MeterLocationDto) => {
+      ds.patchRow(id, { ...patch, by, distanceM, geo, ...(loc ? { address: loc.address, lat: loc.lat, lng: loc.lng, addrField: loc.addrField } : {}) });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ds.patchRow],
@@ -356,6 +357,11 @@ export default function FieldReadings({
           <option value="">{t("Adresă: toate")}</option>
           <option value="has">{t("Cu adresă")}</option>
           <option value="none">{t("Fără adresă")}</option>
+        </select>
+        <select value={filters.meterLoc} onChange={(e) => setFilter({ meterLoc: e.target.value as FieldFilters["meterLoc"] })} className={fld(filters.meterLoc)} aria-label={t("Locația contorului")} title={t("Contoare cu locația GPS salvată sau încă fără locație")}>
+          <option value="">{t("GPS contor: toate")}</option>
+          <option value="yes">{t("Cu locația contorului")}</option>
+          <option value="no">{t("Fără locația contorului")}</option>
         </select>
         <select value={filters.lastIndex} onChange={(e) => setFilter({ lastIndex: e.target.value as FieldFilters["lastIndex"] })} className={fld(filters.lastIndex)} aria-label={t("Ultimul index")} title={t("Cât de vechi e ultimul index cunoscut")}>
           <option value="">{t("Ultimul index: oricând")}</option>
@@ -537,7 +543,7 @@ const FieldTr = memo(function FieldTr({ r, onOpen, compact }: { r: FieldRow; onO
     >
       <div role="cell" className={`${CELL} sticky left-0 z-10 bg-[var(--color-surface)] font-mono font-medium`}>{r.contor}</div>
       <div role="cell" className={CELL} title={r.name}>{r.name}</div>
-      <div role="cell" className={CELL} title={r.address ?? ""}>{r.address ?? <Dash />}</div>
+      <div role="cell" className={CELL} title={r.addrField ? `${r.address} · ${t("adresă scrisă din teren")}` : (r.address ?? "")}>{r.address ? <>{r.address}{r.addrField && <span className="ml-1 text-ink-soft" aria-hidden>✎</span>}</> : <Dash />}</div>
       <div role="cell" className={num_}>{r.lastIndex != null ? num(r.lastIndex) : <Dash />}</div>
       <div role="cell" className={CELL}>{r.lastDate ? dmy(r.lastDate) : <Dash />}</div>
       {!compact && (
@@ -554,6 +560,13 @@ const FieldTr = memo(function FieldTr({ r, onOpen, compact }: { r: FieldRow; onO
         </div>
         </>
       )}
+      <div role="cell" className={`${CELL} text-center`} onClick={(e) => e.stopPropagation()}>
+        {r.lat != null && r.lng != null ? (
+          <a href={mapsUrl(r.lat, r.lng)} target="_blank" rel="noreferrer" title={t("Locația contorului pe hartă")} aria-label={t("Locația contorului pe hartă")} className="hover:opacity-70">📍</a>
+        ) : (
+          <Dash />
+        )}
+      </div>
       <div role="cell" className={`${CELL} flex items-center justify-center`}>
         <span className={`inline-flex h-5 items-center rounded-md px-2 text-[11px] font-semibold ${r.value != null ? "border border-[var(--color-line)] text-ink-soft" : "bg-brand text-white"}`}>
           {r.value != null ? t("Corectează") : t("Citește")}
@@ -659,6 +672,7 @@ const GridTable = memo(function GridTable({
             <HeadCell right title={t("Distanța față de locația citirii anterioare")}>{t("Locație")}</HeadCell>
             </>
           )}
+          <HeadCell title={t("Locația GPS a contorului (salvată la o citire)")}>GPS</HeadCell>
           <HeadCell>{" "}</HeadCell>
         </div>
         {winStart > 0 && <div aria-hidden style={{ height: winStart * ROW_H }} />}
@@ -736,7 +750,7 @@ function ReadingDialog({
   row: FieldRow;
   canViewMeter: boolean;
   onClose: () => void;
-  onSaved: (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean) => void;
+  onSaved: (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean, loc?: MeterLocationDto) => void;
   onNext: () => void;
 }) {
   const t = useT();
@@ -768,10 +782,13 @@ function ReadingDialog({
         <ReadingForm
           meterId={row.id}
           address={row.address}
+          addressEditable={!row.address || row.addrField}
+          meterLat={row.lat}
+          meterLng={row.lng}
           lastIndex={row.lastIndex}
           lastDate={row.lastDate}
           initialValue={row.value}
-          onSaved={(patch, reading) => onSaved(row.id, patch, reading.userName, reading.distanceM, reading.lat != null && reading.lng != null)}
+          onSaved={(patch, reading, loc) => onSaved(row.id, patch, reading.userName, reading.distanceM, reading.lat != null && reading.lng != null, loc)}
           onNext={onNext}
           onClose={onClose}
         />

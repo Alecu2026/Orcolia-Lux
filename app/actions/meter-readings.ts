@@ -34,6 +34,7 @@ export async function saveMeterReadingAction(formData: FormData): Promise<SaveRe
       lng: num(formData.get("lng")),
       accuracy: num(formData.get("accuracy")),
       confirmed: formData.get("confirmed") === "1",
+      address: typeof formData.get("address") === "string" ? String(formData.get("address")) : null,
     },
   );
 }
