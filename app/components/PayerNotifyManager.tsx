@@ -97,7 +97,7 @@ type TextKey = "q" | "street" | "minDebt" | "maxDebt";
  * sute de mii de noduri (măsurat: 343.000 de noduri și 220 MB pe telefon → fila pica, iar alegerea salvată se reaplica la fiecare deschidere).
  */
 /** Lățimile coloanelor tabelului (px): plătitor, cont, adresă, email, telefon, factură, scadență, de achitat, status, portal, facturi, ultima notificare. */
-const COL_W = [200, 100, 190, 190, 100, 85, 80, 90, 72, 58, 52, 110];
+const COL_W = [200, 108, 190, 190, 108, 120, 80, 90, 72, 58, 52, 110];
 const SERVER_MAX_ROWS = 200; // doar cât timp lista completă nu e încă în browser (răspunsul vine de pe server)
 const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
 const ROW_H = 24; // înălțimea fixă a unui rând de tabel (necesară virtualizării)
@@ -1009,11 +1009,11 @@ export default function PayerNotifyManager({
               <Th sticky={canSelect ? "left-7" : "left-0"} minW={190}>
                 <button type="button" onClick={() => setFilter({ sort: "" })} className="font-semibold hover:text-brand">{t("Plătitor")}</button>
               </Th>
-              <Th minW={95}>{t("Cont / contract")}</Th>
+              <Th minW={108}>{t("Cont / contract")}</Th>
               <Th minW={160}>{t("Adresă")}</Th>
               <Th minW={160}>{t("Email")}</Th>
-              <Th minW={95}>{t("Telefon")}</Th>
-              <Th minW={80}>{t("Factură")}</Th>
+              <Th minW={108}>{t("Telefon")}</Th>
+              <Th minW={120}>{t("Factură")}</Th>
               <Th minW={70}>{t("Scadență")}</Th>
               <Th minW={80} right>
                 <button type="button" onClick={() => sortToggle("debtDesc", "debtAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
@@ -1050,7 +1050,7 @@ export default function PayerNotifyManager({
                 >
                   {canSelect && (
                     <td
-                      className={`sticky left-0 z-10 cursor-pointer border-b border-[var(--color-line)] px-1.5 py-px ${bg}`}
+                      className={`sticky left-0 z-10 cursor-pointer border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px ${bg}`}
                       onClick={(e) => { e.stopPropagation(); toggleRow(i, e.shiftKey); }}
                       onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
                       title={t("Bifează (Shift = interval)")}
@@ -1061,39 +1061,39 @@ export default function PayerNotifyManager({
                   <td className={`sticky ${canSelect ? "left-7" : "left-0"} z-10 border-b border-[var(--color-line)] px-1.5 py-px font-medium ${bg}`} style={{ maxWidth: 220 }}>
                     <div className="truncate hover:text-brand" title={r.name}>{r.name}</div>
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px">{r.meterSeries ?? r.contract ?? "—"}</td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px" style={{ maxWidth: 190 }}>
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" title={r.meterSeries ?? r.contract ?? ""}>{r.meterSeries ?? r.contract ?? "—"}</td>
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" style={{ maxWidth: 190 }}>
                     <div className="truncate" title={r.consumAddress ?? ""}>{r.consumAddress ?? <Dash />}</div>
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px" style={{ maxWidth: 190 }}>
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" style={{ maxWidth: 190 }}>
                     {r.email ? (
                       <div className={`truncate ${flags & 1 ? "" : "text-st-progress"}`} title={flags & 1 ? r.email : `${t("Adresă invalidă")}: ${r.email}`}>{r.email}</div>
                     ) : <Dash />}
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px tabular-nums">
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px tabular-nums">
                     {r.phone ? (
                       <span className={flags & 2 ? "" : "text-st-progress"} title={flags & 2 ? undefined : t("Număr invalid pentru SMS")}>{r.phone}</span>
                     ) : <Dash />}
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px">{r.latestInvoice?.number ?? <Dash />}</td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px">{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</td>
-                  <td className={`border-b border-[var(--color-line)] px-1.5 py-px text-right tabular-nums ${r.latestInvoice && r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" title={r.latestInvoice?.number ?? ""}>{r.latestInvoice?.number ?? <Dash />}</td>
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px">{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</td>
+                  <td className={`border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px text-right tabular-nums ${r.latestInvoice && r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>
                     {r.latestInvoice ? money(r.latestInvoice.grandTotal) : <Dash />}
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px">
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px">
                     {st ? <span className={`inline-block rounded-full px-1.5 text-[10px] leading-[14px] font-medium ${st.cls}`}>{t(st.label)}</span> : <Dash />}
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px" title={r.activated ? t("Cont portal activat") : t("Cont portal neactivat")}>
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" title={r.activated ? t("Cont portal activat") : t("Cont portal neactivat")}>
                     {r.activated ? <span className="text-st-done">✓ {t("activ")}</span> : <span className="text-ink-soft/60">—</span>}
                   </td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px text-right tabular-nums text-ink-soft">{r.invoiceCount}</td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px whitespace-nowrap" title={r.lastNotifiedAt ? new Date(r.lastNotifiedAt).toLocaleString(tag) : t("Niciodată notificat")}>
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px text-right tabular-nums text-ink-soft">{r.invoiceCount}</td>
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px whitespace-nowrap" title={r.lastNotifiedAt ? new Date(r.lastNotifiedAt).toLocaleString(tag) : t("Niciodată notificat")}>
                     {r.lastNotifiedAt ? (
                       <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt, t)}</span>
                     ) : <Dash />}
                   </td>
                   {canSend && (
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px">
+                    <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px">
                       <button
                         type="button"
                         disabled={flags === 0}
@@ -1106,7 +1106,7 @@ export default function PayerNotifyManager({
                     </td>
                   )}
                   {canTask && (
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px" onClick={(e) => e.stopPropagation()}>
+                    <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" onClick={(e) => e.stopPropagation()}>
                       <Link
                         href={taskHref(r)}
                         prefetch={false}
