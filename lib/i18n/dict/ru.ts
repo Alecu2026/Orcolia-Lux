@@ -1927,4 +1927,10 @@ export const RU: Record<string, string> = {
   "Poza trebuie să fie JPEG, PNG, WebP sau HEIC.": "Фото должно быть JPEG, PNG, WebP или HEIC.",
   "Poza depășește 15 MB.": "Фото больше 15 МБ.",
   "Citirea nu există.": "Показания не существует.",
+  "Contoarele plătitorului ({n})": "Счётчики плательщика ({n})",
+  "Niciun contor pentru acest plătitor.": "У этого плательщика нет счётчиков.",
+  "Fișa": "Карточка",
+  "Citire din teren (luna aceasta)": "Показание с выезда (этот месяц)",
+  "Încă necitit luna aceasta.": "В этом месяце ещё не снимали.",
+  "Introdu citirea": "Ввести показание",
 };

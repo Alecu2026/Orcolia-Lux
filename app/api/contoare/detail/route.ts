@@ -2,6 +2,7 @@ import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { getMeterDetail, type MeterDetailResponse } from "@/lib/queries/meters";
 import { prisma } from "@/lib/prisma";
+import { listMeterReadings } from "@/lib/services/meter-readings";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -21,7 +22,8 @@ export async function GET(req: Request) {
     if (!detail) return Response.json({ error: "Contorul nu mai există în ultima sincronizare. Reîncarcă lista." }, { status: 404 });
     // Factura curentă a abonatului (nr. din tabel) → id + token public, ca pop-up-ul să o poată deschide direct.
     const invoice = invoiceNumber ? await prisma.invoice.findUnique({ where: { number: invoiceNumber }, select: { id: true, publicToken: true } }) : null;
-    const body: MeterDetailResponse = { ...detail, invoice };
+    const field = await listMeterReadings(id, 3);
+    const body: MeterDetailResponse = { ...detail, invoice, field };
     return Response.json(body, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     console.error("[contoare-detail] eșuat:", e);

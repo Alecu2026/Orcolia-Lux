@@ -12,6 +12,7 @@ import type { CategoryLite } from "./types";
 import { useToast } from "./toast";
 import { IconPencil, IconTrash, IconX, IconCheck } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
+import { useOnActionResult } from "@/lib/use-action-result";
 import { useT } from "@/lib/i18n/context";
 
 const inp =
@@ -37,10 +38,11 @@ export default function CategoriesManager({
     undefined,
   );
   const [newColor, setNewColor] = useState("#0d9488");
-  useEffect(() => {
-    if (createState?.ok) { toast.success(m.categories.added); router.refresh(); }
-    else if (createState?.error) toast.error(t(createState.error));
-  }, [createState, router, toast, m]);
+  // o singură dată pe rezultat (vezi lib/use-action-result.ts): fără ciclu de notificări „Categorie adăugată”
+  useOnActionResult(createState, (s) => {
+    if (s.ok) { toast.success(m.categories.added); router.refresh(); }
+    else if (s.error) toast.error(t(s.error));
+  });
 
   // edit
   const [editId, setEditId] = useState<string | null>(null);
@@ -49,10 +51,10 @@ export default function CategoriesManager({
     updateCategory,
     undefined,
   );
-  useEffect(() => {
-    if (editState?.ok) { toast.success(m.categories.updated); setEditId(null); router.refresh(); }
-    else if (editState?.error) toast.error(t(editState.error));
-  }, [editState, router, toast, m]);
+  useOnActionResult(editState, (s) => {
+    if (s.ok) { toast.success(m.categories.updated); setEditId(null); router.refresh(); }
+    else if (s.error) toast.error(t(s.error));
+  });
 
   function startEdit(c: CategoryLite) {
     setEditId(c.id);

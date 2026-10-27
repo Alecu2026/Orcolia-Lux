@@ -82,7 +82,7 @@ export default async function MetersPage({
           {t("Plătitori")}
         </Link>
       </div>
-      <MetersManager initial={{ filters, page, perPage, items, total }} serverFailed={failed} warming={warming} canTask={can(user, "tasks.create")} canEditInvoices={can(user, "invoices.edit")} />
+      <MetersManager initial={{ filters, page, perPage, items, total }} serverFailed={failed} warming={warming} canTask={can(user, "tasks.create")} canEditInvoices={can(user, "invoices.edit")} canRead={can(user, "meters.read")} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useState } from "react";
+import { useOnActionResult } from "@/lib/use-action-result";
 import { useRouter } from "next/navigation";
 import { updateSettings, type SettingsState } from "@/app/actions/settings";
 import type { Settings } from "@/lib/queries/settings";
@@ -22,8 +23,8 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
   const [reminderOffsets, setReminderOffsets] = useState<string[]>(settings.reminderOffsets);
   const [selectedTheme, setSelectedTheme] = useState(settings.theme);
 
-  useEffect(() => {
-    if (state?.ok) {
+  useOnActionResult(state, (s) => {
+    if (s.ok) {
       // Aplică tema imediat pe DOM + localStorage ca să nu fie nevoie de reload
       const el = document.documentElement;
       if (selectedTheme === "dark") {
@@ -40,7 +41,7 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
       }
       router.refresh();
     }
-  }, [state, router, selectedTheme]);
+  });
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); startTransition(() => action(fd)); }} className="card flex flex-col gap-4 p-5">

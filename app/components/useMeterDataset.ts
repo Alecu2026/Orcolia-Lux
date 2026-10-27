@@ -11,6 +11,14 @@ const STALE_REFRESH_MS = 5 * 60_000; // la revenirea în filă, dacă datele sun
 
 type Stored = { at: number; etag: string | null; rows: MeterTuple[] };
 
+/**
+ * Lista decodată, păstrată în memoria paginii cât timp aplicația rămâne deschisă: la trecerea din /contoare pe pagina unui contor (sau înapoi)
+ * nu se mai citește IndexedDB și nu se mai decodează nimic — rândul e acolo din prima randare.
+ */
+let memo: { rows: MeterRow[]; at: number; etag: string | null } | null = null;
+/** Lista din memorie, dacă a fost deja încărcată în această sesiune (altfel null). */
+export const peekMeterRows = (): MeterRow[] | null => memo?.rows ?? null;
+
 /** Anunță serverul ce versiune a listei avem local (cookie): dacă e cea curentă, pagina nu mai cere descărcarea ei. */
 function rememberVersion(etag: string | null) {
   if (!etag) return;
@@ -25,17 +33,19 @@ function rememberVersion(etag: string | null) {
  * se fac în JS pe acest set (vezi filterMeters) — nicio interogare în baza de date la fiecare filtru.
  */
 export function useMeterDataset(enabled: boolean) {
-  const [rows, setRows] = useState<MeterRow[] | null>(null);
-  const [version, setVersion] = useState(0); // crește la fiecare set nou
+  const [rows, setRows] = useState<MeterRow[] | null>(() => memo?.rows ?? null);
+  const [version, setVersion] = useState(() => (memo ? 1 : 0)); // crește la fiecare set nou
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loadedAt, setLoadedAt] = useState<number | null>(null);
-  const loadedAtRef = useRef<number | null>(null);
+  const [loadedAt, setLoadedAt] = useState<number | null>(() => memo?.at ?? null);
+  const loadedAtRef = useRef<number | null>(memo?.at ?? null);
   const inflight = useRef<Promise<void> | null>(null);
-  const etagRef = useRef<string | null>(null);
+  const etagRef = useRef<string | null>(memo?.etag ?? null);
 
-  const apply = useCallback((tuples: MeterTuple[], at: number) => {
-    setRows(decodeMeters(tuples, true));
+  const apply = useCallback((tuples: MeterTuple[], at: number, etag: string | null) => {
+    const decoded = decodeMeters(tuples, true);
+    memo = { rows: decoded, at, etag };
+    setRows(decoded);
     loadedAtRef.current = at;
     setLoadedAt(at);
     setVersion((v) => v + 1);
@@ -52,6 +62,7 @@ export function useMeterDataset(enabled: boolean) {
           // Aceeași versiune ca cea din memorie: nimic de descărcat sau de decodat.
           const at = Date.now();
           loadedAtRef.current = at;
+          if (memo) memo = { ...memo, at };
           setLoadedAt(at);
           rememberVersion(etagRef.current);
           return;
@@ -61,7 +72,7 @@ export function useMeterDataset(enabled: boolean) {
         const at = Date.now();
         const etag = res.headers.get("etag");
         etagRef.current = etag;
-        apply(j.rows as MeterTuple[], at);
+        apply(j.rows as MeterTuple[], at, etag);
         void idbSet(IDB_KEY, { at, etag, rows: j.rows } satisfies Stored).then(() => rememberVersion(etag));
       } catch (e) {
         // Dacă avem deja date (din cache-ul local) le păstrăm; altfel pagina cade pe lista de pe server.
@@ -81,11 +92,16 @@ export function useMeterDataset(enabled: boolean) {
     let alive = true;
     const id = setTimeout(() => {
       void (async () => {
+        // Lista e deja în memorie (venim dintr-o altă pagină): nu mai citim IndexedDB, doar o reîmprospătăm dacă e mai veche de 20 s.
+        if (memo) {
+          if (Date.now() - memo.at > FRESH_MS) await fetchFresh();
+          return;
+        }
         const stored = await idbGet<Stored>(IDB_KEY);
         if (!alive) return;
         if (stored?.rows?.length) {
           etagRef.current = stored.etag;
-          apply(stored.rows, stored.at);
+          apply(stored.rows, stored.at, stored.etag);
           rememberVersion(stored.etag);
         }
         if (!stored || Date.now() - stored.at > FRESH_MS) await fetchFresh();

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/dal";
@@ -11,6 +12,10 @@ import InvoiceViewButton from "@/app/components/InvoiceViewButton";
 import { listPayerNotes } from "@/lib/queries/payer-notify";
 import { IconChevronLeft } from "@/app/components/icons";
 import { getT } from "@/lib/i18n/server-t";
+import PayerMeters from "@/app/components/PayerMeters";
+import { Skeleton } from "@/app/components/MeterBits";
+import { getMeterSnap } from "@/lib/services/meter-cache";
+import { plainMeter } from "@/lib/meters";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { dateTag } from "@/lib/i18n/t";
 
@@ -96,6 +101,11 @@ export default async function PayerDetailPage({
           {tr("Decontare")}
         </Link>
       </div>
+
+      {/* Contoarele plătitorului: apar când sunt gata (lista de contoare din memoria serverului), fără să țină pagina în așteptare */}
+      <Suspense fallback={<Skeleton className="h-40" />}>
+        <PayerMetersBlock clientId={payer.id} canTask={can(user, "tasks.create")} canEditInvoices={can(user, "invoices.edit")} canRead={can(user, "meters.read")} />
+      </Suspense>
 
       <div>
         <h2 className="mb-2 text-base font-bold">{tr("Notițe ({v1})", { v1: notes.length + (payer.notes ? 1 : 0) })}</h2>
@@ -185,4 +195,11 @@ export default async function PayerDetailPage({
       </div>
     </div>
   );
+}
+
+/** Contoarele plătitorului, din lista de contoare din memoria serverului (filtrată pe plătitor — se trimit doar ale lui). */
+async function PayerMetersBlock({ clientId, canTask, canEditInvoices, canRead }: { clientId: string; canTask: boolean; canEditInvoices: boolean; canRead: boolean }) {
+  const snap = await getMeterSnap().catch(() => null);
+  const rows = snap ? snap.rows.filter((r) => r.clientId === clientId).map(plainMeter) : [];
+  return <PayerMeters clientId={clientId} initial={rows} canTask={canTask} canEditInvoices={canEditInvoices} canRead={canRead} />;
 }

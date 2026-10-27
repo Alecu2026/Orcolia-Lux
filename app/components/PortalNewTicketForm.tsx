@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
+import { useOnActionResult } from "@/lib/use-action-result";
 import { useRouter } from "next/navigation";
 import { createPortalTicket, type PortalTicketState } from "@/app/actions/portal";
 import { useT } from "@/lib/i18n/context";
@@ -46,9 +47,9 @@ export default function PortalNewTicketForm({
     setDescription(tpl?.description ?? "");
   }
 
-  useEffect(() => {
-    if (state?.ok) router.refresh();
-  }, [state, router]);
+  useOnActionResult(state, (s) => {
+    if (s.ok) router.refresh();
+  });
 
   const chosenName = chosen === CUSTOM ? t("✍ Altă cerere (scriu eu)") : templates.find((x) => x.id === chosen)?.name;
 

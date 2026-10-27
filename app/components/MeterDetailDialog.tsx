@@ -7,6 +7,8 @@ import InvoiceViewButton from "./InvoiceViewButton";
 import { addressKey, averageConsum, enumLabel, type MeterRow, type MeterRowBase } from "@/lib/meters";
 import { INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import { IconX } from "./icons";
+import ReadingForm from "./ReadingForm";
+import { currentPeriod, type ReadingDto } from "@/lib/meter-readings";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 
@@ -25,6 +27,7 @@ export default function MeterDetailDialog({
   rows,
   canTask,
   canEditInvoices = false,
+  canRead = false,
   taskHref,
   onSelect,
   onClose,
@@ -35,6 +38,8 @@ export default function MeterDetailDialog({
   canTask: boolean;
   /** Poate edita facturi (invoices.edit) — „Editează” lângă „Vezi”. */
   canEditInvoices?: boolean;
+  /** Are „Citiri contoare”: poate introduce citirea din teren (index, locație, poză) direct din pop-up. */
+  canRead?: boolean;
   taskHref: (r: MeterRowBase) => string;
   onSelect: (r: MeterRowBase) => void;
   onClose: () => void;
@@ -94,6 +99,14 @@ export default function MeterDetailDialog({
   const sub = detail?.subscriber ?? null;
   const cons = detail?.consumer ?? null;
   const avg = detail ? averageConsum(detail.history) : null;
+  // citirea din teren de luna aceasta (dacă există) și ultimul index cunoscut (1C sau o citire din teren dintr-o lună anterioară)
+  const period = currentPeriod();
+  const thisMonth = detail?.field.find((f) => f.period === period) ?? null;
+  const lastField = detail?.field.find((f) => f.period !== period) ?? null;
+  const lastFieldDate = lastField ? lastField.readAt.slice(0, 10) : null;
+  const useField = !!lastField && (!row.currDate || (lastFieldDate ?? "") > row.currDate);
+  const lastIndex = useField && lastField ? lastField.value : row.curr;
+  const lastDate = useField ? lastFieldDate : row.currDate;
   const hasSub = !!m && !!(m.subAbonat || m.subContract || m.subCont || m.subConsumator || m.subContor);
 
   return (
@@ -132,6 +145,10 @@ export default function MeterDetailDialog({
             </Link>
           )}
         </div>
+
+        {canRead && !row.removedAt && (
+          <FieldReadingSection key={row.id} row={row} existing={thisMonth} lastIndex={lastIndex} lastDate={lastDate} pending={pending} />
+        )}
 
         <Section title={t("Contor")}>
           <Item label={t("Nr. contor")} value={<span className="font-mono">{row.contor}</span>} />
@@ -288,6 +305,75 @@ export default function MeterDetailDialog({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * „Citire din teren” în pop-up: rezumatul citirii de luna aceasta și, la apăsare, formularul (index în m³, locația GPS luată automat, adresa contorului, poza).
+ * Formularul apare abia la apăsare, deci telefonul cere locația doar când vrei să citești contorul.
+ */
+function FieldReadingSection({
+  row,
+  existing,
+  lastIndex,
+  lastDate,
+  pending,
+}: {
+  row: MeterRowBase;
+  existing: ReadingDto | null;
+  lastIndex: number | null;
+  lastDate: string | null;
+  pending: boolean;
+}) {
+  const t = useT();
+  const tag = dateTag(useLocale());
+  const [open, setOpen] = useState(false);
+  const [saved, setSaved] = useState<ReadingDto | null>(null);
+  const cur = saved ?? existing;
+  return (
+    <Section title={t("Citire din teren (luna aceasta)")}>
+      {open ? (
+        <div className="p-3">
+          <ReadingForm
+            meterId={row.id}
+            address={row.address}
+            lastIndex={lastIndex}
+            lastDate={lastDate}
+            initialValue={cur?.value ?? null}
+            initialPhotoUrl={cur?.photoUrl ?? null}
+            onSaved={(_patch, reading) => setSaved(reading)}
+            onClose={() => setOpen(false)}
+          />
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+          <span className="min-w-0 text-sm">
+            {pending ? (
+              <span className="text-ink-soft">…</span>
+            ) : cur ? (
+              <>
+                <b className="tabular-nums text-st-done">✓ {cur.value.toLocaleString(tag, { maximumFractionDigits: 3 })} m³</b>
+                <span className="block text-[11px] text-ink-soft">
+                  {cur.userName} · {new Date(cur.readAt).toLocaleString(tag, { dateStyle: "short", timeStyle: "short" })}
+                  {cur.lat != null ? " · 📍" : ""}
+                  {cur.photoUrl ? " · 📷" : ""}
+                </span>
+              </>
+            ) : (
+              <span className="text-ink-soft">{t("Încă necitit luna aceasta.")}</span>
+            )}
+          </span>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => setOpen(true)}
+            className="tap h-9 shrink-0 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong disabled:opacity-50"
+          >
+            {cur ? t("Corectează citirea") : t("Introdu citirea")}
+          </button>
+        </div>
+      )}
+    </Section>
   );
 }
 

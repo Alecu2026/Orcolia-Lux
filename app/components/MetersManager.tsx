@@ -75,6 +75,7 @@ export default function MetersManager({
   warming = false,
   canTask = false,
   canEditInvoices = false,
+  canRead = false,
 }: {
   initial: { filters: MeterFilters; page: number; perPage: number; items: MeterRowBase[]; total: number };
   /** Prima listă n-a putut fi citită pe server — arătăm eroarea cu „Reîncearcă" până sosește lista completă în browser. */
@@ -85,6 +86,8 @@ export default function MetersManager({
   canTask?: boolean;
   /** Poate edita facturi (invoices.edit) — „Editează” lângă „Vezi” în pop-up. */
   canEditInvoices?: boolean;
+  /** Are „Citiri contoare”: în pop-up poate introduce citirea din teren. */
+  canRead?: boolean;
 }) {
   const t = useT();
   const toast = useToast();
@@ -609,6 +612,7 @@ export default function MetersManager({
           rows={ds.rows}
           canTask={canTask}
           canEditInvoices={canEditInvoices}
+          canRead={canRead}
           taskHref={taskHref}
           onSelect={(r) => setDetailRow(r)}
           onClose={() => setDetailRow(null)}

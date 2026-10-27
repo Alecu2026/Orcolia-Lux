@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -43,11 +44,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }, 3500);
   }, []);
 
-  const api: ToastApi = {
-    success: (m) => push("success", m),
-    error: (m) => push("error", m),
-    info: (m) => push("info", m),
-  };
+  // STABIL între randări: componentele pun `toast` în dependențele efectelor (ex. „Categorie adăugată” după useActionState). Cu un obiect nou la fiecare
+  // randare, fiecare notificare (care schimbă starea providerului) re-declanșa efectul, deci încă o notificare — un ciclu fără sfârșit.
+  const api = useMemo<ToastApi>(
+    () => ({
+      success: (m) => push("success", m),
+      error: (m) => push("error", m),
+      info: (m) => push("info", m),
+    }),
+    [push],
+  );
 
   return (
     <Ctx.Provider value={api}>

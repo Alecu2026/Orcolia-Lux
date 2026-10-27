@@ -3,6 +3,7 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { SVC_SEWER, SVC_WATER, type OneCConsumer, type OneCLine, type OneCMeter, type OneCReading } from "../apa-canal-1c";
 import type { MeterStatic } from "../meters";
+import type { ReadingDto } from "../meter-readings";
 
 /**
  * Contoarele din exportul 1C (colecția OneCRecord: un rând per abonat și lună, cu lista contoarelor, a citirilor și a liniilor de calcul).
@@ -245,7 +246,7 @@ export type MeterDetail = {
 };
 
 /** Răspunsul rutei de detalii: detaliile contorului + referința facturii curente (pentru „Vezi” / „Editează”). */
-export type MeterDetailResponse = MeterDetail & { invoice: { id: string; publicToken: string } | null };
+export type MeterDetailResponse = MeterDetail & { invoice: { id: string; publicToken: string } | null; /** ultimele citiri din teren ale contorului (cele mai noi primele) */ field: ReadingDto[] };
 
 const EMPTY_DETAIL: MeterDetail = { months: [], meter: null, reading: null, lines: [], consumer: null, history: [], subscriber: null };
 

@@ -11,12 +11,12 @@ export function Section({ title, children, className = "" }: { title: ReactNode;
 }
 
 /** Un rând „etichetă — valoare”. */
-export function Item({ label, value }: { label: string; value: ReactNode }) {
+export function Item({ label, value, loading }: { label: string; value: ReactNode; loading?: boolean }) {
   const empty = value == null || value === "";
   return (
     <div className="flex items-baseline justify-between gap-3 px-3 py-2">
       <span className="shrink-0 text-[11px] text-ink-soft">{label}</span>
-      <span className="min-w-0 break-words text-right text-[13px]">{empty ? <span className="text-ink-soft/60">—</span> : value}</span>
+      <span className="min-w-0 break-words text-right text-[13px]">{loading && empty ? <span className="text-ink-soft">…</span> : empty ? <span className="text-ink-soft/60">—</span> : value}</span>
     </div>
   );
 }

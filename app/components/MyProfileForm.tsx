@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useState } from "react";
+import { useOnActionResult } from "@/lib/use-action-result";
 import { useRouter } from "next/navigation";
 import {
   updateMyProfile,
@@ -47,17 +48,16 @@ export default function MyProfileForm({
     }
   }
 
-  useEffect(() => {
-    if (state?.ok) router.refresh();
-  }, [state, router]);
+  useOnActionResult(state, (s) => {
+    if (s.ok) router.refresh();
+  });
 
-  useEffect(() => {
-    if (codeState?.ok) {
+  useOnActionResult(codeState, (s) => {
+    if (s.ok) {
       toast.success(t("Parolă schimbată."));
       setPwStep("idle");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codeState]);
+  });
 
   return (
     <div className="card flex flex-col gap-5 p-5">

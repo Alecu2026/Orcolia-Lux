@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
+import { useOnActionResult } from "@/lib/use-action-result";
 import { useRouter } from "next/navigation";
 import { updateCompanySettings, type CompanyState } from "@/app/actions/company";
 import type { Company } from "@/lib/queries/company";
@@ -51,9 +52,9 @@ export default function CompanyDetailsForm({
     reader.readAsDataURL(f);
   }
 
-  useEffect(() => {
-    if (state?.ok) router.refresh();
-  }, [state, router]);
+  useOnActionResult(state, (s) => {
+    if (s.ok) router.refresh();
+  });
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
