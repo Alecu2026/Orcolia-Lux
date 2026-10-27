@@ -48,7 +48,7 @@ function stateLabel(c: ActiveCall): { text: string; cls: string } {
  * curente (datorie, tichete deschise, ultima notiță) și acțiuni rapide: fișa, filtru în Plătitori, tichet/task cu datele
  * preîncărcate, notă despre apel. Datele se verifică la câteva secunde cât fila e vizibilă; un apel închis manual nu reapare.
  */
-export default function IncomingCallPopup({ canEdit = true }: { canEdit?: boolean }) {
+export default function IncomingCallPopup({ canEdit = true, canTask = true, canClient = true }: { canEdit?: boolean; canTask?: boolean; canClient?: boolean }) {
   const [calls, setCalls] = useState<ActiveCall[]>([]);
   const dismissed = useRef<Set<string>>(new Set());
   const seen = useRef<Set<string>>(new Set());
@@ -98,13 +98,13 @@ export default function IncomingCallPopup({ canEdit = true }: { canEdit?: boolea
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-[80] flex flex-col items-center gap-2 px-2 sm:inset-x-auto sm:right-3 sm:items-end">
       {calls.map((c) => (
-        <CallCard key={c.callId} call={c} canEdit={canEdit} onDismiss={() => { dismissed.current.add(c.callId); setCalls((cur) => cur.filter((x) => x.callId !== c.callId)); }} />
+        <CallCard key={c.callId} call={c} canEdit={canEdit} canTask={canTask} canClient={canClient} onDismiss={() => { dismissed.current.add(c.callId); setCalls((cur) => cur.filter((x) => x.callId !== c.callId)); }} />
       ))}
     </div>
   );
 }
 
-function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: boolean; onDismiss: () => void }) {
+function CallCard({ call: c, canEdit, canTask, canClient, onDismiss }: { call: ActiveCall; canEdit: boolean; canTask: boolean; canClient: boolean; onDismiss: () => void }) {
   const tr = useT();
   const toast = useToast();
   const [note, setNote] = useState("");
@@ -187,9 +187,9 @@ function CallCard({ call: c, canEdit, onDismiss }: { call: ActiveCall; canEdit: 
       <div className="mb-2 flex flex-wrap gap-1.5">
         {ctx?.isPayer && <Link href={`/platitori/${ctx.clientId}`} className={`${btn} bg-brand text-white hover:bg-brand-strong`}>{tr("Fișa plătitorului →")}</Link>}
         {q && <Link href={`/platitori?q=${q}`} className={btn}>{tr("🔎 Filtrează în Plătitori")}</Link>}
-        {!ctx && <Link href="/clients?create=1" className={btn}>{tr("+ Client nou")}</Link>}
-        {canEdit && <Link href={prefill("ticket")} className={btn}>{tr("🎫 Cerere")}</Link>}
-        {canEdit && <Link href={prefill("task")} className={btn}>{tr("✔ Sarcină")}</Link>}
+        {!ctx && canClient && <Link href="/clients?create=1" className={btn}>{tr("+ Client nou")}</Link>}
+        {canTask && <Link href={prefill("ticket")} className={btn}>{tr("🎫 Cerere")}</Link>}
+        {canTask && <Link href={prefill("task")} className={btn}>{tr("✔ Sarcină")}</Link>}
       </div>
 
       {canEdit && (

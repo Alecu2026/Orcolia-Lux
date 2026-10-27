@@ -74,6 +74,7 @@ export default async function TicketsPage({
         dataset={result.dataset ? { total: result.total } : undefined}
         templates={templates}
         canAssign={can(user, "tasks.assign")}
+        canClose={can(user, "tasks.close")}
         scope={scope}
         users={users}
         teams={teams}
@@ -84,6 +85,7 @@ export default async function TicketsPage({
         canDelete={can(user, "tasks.delete")}
         canEdit={can(user, "tasks.edit")}
         userId={user.id}
+        userTeamIds={user.teamIds}
         blobEnabled={env.blob.enabled}
         canCreateProject={can(user, "projects.create")}
         initialCreate={can(user, "tasks.create") ? initialCreate : undefined}

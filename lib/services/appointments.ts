@@ -218,10 +218,11 @@ export async function createAppointment(
     offsets,
   });
 
-  // 7. Actualizează ultima programare a clientului
+  // 7. „Ultima programare" a clientului = cea mai târzie (o programare adăugată pentru o dată mai veche NU o suprascrie)
   await prisma.client
-    .update({
-      where: { id: client.id },
+    .updateMany({
+      // în MongoDB un câmp lipsă nu e „null": `isSet: false` prinde clienții noi
+      where: { id: client.id, OR: [{ lastAppointmentAt: { isSet: false } }, { lastAppointmentAt: null }, { lastAppointmentAt: { lt: startAt } }] },
       data: { lastAppointmentAt: startAt },
     })
     .catch(() => {});
@@ -240,12 +241,21 @@ export async function changeStatus(
   const appt = await prisma.appointment.findFirst({
     where: { id, userId },
     select: {
-      id: true, clientId: true, status: true, startAt: true, dateKey: true,
+      id: true, clientId: true, status: true, startAt: true, endAt: true, dateKey: true,
       reminderEmailEnabled: true, reminderTelegramEnabled: true, reminderOffsets: true,
       client: { select: { email: true, telegramChatId: true } },
     },
   });
   if (!appt) return { ok: false as const, error: "Programare inexistentă." };
+
+  // O programare anulată / absentă care redevine activă ocupă din nou intervalul: dacă între timp a fost luat de alta, refuzăm.
+  if ((appt.status === "CANCELLED" || appt.status === "NO_SHOW") && status !== "CANCELLED" && status !== "NO_SHOW") {
+    const overlap = await findOverlapping(userId, appt.startAt, appt.endAt, id);
+    if (overlap) {
+      const settingsForTz = await getSettings(userId);
+      return { ok: false as const, error: `Interval ocupat: ${overlap.clientNameSnapshot} la ${formatTime(overlap.startAt, settingsForTz.timezone)}.` };
+    }
+  }
 
   await prisma.appointment.update({ where: { id }, data: { status } });
 
@@ -301,6 +311,7 @@ export async function reschedule(
       where: { id, userId },
       select: {
         id: true,
+        status: true,
         startAt: true,
         endAt: true,
         reminderEmailEnabled: true,
@@ -332,12 +343,12 @@ export async function reschedule(
     data: { startAt, endAt, dateKey },
   });
 
-  // Regenerează reminderele
+  // Regenerează reminderele (doar pentru programări active: una anulată / absentă / încheiată nu mai primește remindere)
   await prisma.reminder.updateMany({
     where: { appointmentId: id, status: "PENDING" },
     data: { status: "CANCELLED" },
   });
-  await createRemindersFor({
+  if (appt.status === "NEW" || appt.status === "CONFIRMED" || appt.status === "IN_PROGRESS") await createRemindersFor({
     userId,
     appointmentId: id,
     dateKey,

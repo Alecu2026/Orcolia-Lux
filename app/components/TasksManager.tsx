@@ -25,6 +25,7 @@ import { IconTrash, IconX, IconChevronLeft, IconChevronRight, IconPencil } from 
 import CardActionsMenu from "./CardActionsMenu";
 import QuickSelect from "./QuickSelect";
 import MultiAssignPicker from "./MultiAssignPicker";
+import AssignmentLocked from "./AssignmentLocked";
 import AddressInput from "./AddressInput";
 import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
@@ -228,8 +229,7 @@ export default function TasksManager({
 
   // Fără "tasks.edit" global, tot poți edita task-urile pe care le-ai creat sau la care ești
   // asignat — vezi lib/permissions.ts canEditTask (aceeași regulă, verificată și pe server).
-  const canEditRow = (t: Task) =>
-    canEdit || (!!userId && (t.creatorId === userId || t.assigneeId === userId || t.extraAssigneeIds.includes(userId)));
+  const canEditRow = (_t: Task) => canEdit;
 
   // ── Tipuri fixe per pagină (/tasks → TASK, /tickets → TICKET) ──
   const fixedTypes = basePath === "/tickets" ? ["TICKET"] : basePath === "/tasks" ? ["TASK"] : undefined;
@@ -865,10 +865,16 @@ export function StatusDropdown({
   status,
   pending,
   onChange,
+  disabled = false,
+  allowed,
 }: {
   status: Status;
   pending: boolean;
   onChange: (s: Status) => void;
+  /** Doar aceste statusuri se pot alege (ex. doar „Finalizat / Anulat" pentru cine are doar „Închidere / finalizare"). */
+  allowed?: Status[];
+  /** Fără drept de a schimba statusul: chipul se vede, dar nu se deschide. */
+  disabled?: boolean;
 }) {
   const m = useMessages();
   const [open, setOpen] = useState(false);
@@ -913,10 +919,10 @@ export function StatusDropdown({
       <button
         ref={btnRef}
         type="button"
-        disabled={pending}
+        disabled={pending || disabled}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={handleOpen}
-        className={`h-7 shrink-0 rounded-full px-2.5 text-[11px] font-semibold transition-opacity disabled:opacity-50 ${ST[status].badge}`}
+        className={`h-7 shrink-0 rounded-full px-2.5 text-[11px] font-semibold transition-opacity disabled:opacity-50 ${disabled ? "cursor-not-allowed" : ""} ${ST[status].badge}`}
       >
         {m.status[status]}
       </button>
@@ -926,7 +932,7 @@ export function StatusDropdown({
           onMouseDown={(e) => e.stopPropagation()}
           className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1 shadow-xl"
         >
-          {STATUSES.map((s) => (
+          {STATUSES.filter((s) => !allowed || allowed.includes(s)).map((s) => (
             <button
               key={s}
               type="button"
@@ -1088,8 +1094,9 @@ function CategoryChips({
 }
 
 export function EditDialog({
-  task, users, teams, projects, clients, categories, quietHoursEnabled, onClose, onSaved,
+  task, users, teams, projects, clients, categories, quietHoursEnabled, canAssign = true, onClose, onSaved,
 }: {
+  canAssign?: boolean;
   task: Task;
   users: Opt[];
   teams: Opt[];
@@ -1168,7 +1175,16 @@ export function EditDialog({
             </select>
           )}
           <AddressInput defaultValue={task.address ?? ""} className={dlgInput} onChange={(v) => { addressRef.current = v; }} />
-          <MultiAssignPicker
+          {!canAssign && (
+            <AssignmentLocked
+              users={users}
+              teams={teams}
+              assigneeIds={[...(task.assigneeId ? [task.assigneeId] : []), ...(task.extraAssigneeIds ?? [])]}
+              teamIds={[...(task.teamId ? [task.teamId] : []), ...(task.extraTeamIds ?? [])]}
+              settings={task.assignmentSettingsJson ? (JSON.parse(task.assignmentSettingsJson) as AssignmentSetting[]) : []}
+            />
+          )}
+          {canAssign && <MultiAssignPicker
             users={users}
             teams={teams}
             initialAssigneeIds={[
@@ -1180,7 +1196,7 @@ export function EditDialog({
               ...(task.extraTeamIds ?? []),
             ]}
             initialSettings={task.assignmentSettingsJson ? (JSON.parse(task.assignmentSettingsJson) as AssignmentSetting[]) : []}
-          />
+          />}
           <CategoryChips categories={categories} value={categoryId} onChange={setCategoryId} />
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.dueDate}</label>
@@ -1226,7 +1242,7 @@ function fmtFileSize(bytes: number): string {
 }
 
 export function CreateDialog({
-  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialAddress, initialDescription, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated,
+  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialAddress, initialDescription, canAssign = true, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated,
 }: {
   initialType: "TASK" | "TICKET" | "WORK_ORDER";
   users: Opt[];
@@ -1243,6 +1259,8 @@ export function CreateDialog({
   initialTitle?: string;
   initialAddress?: string;
   initialDescription?: string;
+  /** Fără „Asignare" nu se pot alege responsabili la creare (cererea se creează fără responsabil sau cu tine). */
+  canAssign?: boolean;
   /** Câmpuri completate dintr-un șablon (titlu cu {contor} înlocuit, categorie, responsabili…). */
   prefill?: TemplatePrefill;
   /** Șabloanele disponibile: apar ca listă mică în capul ferestrei (alegerea completează formularul). */
@@ -1362,7 +1380,7 @@ export function CreateDialog({
             </select>
           )}
           <AddressInput defaultValue={prefill?.address ?? initialAddress ?? ""} className={dlgInput} />
-          <MultiAssignPicker users={users} teams={teams} initialAssigneeIds={prefill?.assigneeIds} initialTeamIds={prefill?.teamIds} />
+          {canAssign && <MultiAssignPicker users={users} teams={teams} initialAssigneeIds={prefill?.assigneeIds} initialTeamIds={prefill?.teamIds} />}
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.dueDate}</label>
             <div className="grid gap-2 sm:grid-cols-2">

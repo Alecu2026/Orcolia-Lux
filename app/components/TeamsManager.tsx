@@ -25,7 +25,7 @@ type Team = {
 const input =
   "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
 
-export default function TeamsManager({ teams, users }: { teams: Team[]; users: Opt[] }) {
+export default function TeamsManager({ teams, users, canManage = true }: { teams: Team[]; users: Opt[]; canManage?: boolean }) {
   const toast = useToast();
   const m = useMessages();
   const [rows, setRows] = useState(teams);
@@ -58,12 +58,14 @@ export default function TeamsManager({ teams, users }: { teams: Team[]; users: O
 
   return (
     <>
-      <button
-        onClick={() => setDialog({ open: true, team: null })}
-        className="tap mb-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong"
-      >
-        {m.team.new}
-      </button>
+      {canManage && (
+        <button
+          onClick={() => setDialog({ open: true, team: null })}
+          className="tap mb-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong"
+        >
+          {m.team.new}
+        </button>
+      )}
 
       <input
         value={fSearch}
@@ -86,21 +88,21 @@ export default function TeamsManager({ teams, users }: { teams: Team[]; users: O
                   {t.members.length} {m.team.membersLabel.toLowerCase()}{t.members.length ? `: ${t.members.map((mem) => mem.name).join(", ")}` : ""}
                 </p>
               </div>
-              <div className="hidden shrink-0 items-center gap-2 sm:flex">
+              {canManage && <div className="hidden shrink-0 items-center gap-2 sm:flex">
                 <button onClick={() => setDialog({ open: true, team: t })} className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] hover:bg-[var(--color-surface-2)]" title={m.common.edit}>
                   <IconPencil className="size-4" />
                 </button>
                 <button onClick={() => remove(t.id)} className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)]" title={m.common.delete}>
                   <IconTrash className="size-4" />
                 </button>
-              </div>
-              <CardActionsMenu
+              </div>}
+              {canManage && <CardActionsMenu
                 className="sm:hidden"
                 items={[
                   { key: "edit", label: m.common.edit, icon: <IconPencil className="size-3.5" />, onClick: () => setDialog({ open: true, team: t }) },
                   { key: "delete", label: m.common.delete, icon: <IconTrash className="size-3.5" />, onClick: () => remove(t.id), danger: true },
                 ]}
-              />
+              />}
             </div>
           ))}
         </div>

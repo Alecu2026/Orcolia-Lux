@@ -77,6 +77,7 @@ export default async function TasksPage({
         dataset={result.dataset ? { total: result.total } : undefined}
         templates={templates}
         canAssign={can(user, "tasks.assign")}
+        canClose={can(user, "tasks.close")}
         scope={scope}
         users={users}
         teams={teams}
@@ -87,6 +88,7 @@ export default async function TasksPage({
         canDelete={can(user, "tasks.delete")}
         canEdit={can(user, "tasks.edit")}
         userId={user.id}
+        userTeamIds={user.teamIds}
         quietHoursEnabled={quietHoursSettings.quietHoursEnabled}
         blobEnabled={env.blob.enabled}
         canCreateProject={can(user, "projects.create")}

@@ -28,6 +28,7 @@ export default async function AppointmentsPage({
     today,
     tomorrow,
     slotMinutes: settings.slotMinutes,
+    tz,
     reminderEmail: settings.defaultReminderEmail,
     reminderTelegram: settings.defaultReminderTelegram,
     reminderOffsets: settings.reminderOffsets,

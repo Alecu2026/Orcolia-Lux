@@ -125,6 +125,7 @@ export default function TasksTable({
   canDelete,
   canEdit = false,
   userId,
+  userTeamIds = [],
   canCreateProject = false,
   quietHoursEnabled = false,
   blobEnabled = false,
@@ -143,6 +144,7 @@ export default function TasksTable({
   dataset,
   templates = [],
   canAssign = false,
+  canClose = false,
 }: {
   items: Task[];
   scope: string;
@@ -155,6 +157,8 @@ export default function TasksTable({
   canDelete: boolean;
   canEdit?: boolean;
   userId?: string;
+  /** Echipele utilizatorului: cine e într-o echipă asignată poate lucra pe task (status, progres). */
+  userTeamIds?: string[];
   canCreateProject?: boolean;
   quietHoursEnabled?: boolean;
   blobEnabled?: boolean;
@@ -176,6 +180,8 @@ export default function TasksTable({
   /** Șabloanele acestui tip (task-uri sau tichete) și dacă utilizatorul poate seta responsabili în ele. */
   templates?: TaskTemplate[];
   canAssign?: boolean;
+  /** „Închidere / finalizare": poate finaliza / anula chiar și task-uri la care nu lucrează. */
+  canClose?: boolean;
 }) {
   const tr = useT();
   const toast = useToast();
@@ -262,8 +268,14 @@ export default function TasksTable({
       .catch(() => {});
   }
 
-  const canEditRow = (t: Task) =>
-    canEdit || (!!userId && (t.creatorId === userId || t.assigneeId === userId || t.extraAssigneeIds.includes(userId)));
+  // Editarea câmpurilor: doar cu „Editare". Statusul și progresul: și cei implicați în task (creator, responsabil, echipă) — aceeași regulă ca pe server.
+  const CLOSE_ONLY: Status[] = ["DONE", "CANCELLED"];
+  const canEditRow = (_t: Task) => canEdit;
+  const canWorkRow = (t: Task) =>
+    canEdit ||
+    (!!userId &&
+      (t.creatorId === userId || t.assigneeId === userId || t.extraAssigneeIds.includes(userId) ||
+        (!!t.teamId && userTeamIds.includes(t.teamId)) || t.extraTeamIds.some((x) => userTeamIds.includes(x))));
 
   function changeStatus(id: string, next: Status) {
     const prev = rows;
@@ -347,7 +359,7 @@ export default function TasksTable({
       key: "status", label: "Status", minW: 95, sort: (t) => STATUSES.indexOf(t.status),
       render: (t) => (
         <div className="origin-left scale-90" onClick={(e) => e.stopPropagation()}>
-          <StatusDropdown status={t.status} pending={statusPending === t.id} onChange={(s) => changeStatus(t.id, s)} />
+          <StatusDropdown status={t.status} pending={statusPending === t.id} disabled={!canWorkRow(t) && !canClose} allowed={canWorkRow(t) ? undefined : CLOSE_ONLY} onChange={(s) => changeStatus(t.id, s)} />
         </div>
       ),
     },
@@ -401,7 +413,7 @@ export default function TasksTable({
         const display = names.length ? <span title={names.join(", ")}>{names.join(", ")}</span> : dash;
         const selected = [...(t.assigneeId ? [t.assigneeId] : []), ...t.extraAssigneeIds, ...(t.teamId ? [t.teamId] : []), ...t.extraTeamIds];
         return (
-          <PopEditor display={display} disabled={!canEditRow(t)} width={260}>
+          <PopEditor display={display} disabled={!canEditRow(t) || !canAssign} width={260}>
             {(close) => (
               <MultiPick
                 groups={[{ label: "Persoane", items: users }, { label: "Echipe", items: teams }]}
@@ -449,7 +461,7 @@ export default function TasksTable({
       key: "progress", label: "%", minW: 50, right: true, sort: (t) => t.progress,
       render: (t) => (
         <div onClick={(e) => e.stopPropagation()}>
-          <select value={t.progress} onChange={(e) => changeProgress(t.id, Number(e.target.value))} className="h-4 w-12 cursor-pointer rounded border-0 bg-transparent text-[11px] outline-none" aria-label={tr("Progres")}>
+          <select value={t.progress} disabled={!canWorkRow(t)} onChange={(e) => changeProgress(t.id, Number(e.target.value))} className="h-4 w-12 cursor-pointer rounded border-0 bg-transparent text-[11px] outline-none disabled:cursor-not-allowed disabled:opacity-60" aria-label={tr("Progres")}>
             {[0, 25, 50, 75, 100].map((p) => <option key={p} value={p}>{p}%</option>)}
           </select>
         </div>
@@ -655,6 +667,8 @@ export default function TasksTable({
           canEdit={canEditRow(current)}
           canDelete={canDelete}
           statusPending={statusPending === current.id}
+          canWork={canWorkRow(current)}
+          canClose={canClose}
           onStatus={(s) => changeStatus(current.id, s)}
           onProgress={(p) => changeProgress(current.id, p)}
           onEdit={() => { setEditTask(current); }}
@@ -693,6 +707,7 @@ export default function TasksTable({
           clients={clients}
           categories={categories}
           canCreateProject={canCreateProject}
+          canAssign={canAssign}
           quietHoursEnabled={quietHoursEnabled}
           blobEnabled={blobEnabled}
           initialProjectId={initialProjectId}
@@ -717,6 +732,7 @@ export default function TasksTable({
           clients={clients}
           categories={categories}
           quietHoursEnabled={quietHoursEnabled}
+          canAssign={canAssign}
           onClose={() => setEditTask(null)}
           onSaved={(updated) => {
             touch(updated.id);
@@ -736,6 +752,8 @@ function TaskDetailDialog({
   canEdit,
   canDelete,
   statusPending,
+  canWork,
+  canClose,
   onStatus,
   onProgress,
   onEdit,
@@ -747,6 +765,8 @@ function TaskDetailDialog({
   canEdit: boolean;
   canDelete: boolean;
   statusPending: boolean;
+  canWork: boolean;
+  canClose: boolean;
   onStatus: (s: Status) => void;
   onProgress: (p: number) => void;
   onEdit: () => void;
@@ -813,8 +833,8 @@ function TaskDetailDialog({
           {canEdit && <button type="button" onClick={onEdit} className={miniBtn}>✎ {m.common.edit}</button>}
           {canDelete && <button type="button" onClick={onDelete} className={`${miniBtn} text-st-cancelled`}>🗑 {m.common.delete}</button>}
           <span className="ml-auto flex items-center gap-2">
-            <StatusDropdown status={t.status} pending={statusPending} onChange={onStatus} />
-            <select value={t.progress} onChange={(e) => onProgress(Number(e.target.value))} className="h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-[11px]" aria-label={tr("Progres")}>
+            <StatusDropdown status={t.status} pending={statusPending} disabled={!canWork && !canClose} allowed={canWork ? undefined : ["DONE", "CANCELLED"]} onChange={onStatus} />
+            <select value={t.progress} disabled={!canWork} onChange={(e) => onProgress(Number(e.target.value))} className="h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-[11px]" aria-label={tr("Progres")}>
               {[0, 25, 50, 75, 100].map((p) => <option key={p} value={p}>{p}%</option>)}
             </select>
           </span>

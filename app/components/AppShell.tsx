@@ -307,7 +307,7 @@ function AppShellInner({
             <h1 className="text-lg font-bold lg:text-xl">{current}</h1>
             <div className="ml-auto flex items-center gap-2">
               <LanguageSwitcher />
-              <VoiceTaskButton />
+              {(perms?.["tasks.create"] !== false || perms?.["projects.create"] !== false || perms?.["clients.create"] !== false) && <VoiceTaskButton />}
               <Link
                 href="/notificari"
                 className="tap relative grid size-11 place-items-center rounded-xl bg-[var(--color-surface-2)] text-ink hover:bg-brand-soft"
@@ -335,10 +335,10 @@ function AppShellInner({
         </div>
       </div>
 
-      <CreateMenu />
+      <CreateMenu perms={perms} />
 
       {/* Popup „Apel primit" (PBX) — doar pentru cine poate vedea clienții */}
-      {perms?.["pbx.view"] !== false && <IncomingCallPopup canEdit={perms?.["pbx.manage"] !== false} />}
+      {perms?.["pbx.view"] !== false && <IncomingCallPopup canEdit={perms?.["pbx.manage"] !== false} canTask={perms?.["tasks.create"] !== false} canClient={perms?.["clients.create"] !== false} />}
 
       {/* Bottom nav mobil */}
       <BottomNav perms={perms} appointmentsLabel={appointmentsLabel} />

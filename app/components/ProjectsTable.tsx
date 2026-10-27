@@ -39,8 +39,15 @@ export default function ProjectsTable({
   clients,
   openCreate,
   canEdit = true,
+  canCreate = true,
+  canDelete = true,
+  canCreateTask = true,
 }: {
   canEdit?: boolean;
+  canCreate?: boolean;
+  canDelete?: boolean;
+  /** „Sarcini – Creare": butonul „+" de pe rând (sarcină nouă în proiect). */
+  canCreateTask?: boolean;
   projects: Project[];
   users: Opt[];
   teams: Opt[];
@@ -52,7 +59,7 @@ export default function ProjectsTable({
   const m = useMessages();
   const [rows, setRows] = useState(projects);
   useEffect(() => setRows(projects), [projects]);
-  const [dialog, setDialog] = useState<{ open: boolean; project: Project | null }>({ open: !!openCreate, project: null });
+  const [dialog, setDialog] = useState<{ open: boolean; project: Project | null }>({ open: !!openCreate && canCreate, project: null });
   const [detail, setDetail] = useState<Project | null>(null);
 
   const nameOf = (id: string | null, list: Opt[]) => (id ? (list.find((o) => o.id === id)?.name ?? "?") : null);
@@ -128,9 +135,9 @@ export default function ProjectsTable({
       key: "act", label: "", minW: 110,
       render: (p) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <Link href={`/tasks?create=task&project=${p.id}`} className={`${iconBtn} text-brand`} title={m.projects.addTask}><IconPlus className="size-3" /></Link>
-          <button type="button" className={iconBtn} title={m.common.edit} onClick={() => setDialog({ open: true, project: p })}><IconPencil className="size-3" /></button>
-          <button type="button" className={`${iconBtn} text-st-cancelled`} title={m.common.delete} onClick={() => remove(p.id)}><IconTrash className="size-3" /></button>
+          {canCreateTask && <Link href={`/tasks?create=task&project=${p.id}`} className={`${iconBtn} text-brand`} title={m.projects.addTask}><IconPlus className="size-3" /></Link>}
+          {canEdit && <button type="button" className={iconBtn} title={m.common.edit} onClick={() => setDialog({ open: true, project: p })}><IconPencil className="size-3" /></button>}
+          {canDelete && <button type="button" className={`${iconBtn} text-st-cancelled`} title={m.common.delete} onClick={() => remove(p.id)}><IconTrash className="size-3" /></button>}
         </div>
       ),
     },
@@ -192,10 +199,12 @@ export default function ProjectsTable({
         toolbar={
           <>
             <ExportButton entity="projects" className={topBtn} />
-            <ImportButton entity="projects" className={topBtn} />
-            <button type="button" onClick={() => setDialog({ open: true, project: null })} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">
-              {m.projects.new}
-            </button>
+            {canCreate && <ImportButton entity="projects" className={topBtn} />}
+            {canCreate && (
+              <button type="button" onClick={() => setDialog({ open: true, project: null })} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">
+                {m.projects.new}
+              </button>
+            )}
           </>
         }
       />
@@ -205,7 +214,8 @@ export default function ProjectsTable({
           clientName={nameOf(detail.clientId, clients)}
           assigneeName={nameOf(detail.assigneeId, users)}
           teamName={nameOf(detail.teamId, teams)}
-          onEdit={() => { const p = rows.find((x) => x.id === detail.id) ?? detail; setDetail(null); setDialog({ open: true, project: p }); }}
+          canCreateTask={canCreateTask}
+          onEdit={canEdit ? () => { const p = rows.find((x) => x.id === detail.id) ?? detail; setDetail(null); setDialog({ open: true, project: p }); } : undefined}
           onClose={() => setDetail(null)}
         />
       )}
@@ -221,6 +231,7 @@ function ProjectDetailDialog({
   clientName,
   assigneeName,
   teamName,
+  canCreateTask,
   onEdit,
   onClose,
 }: {
@@ -228,7 +239,8 @@ function ProjectDetailDialog({
   clientName: string | null;
   assigneeName: string | null;
   teamName: string | null;
-  onEdit: () => void;
+  canCreateTask?: boolean;
+  onEdit?: () => void;
   onClose: () => void;
 }) {
   const tr = useT();
@@ -260,8 +272,8 @@ function ProjectDetailDialog({
         </div>
         <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
           <Link href={`/projects/${p.id}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">{tr("Pagina proiectului →")}</Link>
-          <button type="button" onClick={onEdit} className={miniBtn}>✎ {m.common.edit}</button>
-          <Link href={`/tasks?create=task&project=${p.id}`} className={miniBtn}>+ {m.projects.taskLabel}</Link>
+          {onEdit && <button type="button" onClick={onEdit} className={miniBtn}>✎ {m.common.edit}</button>}
+          {canCreateTask && <Link href={`/tasks?create=task&project=${p.id}`} className={miniBtn}>+ {m.projects.taskLabel}</Link>}
           <Link href={`/tasks?scope=all&proj=${p.id}`} className={miniBtn}>{m.projects.viewAllTasks}</Link>
         </div>
 

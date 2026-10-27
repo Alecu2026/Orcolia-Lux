@@ -1,5 +1,6 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getCurrentUser } from "@/lib/dal";
+import { canViewTaskData } from "@/lib/permissions";
 
 const ALLOWED_TYPES = [
   "image/jpeg",
@@ -21,6 +22,7 @@ export async function POST(request: Request): Promise<Response> {
       onBeforeGenerateToken: async () => {
         const user = await getCurrentUser();
         if (!user) throw new Error("Autentificare necesară");
+        if (!canViewTaskData(user)) throw new Error("Nu ai permisiunea");
         return {
           allowedContentTypes: ALLOWED_TYPES,
           maximumSizeInBytes: 50 * 1024 * 1024, // 50 MB

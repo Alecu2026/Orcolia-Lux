@@ -14,7 +14,8 @@ import { DEMO } from "@/lib/demo";
 export type TgState = { ok?: boolean; error?: string; message?: string } | undefined;
 
 export async function setWebhookAction(): Promise<TgState> {
-  await requireUser();
+  const user = await requireUser();
+  if (!can(user, "users.manage")) return { error: "Fără permisiune." };
   if (!env.telegram.enabled) {
     return { error: "TELEGRAM_BOT_TOKEN nu este configurat." };
   }

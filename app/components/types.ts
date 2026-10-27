@@ -9,6 +9,8 @@ export type QuickDefaults = {
   today: string;
   tomorrow: string;
   slotMinutes: number;
+  /** Fusul orar al utilizatorului (din setări), pentru ora implicită a programării. */
+  tz?: string;
   reminderEmail: boolean;
   reminderTelegram: boolean;
   reminderOffsets: string[];

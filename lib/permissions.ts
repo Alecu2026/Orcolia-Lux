@@ -228,19 +228,28 @@ export type TaskOwnership = {
 };
 
 /**
- * Editare task: fie permisiunea generală "tasks.edit"/ADMIN, fie ești creatorul/asignatul
- * task-ului respectiv. Fără fallback-ul de proprietate, un STAFF fără "tasks.edit" nu-și putea
- * edita propriile task-uri (create sau asignate lui) — vedea "Nu ai permisiunea de editare"
- * deși era exact persoana vizată de task.
+ * Editarea câmpurilor unui task / tichet (titlu, descriere, prioritate, proiect, client, adresă, responsabili, termen, categorie):
+ * DOAR cu permisiunea „Editare" (sau administrator). Fiind creator sau responsabil nu dă dreptul de editare.
  */
-export function canEditTask(
-  user: PermissionSubject & { id: string },
-  task: TaskOwnership,
-): boolean {
+export function canEditTask(user: PermissionSubject): boolean {
+  return can(user, "tasks.edit");
+}
+
+export type TaskInvolvement = TaskOwnership & { teamId?: string | null; extraTeamIds?: string[] };
+
+/**
+ * Lucrul curent pe un task (schimbarea statusului și a progresului, fișiere atașate, răspunsul către client la tichete):
+ * cine are „Editare", sau e implicat în task — creator, responsabil, co-responsabil ori membru al unei echipe asignate.
+ * Un angajat care nu e în task și nu are „Editare" nu poate schimba nimic. Aceeași regulă se aplică pe server (lib/services/tasks.ts).
+ */
+export function canWorkOnTask(user: PermissionSubject & { id: string; teamIds?: string[] }, task: TaskInvolvement): boolean {
   if (can(user, "tasks.edit")) return true;
   if (task.creatorId === user.id) return true;
   if (task.assigneeId === user.id) return true;
   if (task.extraAssigneeIds?.includes(user.id)) return true;
+  const teams = user.teamIds ?? [];
+  if (task.teamId && teams.includes(task.teamId)) return true;
+  if (task.extraTeamIds?.some((t) => teams.includes(t))) return true;
   return false;
 }
 

@@ -2,14 +2,10 @@
 
 import { createPortal } from "react-dom";
 import { useState, useEffect, useRef } from "react";
-import { setStatus as setStatusAction, deleteAppointment } from "@/app/actions/appointments";
 import { STATUS_META } from "./status";
-import { useToast } from "./toast";
-import { IconMail, IconSend, IconTrash, IconChevronRight } from "./icons";
-import type { ApptStatus, ApptVM } from "./types";
+import type { ApptStatus } from "./types";
 import { useMessages } from "@/lib/i18n/context";
 import type { Messages } from "@/lib/i18n/messages/ro";
-import { useT } from "@/lib/i18n/context";
 
 export const APPT_STATUSES: ApptStatus[] = [
   "NEW", "CONFIRMED", "IN_PROGRESS", "DONE", "CANCELLED", "NO_SHOW",
@@ -26,106 +22,7 @@ export function apptLabel(s: ApptStatus, m: Messages): string {
   }
 }
 
-export default function AppointmentItem({ appt }: { appt: ApptVM }) {
-  const t = useT();
-  const toast = useToast();
-  const m = useMessages();
-  const [status, setStatus] = useState<ApptStatus>(appt.status);
-  const [removed, setRemoved] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
-
-  async function change(next: ApptStatus) {
-    if (next === status) return;
-    const prev = status;
-    setStatus(next);
-    setBusy(true);
-    const res = await setStatusAction(appt.id, next);
-    setBusy(false);
-    if (res?.error) {
-      setStatus(prev);
-      toast.error(t(res.error));
-    } else {
-      toast.success(`Status: ${apptLabel(next, m)}`);
-    }
-  }
-
-  async function remove() {
-    if (!confirm(m.appts.deleteConfirm)) return;
-    setRemoved(true);
-    try {
-      const res = await deleteAppointment(appt.id);
-      if (res?.error) { setRemoved(false); toast.error(t(res.error)); return; }
-      toast.success(m.appts.deleted);
-    } catch {
-      setRemoved(false);
-      toast.error(m.common.deleteFailed);
-    }
-  }
-
-  if (removed) return null;
-
-  return (
-    <div className={`card overflow-hidden ${busy ? "opacity-60" : ""}`}>
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 sm:flex-nowrap">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="min-w-0 basis-full text-left sm:basis-0 sm:flex-1"
-        >
-          <div className="flex items-center gap-2">
-            <span className="shrink-0 rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-brand">
-              {appt.time}
-            </span>
-            <span className="min-w-0 truncate text-sm font-medium">{appt.clientName}</span>
-            {appt.categoryName && (
-              <span className="hidden shrink-0 items-center gap-1 rounded bg-[var(--color-surface-2)] px-1.5 py-0.5 text-[10px] text-ink-soft sm:inline-flex">
-                <span
-                  className="size-1.5 rounded-full"
-                  style={{ background: appt.categoryColor ?? "#6366f1" }}
-                />
-                {appt.categoryName}
-              </span>
-            )}
-            <IconChevronRight
-              className={`size-3.5 shrink-0 text-ink-soft transition-transform ${open ? "rotate-90" : ""}`}
-            />
-          </div>
-          <p className="flex items-center gap-1 text-[11px] text-ink-soft">
-            <span>{appt.time}–{appt.endTime}</span>
-            {appt.title && <span>· {appt.title}</span>}
-            {(appt.remEmail || appt.remTelegram) && (
-              <span className="inline-flex items-center gap-0.5">
-                {appt.remEmail && <IconMail className="size-3" />}
-                {appt.remTelegram && <IconSend className="size-3" />}
-              </span>
-            )}
-          </p>
-        </button>
-
-        <div className="flex flex-1 items-center justify-between gap-2 sm:flex-none sm:justify-end">
-          <ApptStatusDropdown status={status} pending={busy} onChange={change} />
-
-          <button
-            onClick={remove}
-            disabled={busy}
-            className="tap grid size-8 shrink-0 place-items-center rounded-lg border border-[var(--color-line)] text-st-cancelled hover:bg-[var(--color-surface-2)] disabled:opacity-50"
-            title={m.common.delete}
-          >
-            <IconTrash className="size-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {open && appt.title && (
-        <div className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)]/40 px-3 py-2.5">
-          <p className="whitespace-pre-wrap text-[12px]">{appt.title}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
+/** Chip de status care deschide lista de statusuri; lista se deschide în sus când sub chip nu încape (rând la finalul paginii) și rămâne în ecran. */
 export function ApptStatusDropdown({
   status,
   pending,
@@ -137,7 +34,7 @@ export function ApptStatusDropdown({
 }) {
   const m = useMessages();
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0, minWidth: 0 });
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; minWidth: number; maxH: number }>({ top: 0, left: 0, minWidth: 0, maxH: 320 });
   const [mounted, setMounted] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const meta = STATUS_META[status];
@@ -159,7 +56,13 @@ export function ApptStatusDropdown({
     e.stopPropagation();
     const rect = btnRef.current?.getBoundingClientRect();
     if (rect) {
-      setPos({ top: rect.bottom + 4, left: rect.left, minWidth: Math.max(rect.width, 144) });
+      const minWidth = Math.max(rect.width, 144);
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - minWidth - 8));
+      const menuH = APPT_STATUSES.length * 36 + 8;
+      const below = window.innerHeight - rect.bottom - 8;
+      const above = rect.top - 8;
+      if (below >= menuH || below >= above) setPos({ top: rect.bottom + 4, left, minWidth, maxH: Math.max(120, below - 4) });
+      else setPos({ bottom: window.innerHeight - rect.top + 4, left, minWidth, maxH: Math.max(120, above - 4) });
     }
     setOpen((o) => !o);
   }
@@ -178,7 +81,7 @@ export function ApptStatusDropdown({
       </button>
       {open && mounted && createPortal(
         <div
-          style={{ position: "fixed", top: pos.top, left: pos.left, minWidth: pos.minWidth, zIndex: 9999 }}
+          style={{ position: "fixed", top: pos.top, bottom: pos.bottom, left: pos.left, minWidth: pos.minWidth, zIndex: 9999, maxHeight: pos.maxH, overflowY: "auto" }}
           onMouseDown={(e) => e.stopPropagation()}
           className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1 shadow-xl"
         >

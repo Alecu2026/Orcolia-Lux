@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requireAnyPermission } from "@/lib/dal";
-import { can, canEditTask, canViewTask } from "@/lib/permissions";
+import { can, canEditTask, canViewTask, canWorkOnTask } from "@/lib/permissions";
 import { getTask, ticketCreatorName } from "@/lib/queries/tasks";
 import { listTaskComments } from "@/lib/services/tasks";
 import { dateKeyOf, formatDate, formatTime } from "@/lib/date";
@@ -115,7 +115,8 @@ export default async function TaskDetailPage({
       : null;
 
   const canDelete = can(user, "tasks.delete");
-  const canEdit = canEditTask(user, task);
+  const canEdit = canEditTask(user);
+  const canWork = canWorkOnTask(user, task);
 
   const attachments = (task.attachments ?? []).map((a) => ({
     id: a.id,
@@ -263,6 +264,7 @@ export default async function TaskDetailPage({
           categories={categories}
           canEdit={canEdit}
           canDelete={canDelete}
+          canAssign={can(user, "tasks.assign")}
         />
       </div>
 
@@ -346,8 +348,8 @@ export default async function TaskDetailPage({
         </div>
 
         <div className="mt-4 border-t border-[var(--color-line)] pt-4 flex flex-col gap-3">
-          <TaskStatusChanger taskId={id} initialStatus={task.status} />
-          {task.type === "TICKET" && task.status !== "DONE" && task.status !== "CANCELLED" && canEdit && (
+          <TaskStatusChanger taskId={id} initialStatus={task.status} disabled={!canWork && !can(user, "tasks.close")} closeOnly={!canWork} />
+          {task.type === "TICKET" && task.status !== "DONE" && task.status !== "CANCELLED" && (canWork || can(user, "tasks.close")) && (
             <div className="flex justify-end">
               <CloseTicketButton taskId={id} />
             </div>
@@ -384,6 +386,7 @@ export default async function TaskDetailPage({
           initialAttachments={attachments}
           currentUserId={user.id}
           canDelete={canDelete}
+          canAdd={canWork}
           blobEnabled={env.blob.enabled}
         />
       </div>

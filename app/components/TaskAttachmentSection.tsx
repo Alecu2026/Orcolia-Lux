@@ -33,12 +33,15 @@ export default function TaskAttachmentSection({
   initialAttachments,
   currentUserId,
   canDelete,
+  canAdd = true,
   blobEnabled,
 }: {
   taskId: string;
   initialAttachments: AttachmentRow[];
   currentUserId: string;
   canDelete: boolean;
+  /** Fără „Editare" și fără să fii implicat în task nu poți atașa fișiere. */
+  canAdd?: boolean;
   blobEnabled: boolean;
 }) {
   const t = useT();
@@ -92,7 +95,7 @@ export default function TaskAttachmentSection({
     <div className="card p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-bold">📎 {m.tasks.attachments} {attachments.length > 0 && `(${attachments.length})`}</h2>
-        {blobEnabled ? (
+        {!canAdd ? null : blobEnabled ? (
           <label className="tap cursor-pointer rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong">
             {uploading ? m.tasks.uploadingFile : m.tasks.addAttachment}
             <input

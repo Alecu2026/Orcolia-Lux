@@ -83,7 +83,7 @@ function readOperator(fallback: string): string {
  * Coada de apeluri către plătitori (canalul „Apel"). „Sună" → PBX-ul sună întâi operatorul ales, apoi îl leagă cu plătitorul.
  * Starea, durata și înregistrarea vin din apelul PBX (același callId). Aici operatorul vede și mesajul de transmis.
  */
-export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: { rows: NotifyCallRow[]; defaultOperator: string }) {
+export default function NotifyCallsTable({ rows: serverRows, defaultOperator, canManage = true }: { rows: NotifyCallRow[]; defaultOperator: string; canManage?: boolean }) {
   const tr = useT();
   const router = useRouter();
   const toast = useToast();
@@ -226,7 +226,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
       render: (c) => (
         <button
           type="button"
-          disabled={busy === c.id}
+          disabled={busy === c.id || !canManage}
           onClick={(e) => { e.stopPropagation(); void dial(c); }}
           className="tap h-6 cursor-pointer rounded-md bg-brand px-2 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-50"
         >
@@ -295,6 +295,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
         onRowClick={(c) => setDetailId(c.id)}
         toolbar={
           <>
+            <fieldset disabled={!canManage} className="contents">
             <label className="flex items-center gap-1 text-[11px] text-ink-soft">
               {tr("Apelant:")}
               <input
@@ -327,6 +328,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
                 <button type="button" onClick={() => { stopBulk.current = true; }} className={topBtn}>{tr("■ Oprește")}</button>
               </>
             )}
+            </fieldset>
             <button type="button" onClick={() => router.refresh()} className={topBtn}>{tr("↻ Reîncarcă")}</button>
           </>
         }
@@ -353,6 +355,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
           onDial={() => void dial(detail)}
           onRemove={() => void remove(detail)}
           onSaveNote={(n) => void saveNote(detail, n)}
+          canManage={canManage}
         />
       )}
     </>
@@ -360,8 +363,9 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator }: 
 }
 
 function Detail({
-  call: c, busy, caller, onCaller, onClose, onDial, onRemove, onSaveNote,
+  call: c, busy, caller, onCaller, onClose, onDial, onRemove, onSaveNote, canManage,
 }: {
+  canManage: boolean;
   call: NotifyCallRow;
   busy: boolean;
   caller: string;
@@ -415,6 +419,7 @@ function Detail({
           </div>
         )}
 
+        <fieldset disabled={!canManage} className="contents">
         <div className="mt-3">
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{t("Notă (ce a spus plătitorul)")}</p>
           <textarea
@@ -455,6 +460,7 @@ function Detail({
             <button type="button" onClick={() => setConfirmDel(true)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs text-st-cancelled hover:bg-[var(--color-surface-2)]">{t("🗑 Șterge")}</button>
           )}
         </div>
+        </fieldset>
       </div>
     </div>
   );

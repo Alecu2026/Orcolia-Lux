@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
+import { canWorkOnTaskById } from "@/lib/services/task-access";
 import { can, canAny, canUseAllScope, canEditTask, canViewTask, canViewTaskData } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { zonedToUtc } from "@/lib/date";
@@ -204,7 +205,7 @@ export async function setTaskStatus(id: string, status: string): Promise<TaskSta
   return { ok: true };
 }
 
-/** Actualizare progres (0-100), permisă oricărui utilizator autentificat. */
+/** Actualizare progres (0-100): cu „Editare" sau dacă ești implicat în task (se verifică în changeTaskProgress). */
 export async function setTaskProgress(id: string, progress: number): Promise<TaskState> {
   const user = await requireUser();
   console.log(`[tasks.action] setTaskProgress: user=${user.id} (${user.name}) task=${id} -> ${progress}%`);
@@ -279,9 +280,10 @@ export async function getTaskComments(id: string): Promise<TaskCommentRow[]> {
   }));
 }
 
-/** Adaugă un comentariu pe task, permis oricărui utilizator autentificat. */
+/** Adaugă un comentariu pe task: cine are voie să vadă task-ul (regula de vizibilitate). */
 export async function addTaskCommentAction(id: string, body: string): Promise<TaskState> {
   const user = await requireUser();
+  if (!canViewTaskData(user) || !(await canSeeTaskById(user, id))) return { error: "Nu ai acces la această sarcină." };
   console.log(`[tasks.action] addTaskCommentAction: user=${user.id} (${user.name}) task=${id}`);
   const res = await addTaskComment(id, user.id, body, "WEB");
   if (!res.ok) {
@@ -308,7 +310,7 @@ export async function updateTaskAction(
       select: { creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true },
     });
     if (!existing) return { error: "Sarcină inexistentă." };
-    if (!canEditTask(user, existing)) return { error: "Nu ai permisiunea de editare." };
+    if (!canEditTask(user)) return { error: "Nu ai permisiunea de editare." };
 
     const title = String(formData.get("title") ?? "").trim();
     const description = String(formData.get("description") ?? "");
@@ -433,7 +435,7 @@ export async function updateTaskFieldAction(id: string, patch: TaskFieldPatch): 
       select: { creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true },
     });
     if (!existing) return { error: "Sarcină inexistentă." };
-    if (!canEditTask(user, existing)) return { error: "Nu ai permisiunea de editare." };
+    if (!canEditTask(user)) return { error: "Nu ai permisiunea de editare." };
     if (patch.assigneeIds !== undefined || patch.teamIds !== undefined) {
       const nu = (patch.assigneeIds ?? []).filter((x) => OBJECT_ID.test(x));
       const nt = (patch.teamIds ?? []).filter((x) => OBJECT_ID.test(x));
@@ -500,7 +502,7 @@ export async function addAttachmentAction(
   formData: FormData,
 ): Promise<{ ok?: boolean; error?: string; attachment?: AttachmentRow }> {
   const user = await requireUser();
-  if (!canViewTaskData(user)) return { error: "Nu ai permisiunea." };
+  if (!canViewTaskData(user) || !(await canWorkOnTaskById(user, taskId))) return { error: "Nu ai permisiunea." };
   if (DEMO) return { error: "Mod demo." };
 
   const file = formData.get("file") as File | null;
@@ -581,12 +583,19 @@ export type ProjectTaskRow = {
 };
 
 export async function getProjectTasksAction(projectId: string): Promise<ProjectTaskRow[]> {
-  await requireUser();
-  const tasks = await prisma.task.findMany({
+  const user = await requireUser();
+  // Doar cine vede proiectele și task-urile, și doar task-urile pe care are voie să le vadă (aceeași regulă ca în liste).
+  if (!can(user, "projects.view") || !canViewTaskData(user) || !OBJECT_ID.test(projectId ?? "")) return [];
+  const all = await prisma.task.findMany({
     where: { projectId },
     orderBy: { createdAt: "desc" },
     take: 200,
     select: {
+      creatorId: true,
+      assigneeId: true,
+      extraAssigneeIds: true,
+      teamId: true,
+      extraTeamIds: true,
       id: true,
       seq: true,
       title: true,
@@ -597,6 +606,7 @@ export async function getProjectTasksAction(projectId: string): Promise<ProjectT
       team: { select: { name: true } },
     },
   });
+  const tasks = all.filter((t) => canViewTask(user, t));
   return tasks.map((t) => ({
     id: t.id,
     seq: t.seq ?? null,

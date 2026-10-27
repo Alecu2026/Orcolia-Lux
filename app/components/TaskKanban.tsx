@@ -33,6 +33,8 @@ type Task = {
   categoryId: string | null;
   categoryName: string | null;
   categoryColor: string | null;
+  /** Calculat pe server: poate userul muta cardul (schimba statusul)? */
+  canMove?: boolean;
 };
 
 const COLUMNS: { status: Status; dot: string }[] = [
@@ -187,6 +189,7 @@ export default function TaskKanban({
   function move(id: string, status: Status) {
     const task = tasks.find((t) => t.id === id);
     if (!task || task.status === status) return;
+    if (task.canMove === false) { toast.error(tr("Nu ai permisiunea de editare.")); return; }
     const prev = tasks;
     setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, status } : t)));
     setTaskStatus(id, status).then((res) => {
@@ -337,14 +340,14 @@ export default function TaskKanban({
                   <Link
                     key={t.id}
                     href={`/tasks/${t.id}`}
-                    draggable
+                    draggable={t.canMove !== false}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/plain", t.id);
                       e.dataTransfer.effectAllowed = "move";
                       setDragId(t.id);
                     }}
                     onDragEnd={() => { setDragId(null); setOverCol(null); }}
-                    className={`card block cursor-grab p-2.5 active:cursor-grabbing hover:opacity-90 ${dragId === t.id ? "opacity-50" : ""}`}
+                    className={`card block ${t.canMove === false ? "" : "cursor-grab active:cursor-grabbing"} p-2.5 hover:opacity-90 ${dragId === t.id ? "opacity-50" : ""}`}
                   >
                     <div className="flex items-start gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.title}</span>

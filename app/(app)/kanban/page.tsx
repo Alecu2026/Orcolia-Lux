@@ -1,6 +1,6 @@
 import { requirePermission } from "@/lib/dal";
 import { getT } from "@/lib/i18n/server-t";
-import { canUseAllScope } from "@/lib/permissions";
+import { can, canUseAllScope, canWorkOnTask } from "@/lib/permissions";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
 import { userOptions } from "@/lib/queries/users";
 import { teamOptions } from "@/lib/queries/teams";
@@ -32,7 +32,7 @@ export default async function KanbanPage() {
           {tr("Kanban afișează primele {n} sarcini. Folosește lista pentru filtrare avansată cu mai multe date.", { n: KANBAN_LIMIT })}
         </div>
       )}
-      <TaskKanban items={result.items} users={users} teams={teams} projects={projects} categories={categories} />
+      <TaskKanban items={result.items.map((t) => ({ ...t, canMove: canWorkOnTask(user, t) || can(user, "tasks.close") }))} users={users} teams={teams} projects={projects} categories={categories} />
     </div>
   );
 }

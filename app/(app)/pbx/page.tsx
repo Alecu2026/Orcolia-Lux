@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/dal";
+import { can } from "@/lib/permissions";
 import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 import { DEMO } from "@/lib/demo";
@@ -16,7 +17,7 @@ const TABS = [
 
 export default async function PbxPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const tr = await getT();
-  await requirePermission("pbx.view");
+  const user = await requirePermission("pbx.view");
   const tab = (await searchParams).tab === "notificari" ? "notificari" : "apeluri";
   const tabs = (
     <div className="mb-2 flex gap-1.5">
@@ -70,7 +71,7 @@ export default async function PbxPage({ searchParams }: { searchParams: Promise<
     return (
       <div className="w-full">
         {tabs}
-        <NotifyCallsTable rows={rows} defaultOperator={env.pbx.callUser} />
+        <NotifyCallsTable rows={rows} defaultOperator={env.pbx.callUser} canManage={can(user, "pbx.manage")} />
       </div>
     );
   }
@@ -108,7 +109,7 @@ export default async function PbxPage({ searchParams }: { searchParams: Promise<
   return (
     <div className="w-full">
       {tabs}
-      <PbxTable rows={rows} webhookUrl={`${env.appUrl.replace(/\/$/, "")}/api/pbx`} tokenConfigured={!!env.pbx.crmToken} />
+      <PbxTable rows={rows} webhookUrl={`${env.appUrl.replace(/\/$/, "")}/api/pbx`} tokenConfigured={!!env.pbx.crmToken} canManage={can(user, "pbx.manage")} canTask={can(user, "tasks.create")} canClient={can(user, "clients.create")} />
     </div>
   );
 }

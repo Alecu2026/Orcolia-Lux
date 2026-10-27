@@ -1737,4 +1737,9 @@ export const EN: Record<string, string> = {
   "Subiect (ex: Scurgere la contor)": "Subject (e.g. Leak at the meter)",
   "Creează sarcină din acest apel (adresa se completează singură)": "Create a task from this call (the address fills in by itself)",
   "Creează sarcină pentru acest plătitor (adresa se completează singură)": "Create a task for this payer (the address fills in by itself)",
+  "Schimbarea responsabililor cere permisiunea „Asignare”.": "Changing the responsible people requires the “Assign” permission.",
+  "Responsabili": "Responsible",
+  "Descriere scurtă (ex. Citire contor)": "Short description (e.g. Meter reading)",
+  "Durata trebuie să fie între 1 și 1440 de minute.": "The duration must be between 1 and 1440 minutes.",
+  "Durata trebuie să fie un număr întreg de minute.": "The duration must be a whole number of minutes.",
 };

@@ -3,7 +3,7 @@ import { listProjects } from "@/lib/queries/projects";
 import { userOptions } from "@/lib/queries/users";
 import { teamOptions } from "@/lib/queries/teams";
 import { crmClientOptions } from "@/lib/queries/clients";
-import { backfillProjectSeq } from "@/app/actions/projects";
+import { backfillProjectSeq } from "@/lib/services/project-seq";
 import ProjectsTable from "@/app/components/ProjectsTable";
 import { can } from "@/lib/permissions";
 
@@ -27,7 +27,7 @@ export default async function ProjectsPage({
   ]);
   return (
     <div className="w-full">
-      <ProjectsTable projects={result.items} users={users} teams={teams} clients={clients} openCreate={sp.create === "1"} canEdit={can(user, "projects.edit")} />
+      <ProjectsTable projects={result.items} users={users} teams={teams} clients={clients} openCreate={sp.create === "1"} canEdit={can(user, "projects.edit")} canCreate={can(user, "projects.create")} canDelete={can(user, "projects.delete")} canCreateTask={can(user, "tasks.create")} />
     </div>
   );
 }

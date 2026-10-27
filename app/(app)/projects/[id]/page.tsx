@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requirePermission } from "@/lib/dal";
-import { can } from "@/lib/permissions";
+import { can, canViewTaskData } from "@/lib/permissions";
 import { getProject } from "@/lib/queries/projects";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
 import { userOptions } from "@/lib/queries/users";
@@ -68,7 +68,9 @@ export default async function ProjectDetailPage({
   const client = clients.find((c) => c.id === project.clientId);
   const hasLocation = project.lat != null && project.lng != null;
 
-  const tasks = tasksResult.items;
+  // Task-urile proiectului sunt date de task-uri: fără „Sarcini – Vizualizare” (sau acces la cereri / kanban / calendar) lista nu se arată.
+  const showTasks = canViewTaskData(user);
+  const tasks = showTasks ? tasksResult.items : [];
   const activeTasks = tasks.filter((t) => t.status !== "DONE" && t.status !== "CANCELLED");
   const doneTasks = tasks.filter((t) => t.status === "DONE" || t.status === "CANCELLED");
 
@@ -152,7 +154,7 @@ export default async function ProjectDetailPage({
       )}
 
       {/* ── Task-uri ── */}
-      <div className="card mb-4 p-4">
+      {showTasks && <div className="card mb-4 p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-sm font-bold">
             {m.nav.tasks}
@@ -162,12 +164,14 @@ export default async function ProjectDetailPage({
               </span>
             )}
           </h2>
-          <Link
-            href={`/tasks?create=task&project=${id}`}
-            className="tap inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong"
-          >
-            {m.tasks.newButton}
-          </Link>
+          {can(user, "tasks.create") && (
+            <Link
+              href={`/tasks?create=task&project=${id}`}
+              className="tap inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong"
+            >
+              {m.tasks.newButton}
+            </Link>
+          )}
         </div>
 
         {tasks.length === 0 ? (
@@ -233,7 +237,7 @@ export default async function ProjectDetailPage({
             )}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

@@ -81,7 +81,7 @@ const topBtn =
   "tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]";
 
 /** PBX (Moldcell) — apelurile primite prin webhook. Tabel dens cu filtre locale; click pe rând = toate mesajele apelului. */
-export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: PbxCallRow[]; webhookUrl: string; tokenConfigured: boolean }) {
+export default function PbxTable({ rows, webhookUrl, tokenConfigured, canManage = true, canTask = true, canClient = true }: { rows: PbxCallRow[]; webhookUrl: string; tokenConfigured: boolean; canManage?: boolean; canTask?: boolean; canClient?: boolean }) {
   const tr = useT();
   const router = useRouter();
   const [detail, setDetail] = useState<PbxCallRow | null>(null);
@@ -105,7 +105,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
     return `/tasks?${sp.toString()}`;
   };
   const dash = <span className="text-ink-soft/60">—</span>;
-  const columns: Col<PbxCallRow>[] = [
+  const allColumns: Col<PbxCallRow>[] = [
     {
       key: "mk", label: "", minW: 34,
       render: (c) => (
@@ -157,6 +157,8 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
     { key: "rating", label: "Notă client", minW: 70, right: true, defaultHidden: true, sort: (c) => c.rating, render: (c) => (c.rating != null ? `${c.rating}/5` : dash) },
     { key: "callid", label: "ID apel", minW: 150, defaultHidden: true, sort: (c) => c.callId, render: (c) => <span className="font-mono text-[10px]">{c.callId}</span> },
   ];
+  // Fără „Sarcini – Creare" coloana „+" dispare.
+  const columns = canTask ? allColumns : allColumns.filter((c) => c.key !== "mk");
 
   const filters = useMemo<Filter<PbxCallRow>[]>(
     () => [
@@ -230,7 +232,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured }: { rows: 
         toolbar={<button type="button" onClick={() => router.refresh()} className={topBtn}>{tr("↻ Reîncarcă")}</button>}
       />
 
-      {detail && <CallDialog call={rows.find((r) => r.id === detail.id) ?? detail} onClose={() => setDetail(null)} onPlay={(c) => setPlaying(c)} />}
+      {detail && <CallDialog call={rows.find((r) => r.id === detail.id) ?? detail} onClose={() => setDetail(null)} onPlay={(c) => setPlaying(c)} canManage={canManage} canTask={canTask} canClient={canClient} />}
 
       {playing && (
         <div className="fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 mx-auto w-[calc(100%-1.5rem)] max-w-2xl rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-2.5 shadow-2xl lg:bottom-4">
@@ -274,7 +276,7 @@ function RecordingAudio({ callId, autoPlay = false }: { callId: string; autoPlay
   );
 }
 
-function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: () => void; onPlay: (c: PbxCallRow) => void }) {
+function CallDialog({ call: c, onClose, onPlay, canManage, canTask, canClient }: { call: PbxCallRow; onClose: () => void; onPlay: (c: PbxCallRow) => void; canManage: boolean; canTask: boolean; canClient: boolean }) {
   const tr = useT();
   const toast = useToast();
   const router = useRouter();
@@ -338,9 +340,9 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
         <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
           {ctx?.isPayer && <Link href={`/platitori/${ctx.clientId}`} className={`${actBtn} border-brand bg-brand text-white hover:bg-brand-strong`}>{tr("Fișa plătitorului →")}</Link>}
           {q && <Link href={`/platitori?q=${q}`} className={actBtn}>{tr("🔎 Filtrează în Plătitori")}</Link>}
-          {!c.clientId && <Link href="/clients?create=1" className={actBtn}>{tr("+ Client nou")}</Link>}
-          <Link href={prefill("ticket")} className={actBtn}>{tr("🎫 Cerere")}</Link>
-          <Link href={prefill("task")} className={actBtn}>{tr("✔ Sarcină")}</Link>
+          {!c.clientId && canClient && <Link href="/clients?create=1" className={actBtn}>{tr("+ Client nou")}</Link>}
+          {canTask && <Link href={prefill("ticket")} className={actBtn}>{tr("🎫 Cerere")}</Link>}
+          {canTask && <Link href={prefill("task")} className={actBtn}>{tr("✔ Sarcină")}</Link>}
         </div>
 
         {ctx && (
@@ -364,7 +366,7 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
           <h3 className="border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Notă despre apel")}</h3>
           <div className="p-2.5">
             {savedNote && <p className="mb-1.5 whitespace-pre-wrap rounded bg-[var(--color-surface-2)] px-2 py-1 text-[12px]">{savedNote}</p>}
-            <div className="flex gap-1.5">
+            {canManage && <div className="flex gap-1.5">
               <input
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -372,9 +374,9 @@ function CallDialog({ call: c, onClose, onPlay }: { call: PbxCallRow; onClose: (
                 placeholder={tr("Cine a sunat, ce a cerut… Enter = salvează")}
                 className="h-8 min-w-0 flex-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-[12px] outline-none focus:border-brand"
               />
-              <button type="button" onClick={saveNote} disabled={saving || !note.trim()} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40">{saving ? "…" : tr("Salvează")}</button>
-            </div>
-            {c.clientId && <p className="mt-1 text-[10px] text-ink-soft">{tr("Nota se adaugă și pe fișa clientului.")}</p>}
+              <button type="button" onClick={saveNote} disabled={saving || !note.trim()} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-50">{saving ? "…" : tr("Salvează")}</button>
+            </div>}
+            {canManage && c.clientId && <p className="mt-1 text-[10px] text-ink-soft">{tr("Nota se adaugă și pe fișa clientului.")}</p>}
           </div>
         </section>
 

@@ -43,6 +43,9 @@ export default async function InvoicesPage({
         mode={res.mode}
         origin={env.appUrl}
         canImportApaCanal={can(user, "invoices.create") && can(user, "clients.create") && env.blob.enabled}
+        canCreate={can(user, "invoices.create")}
+        canEdit={can(user, "invoices.edit")}
+        canDelete={can(user, "invoices.delete")}
       />
     </div>
   );

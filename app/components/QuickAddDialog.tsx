@@ -13,9 +13,18 @@ import ReminderOffsetPicker from "./ReminderOffsetPicker";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
 
-function nextSlot(slot: number): string {
-  const d = new Date();
-  let total = d.getHours() * 60 + d.getMinutes() + 5;
+/** Următorul interval liber de azi, după ceasul din fusul orar ales în setări (nu al browserului). */
+function nextSlot(slot: number, tz?: string): string {
+  let h: number, mi: number;
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date());
+    h = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
+    mi = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
+  } catch {
+    const d = new Date();
+    h = d.getHours(); mi = d.getMinutes();
+  }
+  let total = h * 60 + mi + 5;
   total = Math.ceil(total / slot) * slot;
   if (total >= 1440) total = 1440 - slot;
   const hh = String(Math.floor(total / 60)).padStart(2, "0");
@@ -51,7 +60,7 @@ export default function QuickAddDialog({
   });
   const [categoryId, setCategoryId] = useState(prefill?.categoryId ?? "");
   const [dateKey, setDateKey] = useState(prefill?.dateKey ?? defaults.today);
-  const [time, setTime] = useState(prefill?.time ?? nextSlot(defaults.slotMinutes));
+  const [time, setTime] = useState(prefill?.time ?? nextSlot(defaults.slotMinutes, defaults.tz));
   const [duration, setDuration] = useState(
     String(prefill?.durationMinutes ?? defaults.slotMinutes),
   );
@@ -196,8 +205,9 @@ export default function QuickAddDialog({
                 <input
                   type="number"
                   inputMode="decimal"
-                  min={0}
-                  step="any"
+                  min={1}
+                  max={1440}
+                  step={1}
                   value={duration}
                   onChange={(e) => setDuration(e.target.value)}
                   placeholder={t("ex. 30")}
@@ -207,6 +217,12 @@ export default function QuickAddDialog({
             </div>
           </div>
 
+          <input
+            name="title"
+            maxLength={120}
+                        placeholder={t("Descriere scurtă (ex. Citire contor)")}
+            className="h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand"
+          />
           <input
             name="message"
             value={message}

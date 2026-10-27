@@ -37,13 +37,13 @@ const topBtn =
   "tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]";
 
 /** Clienți (CRM) — același tabel dens, cu filtre locale, ca la Plătitori. Click pe rând = editare. */
-export default function ClientsTable({ items, openCreate, canEdit = true }: { items: ClientRow[]; openCreate?: boolean; canEdit?: boolean }) {
+export default function ClientsTable({ items, openCreate, canEdit = true, canCreate = true, canDelete = true }: { items: ClientRow[]; openCreate?: boolean; canEdit?: boolean; canCreate?: boolean; canDelete?: boolean }) {
   const t = useT();
   const toast = useToast();
   const m = useMessages();
   const [rows, setRows] = useState(items);
   useEffect(() => setRows(items), [items]);
-  const [dialog, setDialog] = useState<{ open: boolean; client: ClientEdit | null }>({ open: !!openCreate, client: null });
+  const [dialog, setDialog] = useState<{ open: boolean; client: ClientEdit | null }>({ open: !!openCreate && canCreate, client: null });
 
   function remove(id: string) {
     if (!confirm(m.clients.deleteConfirm)) return;
@@ -92,8 +92,8 @@ export default function ClientsTable({ items, openCreate, canEdit = true }: { it
       key: "act", label: "", minW: 60,
       render: (c) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button type="button" className={iconBtn} title={m.common.edit} onClick={() => setDialog({ open: true, client: toEdit(c) })}><IconPencil className="size-3" /></button>
-          <button type="button" className={`${iconBtn} text-st-cancelled`} title={m.common.delete} onClick={() => remove(c.id)}><IconTrash className="size-3" /></button>
+          {canEdit && <button type="button" className={iconBtn} title={m.common.edit} onClick={() => setDialog({ open: true, client: toEdit(c) })}><IconPencil className="size-3" /></button>}
+          {canDelete && <button type="button" className={`${iconBtn} text-st-cancelled`} title={m.common.delete} onClick={() => remove(c.id)}><IconTrash className="size-3" /></button>}
         </div>
       ),
     },
@@ -152,10 +152,12 @@ export default function ClientsTable({ items, openCreate, canEdit = true }: { it
         toolbar={
           <>
             <ExportButton entity="clients" className={topBtn} />
-            <ImportButton entity="clients" className={topBtn} />
-            <button type="button" onClick={() => setDialog({ open: true, client: null })} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">
-              {m.clients.new}
-            </button>
+            {canCreate && <ImportButton entity="clients" className={topBtn} />}
+            {canCreate && (
+              <button type="button" onClick={() => setDialog({ open: true, client: null })} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">
+                {m.clients.new}
+              </button>
+            )}
           </>
         }
       />

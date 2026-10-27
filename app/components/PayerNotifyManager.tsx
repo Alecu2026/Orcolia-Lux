@@ -116,6 +116,7 @@ export default function PayerNotifyManager({
   userId = "",
   isAdmin = false,
   canDelete = false,
+  canEditPayer = false,
   canEditInvoices = false,
   basePath = "/notificari-platitori",
   browseOnly = false,
@@ -139,6 +140,8 @@ export default function PayerNotifyManager({
   canDelete?: boolean;
   /** Poate edita facturi (invoices.edit) — „Editează" lângă „Vezi" în popup. */
   canEditInvoices?: boolean;
+  /** Plătitori – Editare: fișa (editare nume/telefon/email) și notițele. Fără ea fișa e doar de citit. */
+  canEditPayer?: boolean;
   /** Ruta paginii — pentru URL și cheia de salvare a filtrelor (fiecare pagină își ține filtrele separat). */
   basePath?: string;
   /** Mod „răsfoire" (/platitori): același tabel, fără bife/trimitere/șabloane, cu export. */
@@ -1208,7 +1211,7 @@ export default function PayerNotifyManager({
         <PayerDetailDialog
           row={detailRow}
           canSend={canSend}
-          canNote={canSendProp}
+          canNote={canEditPayer}
           canEditInvoices={canEditInvoices}
           onUpdated={onPayerUpdated}
           userId={userId}

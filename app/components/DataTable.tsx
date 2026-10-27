@@ -160,6 +160,8 @@ export default function DataTable<T extends { id: string }>({
   toolbar,
   summaryExtra,
   noun,
+  cardKeys,
+  cardAvatar,
   emptyText,
   rowClassName,
   presetValues,
@@ -179,6 +181,10 @@ export default function DataTable<T extends { id: string }>({
   noun?: string;
   emptyText?: string;
   rowClassName?: (r: T) => string;
+  /** Chei de coloane care alcătuiesc rezumatul cardului de pe telefon (titlu + două valori), în ordine; restul se vede la desfacere. */
+  cardKeys?: string[];
+  /** Litera din cercul cardului (implicit: prima literă a primei coloane). */
+  cardAvatar?: (r: T) => string;
   /** Filtre din URL (ex. ?proj=…) — dacă există, înlocuiesc filtrele salvate la deschidere. */
   presetValues?: Record<string, string | undefined>;
   /**
@@ -297,7 +303,12 @@ export default function DataTable<T extends { id: string }>({
   }, [columns, order]);
   const isVisible = (c: Col<T>) => vis[c.key] ?? !c.defaultHidden;
   const visibleCols = [...fixedStart, ...orderedLabeled.filter(isVisible), ...fixedEnd];
-  const cardFields = orderedLabeled.filter(isVisible);
+  const cardFields = (() => {
+    const vis = orderedLabeled.filter(isVisible);
+    if (!cardKeys?.length) return vis;
+    const first = cardKeys.map((k) => vis.find((c) => c.key === k)).filter((c): c is Col<T> => !!c);
+    return [...first, ...vis.filter((c) => !first.includes(c))];
+  })();
   const cardActions = [...fixedStart, ...fixedEnd];
   const sortableCols = labeled.filter((c) => c.sort);
   // Lățimi explicite pentru FIECARE coloană (colgroup + table-layout: fixed), scalate cu „Lățime celule": așa setarea chiar schimbă tabelul,
@@ -569,7 +580,7 @@ export default function DataTable<T extends { id: string }>({
             const renderCard = (r: T) => {
             // Rezumat: primele trei coloane vizibile (titlu + două valori scurte); restul se vede la desfacere.
             const [c0, c1, c2, ...rest] = cardFields;
-            const initial = String(c0?.sort?.(r) ?? "").trim().charAt(0).toUpperCase();
+            const initial = cardAvatar ? cardAvatar(r) : String(c0?.sort?.(r) ?? "").trim().charAt(0).toUpperCase();
             return (
               <CompactCard
                 key={r.id}

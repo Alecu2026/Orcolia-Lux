@@ -60,7 +60,7 @@ export default function AppointmentsTable({
     const res = await setStatusAction(id, next);
     setBusy(null);
     if (res?.error) { setRows(prev); toast.error(t(res.error)); }
-    else toast.success(`Status: ${apptLabel(next, m)}`);
+    else toast.success(`${t("Status")}: ${apptLabel(next, m)}`);
   }
 
   function remove(id: string) {
@@ -77,7 +77,8 @@ export default function AppointmentsTable({
   function reschedule(a: ApptVM, dateKey: string, time: string) {
     const [h1, m1] = a.time.split(":").map(Number);
     const [h2, m2] = a.endTime.split(":").map(Number);
-    const duration = Math.max(5, (h2 * 60 + m2) - (h1 * 60 + m1));
+    // durata rămâne aceeași (și pentru o programare care trece de miezul nopții: 23:30–00:15 = 45 min)
+    const duration = Math.max(5, (((h2 * 60 + m2) - (h1 * 60 + m1)) % 1440 + 1440) % 1440 || 5);
     const [hh, mm] = time.split(":").map(Number);
     const endMin = (hh * 60 + mm + duration) % (24 * 60);
     const endTime = `${String(Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
@@ -172,7 +173,7 @@ export default function AppointmentsTable({
     return [
       {
         kind: "text", key: "q", label: t("Caută"), grow: true, placeholder: m.appts.searchPlaceholder,
-        test: (a, v) => a.clientName.toLowerCase().includes(v) || a.title.toLowerCase().includes(v),
+        test: (a, v) => a.clientName.toLowerCase().includes(v) || a.title.toLowerCase().includes(v) || a.message.toLowerCase().includes(v) || (a.categoryName ?? "").toLowerCase().includes(v),
       },
       {
         kind: "select", key: "period", label: t("Perioadă: toate"),
@@ -217,6 +218,8 @@ export default function AppointmentsTable({
         columns={columns}
         filters={filters}
         defaultSort={{ key: "date", dir: "desc" }}
+        cardKeys={["client", "date", "time"]}
+        cardAvatar={(a) => a.clientName.trim().charAt(0).toUpperCase()}
         noun={t("programări")}
         emptyText={m.appts.noAppts}
         toolbar={
@@ -246,7 +249,7 @@ export default function AppointmentsTable({
             <div className="divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)] text-sm">
               <Row label={t("Status")}><ApptStatusDropdown status={current.status} pending={busy === current.id || !canManage} onChange={(s) => change(current.id, s)} /></Row>
               <Row label={t("Categorie")}>{current.categoryName ?? "—"}</Row>
-              <Row label={t("Remindere")}>{current.remEmail || current.remTelegram ? `${current.remEmail ? "email " : ""}${current.remTelegram ? "telegram" : ""}` : "—"}</Row>
+              <Row label={t("Remindere")}>{current.remEmail || current.remTelegram ? [current.remEmail ? "Email" : "", current.remTelegram ? "Telegram" : ""].filter(Boolean).join(" · ") : "—"}</Row>
               {current.title && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{t("Descriere")}</p><p className="whitespace-pre-wrap text-[13px]">{current.title}</p></div>}
               {current.message && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{t("Detalii")}</p><p className="whitespace-pre-wrap text-[13px]">{current.message}</p></div>}
             </div>

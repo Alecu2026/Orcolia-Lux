@@ -129,49 +129,7 @@ export async function rescheduleAppointment(
   return { ok: true };
 }
 
-const VALID_APPT_STATUSES = new Set(["NEW", "CONFIRMED", "IN_PROGRESS", "DONE", "CANCELLED", "NO_SHOW"]);
-
 const OID = /^[0-9a-f]{24}$/i;
-
-export async function listAppointmentsAction(opts: {
-  view: string;
-  q?: string;
-  status?: string;
-  category?: string;
-}): Promise<{ items: ApptVM[]; grouped: boolean }> {
-  const user = await requireUser();
-  if (!can(user, "appointments.view")) return { items: [], grouped: false };
-  const settings = await getSettings(user.id);
-  const tz = settings.timezone;
-
-  const filter: ApptFilter = {
-    search: opts.q?.trim() || undefined,
-    status: (opts.status && VALID_APPT_STATUSES.has(opts.status)
-      ? opts.status
-      : undefined) as AppointmentStatus | undefined,
-    categoryId: opts.category && OID.test(opts.category) ? opts.category : undefined,
-  };
-
-  const today = todayKey(tz);
-  const tomorrow = tomorrowKey(tz);
-  let raw: AppointmentListItem[];
-  let grouped = false;
-
-  if (opts.view === "maine") {
-    raw = await listByDateKey(user.id, tomorrow, filter);
-  } else if (opts.view === "saptamana") {
-    raw = await listByDateKeys(user.id, weekKeys(today, tz), filter);
-    grouped = true;
-  } else if (opts.view === "lista") {
-    const keys = Array.from({ length: 14 }, (_, i) => addDaysToKey(today, i, tz));
-    raw = await listByDateKeys(user.id, keys, filter);
-    grouped = true;
-  } else {
-    raw = await listByDateKey(user.id, today, filter);
-  }
-
-  return { items: raw.map((a) => toVM(a, tz)), grouped };
-}
 
 export async function deleteAppointment(id: string): Promise<ApptState> {
   const user = await requireUser();

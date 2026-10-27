@@ -4,7 +4,7 @@ import { env } from "../env";
 import { DEMO } from "../demo";
 import { getCurrentUser } from "../dal";
 import { getCurrentClient } from "../client-dal";
-import { canEditTask, canViewTask, canViewTaskData } from "../permissions";
+import { canWorkOnTask, canViewTask, canViewTaskData } from "../permissions";
 import { sendTicketMessageEmail } from "../email";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "./notifications";
 import type { ChatMessage, ChatSender, ChatState } from "../ticket-chat-shared";
@@ -40,7 +40,7 @@ export async function resolveChatAccess(taskId: string, as: "staff" | "client"):
     if (!task || task.type !== "TICKET" || !canViewTask(user, task)) return { ok: false, status: 404, error: "Cerere inexistentă." };
     let blockedReason: string | null = null;
     if (!task.clientId) blockedReason = "Cererea nu are un client asociat, deci nu are cui să scrii.";
-    else if (!canEditTask(user, task)) blockedReason = "Nu ai permisiunea să răspunzi la această cerere.";
+    else if (!canWorkOnTask(user, task)) blockedReason = "Nu ai permisiunea să răspunzi la această cerere.";
     else if (task.status === "CANCELLED") blockedReason = "Cererea e anulat.";
     return { ok: true, viewer: { kind: "staff", id: user.id, name: user.name, canWrite: blockedReason == null, blockedReason }, task };
   }

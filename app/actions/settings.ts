@@ -19,6 +19,7 @@ export async function createCategory(
   formData: FormData,
 ): Promise<SettingsState> {
   const user = await requireUser();
+  if (user.role !== "ADMIN") return { error: "Doar administratorii pot edita categorii." };
   if (DEMO) return { error: DEMO_MSG };
   const parsed = categorySchema.safeParse({
     name: formData.get("name"),

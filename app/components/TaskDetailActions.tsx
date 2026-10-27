@@ -7,6 +7,7 @@ import { dateKeyOf, formatTime } from "@/lib/date";
 import { useToast } from "./toast";
 import { IconTrash, IconPencil, IconX } from "./icons";
 import MultiAssignPicker from "./MultiAssignPicker";
+import AssignmentLocked from "./AssignmentLocked";
 import AddressInput from "./AddressInput";
 import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
@@ -46,7 +47,9 @@ export default function TaskDetailActions({
   categories,
   canEdit,
   canDelete,
+  canAssign = true,
 }: {
+  canAssign?: boolean;
   task: TaskForEdit;
   users: Opt[];
   teams: Opt[];
@@ -103,6 +106,7 @@ export default function TaskDetailActions({
           teams={teams}
           projects={projects}
           categories={categories}
+          canAssign={canAssign}
           onClose={() => setEditOpen(false)}
           onSaved={() => {
             setEditOpen(false);
@@ -147,9 +151,11 @@ function EditDialog({
   teams,
   projects,
   categories,
+  canAssign,
   onClose,
   onSaved,
 }: {
+  canAssign: boolean;
   task: TaskForEdit;
   users: Opt[];
   teams: Opt[];
@@ -226,19 +232,29 @@ function EditDialog({
             <option value="">{m.tasks.noProjectEdit}</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <MultiAssignPicker
-            users={users}
-            teams={teams}
-            initialAssigneeIds={[
-              ...(task.assigneeId ? [task.assigneeId] : []),
-              ...(task.extraAssigneeIds ?? []),
-            ]}
-            initialTeamIds={[
-              ...(task.teamId ? [task.teamId] : []),
-              ...(task.extraTeamIds ?? []),
-            ]}
-            initialSettings={task.assignmentSettingsJson ? (JSON.parse(task.assignmentSettingsJson) as AssignmentSetting[]) : []}
-          />
+          {canAssign ? (
+            <MultiAssignPicker
+              users={users}
+              teams={teams}
+              initialAssigneeIds={[
+                ...(task.assigneeId ? [task.assigneeId] : []),
+                ...(task.extraAssigneeIds ?? []),
+              ]}
+              initialTeamIds={[
+                ...(task.teamId ? [task.teamId] : []),
+                ...(task.extraTeamIds ?? []),
+              ]}
+              initialSettings={task.assignmentSettingsJson ? (JSON.parse(task.assignmentSettingsJson) as AssignmentSetting[]) : []}
+            />
+          ) : (
+            <AssignmentLocked
+              users={users}
+              teams={teams}
+              assigneeIds={[...(task.assigneeId ? [task.assigneeId] : []), ...(task.extraAssigneeIds ?? [])]}
+              teamIds={[...(task.teamId ? [task.teamId] : []), ...(task.extraTeamIds ?? [])]}
+              settings={task.assignmentSettingsJson ? (JSON.parse(task.assignmentSettingsJson) as AssignmentSetting[]) : []}
+            />
+          )}
           <CategoryChips categories={categories} value={categoryId} onChange={setCategoryId} />
           {task.address !== undefined && <AddressInput defaultValue={task.address ?? ""} className={dlgInput} />}
           <div>

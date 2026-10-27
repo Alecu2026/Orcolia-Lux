@@ -2,6 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
+import { can, canViewTask, canViewTaskData } from "@/lib/permissions";
+import { canWorkOnTaskById } from "@/lib/services/task-access";
 import { del } from "@vercel/blob";
 
 export type AttachmentRow = {
@@ -61,6 +63,8 @@ export async function saveTaskAttachment(data: {
   mimeType: string | null;
 }): Promise<AttachmentRow> {
   const user = await requireUser();
+  // Fișiere se atașează doar la task-urile la care lucrezi („Editare" sau implicat) și pe care ai voie să le vezi.
+  if (!canViewTaskData(user) || !(await canWorkOnTaskById(user, data.taskId))) throw new Error("Nu ai permisiunea să atașezi fișiere la acest task");
 
   // Avoid duplicates if onUploadCompleted webhook already saved it
   const existing = await prisma.taskAttachment.findFirst({
@@ -120,7 +124,7 @@ export async function deleteTaskAttachment(id: string): Promise<void> {
   });
   if (!attachment) return;
 
-  if (attachment.userId !== user.id && user.role !== "ADMIN") {
+  if (attachment.userId !== user.id && !can(user, "tasks.delete")) {
     throw new Error("Nu ai permisiunea să ștergi acest fișier");
   }
 
@@ -138,8 +142,10 @@ export async function deleteTaskAttachment(id: string): Promise<void> {
 }
 
 export async function getProjectAttachments(projectId: string): Promise<ProjectAttachmentRow[]> {
-  await requireUser();
-  const rows = await prisma.taskAttachment.findMany({
+  const user = await requireUser();
+  // Fișierele sunt atașate la task-uri: aceleași condiții ca pentru task-urile proiectului (proiecte + task-uri vizibile).
+  if (!can(user, "projects.view") || !canViewTaskData(user) || !/^[0-9a-f]{24}$/i.test(projectId ?? "")) return [];
+  const rowsAll = await prisma.taskAttachment.findMany({
     where: { task: { projectId } },
     orderBy: { createdAt: "desc" },
     select: {
@@ -150,9 +156,10 @@ export async function getProjectAttachments(projectId: string): Promise<ProjectA
       mimeType: true,
       createdAt: true,
       user: { select: { name: true } },
-      task: { select: { id: true, title: true, seq: true } },
+      task: { select: { id: true, title: true, seq: true, creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true } },
     },
   });
+  const rows = rowsAll.filter((r) => canViewTask(user, r.task));
   return rows.map((r) => ({
     id: r.id,
     name: r.name,

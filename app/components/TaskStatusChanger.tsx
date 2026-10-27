@@ -35,9 +35,15 @@ const ACTIVE_RING: Record<Status, string> = {
 export default function TaskStatusChanger({
   taskId,
   initialStatus,
+  disabled = false,
+  closeOnly = false,
 }: {
   taskId: string;
   initialStatus: string;
+  /** Fără drept de lucru pe task: butoanele se văd, dar nu se pot apăsa. */
+  disabled?: boolean;
+  /** Doar „Finalizat / Anulat" se pot alege (cine are doar „Închidere / finalizare"). */
+  closeOnly?: boolean;
 }) {
   const t = useT();
   const router = useRouter();
@@ -55,7 +61,7 @@ export default function TaskStatusChanger({
   }));
 
   async function change(next: Status) {
-    if (next === status || busy) return;
+    if (next === status || busy || disabled || (closeOnly && next !== "DONE" && next !== "CANCELLED")) return;
     const prev = status;
     setStatus(next);
     setBusy(true);
@@ -83,8 +89,9 @@ export default function TaskStatusChanger({
           <button
             key={s.value}
             onClick={() => change(s.value)}
-            disabled={busy}
+            disabled={busy || disabled || (closeOnly && s.value !== "DONE" && s.value !== "CANCELLED")}
             className={[
+              disabled ? "cursor-not-allowed" : "",
               "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-50",
               s.color,
               isActive ? ACTIVE_RING[s.value] : "",

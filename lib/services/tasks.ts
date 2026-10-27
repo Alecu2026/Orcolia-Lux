@@ -197,6 +197,16 @@ type TaskAccessShape = {
   extraTeamIds: string[] | null;
 };
 
+/** Poate actorul schimba statusul / progresul? Cu „Editare" (sau administrator), sau dacă e implicat în task (creator, responsabil, echipă). */
+async function actorMayWorkOnTask(actorId: string, task: TaskAccessShape, closing = false): Promise<boolean> {
+  const u = await prisma.user.findUnique({ where: { id: actorId }, select: { role: true, permissions: true } });
+  if (!u) return false;
+  if (can(u, "tasks.edit")) return true;
+  // „Închidere / finalizare": poți finaliza / anula orice task, dar nu schimba alte statusuri la task-urile străine.
+  if (closing && can(u, "tasks.close")) return true;
+  return actorHasTaskAccess(actorId, task);
+}
+
 /** Are actorul (care acționează din Telegram) voie pe task? Administrator, creator, asignat direct sau prin echipă. */
 async function actorHasTaskAccess(actorId: string, task: TaskAccessShape): Promise<boolean> {
   const actorUser = await prisma.user.findUnique({ where: { id: actorId }, select: { teamIds: true, role: true } });
@@ -553,9 +563,9 @@ export async function changeTaskStatus(
     return { ok: true as const, changed: false, fromStatus: task.status, title: task.title, type: task.type, hadTelegramMessage: false };
   }
 
-  // Verifică dacă actorul are dreptul să modifice task-ul (din callback Telegram)
-  if (opts.fromTelegram && !(await actorHasTaskAccess(actorId, task))) {
-    return { ok: false as const, error: "Nu ai acces la această sarcină." };
+  // Fără „Editare" poți schimba statusul doar la task-urile în care ești implicat (și din Telegram, și din aplicație).
+  if (!(await actorMayWorkOnTask(actorId, task, newStatus === "DONE" || newStatus === "CANCELLED"))) {
+    return { ok: false as const, error: opts.fromTelegram ? "Nu ai acces la această sarcină." : "Nu ai permisiunea de editare." };
   }
 
   const closed = newStatus === "DONE" || newStatus === "CANCELLED";
@@ -710,8 +720,8 @@ export async function changeTaskProgress(taskId: string, actorId: string, progre
     console.error(`[tasks] changeTaskProgress: task ${taskId} nu există`);
     return { ok: false as const, error: "Sarcină inexistentă." };
   }
-  if (opts.fromTelegram && !(await actorHasTaskAccess(actorId, task))) {
-    return { ok: false as const, error: "Nu ai acces la această sarcină." };
+  if (!(await actorMayWorkOnTask(actorId, task))) {
+    return { ok: false as const, error: opts.fromTelegram ? "Nu ai acces la această sarcină." : "Nu ai permisiunea de editare." };
   }
   if (task.progress === p) {
     console.log(`[tasks] changeTaskProgress: deja ${p}%, nimic de făcut`);

@@ -59,7 +59,7 @@ export const quickAppointmentSchema = z
     categoryId: z.string().trim().optional().or(z.literal("")),
     dateKey: z.string().regex(dateKeyRe, "Dată invalidă (YYYY-MM-DD).").refine(isValidDateKey, "Dată invalidă (nu există în calendar)."),
     time: z.string().regex(timeRe, "Oră invalidă (HH:mm).").refine(isValidTimeOfDay, "Oră invalidă (00:00–23:59)."),
-    durationMinutes: z.coerce.number().gt(0).max(100000).catch(30),
+    durationMinutes: z.coerce.number({ message: "Durata trebuie să fie între 1 și 1440 de minute." }).int("Durata trebuie să fie un număr întreg de minute.").min(1, "Durata trebuie să fie între 1 și 1440 de minute.").max(1440, "Durata trebuie să fie între 1 și 1440 de minute."),
     title: z.string().trim().max(120).optional().or(z.literal("")),
     message: z.string().trim().max(2000).optional().or(z.literal("")),
     reminderEmail: z.coerce.boolean().default(false),
@@ -81,7 +81,7 @@ export const rescheduleSchema = z.object({
   id: z.string().min(1),
   dateKey: z.string().regex(dateKeyRe).refine(isValidDateKey),
   time: z.string().regex(timeRe).refine(isValidTimeOfDay),
-  durationMinutes: z.coerce.number().gt(0).max(100000).optional(),
+  durationMinutes: z.coerce.number().int().min(1).max(1440).optional(),
 });
 
 export const settingsSchema = z.object({

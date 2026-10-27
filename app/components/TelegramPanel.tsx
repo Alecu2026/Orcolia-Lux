@@ -166,7 +166,7 @@ export default function TelegramPanel({
         </div>
       )}
 
-      {enabled && (
+      {enabled && canManageUsers && (
         <div className="card p-5">
           <h2 className="mb-1 text-base font-bold">{m.telegram.webhookHeading}</h2>
           <p className="mb-3 text-sm text-ink-soft">

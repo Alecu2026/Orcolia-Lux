@@ -1737,4 +1737,9 @@ export const RU: Record<string, string> = {
   "Subiect (ex: Scurgere la contor)": "Тема (напр. Протечка у счётчика)",
   "Creează sarcină din acest apel (adresa se completează singură)": "Создать задачу по этому звонку (адрес заполнится сам)",
   "Creează sarcină pentru acest plătitor (adresa se completează singură)": "Создать задачу для этого плательщика (адрес заполнится сам)",
+  "Schimbarea responsabililor cere permisiunea „Asignare”.": "Для смены ответственных нужно право «Назначение».",
+  "Responsabili": "Ответственные",
+  "Descriere scurtă (ex. Citire contor)": "Краткое описание (напр. Снятие показаний)",
+  "Durata trebuie să fie între 1 și 1440 de minute.": "Длительность должна быть от 1 до 1440 минут.",
+  "Durata trebuie să fie un număr întreg de minute.": "Длительность должна быть целым числом минут.",
 };

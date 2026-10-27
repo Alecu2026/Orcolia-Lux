@@ -52,12 +52,19 @@ export default function InvoicesList({
   mode: initialMode,
   origin,
   canImportApaCanal = false,
+  canCreate = false,
+  canEdit = false,
+  canDelete = false,
 }: {
   initial: { items: InvoiceListItem[]; page: number; total: number; totalPages: number; perPage: number; status: string; q: string };
   /** "snapshot": toate facturile se pot ține în browser; "server": prea multe, pagini de pe server. */
   mode: "snapshot" | "server";
   origin: string;
   canImportApaCanal?: boolean;
+  /** Permisiunile „Creare / Editare / Ștergere" la facturi: fără ele butoanele dispar, iar statusul nu se mai poate schimba. */
+  canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const t = useT();
   const toast = useToast();
@@ -319,12 +326,14 @@ export default function InvoicesList({
           {canImportApaCanal && (
             <ApaCanalJsonImport className="tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium text-ink-soft hover:bg-[var(--color-surface-2)]" />
           )}
-          <Link
-            href="/invoices/new"
-            className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong"
-          >
-            {m.invoices.new}
-          </Link>
+          {canCreate && (
+            <Link
+              href="/invoices/new"
+              className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong"
+            >
+              {m.invoices.new}
+            </Link>
+          )}
         </div>
       </div>
 
@@ -398,8 +407,9 @@ export default function InvoicesList({
                   <CompactField label={t("Status")}>
                     <select
                       value={r.status}
+                      disabled={!canEdit}
                       onChange={(e) => changeStatus(r.id, e.target.value as InvoiceStatusKey)}
-                      className={`h-6 cursor-pointer rounded-full border-0 px-2 text-[12px] font-medium outline-none ${st.cls}`}
+                      className={`h-6 cursor-pointer disabled:cursor-not-allowed rounded-full border-0 px-2 text-[12px] font-medium outline-none ${st.cls}`}
                       aria-label={`Status ${r.number}`}
                     >
                       {INVOICE_STATUS_LIST.map((x) => (
@@ -410,16 +420,18 @@ export default function InvoicesList({
                 </dl>
                 <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--color-line)]/60 px-2.5 py-1.5">
                   <InvoiceViewButton token={r.publicToken} title={`${r.number}${r.clientName ? ` · ${r.clientName}` : ""}`} className={cardBtn} />
-                  <Link href={`/invoices/${r.id}/edit`} className={cardBtn}>{m.common.edit}</Link>
+                  {canEdit && <Link href={`/invoices/${r.id}/edit`} className={cardBtn}>{m.common.edit}</Link>}
                   <button type="button" onClick={() => copyLink(r.publicToken)} className={cardBtn}>
                     {copied === r.publicToken ? m.invoices.copied : m.invoices.copyLink}
                   </button>
                   <a href={`/invoice/public/${r.publicToken}`} target="_blank" rel="noopener noreferrer" className={cardBtn}>
                     {m.invoices.publicPdf} ↗
                   </a>
-                  <button type="button" onClick={() => remove(r.id)} className={`${cardBtn} text-st-cancelled`} title={m.common.delete} aria-label={m.common.delete}>
-                    <IconTrash className="size-3.5" />
-                  </button>
+                  {canDelete && (
+                    <button type="button" onClick={() => remove(r.id)} className={`${cardBtn} text-st-cancelled`} title={m.common.delete} aria-label={m.common.delete}>
+                      <IconTrash className="size-3.5" />
+                    </button>
+                  )}
                 </div>
               </CompactCard>
             );
@@ -479,8 +491,9 @@ export default function InvoicesList({
                   <td className={cell}>
                     <select
                       value={r.status}
+                      disabled={!canEdit}
                       onChange={(e) => changeStatus(r.id, e.target.value as InvoiceStatusKey)}
-                      className={`h-[18px] cursor-pointer rounded-full border-0 px-1.5 text-[10px] font-medium outline-none ${st.cls}`}
+                      className={`h-[18px] cursor-pointer disabled:cursor-not-allowed rounded-full border-0 px-1.5 text-[10px] font-medium outline-none ${st.cls}`}
                       aria-label={`Status ${r.number}`}
                     >
                       {INVOICE_STATUS_LIST.map((s) => (
@@ -491,16 +504,18 @@ export default function InvoicesList({
                   <td className={cell}>
                     <div className="flex items-center gap-1">
                       <InvoiceViewButton token={r.publicToken} title={`${r.number}${r.clientName ? ` · ${r.clientName}` : ""}`} className={btn} />
-                      <Link href={`/invoices/${r.id}/edit`} className={btn}>{m.common.edit}</Link>
+                      {canEdit && <Link href={`/invoices/${r.id}/edit`} className={btn}>{m.common.edit}</Link>}
                       <button type="button" onClick={() => copyLink(r.publicToken)} className={btn}>
                         {copied === r.publicToken ? m.invoices.copied : m.invoices.copyLink}
                       </button>
                       <a href={`/invoice/public/${r.publicToken}`} target="_blank" rel="noopener noreferrer" className={btn}>
                         {m.invoices.publicPdf} ↗
                       </a>
-                      <button type="button" onClick={() => remove(r.id)} className={`${btn} text-st-cancelled`} title={m.common.delete} aria-label={m.common.delete}>
-                        <IconTrash className="size-3" />
-                      </button>
+                      {canDelete && (
+                        <button type="button" onClick={() => remove(r.id)} className={`${btn} text-st-cancelled`} title={m.common.delete} aria-label={m.common.delete}>
+                          <IconTrash className="size-3" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

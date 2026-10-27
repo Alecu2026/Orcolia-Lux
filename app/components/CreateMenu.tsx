@@ -5,20 +5,22 @@ import { useRouter } from "next/navigation";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
 
-export default function CreateMenu() {
+export default function CreateMenu({ perms }: { perms?: Record<string, boolean> }) {
   const t = useT();
   const router = useRouter();
   const m = useMessages();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
+  // Fără permisiunea de creare (și fără acces la pagina respectivă) elementul nu apare; `perms` lipsă = mod demo (totul permis).
+  const ok = (k: string) => perms?.[k] !== false;
   const ITEMS = [
-    { label: m.tasks.createTaskTitle, href: "/tasks?create=task" },
-    { label: m.tasks.createTicketTitle, href: "/tickets?create=ticket" },
-    { label: m.appts.newTitle, href: "/appointments?create=1" },
-    { label: m.projects.newTitle, href: "/projects?create=1" },
-    { label: m.clients.newTitle, href: "/clients?create=1" },
-  ];
+    ok("tasks.create") && ok("tasks.view") && { label: m.tasks.createTaskTitle, href: "/tasks?create=task" },
+    ok("tasks.create") && ok("tickets.view") && { label: m.tasks.createTicketTitle, href: "/tickets?create=ticket" },
+    ok("appointments.manage") && ok("appointments.view") && { label: m.appts.newTitle, href: "/appointments?create=1" },
+    ok("projects.create") && ok("projects.view") && { label: m.projects.newTitle, href: "/projects?create=1" },
+    ok("clients.create") && ok("clients.view") && { label: m.clients.newTitle, href: "/clients?create=1" },
+  ].filter((x): x is { label: string; href: string } => !!x);
 
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -32,6 +34,8 @@ export default function CreateMenu() {
     setOpen(false);
     router.push(href);
   }
+
+  if (ITEMS.length === 0) return null;
 
   return (
     <div ref={ref} className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-5 z-40 lg:bottom-6">

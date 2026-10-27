@@ -51,6 +51,7 @@ export default async function PayerNotificationsPage({
         isAdmin={can(user, "admin")}
         canDelete={can(user, "payers.delete")}
         canEditInvoices={can(user, "invoices.edit")}
+        canEditPayer={can(user, "payers.edit")}
       />
     </div>
   );
