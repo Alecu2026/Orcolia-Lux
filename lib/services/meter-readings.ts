@@ -63,7 +63,7 @@ export async function getFieldList(): Promise<{ period: string; rows: FieldTuple
     // luna aceasta + cele două dinainte: citirile din teren mai noi decât indexul din 1C
     prisma.meterReading.findMany({
       where: { period: { gte: shiftPeriod(period, 2) } },
-      select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, distanceM: true },
+      select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, distanceM: true, lat: true, lng: true },
     }),
   ]);
   const thisMonth = new Map<string, (typeof recent)[number]>();
@@ -75,8 +75,10 @@ export async function getFieldList(): Promise<{ period: string; rows: FieldTuple
       if (!prev || r.readAt > prev.readAt) lastBefore.set(r.meterId, r);
     }
   }
-  const active = snap.rows.filter((r) => !r.removedAt);
-  active.sort((a, b) => collator.compare(a._a, b._a) || collator.compare(a.contor, b.contor));
+  // Doar contoarele ACTIVE din 1C: cele scoase nu se citesc, iar rândurile „doar Axioma” (abonați fără niciun contor în 1C — fără adresă, fără index) nu sunt contoare active.
+  const active = snap.rows.filter((r) => !r.removedAt && r.source === "1c");
+  // Contoarele fără adresă (în 1C multe firme n-au) merg la sfârșit: pe teren se parcurg întâi cele cu adresă.
+  active.sort((a, b) => Number(!a._a) - Number(!b._a) || collator.compare(a._a, b._a) || collator.compare(a.contor, b.contor));
   const rows = active.map((r): FieldTuple => {
     const cur = thisMonth.get(r.id);
     const fb = lastBefore.get(r.id);
@@ -87,7 +89,7 @@ export async function getFieldList(): Promise<{ period: string; rows: FieldTuple
       r.id, r.contor, r.name, r.address,
       useField ? fb.value : r.curr, useField ? fbDate : r.currDate,
       cur ? cur.value : null, cur ? cur.readAt.getTime() : null, cur?.photoUrl ? 1 : 0,
-      cur ? cur.userName : null, cur ? cur.distanceM : null,
+      cur ? cur.userName : null, cur ? cur.distanceM : null, cur && cur.lat != null && cur.lng != null ? 1 : 0,
     ];
   });
   return { period, rows };

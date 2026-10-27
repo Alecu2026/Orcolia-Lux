@@ -24,7 +24,7 @@ import VirtualList from "./VirtualList";
 import { useFieldDataset } from "./useFieldDataset";
 
 const STORAGE_KEY = "filters:/contoare/citiri";
-type TextKey = "q" | "street";
+type TextKey = "q" | "street" | "consumMin" | "consumMax";
 
 // Aceleași clase ca filtrele din Contoare / Plătitori: câmpul cu valoare aleasă capătă fundal / chenar colorat.
 const fld = (val: string) =>
@@ -40,6 +40,10 @@ const txtFld = (val: string) =>
 const COL_W = [118, 200, 270, 100, 84, 108, 92, 100, 130, 48, 84, 92];
 const GRID = COL_W.map((w) => `${w}px`).join(" ");
 const GRID_W = COL_W.reduce((x, y) => x + y, 0);
+/** La „Necitite” coloanele de citire (index curent, consum, citit la/de, poză, locație) ar fi goale: rămân contor, abonat, adresă, index anterior, data lui și butonul. */
+const COL_W_COMPACT = [118, 260, 380, 110, 90, 92];
+const GRID_COMPACT = COL_W_COMPACT.map((w) => `${w}px`).join(" ");
+const GRID_W_COMPACT = COL_W_COMPACT.reduce((x, y) => x + y, 0);
 const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
 const ROW_H = 28; // înălțimea fixă a unui rând (necesară virtualizării) — puțin mai înalt decât la Contoare: se lucrează și pe tabletă
 const ROW_BLOCK = 8;
@@ -87,7 +91,7 @@ export default function FieldReadings({
 
   const initialFilters = useMemo(() => sanitizeFieldFilters(initialQuery), [initialQuery]);
   const [filters, setFilters] = useState<FieldFilters>(initialFilters);
-  const [draft, setDraft] = useState<Record<TextKey, string>>({ q: initialFilters.q, street: initialFilters.street });
+  const [draft, setDraft] = useState<Record<TextKey, string>>({ q: initialFilters.q, street: initialFilters.street, consumMin: initialFilters.consumMin, consumMax: initialFilters.consumMax });
   const [page, setPage] = useState(Math.max(1, Math.floor(Number(initialQuery.page)) || 1));
   const [perPage, setPerPage] = useState(normalizePerPageClient(initialQuery.perPage));
   const [selId, setSelId] = useState<string | null>(openId);
@@ -123,7 +127,7 @@ export default function FieldReadings({
           const f = sanitizeFieldFilters((saved.f ?? {}) as Record<string, unknown>);
           // eslint-disable-next-line react-hooks/set-state-in-effect
           setFilters(f);
-          setDraft({ q: f.q, street: f.street });
+          setDraft({ q: f.q, street: f.street, consumMin: f.consumMin, consumMax: f.consumMax });
           setPerPage(normalizePerPageClient(saved.perPage));
         }
       } catch {}
@@ -143,7 +147,7 @@ export default function FieldReadings({
     const usp = fieldFiltersToParams(filters);
     if (page > 1) usp.set("page", String(page));
     if (perPage !== DEFAULT_PER_PAGE) usp.set("perPage", String(perPage));
-    // Contorul din adresa de deschidere (?meter=) rămâne în adresă: dacă adresa s-ar schimba din prima, Next ar reface pagina și pop-up-ul deschis de el s-ar pierde.
+    // Contorul din adresa de deschidere (?meter=) rămâne în adresă: la o reîncărcare (ex. prima vizită, când se activează service worker-ul și pagina se reia) pop-up-ul lui se redeschide.
     if (openId) usp.set("meter", openId);
     const qs = usp.toString();
     window.history.replaceState(null, "", `/contoare/citiri${qs ? `?${qs}` : ""}`);
@@ -167,18 +171,20 @@ export default function FieldReadings({
   }, [list, perPage, selId]);
 
   const stats = useMemo(() => {
-    if (!data) return { total: 0, done: 0, flagged: 0, users: [] as string[] };
+    if (!data) return { total: 0, done: 0, flagged: 0, users: [] as string[], localities: [] as string[] };
     let done = 0;
     let flagged = 0;
     const users = new Set<string>();
+    const localities = new Set<string>();
     for (const r of data.rows) {
+      if (r.locality) localities.add(r.locality);
       if (r.value != null) {
         done++;
         if (fieldSuspect(r)) flagged++;
         if (r.by) users.add(r.by);
       }
     }
-    return { total: data.rows.length, done, flagged, users: [...users].sort((a, b) => a.localeCompare(b)) };
+    return { total: data.rows.length, done, flagged, users: [...users].sort((a, b) => a.localeCompare(b)), localities: [...localities].sort((a, b) => a.localeCompare(b)) };
   }, [data]);
 
   function setFilter(patch: Partial<FieldFilters>) {
@@ -193,7 +199,7 @@ export default function FieldReadings({
   function clearAll() {
     Object.values(debounce.current).forEach((h) => clearTimeout(h));
     setFilters(EMPTY_FIELD_FILTERS);
-    setDraft({ q: "", street: "" });
+    setDraft({ q: "", street: "", consumMin: "", consumMax: "" });
     setPage(1);
   }
   const onSort = useCallback((next: FieldFilters["sort"]) => {
@@ -202,7 +208,7 @@ export default function FieldReadings({
   }, []);
   const onOpen = useCallback((r: FieldRow) => setSelId(r.id), [setSelId]);
 
-  const active = countActiveFieldFilters({ ...filters, q: draft.q, street: draft.street });
+  const active = countActiveFieldFilters({ ...filters, q: draft.q, street: draft.street, consumMin: draft.consumMin, consumMax: draft.consumMax });
   const selected = selId && data ? (data.rows.find((r) => r.id === selId) ?? null) : null;
 
   /** Următorul contor necitit după cel dat: în ordinea listei curente (filtre / sortare, fără filtrul de status), apoi de la început; dacă filtrele n-au lăsat niciunul, în toată lista (ordinea adreselor). */
@@ -260,8 +266,8 @@ export default function FieldReadings({
   }
 
   const onSaved = useCallback(
-    (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null) => {
-      ds.patchRow(id, { ...patch, by, distanceM });
+    (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean) => {
+      ds.patchRow(id, { ...patch, by, distanceM, geo });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ds.patchRow],
@@ -341,6 +347,38 @@ export default function FieldReadings({
           {stats.users.map((u) => <option key={u} value={u}>{u}</option>)}
           {filters.by && !stats.users.includes(filters.by) && <option value={filters.by}>{filters.by}</option>}
         </select>
+        <select value={filters.locality} onChange={(e) => setFilter({ locality: e.target.value })} className={fld(filters.locality)} aria-label={t("Localitate")}>
+          <option value="">{t("Localitate: toate")}</option>
+          {stats.localities.map((l) => <option key={l} value={l}>{l}</option>)}
+          {filters.locality && !stats.localities.includes(filters.locality) && <option value={filters.locality}>{filters.locality}</option>}
+        </select>
+        <select value={filters.address} onChange={(e) => setFilter({ address: e.target.value as FieldFilters["address"] })} className={fld(filters.address)} aria-label={t("Adresă contor")}>
+          <option value="">{t("Adresă: toate")}</option>
+          <option value="has">{t("Cu adresă")}</option>
+          <option value="none">{t("Fără adresă")}</option>
+        </select>
+        <select value={filters.lastIndex} onChange={(e) => setFilter({ lastIndex: e.target.value as FieldFilters["lastIndex"] })} className={fld(filters.lastIndex)} aria-label={t("Ultimul index")} title={t("Cât de vechi e ultimul index cunoscut")}>
+          <option value="">{t("Ultimul index: oricând")}</option>
+          <option value="3m">{t("Mai vechi de 3 luni")}</option>
+          <option value="6m">{t("Mai vechi de 6 luni")}</option>
+          <option value="12m">{t("Mai vechi de 1 an")}</option>
+          <option value="none">{t("Fără index anterior")}</option>
+        </select>
+        <select value={filters.geo} onChange={(e) => setFilter({ geo: e.target.value as FieldFilters["geo"] })} className={fld(filters.geo)} aria-label={t("Locație GPS")}>
+          <option value="">{t("Locație GPS: toate")}</option>
+          <option value="yes">{t("Cu locație")}</option>
+          <option value="no">{t("Fără locație")}</option>
+        </select>
+        <span className="flex items-center gap-1" title={t("Citit între zilele")}>
+          <input type="date" value={filters.from} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t("Citit de la data")} className={txtFld(filters.from)} />
+          <span className="text-ink-soft">–</span>
+          <input type="date" value={filters.to} onChange={(e) => setFilter({ to: e.target.value })} aria-label={t("Citit până la data")} className={txtFld(filters.to)} />
+        </span>
+        <span className="flex items-center gap-1" title={t("Consum între (m³)")}>
+          <input inputMode="decimal" value={draft.consumMin} onChange={(e) => onText("consumMin", e.target.value)} placeholder={t("Consum de la")} aria-label={t("Consum de la (m³)")} className={txtFld(draft.consumMin) + " w-24"} />
+          <span className="text-ink-soft">–</span>
+          <input inputMode="decimal" value={draft.consumMax} onChange={(e) => onText("consumMax", e.target.value)} placeholder={t("până la")} aria-label={t("Consum până la (m³)")} className={txtFld(draft.consumMax) + " w-24"} />
+        </span>
         <select value={filters.sort} onChange={(e) => setFilter({ sort: e.target.value as FieldFilters["sort"] })} className={fld(filters.sort)} aria-label={t("Sortare")}>
           <option value="">{t("Sortare: ordinea adreselor")}</option>
           <option value="contor">{t("Nr. contor")}</option>
@@ -348,6 +386,7 @@ export default function FieldReadings({
           <option value="readDesc">{t("Citite recent")}</option>
           <option value="consumDesc">{t("Consum: descrescător")}</option>
           <option value="consumAsc">{t("Consum: crescător")}</option>
+          <option value="lastOld">{t("Ultimul index: cel mai vechi")}</option>
         </select>
         {(active > 0 || filters.sort) && (
           <button type="button" onClick={clearAll} className="tap h-8 rounded-lg border border-[var(--color-line)] px-2 text-[12px] text-ink-soft hover:bg-[var(--color-surface-2)]">
@@ -419,7 +458,7 @@ export default function FieldReadings({
           <FieldCards rows={pageRows} onOpen={onOpen} resetKey={`${curPage}|${perPage}|${listFilters.status}`} />
         )
       ) : (
-        <GridTable rows={pageRows} sort={filters.sort} onSort={onSort} onOpen={onOpen} resetKey={`${curPage}|${perPage}|${listFilters.status}|${listFilters.sort}|${listFilters.q}`} empty={pageRows.length === 0 ? empty : null} />
+        <GridTable rows={pageRows} compact={listFilters.status === "unread"} sort={filters.sort} onSort={onSort} onOpen={onOpen} resetKey={`${curPage}|${perPage}|${listFilters.status}|${listFilters.sort}|${listFilters.q}`} empty={pageRows.length === 0 ? empty : null} />
       )}
 
       {/* ── Paginare numerică ─────────────────────────────────────────────── */}
@@ -481,7 +520,7 @@ function suspectLabel(s: "lower" | "high" | "far", t: (k: string, v?: Record<str
 }
 
 /** Un rând al tabelului (grilă CSS, layout izolat: `contain`). Memoizat: la derulare se desenează doar rândurile care intră în fereastră. */
-const FieldTr = memo(function FieldTr({ r, onOpen }: { r: FieldRow; onOpen: (r: FieldRow) => void }) {
+const FieldTr = memo(function FieldTr({ r, onOpen, compact }: { r: FieldRow; onOpen: (r: FieldRow) => void; compact: boolean }) {
   const t = useT();
   const { num, dt } = getFmt(dateTag(useLocale()));
   const sus = r.value != null ? fieldSuspect(r) : null;
@@ -494,23 +533,27 @@ const FieldTr = memo(function FieldTr({ r, onOpen }: { r: FieldRow; onOpen: (r: 
       onClick={() => onOpen(r)}
       onKeyDown={(e) => e.key === "Enter" && onOpen(r)}
       className={`grid cursor-pointer outline-none hover:bg-brand-soft/30 focus-visible:bg-brand-soft/40 ${r.value != null ? "bg-st-done/5" : ""}`}
-      style={{ gridTemplateColumns: GRID, height: ROW_H, contain: "layout style" }}
+      style={{ gridTemplateColumns: compact ? GRID_COMPACT : GRID, height: ROW_H, contain: "layout style" }}
     >
       <div role="cell" className={`${CELL} sticky left-0 z-10 bg-[var(--color-surface)] font-mono font-medium`}>{r.contor}</div>
       <div role="cell" className={CELL} title={r.name}>{r.name}</div>
       <div role="cell" className={CELL} title={r.address ?? ""}>{r.address ?? <Dash />}</div>
       <div role="cell" className={num_}>{r.lastIndex != null ? num(r.lastIndex) : <Dash />}</div>
       <div role="cell" className={CELL}>{r.lastDate ? dmy(r.lastDate) : <Dash />}</div>
-      <div role="cell" className={`${num_} ${r.value != null ? "font-bold text-st-done" : ""}`}>{r.value != null ? `✓ ${num(r.value)}` : <Dash />}</div>
-      <div role="cell" className={`${num_} ${sus === "lower" || sus === "high" ? "font-semibold text-st-cancelled" : r.consum != null && r.consum > 0 ? "font-semibold" : "text-ink-soft"}`} title={sus === "lower" || sus === "high" ? suspectLabel(sus, t) : undefined}>
-        {r.consum != null ? `${sus === "lower" || sus === "high" ? "⚠ " : ""}${num(r.consum)} m³` : <Dash />}
-      </div>
-      <div role="cell" className={CELL}>{r.readAt ? dt(r.readAt) : <Dash />}</div>
-      <div role="cell" className={CELL} title={r.by ?? ""}>{r.by ?? <Dash />}</div>
-      <div role="cell" className={`${CELL} text-center`}>{r.photo ? "📷" : <Dash />}</div>
-      <div role="cell" className={`${num_} ${sus === "far" ? "font-semibold text-st-cancelled" : "text-ink-soft"}`} title={sus === "far" ? suspectLabel("far", t) : undefined}>
-        {r.distanceM != null ? `${sus === "far" ? "⚠ " : ""}${num(r.distanceM)} m` : <Dash />}
-      </div>
+      {!compact && (
+        <>
+        <div role="cell" className={`${num_} ${r.value != null ? "font-bold text-st-done" : ""}`}>{r.value != null ? `✓ ${num(r.value)}` : <Dash />}</div>
+        <div role="cell" className={`${num_} ${sus === "lower" || sus === "high" ? "font-semibold text-st-cancelled" : r.consum != null && r.consum > 0 ? "font-semibold" : "text-ink-soft"}`} title={sus === "lower" || sus === "high" ? suspectLabel(sus, t) : undefined}>
+          {r.consum != null ? `${sus === "lower" || sus === "high" ? "⚠ " : ""}${num(r.consum)} m³` : <Dash />}
+        </div>
+        <div role="cell" className={CELL}>{r.readAt ? dt(r.readAt) : <Dash />}</div>
+        <div role="cell" className={CELL} title={r.by ?? ""}>{r.by ?? <Dash />}</div>
+        <div role="cell" className={`${CELL} text-center`}>{r.photo ? "📷" : <Dash />}</div>
+        <div role="cell" className={`${num_} ${sus === "far" ? "font-semibold text-st-cancelled" : "text-ink-soft"}`} title={sus === "far" ? suspectLabel("far", t) : undefined}>
+          {r.distanceM != null ? `${sus === "far" ? "⚠ " : ""}${num(r.distanceM)} m` : <Dash />}
+        </div>
+        </>
+      )}
       <div role="cell" className={`${CELL} flex items-center justify-center`}>
         <span className={`inline-flex h-5 items-center rounded-md px-2 text-[11px] font-semibold ${r.value != null ? "border border-[var(--color-line)] text-ink-soft" : "bg-brand text-white"}`}>
           {r.value != null ? t("Corectează") : t("Citește")}
@@ -535,8 +578,10 @@ const GridTable = memo(function GridTable({
   onOpen,
   resetKey,
   empty,
+  compact,
 }: {
   rows: FieldRow[];
+  compact: boolean;
   sort: FieldFilters["sort"];
   onSort: (next: FieldFilters["sort"]) => void;
   onOpen: (r: FieldRow) => void;
@@ -577,8 +622,8 @@ const GridTable = memo(function GridTable({
 
   return (
     <div ref={scrollRef} onScroll={virtual ? onScroll : undefined} className="card overflow-auto" style={{ maxHeight: rowCount > 50 ? "max(78vh, 890px)" : undefined, overflowAnchor: "none" }}>
-      <div role="table" className="text-[12px]" style={{ width: GRID_W, minWidth: "100%" }}>
-        <div role="row" className="sticky top-0 z-20 grid bg-[var(--color-surface-2)]" style={{ gridTemplateColumns: GRID }}>
+      <div role="table" className="text-[12px]" style={{ width: compact ? GRID_W_COMPACT : GRID_W, minWidth: "100%" }}>
+        <div role="row" className="sticky top-0 z-20 grid bg-[var(--color-surface-2)]" style={{ gridTemplateColumns: compact ? GRID_COMPACT : GRID }}>
           <HeadCell sticky>
             <button type="button" onClick={() => onSort(sort === "contor" ? "" : "contor")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
               {t("Nr. contor")} <span className="text-[10px] text-ink-soft">{sort === "contor" ? "▲" : "↕"}</span>
@@ -596,24 +641,28 @@ const GridTable = memo(function GridTable({
           </HeadCell>
           <HeadCell right title={t("Ultimul index cunoscut (m³)")}>{t("Index anterior")}</HeadCell>
           <HeadCell>{t("Data")}</HeadCell>
-          <HeadCell right title={t("Indexul citit luna aceasta (m³)")}>{t("Index curent")}</HeadCell>
-          <HeadCell right title={t("Consum = index curent − index anterior, în metri cubi")}>
-            <button type="button" onClick={() => cycle("consumDesc", "consumAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-              {t("Consum (m³)")} <span className="text-[10px] text-ink-soft">{arrow("consumDesc", "consumAsc")}</span>
-            </button>
-          </HeadCell>
-          <HeadCell>
-            <button type="button" onClick={() => onSort(sort === "readDesc" ? "" : "readDesc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-              {t("Citit la")} <span className="text-[10px] text-ink-soft">{sort === "readDesc" ? "▼" : "↕"}</span>
-            </button>
-          </HeadCell>
-          <HeadCell>{t("Citit de")}</HeadCell>
-          <HeadCell>{t("Poză")}</HeadCell>
-          <HeadCell right title={t("Distanța față de locația citirii anterioare")}>{t("Locație")}</HeadCell>
+          {!compact && (
+            <>
+            <HeadCell right title={t("Indexul citit luna aceasta (m³)")}>{t("Index curent")}</HeadCell>
+            <HeadCell right title={t("Consum = index curent − index anterior, în metri cubi")}>
+              <button type="button" onClick={() => cycle("consumDesc", "consumAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
+                {t("Consum (m³)")} <span className="text-[10px] text-ink-soft">{arrow("consumDesc", "consumAsc")}</span>
+              </button>
+            </HeadCell>
+            <HeadCell>
+              <button type="button" onClick={() => onSort(sort === "readDesc" ? "" : "readDesc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
+                {t("Citit la")} <span className="text-[10px] text-ink-soft">{sort === "readDesc" ? "▼" : "↕"}</span>
+              </button>
+            </HeadCell>
+            <HeadCell>{t("Citit de")}</HeadCell>
+            <HeadCell>{t("Poză")}</HeadCell>
+            <HeadCell right title={t("Distanța față de locația citirii anterioare")}>{t("Locație")}</HeadCell>
+            </>
+          )}
           <HeadCell>{" "}</HeadCell>
         </div>
         {winStart > 0 && <div aria-hidden style={{ height: winStart * ROW_H }} />}
-        {winRows.map((r) => <FieldTr key={r.id} r={r} onOpen={onOpen} />)}
+        {winRows.map((r) => <FieldTr key={r.id} r={r} onOpen={onOpen} compact={compact} />)}
         {winEnd < rowCount && <div aria-hidden style={{ height: (rowCount - winEnd) * ROW_H }} />}
         {empty}
       </div>
@@ -687,7 +736,7 @@ function ReadingDialog({
   row: FieldRow;
   canViewMeter: boolean;
   onClose: () => void;
-  onSaved: (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null) => void;
+  onSaved: (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean) => void;
   onNext: () => void;
 }) {
   const t = useT();
@@ -722,7 +771,7 @@ function ReadingDialog({
           lastIndex={row.lastIndex}
           lastDate={row.lastDate}
           initialValue={row.value}
-          onSaved={(patch, reading) => onSaved(row.id, patch, reading.userName, reading.distanceM)}
+          onSaved={(patch, reading) => onSaved(row.id, patch, reading.userName, reading.distanceM, reading.lat != null && reading.lng != null)}
           onNext={onNext}
           onClose={onClose}
         />
