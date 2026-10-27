@@ -634,7 +634,7 @@ const GridTable = memo(function GridTable({
   const arrow = (up: FieldFilters["sort"], down: FieldFilters["sort"]) => (sort === up ? "▲" : sort === down ? "▼" : "↕");
 
   return (
-    <div ref={scrollRef} onScroll={virtual ? onScroll : undefined} className="card w-fit max-w-full overflow-auto" style={{ maxHeight: rowCount > 50 ? "max(78vh, 890px)" : undefined, overflowAnchor: "none" }}>
+    <div ref={scrollRef} onScroll={virtual ? onScroll : undefined} className="card mx-auto w-fit max-w-full overflow-auto" style={{ maxHeight: rowCount > 50 ? "max(78vh, 890px)" : undefined, overflowAnchor: "none" }}>
       <div role="table" className="text-[12px]" style={{ width: compact ? GRID_W_COMPACT : GRID_W }}>
         <div role="row" className="sticky top-0 z-20 grid bg-[var(--color-surface-2)]" style={{ gridTemplateColumns: compact ? GRID_COMPACT : GRID }}>
           <HeadCell sticky>
