@@ -106,16 +106,28 @@ function composeAddress(r: Pick<RecForMeters, "oras" | "strada" | "casa" | "apar
     .join(", ") || null;
 }
 
+/** Identitatea abonatului peste luni: cont personal; firmele/instituțiile (fără cont) — nr. de contract; altfel numele. */
 const subscriberKey = (r: { contPersonal: string | null; nrContract: string | null; nume: string | null }) =>
   r.contPersonal ? `c:${r.contPersonal}` : r.nrContract ? `k:${r.nrContract}` : `n:${(r.nume ?? "").trim().toLowerCase()}`;
 
+/** Id-ul public al unui contor 1C: stabil între sincronizări (id-ul înregistrării se schimbă la fiecare import). `k` = poziția între contoarele cu același număr. */
+const meterId = (subKey: string, contor: string, k: number) => `${subKey}~${contor}~${k}`;
+
+function nextK(seen: Map<string, number>, contor: string): number {
+  const k = seen.get(contor) ?? 0;
+  seen.set(contor, k + 1);
+  return k;
+}
+
 function staticFromRecord(rec: RecForMeters, items: ExtractedMeter[]): MeterStatic[] {
   const address = composeAddress(rec);
+  const subKey = subscriberKey(rec);
+  const seen = new Map<string, number>();
   const active = items.reduce((n, it) => (it.meter.dataScoatere ? n : n + 1), 0);
   return items.map((it): MeterStatic => {
     const r = it.reading;
     return [
-      `${rec.id}:${it.idx}`, rec.clientId, it.meter.contor, rec.nume ?? "", rec.contPersonal, rec.nrContract,
+      meterId(subKey, it.meter.contor, nextK(seen, it.meter.contor)), rec.clientId, it.meter.contor, rec.nume ?? "", rec.contPersonal, rec.nrContract,
       address, it.meter.consumator || null, it.meter.inn || null, it.meter.dataInstalare, it.meter.dataScoatere, it.meter.sigiliu || null,
       r ? r.citirePrec : null, r?.dataPrec ?? null, r ? r.citire : null, r?.dataCitire ?? null, r ? r.consum : null,
       r?.sursa || null, it.water?.vol ?? null, it.water?.sum ?? null, it.sewer?.vol ?? null, it.sewer?.sum ?? null,
@@ -173,7 +185,7 @@ export async function buildMeterStatic(): Promise<MeterStatic[]> {
     const contor = (c.meterNumber ?? "").trim();
     if (!contor || clientIds.has(c.id) || (c.meterSeries && accounts.has(c.meterSeries))) continue;
     out.push([
-      `c:${c.id}`, c.id, contor, c.name, c.meterSeries, c.apaCanalContract,
+      `a:${c.id}`, c.id, contor, c.name, c.meterSeries, c.apaCanalContract,
       c.consumAddress, null, null, null, null, null,
       null, null, c.meterCurrReading, null, null,
       c.meterReadingEstimated ? "Axioma (estimat)" : "Axioma", null, null, null, null,
@@ -183,7 +195,7 @@ export async function buildMeterStatic(): Promise<MeterStatic[]> {
   return out;
 }
 
-// ── Detaliile unui contor (pop-up) ─────────────────────────────────────────────────────────────
+// ── Detaliile unui contor (pop-up și pagina contorului) ────────────────────────────────────────
 
 export type MeterHistoryItem = {
   docDate: string | null;
@@ -215,32 +227,57 @@ export type MeterDetail = {
   } | null;
 };
 
-/** Detaliile unui rând: `<idInregistrare>:<poziție>` (1C) sau `c:<idClient>` (Axioma, fără detalii în plus). Null = nu mai există. */
-export async function getMeterDetail(id: string): Promise<MeterDetail | null> {
+/** Răspunsul rutei de detalii: detaliile contorului + referința facturii curente (pentru „Vezi” / „Editează”). */
+export type MeterDetailResponse = MeterDetail & { invoice: { id: string; publicToken: string } | null };
+
+const EMPTY_DETAIL: MeterDetail = { meter: null, reading: null, lines: [], consumer: null, history: [], subscriber: null };
+
+/** Împarte id-ul `<cheie abonat>~<nr. contor>~<k>` (nr. contor și k sunt după ultimele două „~”). */
+export function parseMeterId(id: string): { subKey: string; contor: string; k: number } | null {
+  const last = id.lastIndexOf("~");
+  if (last < 0) return null;
+  const k = Number(id.slice(last + 1));
+  const rest = id.slice(0, last);
+  const mid = rest.lastIndexOf("~");
+  if (mid < 0 || !Number.isInteger(k) || k < 0) return null;
+  const subKey = rest.slice(0, mid);
+  const contor = rest.slice(mid + 1);
+  return subKey.length > 2 && contor ? { subKey, contor, k } : null;
+}
+
+/**
+ * Detaliile unui contor după id: `a:<idClient>` (Axioma, fără detalii în plus) sau `<cheie abonat>~<nr. contor>~<k>` (1C). Se ia ULTIMA înregistrare
+ * a abonatului; istoricul citirilor vine din toate lunile lui importate. Null = contorul nu mai există.
+ */
+export async function getMeterDetail(id: string, opts: { historyLimit?: number } = {}): Promise<MeterDetail | null> {
   if (DEMO) return null;
-  if (id.startsWith("c:")) {
-    return OBJECT_ID.test(id.slice(2)) ? { meter: null, reading: null, lines: [], consumer: null, history: [], subscriber: null } : null;
-  }
-  const [recId, idxStr] = id.split(":");
-  const idx = Number(idxStr);
-  if (!OBJECT_ID.test(recId ?? "") || !Number.isInteger(idx) || idx < 0) return null;
-  const rec = await prisma.oneCRecord.findUnique({
-    where: { id: recId },
+  if (id.startsWith("a:")) return OBJECT_ID.test(id.slice(2)) ? EMPTY_DETAIL : null;
+  const p = parseMeterId(id);
+  if (!p) return null;
+  const sep = p.subKey.indexOf(":");
+  const kind = p.subKey.slice(0, sep);
+  const val = p.subKey.slice(sep + 1);
+  if (!val) return null;
+  const where =
+    kind === "c" ? { contPersonal: val } : kind === "k" ? { nrContract: val } : kind === "n" ? { nume: { equals: val, mode: "insensitive" as const } } : null;
+  if (!where) return null;
+  const recs = await prisma.oneCRecord.findMany({
+    where,
     select: { ...REC_SELECT, consumers: true, tipSector: true, telefon: true, calculat: true, datorieAvans: true, deAchitat: true },
+    take: 120,
   });
-  if (!rec) return null;
-  const it = extractMeters(rec)[idx];
+  if (recs.length === 0) return null;
+  let rec = recs[0];
+  for (const x of recs) if ((x.dataDoc ?? "") > (rec.dataDoc ?? "")) rec = x;
+  const it = extractMeters(rec).filter((x) => x.meter.contor === p.contor)[p.k];
   if (!it) return null;
 
   const consumers = arr<OneCConsumer>(rec.consumers);
   const consumer = consumers.find((c) => c.nume === it.meter.consumator && (!it.meter.inn || c.inn === it.meter.inn)) ?? consumers.find((c) => c.nume === it.meter.consumator) ?? null;
 
-  // Istoricul citirilor contorului: toate lunile importate ale aceluiași abonat (cont personal; firmele — nr. de contract).
-  const where = rec.contPersonal ? { contPersonal: rec.contPersonal } : rec.nrContract ? { nrContract: rec.nrContract } : { id: rec.id };
-  const months = await prisma.oneCRecord.findMany({ where, select: { dataDoc: true, readings: true }, take: 120 });
   const history: MeterHistoryItem[] = [];
   const seenRead = new Set<string>();
-  for (const m of months) {
+  for (const m of recs) {
     const mine = arr<OneCReading>(m.readings).filter((r) => r.contor === it.meter.contor && (!it.meter.consumator || r.consumator === it.meter.consumator));
     for (const r of mine) {
       const key = `${r.dataCitire}|${r.citire}|${r.sursa}`;
@@ -256,7 +293,7 @@ export async function getMeterDetail(id: string): Promise<MeterDetail | null> {
     reading: it.reading,
     lines: it.lines,
     consumer,
-    history: history.slice(0, 36),
+    history: history.slice(0, opts.historyLimit ?? 36),
     subscriber: {
       nrContract: rec.nrContract,
       contPersonal: rec.contPersonal,

@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   EMPTY_METER_FILTERS,
   countActiveMeterFilters,
   distinctSources,
+  enumLabel,
   filterMeters,
   meterFiltersToParams,
   sanitizeMeterFilters,
@@ -39,10 +40,30 @@ const txtFld = (val: string) =>
 
 /** Lățimile coloanelor (px), în ordinea din antet: contor, abonat, cont/contract, adresă, consumator, status, instalat, sigiliu, citire ant., citire curentă,
  * data citirii, consum, sursă, apă, canal, contoare abonat, factură, de achitat, status factură, telefon, portal. */
-const COL_W = [115, 190, 95, 210, 150, 62, 80, 85, 82, 86, 80, 70, 100, 125, 125, 62, 85, 90, 72, 100, 52];
+const COL_W = [115, 190, 95, 210, 150, 62, 80, 85, 118, 108, 80, 92, 100, 150, 150, 62, 115, 90, 72, 140, 60];
 const SERVER_MAX_ROWS = 200; // doar cât timp lista completă nu e încă în browser (răspunsul vine de pe server)
 const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
 const ROW_H = 24; // înălțimea fixă a unui rând de tabel (necesară virtualizării)
+const GRID = COL_W.map((w) => `${w}px`).join(" ");
+const GRID_TASK = `${GRID} 28px`;
+const GRID_W = COL_W.reduce((x, y) => x + y, 0);
+/** Celula de rând: pe o singură linie, tăiată cu „…", vertical centrată în rândul de 24 px. */
+const CELL = "truncate border-b border-[var(--color-line)] px-1.5 leading-[23px]";
+const ROW_BLOCK = 8; // fereastra de rânduri desenate se mută din 8 în 8 rânduri
+const ROW_OVERSCAN = 40; // rânduri desenate în plus, deasupra și dedesubt, ca derularea rapidă să nu arate goluri
+
+const fmtCache = new Map<string, { num: (n: number) => string; money: (n: number) => string }>();
+/** Formatoare de numere create O DATĂ per limbă (nu la fiecare celulă). */
+function getFmt(tag: string) {
+  let f = fmtCache.get(tag);
+  if (!f) {
+    const n = new Intl.NumberFormat(tag, { maximumFractionDigits: 3 });
+    const m = new Intl.NumberFormat(tag, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    f = { num: (x) => n.format(x), money: (x) => m.format(x) };
+    fmtCache.set(tag, f);
+  }
+  return f;
+}
 
 function queryKey(f: MeterFilters, page: number, perPage: number): string {
   return meterFiltersToParams(sanitizeMeterFilters(f), { page, perPage }).toString();
@@ -53,6 +74,7 @@ export default function MetersManager({
   serverFailed = false,
   warming = false,
   canTask = false,
+  canEditInvoices = false,
 }: {
   initial: { filters: MeterFilters; page: number; perPage: number; items: MeterRowBase[]; total: number };
   /** Prima listă n-a putut fi citită pe server — arătăm eroarea cu „Reîncearcă" până sosește lista completă în browser. */
@@ -61,13 +83,14 @@ export default function MetersManager({
   warming?: boolean;
   /** Are „Sarcini – Creare": rândul are „+" pentru o sarcină nouă (clientul și adresa se completează singure). */
   canTask?: boolean;
+  /** Poate edita facturi (invoices.edit) — „Editează” lângă „Vezi” în pop-up. */
+  canEditInvoices?: boolean;
 }) {
   const t = useT();
   const toast = useToast();
   const tag = dateTag(useLocale());
   const nf = (n: number) => n.toLocaleString(tag);
-  const num = (n: number) => n.toLocaleString(tag, { maximumFractionDigits: 3 });
-  const money = (n: number) => n.toLocaleString(tag, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const { num, money } = getFmt(tag);
   const dmy = (s: string | null) => (s ? s.slice(0, 10).split("-").reverse().join(".") : "");
   const STORAGE_KEY = "filters:/contoare";
 
@@ -243,34 +266,6 @@ export default function MetersManager({
   // ── Virtualizare: din cele (până la ~25.000) de rânduri ale paginii se desenează doar cele din zona vizibilă ──
   const pageRows = view.items;
   const rowCount = showAll ? view.total : pageRows.length;
-  const virtualTable = !cards && rowCount > VIRTUAL_MIN;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollRaf = useRef(0);
-  const [vScroll, setVScroll] = useState({ top: 0, h: 800 });
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !virtualTable) return;
-    const upd = () => setVScroll((s) => (s.h === el.clientHeight ? s : { ...s, h: el.clientHeight }));
-    upd();
-    const obs = new ResizeObserver(upd);
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [virtualTable]);
-  // Alt filtru / altă pagină / altă sortare → tabelul revine sus (evenimentul de scroll actualizează poziția).
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [filters, page, perPage, cards]);
-  function onTableScroll(e: React.UIEvent<HTMLDivElement>) {
-    const top = e.currentTarget.scrollTop;
-    if (scrollRaf.current) return;
-    scrollRaf.current = requestAnimationFrame(() => {
-      scrollRaf.current = 0;
-      setVScroll((s) => (s.top === top ? s : { ...s, top }));
-    });
-  }
-  const winStart = virtualTable ? Math.max(0, Math.floor(vScroll.top / ROW_H) - 12) : 0;
-  const winEnd = virtualTable ? Math.min(rowCount, Math.ceil((vScroll.top + vScroll.h) / ROW_H) + 12) : pageRows.length;
-  const winRows = virtualTable ? pageRows.slice(winStart, Math.min(winEnd, pageRows.length)) : pageRows;
   /** Carduri (mod telefon): listă virtualizată cu înălțimi variabile (cardurile se desfac la atingere). */
   function renderRows(rows: MeterRowBase[], fn: (r: MeterRowBase) => React.ReactNode) {
     const n = showAll ? view.total : rows.length;
@@ -284,9 +279,11 @@ export default function MetersManager({
     );
   }
 
-  const sortToggle = (up: MeterFilters["sort"], down: MeterFilters["sort"]) =>
-    setFilter({ sort: filters.sort === up ? down : filters.sort === down ? "" : up });
-  const arrow = (up: MeterFilters["sort"], down: MeterFilters["sort"]) => (filters.sort === up ? "▲" : filters.sort === down ? "▼" : "↕");
+  /** Sortarea aleasă din antetul tabelului (callback stabil: tabelul nu se re-randează degeaba). */
+  const onSort = useCallback((next: MeterFilters["sort"]) => {
+    setFilters((f) => ({ ...f, sort: next }));
+    setPage(1);
+  }, []);
 
   const pageButtons = buildPageButtons(page, totalPages);
   const from = view.total === 0 ? 0 : (page - 1) * uiPerPage + 1;
@@ -309,16 +306,16 @@ export default function MetersManager({
       return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const head = [
-      "Nr. contor", "Abonat", "Cont personal", "Contract", "Adresă", "Consumator", "Status", "Instalat", "Sigiliu", "Scos la", "Citire anterioară", "Data citirii anterioare",
-      "Citire curentă", "Data citirii", "Consum", "Sursa citirii", "Apă: volum", "Apă: sumă", "Canal: volum", "Canal: sumă", "Contoare active la abonat", "Factură",
-      "Status factură", "De achitat", "Telefon", "Email",
+      "Nr. contor", "Abonat", "Cont personal", "Contract", "Adresă", "Consumator", "Status", "Instalat", "Sigiliu", "Scos la", "Citire anterioară (m³)", "Data citirii anterioare",
+      "Citire curentă (m³)", "Data citirii", "Consum (m³)", "Sursa citirii", "Apă: volum (m³)", "Apă: sumă (MDL)", "Canal: volum (m³)", "Canal: sumă (MDL)", "Contoare active la abonat", "Factură",
+      "Status factură", "De achitat (MDL)", "Telefon", "Email",
     ].map((h) => esc(t(h)));
     const lines = [head.join(";")];
     for (const r of localList) {
       lines.push(
         [
           r.contor, r.name, r.account, r.contract, r.address, r.consumator, r.removedAt ? t("Scos") : t("Activ"), dmy(r.installedAt), r.sigiliu, dmy(r.removedAt), r.prev, dmy(r.prevDate),
-          r.curr, dmy(r.currDate), r.consum, r.sursa, r.apaVol, r.apaSum, r.canalVol, r.canalSum, r.meterCount, r.invoice?.number,
+          r.curr, dmy(r.currDate), r.consum, enumLabel(r.sursa, t), r.apaVol, r.apaSum, r.canalVol, r.canalSum, r.meterCount, r.invoice?.number,
           r.invoice ? t(INVOICE_STATUS[r.invoice.status as InvoiceStatusKey]?.label ?? r.invoice.status) : "", r.invoice?.grandTotal, r.phone, r.email,
         ].map(esc).join(";"),
       );
@@ -341,7 +338,7 @@ export default function MetersManager({
     ) : (
       <span className="inline-block rounded-full bg-st-done/12 px-1.5 text-[10px] leading-[14px] font-medium text-st-done">{t("Activ")}</span>
     );
-  const water = (vol: number | null, sum: number | null) => (vol == null && sum == null ? null : `${vol == null ? "—" : num(vol)} m³ · ${sum == null ? "—" : money(sum)}`);
+  const water = (vol: number | null, sum: number | null) => (vol == null && sum == null ? null : `${vol == null ? "—" : num(vol)} m³ · ${sum == null ? "—" : `${money(sum)} MDL`}`);
 
   return (
     <div>
@@ -383,8 +380,8 @@ export default function MetersManager({
         </select>
         <select value={filters.sursa} onChange={(e) => setFilter({ sursa: e.target.value })} className={fld(filters.sursa)} aria-label={t("Sursa citirii")}>
           <option value="">{t("Sursa citirii: toate")}</option>
-          {sources.map((s) => <option key={s} value={s}>{s}</option>)}
-          {filters.sursa && !sources.includes(filters.sursa) && <option value={filters.sursa}>{filters.sursa}</option>}
+          {sources.map((s) => <option key={s} value={s}>{enumLabel(s, t)}</option>)}
+          {filters.sursa && !sources.includes(filters.sursa) && <option value={filters.sursa}>{enumLabel(filters.sursa, t)}</option>}
         </select>
         <select value={filters.source} onChange={(e) => setFilter({ source: e.target.value as MeterFilters["source"] })} className={fld(filters.source)} aria-label={t("Sursa datelor")}>
           <option value="">{t("Date: 1C și Axioma")}</option>
@@ -509,7 +506,7 @@ export default function MetersManager({
                     {statusChip(r)}
                   </>
                 }
-                trailing={r.consum != null ? <span className="tabular-nums font-semibold">{num(r.consum)}</span> : undefined}
+                trailing={r.consum != null ? <span className="tabular-nums font-semibold">{num(r.consum)} m³</span> : undefined}
               >
                 <dl>
                   <CompactField label={t("Cont / contract")}>{r.account ?? r.contract ?? <Dash />}</CompactField>
@@ -517,10 +514,10 @@ export default function MetersManager({
                   <CompactField label={t("Consumator")}>{r.consumator ?? <Dash />}</CompactField>
                   <CompactField label={t("Instalat")}>{r.installedAt ? dmy(r.installedAt) : <Dash />}</CompactField>
                   <CompactField label={t("Sigiliu")}>{r.sigiliu ?? <Dash />}</CompactField>
-                  <CompactField label={t("Citire anterioară")}>{r.prev != null ? `${num(r.prev)}${r.prevDate ? ` (${dmy(r.prevDate)})` : ""}` : <Dash />}</CompactField>
-                  <CompactField label={t("Citire curentă")}>{r.curr != null ? `${num(r.curr)}${r.currDate ? ` (${dmy(r.currDate)})` : ""}` : <Dash />}</CompactField>
-                  <CompactField label={t("Consum")}>{r.consum != null ? num(r.consum) : <Dash />}</CompactField>
-                  <CompactField label={t("Sursa citirii")}>{r.sursa ?? <Dash />}</CompactField>
+                  <CompactField label={t("Citire anterioară")}>{r.prev != null ? `${num(r.prev)} m³${r.prevDate ? ` (${dmy(r.prevDate)})` : ""}` : <Dash />}</CompactField>
+                  <CompactField label={t("Citire curentă")}>{r.curr != null ? `${num(r.curr)} m³${r.currDate ? ` (${dmy(r.currDate)})` : ""}` : <Dash />}</CompactField>
+                  <CompactField label={t("Consum (m³)")}>{r.consum != null ? `${num(r.consum)} m³` : <Dash />}</CompactField>
+                  <CompactField label={t("Sursa citirii")}>{r.sursa ? enumLabel(r.sursa, t) : <Dash />}</CompactField>
                   <CompactField label={t("Apă")}>{water(r.apaVol, r.apaSum) ?? <Dash />}</CompactField>
                   <CompactField label={t("Canal")}>{water(r.canalVol, r.canalSum) ?? <Dash />}</CompactField>
                   <CompactField label={t("Contoare active la abonat")}>{r.meterCount}</CompactField>
@@ -549,150 +546,24 @@ export default function MetersManager({
           )}
         </div>
       ) : (
-        <div
-          ref={scrollRef}
-          onScroll={virtualTable ? onTableScroll : undefined}
-          className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}
-          style={{ maxHeight: rowCount > 50 ? "max(78vh, 890px)" : undefined }}
-        >
-          <table className="min-w-full table-fixed border-separate border-spacing-0 text-[11px] leading-[14px]" style={{ width: COL_W.reduce((a, b) => a + b, 0) + (canTask ? 28 : 0) }}>
-            <colgroup>
-              {COL_W.map((w, i) => <col key={i} style={{ width: w }} />)}
-              {canTask && <col style={{ width: 28 }} />}
-            </colgroup>
-            <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
-              <tr>
-                <Th sticky="left-0" minW={105}>
-                  <button type="button" onClick={() => setFilter({ sort: filters.sort === "contor" ? "" : "contor" })} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-                    {t("Nr. contor")} <span className="text-[10px] text-ink-soft">{filters.sort === "contor" ? "▲" : "↕"}</span>
-                  </button>
-                </Th>
-                <Th minW={160}>
-                  <button type="button" onClick={() => setFilter({ sort: "" })} className="font-semibold hover:text-brand">{t("Abonat")}</button>
-                </Th>
-                <Th minW={90}>{t("Cont / contract")}</Th>
-                <Th minW={170}>{t("Adresă")}</Th>
-                <Th minW={120}>{t("Consumator")}</Th>
-                <Th minW={55}>{t("Status")}</Th>
-                <Th minW={75}>
-                  <button type="button" onClick={() => sortToggle("installDesc", "installAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-                    {t("Instalat")} <span className="text-[10px] text-ink-soft">{arrow("installDesc", "installAsc")}</span>
-                  </button>
-                </Th>
-                <Th minW={75}>{t("Sigiliu")}</Th>
-                <Th minW={75} right>{t("Citire ant.")}</Th>
-                <Th minW={80} right>{t("Citire curentă")}</Th>
-                <Th minW={75}>
-                  <button type="button" onClick={() => setFilter({ sort: filters.sort === "readDesc" ? "" : "readDesc" })} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-                    {t("Data citirii")} <span className="text-[10px] text-ink-soft">{filters.sort === "readDesc" ? "▼" : "↕"}</span>
-                  </button>
-                </Th>
-                <Th minW={65} right>
-                  <button type="button" onClick={() => sortToggle("consumDesc", "consumAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-                    {t("Consum")} <span className="text-[10px] text-ink-soft">{arrow("consumDesc", "consumAsc")}</span>
-                  </button>
-                </Th>
-                <Th minW={90}>{t("Sursa citirii")}</Th>
-                <Th minW={115}>{t("Apă")}</Th>
-                <Th minW={115}>{t("Canal")}</Th>
-                <Th minW={55} right>{t("Contoare")}</Th>
-                <Th minW={80}>{t("Factură")}</Th>
-                <Th minW={80} right>
-                  <button type="button" onClick={() => setFilter({ sort: filters.sort === "debtDesc" ? "" : "debtDesc" })} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-                    {t("De achitat")} <span className="text-[10px] text-ink-soft">{filters.sort === "debtDesc" ? "▼" : "↕"}</span>
-                  </button>
-                </Th>
-                <Th minW={65}>{t("Status factură")}</Th>
-                <Th minW={90}>{t("Telefon")}</Th>
-                <Th minW={48}>{t("Portal")}</Th>
-                {canTask && <Th minW={28}> </Th>}
-              </tr>
-            </thead>
-            <tbody>
-              {winStart > 0 && (
-                <tr aria-hidden>
-                  <td colSpan={colCount} style={{ height: winStart * ROW_H, padding: 0, border: 0 }} />
-                </tr>
-              )}
-              {winRows.map((r) => {
-                const st = r.invoice ? INVOICE_STATUS[r.invoice.status as InvoiceStatusKey] : null;
-                const a = water(r.apaVol, r.apaSum);
-                const c = water(r.canalVol, r.canalSum);
-                return (
-                  <tr key={r.id} onClick={() => setDetailRow(r)} style={{ height: ROW_H }} className={`cursor-pointer hover:bg-brand-soft/30 ${r.removedAt ? "text-ink-soft" : ""}`}>
-                    <td className="sticky left-0 z-10 border-b border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 py-px font-mono font-medium" style={{ maxWidth: 130 }}>
-                      <div className="truncate hover:text-brand" title={r.contor}>{r.contor}</div>
-                    </td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px" style={{ maxWidth: 200 }}>
-                      <div className="truncate" title={r.name}>{r.name}</div>
-                    </td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px">{r.account ?? r.contract ?? "—"}</td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px" style={{ maxWidth: 220 }}>
-                      <div className="truncate" title={r.address ?? ""}>{r.address ?? <Dash />}</div>
-                    </td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px" style={{ maxWidth: 160 }}>
-                      <div className="truncate" title={r.consumator ?? ""}>{r.consumator ?? <Dash />}</div>
-                    </td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px">{statusChip(r)}</td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px whitespace-nowrap">{r.installedAt ? dmy(r.installedAt) : <Dash />}</td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px"><div className="truncate" title={r.sigiliu ?? ""}>{r.sigiliu ?? <Dash />}</div></td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px text-right tabular-nums" title={r.prevDate ? dmy(r.prevDate) : undefined}>{r.prev != null ? num(r.prev) : <Dash />}</td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px text-right tabular-nums">{r.curr != null ? num(r.curr) : <Dash />}</td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px whitespace-nowrap">{r.currDate ? dmy(r.currDate) : <Dash />}</td>
-                    <td className={`border-b border-[var(--color-line)] px-1.5 py-px text-right tabular-nums ${r.consum != null && r.consum > 0 ? "font-semibold" : "text-ink-soft"}`}>{r.consum != null ? num(r.consum) : <Dash />}</td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px"><div className="truncate" title={r.sursa ?? ""}>{r.sursa ?? <Dash />}</div></td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px whitespace-nowrap tabular-nums">{a ?? <Dash />}</td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px whitespace-nowrap tabular-nums">{c ?? <Dash />}</td>
-                    <td className={`border-b border-[var(--color-line)] px-1.5 py-px text-right tabular-nums ${r.meterCount > 1 ? "font-semibold text-brand" : "text-ink-soft"}`} title={r.meterCount > 1 ? t("Abonatul are {n} contoare active", { n: r.meterCount }) : undefined}>{r.meterCount}</td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px">{r.invoice?.number ?? <Dash />}</td>
-                    <td className={`border-b border-[var(--color-line)] px-1.5 py-px text-right tabular-nums ${r.invoice && r.invoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>{r.invoice ? money(r.invoice.grandTotal) : <Dash />}</td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px">
-                      {st ? <span className={`inline-block rounded-full px-1.5 text-[10px] leading-[14px] font-medium ${st.cls}`}>{t(st.label)}</span> : <Dash />}
-                    </td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px tabular-nums">{r.phone ?? <Dash />}</td>
-                    <td className="border-b border-[var(--color-line)] px-1.5 py-px" title={r.activated ? t("Cont portal activat") : t("Cont portal neactivat")}>
-                      {r.activated ? <span className="text-st-done">✓ {t("activ")}</span> : <span className="text-ink-soft/60">—</span>}
-                    </td>
-                    {canTask && (
-                      <td className="border-b border-[var(--color-line)] px-1.5 py-px" onClick={(e) => e.stopPropagation()}>
-                        {r.clientId && (
-                          <Link
-                            href={taskHref(r)}
-                            prefetch={false}
-                            title={t("Creează sarcină pentru acest contor (adresa se completează singură)")}
-                            aria-label={t("Creează sarcină pentru acest contor (adresa se completează singură)")}
-                            className="grid size-4 place-items-center rounded bg-brand text-[11px] font-bold leading-none text-white hover:bg-brand-strong"
-                          >
-                            +
-                          </Link>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-              {winEnd > pageRows.length && winStart < winEnd &&
-                Array.from({ length: winEnd - Math.max(winStart, pageRows.length) }, (_, k) => (
-                  <tr key={`sk-${Math.max(winStart, pageRows.length) + k}`} aria-hidden style={{ height: ROW_H }}>
-                    <td colSpan={colCount} className="border-b border-[var(--color-line)] px-2 text-ink-soft/40">…</td>
-                  </tr>
-                ))}
-              {winEnd < rowCount && (
-                <tr aria-hidden>
-                  <td colSpan={colCount} style={{ height: (rowCount - winEnd) * ROW_H, padding: 0, border: 0 }} />
-                </tr>
-              )}
-              {pageRows.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={colCount} className="p-8 text-center text-ink-soft">
-                    {ds.rows || error ? t("Niciun contor cu filtrele acestea.") : t("se încarcă lista completă…")}{" "}
-                    {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">{t("Resetează filtrele")}</button>}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <GridTable
+          rows={pageRows}
+          rowCount={rowCount}
+          loading={loading}
+          canTask={canTask}
+          sort={filters.sort}
+          onSort={onSort}
+          onOpen={setDetailRow}
+          resetKey={key}
+          empty={
+            pageRows.length === 0 && !loading ? (
+              <div className="p-8 text-center text-[13px] text-ink-soft">
+                {ds.rows || error ? t("Niciun contor cu filtrele acestea.") : t("se încarcă lista completă…")}{" "}
+                {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">{t("Resetează filtrele")}</button>}
+              </div>
+            ) : null
+          }
+        />
       )}
 
       {/* ── Paginare numerică ─────────────────────────────────────────────── */}
@@ -737,6 +608,7 @@ export default function MetersManager({
           row={detailRow}
           rows={ds.rows}
           canTask={canTask}
+          canEditInvoices={canEditInvoices}
           taskHref={taskHref}
           onSelect={(r) => setDetailRow(r)}
           onClose={() => setDetailRow(null)}
@@ -746,18 +618,217 @@ export default function MetersManager({
   );
 }
 
+/** Un rând al tabelului (grilă CSS, layout izolat: `contain`). Memoizat: la derulare se desenează doar rândurile care intră în fereastră, cele existente nu se refac. */
+const MeterTr = memo(function MeterTr({ r, canTask, onOpen }: { r: MeterRowBase; canTask: boolean; onOpen: (r: MeterRowBase) => void }) {
+  const t = useT();
+  const { num, money } = getFmt(dateTag(useLocale()));
+  const dmy = (d: string | null) => (d ? d.slice(0, 10).split("-").reverse().join(".") : "");
+  const st = r.invoice ? INVOICE_STATUS[r.invoice.status as InvoiceStatusKey] : null;
+  const water = (vol: number | null, sum: number | null) => (vol == null && sum == null ? null : `${vol == null ? "—" : num(vol)} m³ · ${sum == null ? "—" : `${money(sum)} MDL`}`);
+  const a = water(r.apaVol, r.apaSum);
+  const c = water(r.canalVol, r.canalSum);
+  const chip = r.removedAt ? (
+    <span className="inline-block rounded-full bg-st-cancelled/12 px-1.5 text-[10px] leading-[14px] font-medium text-st-cancelled" title={`${t("Scos la")} ${dmy(r.removedAt)}`}>{t("Scos")}</span>
+  ) : (
+    <span className="inline-block rounded-full bg-st-done/12 px-1.5 text-[10px] leading-[14px] font-medium text-st-done">{t("Activ")}</span>
+  );
+  // doar când rândul are „+”: linkul de sarcină nouă (nu se construiește pentru toate rândurile)
+  const taskHref =
+    canTask && r.clientId
+      ? `/tasks?${new URLSearchParams({ create: "task", client: r.clientId, desc: [`${t("Contor")} ${r.contor}`, r.name, r.account ?? r.contract, r.phone].filter(Boolean).join(" · ") }).toString()}`
+      : "";
+  const sursa = r.sursa ? enumLabel(r.sursa, t) : "";
+  const num_ = `${CELL} text-right tabular-nums`;
+  return (
+    <div
+      role="row"
+      data-row=""
+      onClick={() => onOpen(r)}
+      className={`grid cursor-pointer hover:bg-brand-soft/30 ${r.removedAt ? "text-ink-soft" : ""}`}
+      style={{ gridTemplateColumns: canTask ? GRID_TASK : GRID, height: ROW_H, contain: "layout style" }}
+    >
+      <div role="cell" className={`${CELL} sticky left-0 z-10 bg-[var(--color-surface)] font-mono font-medium`}>
+        <Link href={`/contoare/${encodeURIComponent(r.id)}`} prefetch={false} onClick={(e) => e.stopPropagation()} title={t("Deschide pagina contorului")} className="hover:text-brand hover:underline">{r.contor}</Link>
+      </div>
+      <div role="cell" className={CELL} title={r.name}>{r.name}</div>
+      <div role="cell" className={CELL}>{r.account ?? r.contract ?? "—"}</div>
+      <div role="cell" className={CELL} title={r.address ?? ""}>{r.address ?? <Dash />}</div>
+      <div role="cell" className={CELL} title={r.consumator ?? ""}>{r.consumator ?? <Dash />}</div>
+      <div role="cell" className={CELL}>{chip}</div>
+      <div role="cell" className={CELL}>{r.installedAt ? dmy(r.installedAt) : <Dash />}</div>
+      <div role="cell" className={CELL} title={r.sigiliu ?? ""}>{r.sigiliu ?? <Dash />}</div>
+      <div role="cell" className={num_} title={r.prevDate ? dmy(r.prevDate) : undefined}>{r.prev != null ? num(r.prev) : <Dash />}</div>
+      <div role="cell" className={num_}>{r.curr != null ? num(r.curr) : <Dash />}</div>
+      <div role="cell" className={CELL}>{r.currDate ? dmy(r.currDate) : <Dash />}</div>
+      <div role="cell" className={`${num_} ${r.consum != null && r.consum > 0 ? "font-semibold" : "text-ink-soft"}`}>{r.consum != null ? `${num(r.consum)} m³` : <Dash />}</div>
+      <div role="cell" className={CELL} title={sursa}>{sursa || <Dash />}</div>
+      <div role="cell" className={`${CELL} tabular-nums`}>{a ?? <Dash />}</div>
+      <div role="cell" className={`${CELL} tabular-nums`}>{c ?? <Dash />}</div>
+      <div role="cell" className={`${num_} ${r.meterCount > 1 ? "font-semibold text-brand" : "text-ink-soft"}`} title={r.meterCount > 1 ? t("Abonatul are {n} contoare active", { n: r.meterCount }) : undefined}>{r.meterCount}</div>
+      <div role="cell" className={CELL} title={r.invoice?.number ?? ""}>{r.invoice?.number ?? <Dash />}</div>
+      <div role="cell" className={`${num_} ${r.invoice && r.invoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>{r.invoice ? money(r.invoice.grandTotal) : <Dash />}</div>
+      <div role="cell" className={CELL}>
+        {st ? <span className={`inline-block rounded-full px-1.5 text-[10px] leading-[14px] font-medium ${st.cls}`}>{t(st.label)}</span> : <Dash />}
+      </div>
+      <div role="cell" className={`${CELL} tabular-nums`} title={r.phone ?? ""}>{r.phone ?? <Dash />}</div>
+      <div role="cell" className={CELL} title={r.activated ? t("Cont portal activat") : t("Cont portal neactivat")}>
+        {r.activated ? <span className="text-st-done">✓ {t("activ")}</span> : <span className="text-ink-soft/60">—</span>}
+      </div>
+      {canTask && (
+        <div role="cell" className={`${CELL} flex items-center`} onClick={(e) => e.stopPropagation()}>
+          {r.clientId && (
+            <Link
+              href={taskHref}
+              prefetch={false}
+              title={t("Creează sarcină pentru acest contor (adresa se completează singură)")}
+              aria-label={t("Creează sarcină pentru acest contor (adresa se completează singură)")}
+              className="grid size-4 place-items-center rounded bg-brand text-[11px] font-bold leading-none text-white hover:bg-brand-strong"
+            >
+              +
+            </Link>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 function Dash() {
   return <span className="text-ink-soft/60">—</span>;
 }
 
-function Th({ children, minW, right, sticky }: { children: React.ReactNode; minW: number; right?: boolean; sticky?: string }) {
+/**
+ * Tabelul (antet + rânduri virtualizate). Starea de derulare stă AICI, nu în pagină: la derulare se re-randează doar această componentă (și doar când se
+ * trece într-un alt bloc de rânduri), nu filtrele, pop-up-ul și restul paginii. Rândurile sunt memoizate, deci se montează doar cele noi.
+ */
+const GridTable = memo(function GridTable({
+  rows,
+  rowCount,
+  loading,
+  canTask,
+  sort,
+  onSort,
+  onOpen,
+  resetKey,
+  empty,
+}: {
+  rows: MeterRowBase[];
+  /** Câte rânduri are lista (poate fi mai mult decât rows.length cât timp lista completă încă se încarcă). */
+  rowCount: number;
+  loading: boolean;
+  canTask: boolean;
+  sort: MeterFilters["sort"];
+  onSort: (next: MeterFilters["sort"]) => void;
+  onOpen: (r: MeterRowBase) => void;
+  /** Se schimbă la alt filtru / altă pagină: tabelul revine sus. */
+  resetKey: string;
+  empty: React.ReactNode;
+}) {
+  const t = useT();
+  const virtual = rowCount > VIRTUAL_MIN;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [vBlock, setVBlock] = useState(0); // blocul de rânduri din capul zonei vizibile (se schimbă rar, nu la fiecare cadru de derulare)
+  const [vH, setVH] = useState(800);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !virtual) return;
+    const upd = () => setVH((h) => (h === el.clientHeight ? h : el.clientHeight));
+    upd();
+    const obs = new ResizeObserver(upd);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [virtual]);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [resetKey]);
+  function onScroll(e: React.UIEvent<HTMLDivElement>) {
+    // Starea se schimbă doar când se trece într-un alt bloc de rânduri; între blocuri derularea e doar a browserului (fără randări React).
+    const b = Math.floor(e.currentTarget.scrollTop / (ROW_H * ROW_BLOCK));
+    setVBlock((cur) => (cur === b ? cur : b));
+  }
+  const winStart = virtual ? Math.max(0, vBlock * ROW_BLOCK - ROW_OVERSCAN) : 0;
+  const winEnd = virtual ? Math.min(rowCount, (vBlock + 1) * ROW_BLOCK + Math.ceil(vH / ROW_H) + ROW_OVERSCAN) : rows.length;
+  const winRows = virtual ? rows.slice(winStart, Math.min(winEnd, rows.length)) : rows;
+  const cycle = (up: MeterFilters["sort"], down: MeterFilters["sort"]) => onSort(sort === up ? down : sort === down ? "" : up);
+  const arrow = (up: MeterFilters["sort"], down: MeterFilters["sort"]) => (sort === up ? "▲" : sort === down ? "▼" : "↕");
+
   return (
-    <th
-      style={{ minWidth: minW }}
-      className={`border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1 font-semibold ${right ? "text-right" : "text-left"} ${sticky ? `sticky ${sticky} z-30` : ""}`}
+    <div
+      ref={scrollRef}
+      onScroll={virtual ? onScroll : undefined}
+      className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}
+      style={{ maxHeight: rowCount > 50 ? "max(78vh, 890px)" : undefined, overflowAnchor: "none" }}
+    >
+      <div role="table" className="text-[11px]" style={{ width: GRID_W + (canTask ? 28 : 0), minWidth: "100%" }}>
+        <div role="row" className="sticky top-0 z-20 grid bg-[var(--color-surface-2)]" style={{ gridTemplateColumns: canTask ? GRID_TASK : GRID }}>
+          <HeadCell sticky>
+            <button type="button" onClick={() => onSort(sort === "contor" ? "" : "contor")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
+              {t("Nr. contor")} <span className="text-[10px] text-ink-soft">{sort === "contor" ? "▲" : "↕"}</span>
+            </button>
+          </HeadCell>
+          <HeadCell>
+            <button type="button" onClick={() => onSort("")} className="font-semibold hover:text-brand">{t("Abonat")}</button>
+          </HeadCell>
+          <HeadCell>{t("Cont / contract")}</HeadCell>
+          <HeadCell>{t("Adresă")}</HeadCell>
+          <HeadCell>{t("Consumator")}</HeadCell>
+          <HeadCell>{t("Status")}</HeadCell>
+          <HeadCell>
+            <button type="button" onClick={() => cycle("installDesc", "installAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
+              {t("Instalat")} <span className="text-[10px] text-ink-soft">{arrow("installDesc", "installAsc")}</span>
+            </button>
+          </HeadCell>
+          <HeadCell>{t("Sigiliu")}</HeadCell>
+          <HeadCell right title={t("Indexul contorului (m³) la citirea anterioară")}>{t("Citire anterioară")}</HeadCell>
+          <HeadCell right title={t("Indexul contorului (m³) la ultima citire")}>{t("Citire curentă")}</HeadCell>
+          <HeadCell>
+            <button type="button" onClick={() => onSort(sort === "readDesc" ? "" : "readDesc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
+              {t("Data citirii")} <span className="text-[10px] text-ink-soft">{sort === "readDesc" ? "▼" : "↕"}</span>
+            </button>
+          </HeadCell>
+          <HeadCell right title={t("Consum = citire curentă − citire anterioară, în metri cubi")}>
+            <button type="button" onClick={() => cycle("consumDesc", "consumAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
+              {t("Consum (m³)")} <span className="text-[10px] text-ink-soft">{arrow("consumDesc", "consumAsc")}</span>
+            </button>
+          </HeadCell>
+          <HeadCell>{t("Sursa citirii")}</HeadCell>
+          <HeadCell title={t("Volum (m³) · sumă (MDL)")}>{t("Apă (m³ · MDL)")}</HeadCell>
+          <HeadCell title={t("Volum (m³) · sumă (MDL)")}>{t("Canal (m³ · MDL)")}</HeadCell>
+          <HeadCell right>{t("Contoare")}</HeadCell>
+          <HeadCell>{t("Factură")}</HeadCell>
+          <HeadCell right>
+            <button type="button" onClick={() => onSort(sort === "debtDesc" ? "" : "debtDesc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
+              {t("De achitat")} <span className="text-[10px] text-ink-soft">{sort === "debtDesc" ? "▼" : "↕"}</span>
+            </button>
+          </HeadCell>
+          <HeadCell>{t("Status factură")}</HeadCell>
+          <HeadCell>{t("Telefon")}</HeadCell>
+          <HeadCell>{t("Portal")}</HeadCell>
+          {canTask && <HeadCell>{" "}</HeadCell>}
+        </div>
+        {winStart > 0 && <div aria-hidden style={{ height: winStart * ROW_H }} />}
+        {winRows.map((r) => <MeterTr key={r.id} r={r} canTask={canTask} onOpen={onOpen} />)}
+        {winEnd > rows.length && winStart < winEnd &&
+          Array.from({ length: winEnd - Math.max(winStart, rows.length) }, (_, k) => (
+            <div key={`sk-${Math.max(winStart, rows.length) + k}`} aria-hidden className="border-b border-[var(--color-line)] px-2 leading-[23px] text-ink-soft/40" style={{ height: ROW_H }}>…</div>
+          ))}
+        {winEnd < rowCount && <div aria-hidden style={{ height: (rowCount - winEnd) * ROW_H }} />}
+        {empty}
+      </div>
+    </div>
+  );
+});
+
+/** Celulă de antet (grilă). */
+function HeadCell({ children, right, sticky, title }: { children: React.ReactNode; right?: boolean; sticky?: boolean; title?: string }) {
+  return (
+    <div
+      role="columnheader"
+      title={title}
+      className={`flex h-7 items-center overflow-hidden whitespace-nowrap border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 font-semibold ${right ? "justify-end text-right" : ""} ${sticky ? "sticky left-0 z-30" : ""}`}
     >
       {children}
-    </th>
+    </div>
   );
 }
 

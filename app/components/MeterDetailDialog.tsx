@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { MeterDetail } from "@/lib/queries/meters";
-import { addressKey, type MeterRow, type MeterRowBase } from "@/lib/meters";
+import type { MeterDetailResponse } from "@/lib/queries/meters";
+import InvoiceViewButton from "./InvoiceViewButton";
+import { addressKey, enumLabel, type MeterRow, type MeterRowBase } from "@/lib/meters";
 import { INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import { IconX } from "./icons";
 import { useLocale, useT } from "@/lib/i18n/context";
@@ -23,6 +24,7 @@ export default function MeterDetailDialog({
   row,
   rows,
   canTask,
+  canEditInvoices = false,
   taskHref,
   onSelect,
   onClose,
@@ -31,6 +33,8 @@ export default function MeterDetailDialog({
   /** Lista completă din browser (când e încărcată) — pentru „alte contoare ale abonatului / de la aceeași adresă". */
   rows: MeterRow[] | null;
   canTask: boolean;
+  /** Poate edita facturi (invoices.edit) — „Editează” lângă „Vezi”. */
+  canEditInvoices?: boolean;
   taskHref: (r: MeterRowBase) => string;
   onSelect: (r: MeterRowBase) => void;
   onClose: () => void;
@@ -42,21 +46,22 @@ export default function MeterDetailDialog({
   const dmy = (s: string | null | undefined) => (s ? s.slice(0, 10).split("-").reverse().join(".") : null);
 
   // Răspunsul vine pentru un anumit rând; dacă între timp s-a ales alt contor din pop-up, răspunsul vechi se ignoră (state.id ≠ row.id).
-  const [state, setState] = useState<{ id: string; detail: MeterDetail | null; error: string | null } | null>(null);
+  const [state, setState] = useState<{ id: string; detail: MeterDetailResponse | null; error: string | null } | null>(null);
   useEffect(() => {
     const ctl = new AbortController();
-    fetch(`/api/contoare/detail?id=${encodeURIComponent(row.id)}`, { signal: ctl.signal })
+    const invoiceNo = row.invoice?.number;
+    fetch(`/api/contoare/detail?id=${encodeURIComponent(row.id)}${invoiceNo ? `&invoice=${encodeURIComponent(invoiceNo)}` : ""}`, { signal: ctl.signal })
       .then(async (r) => {
         const j = await r.json();
         if (!r.ok) throw new Error(j.error ?? "Eroare.");
-        return j as MeterDetail;
+        return j as MeterDetailResponse;
       })
       .then((detail) => setState({ id: row.id, detail, error: null }))
       .catch((e: Error) => {
         if (e.name !== "AbortError") setState({ id: row.id, detail: null, error: e.message });
       });
     return () => ctl.abort();
-  }, [row.id]);
+  }, [row.id, row.invoice?.number]);
   const cur = state?.id === row.id ? state : null;
   const detail = cur?.detail ?? null;
   const error = cur?.error ?? null;
@@ -71,9 +76,10 @@ export default function MeterDetailDialog({
   // Celelalte contoare ale aceluiași abonat (aceeași înregistrare 1C / același plătitor) și cele de la aceeași adresă.
   const { siblings, sameAddress } = useMemo(() => {
     if (!rows) return { siblings: null, sameAddress: null };
-    const rec = row.id.startsWith("c:") ? null : row.id.split(":")[0];
+    // Id 1C: „<cheie abonat>~<nr. contor>~<k>” — contoarele aceluiași abonat au aceeași cheie (Axioma: „a:<idClient>”, fără frați).
+    const rec = row.id.startsWith("a:") ? null : row.id.slice(0, row.id.lastIndexOf("~", row.id.lastIndexOf("~") - 1));
     const sib = rows.filter(
-      (r) => r.id !== row.id && (row.clientId ? r.clientId === row.clientId : rec !== null && !r.id.startsWith("c:") && r.id.split(":")[0] === rec),
+      (r) => r.id !== row.id && (row.clientId ? r.clientId === row.clientId : rec !== null && r.id.startsWith(`${rec}~`)),
     );
     const sibIds = new Set(sib.map((r) => r.id));
     const key = addressKey(row.address);
@@ -111,6 +117,9 @@ export default function MeterDetailDialog({
         </div>
 
         <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
+          <Link href={`/contoare/${encodeURIComponent(row.id)}`} className="tap inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">
+            {t("Pagina contorului →")}
+          </Link>
           {row.clientId && (
             <Link href={`/platitori/${row.clientId}`} target="_blank" rel="noreferrer" className="tap inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">
               {t("Pagina plătitorului →")}
@@ -130,7 +139,7 @@ export default function MeterDetailDialog({
           <Item label={t("Scos la")} value={dmy(row.removedAt)} />
           <Item label={t("Nr. sigiliu")} value={row.sigiliu} />
           <Item label={t("Consumator")} value={row.consumator} />
-          <Item label={t("IDNO / ИНН")} value={row.inn} />
+          <Item label={t("IDNO")} value={row.inn} />
           <Item label={t("Perioada în registrul 1C")} value={dmy(m?.perioada)} loading={pending} />
           <Item label={t("Sursa datelor")} value={row.source === "axioma" ? "Axioma" : "1C"} />
         </Section>
@@ -146,12 +155,12 @@ export default function MeterDetailDialog({
         )}
 
         <Section title={t("Ultima citire")}>
-          <Item label={t("Citire anterioară")} value={row.prev != null ? `${nf(row.prev)}${row.prevDate ? ` · ${dmy(row.prevDate)}` : ""}` : null} />
-          <Item label={t("Citire curentă")} value={row.curr != null ? <b>{`${nf(row.curr)}${row.currDate ? ` · ${dmy(row.currDate)}` : ""}`}</b> : null} />
-          <Item label={t("Consum")} value={row.consum != null ? <b>{nf(row.consum)}</b> : null} />
-          <Item label={t("Consum mediu")} value={rd ? nf(rd.medie) : null} loading={pending} />
-          <Item label={t("Consum sub-contoare")} value={rd && rd.consumSubcontoare ? nf(rd.consumSubcontoare) : null} loading={pending} />
-          <Item label={t("Sursa citirii")} value={row.sursa} />
+          <Item label={t("Citire anterioară")} value={row.prev != null ? `${nf(row.prev)} m³${row.prevDate ? ` · ${dmy(row.prevDate)}` : ""}` : null} />
+          <Item label={t("Citire curentă")} value={row.curr != null ? <b>{`${nf(row.curr)} m³${row.currDate ? ` · ${dmy(row.currDate)}` : ""}`}</b> : null} />
+          <Item label={t("Consum (m³)")} value={row.consum != null ? <b>{nf(row.consum)} m³</b> : null} />
+          <Item label={t("Consum mediu")} value={rd ? `${nf(rd.medie)} m³` : null} loading={pending} />
+          <Item label={t("Consum sub-contoare")} value={rd && rd.consumSubcontoare ? `${nf(rd.consumSubcontoare)} m³` : null} loading={pending} />
+          <Item label={t("Sursa citirii")} value={enumLabel(row.sursa, t)} />
         </Section>
 
         <Section title={t("Calcul (document 1C)")}>
@@ -160,20 +169,20 @@ export default function MeterDetailDialog({
               {detail.lines.map((l, i) => (
                 <li key={i} className="flex items-baseline justify-between gap-3 px-2.5 py-1.5">
                   <span className="min-w-0">
-                    <span className="block">{l.serviciu}</span>
+                    <span className="block">{enumLabel(l.serviciu, t)}</span>
                     <span className="block text-[11px] text-ink-soft">
-                      {nf(l.volum)} m³ × {money(l.tarif, "")}
+                      {nf(l.volum)} m³ × {money(l.tarif, "MDL")}/m³
                       {l.data ? ` · ${dmy(l.data)}` : ""}
                     </span>
                   </span>
-                  <span className="shrink-0 font-semibold tabular-nums">{money(l.suma, "")}</span>
+                  <span className="shrink-0 font-semibold tabular-nums">{money(l.suma, "MDL")}</span>
                 </li>
               ))}
             </ul>
           ) : (
             <>
-              <Item label={t("Apă")} value={row.apaVol != null || row.apaSum != null ? `${row.apaVol != null ? nf(row.apaVol) : "—"} m³ · ${row.apaSum != null ? money(row.apaSum, "") : "—"}` : null} loading={pending} />
-              <Item label={t("Canal")} value={row.canalVol != null || row.canalSum != null ? `${row.canalVol != null ? nf(row.canalVol) : "—"} m³ · ${row.canalSum != null ? money(row.canalSum, "") : "—"}` : null} loading={pending} />
+              <Item label={t("Apă")} value={row.apaVol != null || row.apaSum != null ? `${row.apaVol != null ? nf(row.apaVol) : "—"} m³ · ${row.apaSum != null ? money(row.apaSum, "MDL") : "—"}` : null} loading={pending} />
+              <Item label={t("Canal")} value={row.canalVol != null || row.canalSum != null ? `${row.canalVol != null ? nf(row.canalVol) : "—"} m³ · ${row.canalSum != null ? money(row.canalSum, "MDL") : "—"}` : null} loading={pending} />
             </>
           )}
         </Section>
@@ -183,8 +192,8 @@ export default function MeterDetailDialog({
           <Item label={t("Cont personal")} value={row.account} />
           <Item label={t("Contract")} value={row.contract} />
           <Item label={t("Tip")} value={row.person ? t("Persoană fizică") : t("Firmă / instituție")} />
-          <Item label={t("Sector")} value={row.sector} />
-          <Item label={t("Tip sector (1C)")} value={sub?.tipSector} loading={pending} />
+          <Item label={t("Sector")} value={enumLabel(row.sector, t)} />
+          <Item label={t("Tip sector (1C)")} value={enumLabel(sub?.tipSector, t)} loading={pending} />
           <Item label={t("Adresă")} value={row.address} />
           <Item label={t("Telefon")} value={row.phone} />
           <Item label={t("Email")} value={row.email} />
@@ -203,6 +212,20 @@ export default function MeterDetailDialog({
               <Item label={t("Status")} value={st ? <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{t(st.label)}</span> : null} />
               <Item label={t("De achitat")} value={<b>{money(inv.grandTotal, inv.currency)}</b>} />
               <Item label={t("Scadență")} value={dmy(inv.dueDate)} />
+              <Item
+                label={t("Factura")}
+                loading={pending}
+                value={
+                  detail?.invoice ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <InvoiceViewButton token={detail.invoice.publicToken} title={inv.number} className={miniBtn} />
+                      {canEditInvoices && (
+                        <Link href={`/invoices/${detail.invoice.id}/edit`} className={miniBtn}>{t("Editează")}</Link>
+                      )}
+                    </span>
+                  ) : null
+                }
+              />
             </>
           ) : (
             <p className="px-2.5 py-2 text-sm text-ink-soft">{t("Nicio factură.")}</p>
@@ -213,7 +236,7 @@ export default function MeterDetailDialog({
           <Section title={t("Consumator (1C)")}>
             <Item label={t("Nume")} value={cons?.nume} loading={pending} />
             <Item label={t("Zonă presiune apă")} value={cons?.zona} loading={pending} />
-            <Item label={t("Sector (Участок)")} value={cons?.sector} loading={pending} />
+            <Item label={t("Sector de deservire")} value={cons?.sector} loading={pending} />
             <Item label={t("Nr. persoane")} value={cons ? String(cons.nrPersoane) : null} loading={pending} />
             <Item label={t("Suprafață")} value={cons ? nf(cons.suprafata) : null} loading={pending} />
             <Item label={t("Început consum")} value={dmy(cons?.inceput)} loading={pending} />
@@ -234,15 +257,15 @@ export default function MeterDetailDialog({
                 <li key={i} className="flex items-baseline justify-between gap-3 px-2.5 py-1.5">
                   <span className="min-w-0">
                     <span className="block tabular-nums">
-                      {nf(h.prev)} → <b>{nf(h.curr)}</b>
+                      {nf(h.prev)} → <b>{nf(h.curr)}</b> m³
                     </span>
                     <span className="block text-[11px] text-ink-soft">
                       {dmy(h.currDate) ?? dmy(h.docDate) ?? "—"}
-                      {h.sursa ? ` · ${h.sursa}` : ""}
+                      {h.sursa ? ` · ${enumLabel(h.sursa, t)}` : ""}
                     </span>
                   </span>
                   <span className="shrink-0 text-right">
-                    <span className="block font-semibold tabular-nums">{nf(h.consum)}</span>
+                    <span className="block font-semibold tabular-nums">{nf(h.consum)} m³</span>
                     <span className="block text-[11px] text-ink-soft">{t("consum")}</span>
                   </span>
                 </li>

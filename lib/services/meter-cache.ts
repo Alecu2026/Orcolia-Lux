@@ -35,7 +35,8 @@ const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const META_CHECK_MS = 10_000;
 const REBUILD_DELAY_MS = 2_000;
 
-type StaticArtifact = { v: 1; at: number; rows: MeterStatic[] };
+// v2: id-uri stabile ale contoarelor (cheie abonat~nr. contor~k) — rândurile salvate cu v1 se ignoră și lista se reconstruiește
+type StaticArtifact = { v: 2; at: number; rows: MeterStatic[] };
 type StaticSnap = { version: string; builtAt: number; rows: MeterStatic[] };
 
 let sl1: StaticSnap | null = null;
@@ -55,7 +56,7 @@ async function loadStaticFromDb(): Promise<StaticSnap | null> {
   if (!row) return null;
   try {
     const art = JSON.parse(gunzipSync(Buffer.from(row.gz)).toString("utf8")) as StaticArtifact;
-    if (art.v !== 1 || !Array.isArray(art.rows)) return null;
+    if (art.v !== 2 || !Array.isArray(art.rows)) return null;
     return { version: row.version, builtAt: art.at, rows: art.rows };
   } catch (e) {
     console.error("[meter-cache] rândul din baza de date e ilizibil, îl reconstruiesc:", e);
@@ -70,7 +71,7 @@ export function rebuildMeterStatic(reason = "manual"): Promise<StaticSnap> {
     const t0 = Date.now();
     const startedAt = new Date(); // „datele sunt cel târziu de la acest moment": o modificare ulterioară rămâne marcată ca depășită
     const rows = await buildMeterStatic();
-    const art: StaticArtifact = { v: 1, at: startedAt.getTime(), rows };
+    const art: StaticArtifact = { v: 2, at: startedAt.getTime(), rows };
     const gz = gzipSync(Buffer.from(JSON.stringify(art), "utf8"), { level: 6 });
     const version = createHash("sha1").update(gz).digest("hex").slice(0, 16);
     try {

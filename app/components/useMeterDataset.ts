@@ -5,7 +5,7 @@ import { decodeMeters, type MeterRow, type MeterTuple } from "@/lib/meters";
 import { METERS_V_COOKIE } from "@/lib/payer-prefs";
 import { idbGet, idbSet } from "./usePayerDataset";
 
-const IDB_KEY = "meters-v1";
+const IDB_KEY = "meters-v2"; // v2: id-uri stabile ale contoarelor
 const FRESH_MS = 20_000; // sub 20 s de la ultima verificare nu mai întrebăm serverul (altfel o cerere condiționată: 304 dacă nu s-a schimbat nimic)
 const STALE_REFRESH_MS = 5 * 60_000; // la revenirea în filă, dacă datele sunt mai vechi de 5 minute, le reîmprospătăm discret
 

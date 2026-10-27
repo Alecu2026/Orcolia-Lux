@@ -319,3 +319,33 @@ export function distinctSources(rows: MeterRow[]): string[] {
   for (const r of rows) if (r.sursa) c.set(r.sursa, (c.get(r.sursa) ?? 0) + 1);
   return [...c].sort((a, b) => b[1] - a[1]).map(([s]) => s);
 }
+
+// ── Valorile din 1C, în limba aleasă ──────────────────────────────────────────────────────────
+
+/**
+ * Valorile enumerate din 1C (sursa citirii, tipul serviciului, tipul sectorului) vin în rusă. Cele cunoscute se afișează în limba aleasă
+ * (cheia = textul românesc din dicționar); cele necunoscute rămân exact ca în 1C. Numele, adresele și celelalte date ale abonaților nu se traduc.
+ */
+const ONEC_ENUM: Record<string, string> = {
+  "Контролер": "Controlor",
+  "Контролёр": "Controlor",
+  "Абонент": "Abonat",
+  "Расчетный": "Calculat (estimat)",
+  "Расчётный": "Calculat (estimat)",
+  "Потребление воды": "Serviciul de alimentare cu apă",
+  "Сброс канализации": "Serviciul de canalizare",
+  "Частный": "Sector privat",
+  "Частный сектор": "Sector privat",
+  "Коммунальный": "Sector comunal",
+  "Коммунальный сектор": "Sector comunal",
+  "Sector privat": "Sector privat",
+  "Sector comunal": "Sector comunal",
+  "Axioma (estimat)": "Axioma (estimat)",
+};
+
+/** Eticheta unei valori 1C/Axioma în limba curentă. Caută doar în cheile cunoscute (rapid): textul necunoscut nu trece prin traducere. */
+export function enumLabel(raw: string | null | undefined, t: (ro: string) => string): string {
+  if (!raw) return "";
+  const key = ONEC_ENUM[raw.trim()];
+  return key ? t(key) : raw;
+}
