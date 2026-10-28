@@ -3,6 +3,8 @@
  * formele de date trimise între server și pagina „Citiri teren". Fără "server-only" — rulează și în browser.
  */
 
+import { SERIOUS_ISSUES, type IssueDto } from "./meter-issues";
+
 /** Fusul orar al firmei: „luna aceasta" se socotește după el, nu după ceasul telefonului. */
 export const READING_TZ = "Europe/Bucharest";
 
@@ -50,7 +52,8 @@ export function parseIndex(raw: string): number | null {
  * Un contor din lista de teren, ca tuplu: 0 id, 1 nr. contor, 2 abonat, 3 adresă, 4 ultimul index cunoscut (m³), 5 data lui („YYYY-MM-DD"),
  * 6 indexul citit luna aceasta (null = necitit), 7 când a fost citit (ms), 8 are poză (0/1), 9 cine a citit, 10 distanța (m) față de locația citirii anterioare, 11 citirea are locație GPS (0/1), 12–13 latitudine / longitudine a CONTORULUI (din teren), 14 adresa vine din teren (1C n-are una) (0/1), 15 precizia (m) a locației afișate.
  */
-export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null];
+/** 16 sector („Участок” din 1C), 17 neregula deschisă (cod, vezi lib/meter-issues.ts) sau null. */
+export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null, string | null, string | null];
 
 export type FieldRow = {
   id: string;
@@ -77,6 +80,14 @@ export type FieldRow = {
   addrField: boolean;
   /** Precizia (m) a locației lat/lng — mare (> MAX_LOC_ACCURACY) = locație nesigură. */
   locAcc: number | null;
+  /** Sectorul din 1C („Участок”), dacă e completat. */
+  sector: string | null;
+  /** Neregula deschisă a contorului (cod) sau null. */
+  issue: string | null;
+  /** Doar în interfață: ruta căreia îi aparține contorul (după regulile rutelor). */
+  route?: string | null;
+  /** Doar în interfață: citirea e în coada de pe telefon (wait = în așteptare, error = respinsă de server). */
+  pending?: "wait" | "error";
   /** Localitatea (primul segment al adresei), pentru filtrul „Localitate”. */
   locality: string;
   /** Ziua citirii („YYYY-MM-DD”, în fusul firmei), pentru filtrul pe perioadă. */
@@ -115,6 +126,8 @@ export function decodeField(t: FieldTuple[]): FieldRow[] {
     lng: x[13] ?? null,
     addrField: x[14] === 1,
     locAcc: x[15] ?? null,
+    sector: x[16] ?? null,
+    issue: x[17] ?? null,
     locality: localityOf(x[3]),
     _day: x[7] != null ? dayOf(x[7]) : null,
     _h: [x[1], x[2], x[3]].filter(Boolean).join("\n").toLowerCase(),
@@ -151,10 +164,14 @@ export type FieldFilters = {
   address: "" | "has" | "none";
   /** Locația GPS a contorului e / nu e cunoscută. */
   meterLoc: "" | "yes" | "no";
+  /** Ruta (id), „none” = fără rută, „mine” = rutele atribuite utilizatorului curent. */
+  route: string;
+  /** Contoare cu neregulă deschisă: oricare / doar cele grave. */
+  issue: "" | "any" | "serious";
   sort: "" | "contor" | "name" | "readDesc" | "consumDesc" | "consumAsc" | "lastOld";
 };
 
-export const EMPTY_FIELD_FILTERS: FieldFilters = { q: "", street: "", status: "unread", photo: "", check: "", by: "", locality: "", from: "", to: "", lastIndex: "", consumMin: "", consumMax: "", geo: "", address: "", meterLoc: "", sort: "" };
+export const EMPTY_FIELD_FILTERS: FieldFilters = { q: "", street: "", status: "unread", photo: "", check: "", by: "", locality: "", from: "", to: "", lastIndex: "", consumMin: "", consumMax: "", geo: "", address: "", meterLoc: "", route: "", issue: "", sort: "" };
 
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], dflt: T): T => (typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : dflt);
 
@@ -178,6 +195,8 @@ export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters
     geo: oneOf(raw.geo, ["", "yes", "no"] as const, ""),
     address: oneOf(raw.address, ["", "has", "none"] as const, ""),
     meterLoc: oneOf(raw.meterLoc, ["", "yes", "no"] as const, ""),
+    route: typeof raw.route === "string" && /^([0-9a-f]{24}|none|mine)$/i.test(raw.route) ? raw.route : "",
+    issue: oneOf(raw.issue, ["", "any", "serious"] as const, ""),
     sort: oneOf(raw.sort, ["", "contor", "name", "readDesc", "consumDesc", "consumAsc", "lastOld"] as const, ""),
   };
 }
@@ -185,7 +204,7 @@ export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters
 /** Câte filtre sunt active (față de starea implicită: necitite, fără alte filtre). Sortarea nu se numără. */
 export function countActiveFieldFilters(f: FieldFilters): number {
   return (f.q ? 1 : 0) + (f.street ? 1 : 0) + (f.status !== "unread" ? 1 : 0) + (f.photo ? 1 : 0) + (f.check ? 1 : 0) + (f.by ? 1 : 0) +
-    (f.locality ? 1 : 0) + (f.from || f.to ? 1 : 0) + (f.lastIndex ? 1 : 0) + (f.consumMin || f.consumMax ? 1 : 0) + (f.geo ? 1 : 0) + (f.address ? 1 : 0) + (f.meterLoc ? 1 : 0);
+    (f.locality ? 1 : 0) + (f.from || f.to ? 1 : 0) + (f.lastIndex ? 1 : 0) + (f.consumMin || f.consumMax ? 1 : 0) + (f.geo ? 1 : 0) + (f.address ? 1 : 0) + (f.meterLoc ? 1 : 0) + (f.route ? 1 : 0) + (f.issue ? 1 : 0);
 }
 
 export function fieldFiltersToParams(f: FieldFilters): URLSearchParams {
@@ -205,18 +224,21 @@ export function fieldFiltersToParams(f: FieldFilters): URLSearchParams {
   if (f.geo) p.set("geo", f.geo);
   if (f.address) p.set("address", f.address);
   if (f.meterLoc) p.set("meterLoc", f.meterLoc);
+  if (f.route) p.set("route", f.route);
+  if (f.issue) p.set("issue", f.issue);
   if (f.sort) p.set("sort", f.sort);
   return p;
 }
 
 const collator = new Intl.Collator("ro", { numeric: true });
+const SERIOUS = new Set<string>(SERIOUS_ISSUES);
 
 /** Rândul e „de verificat”? (consum negativ, salt mare sau citit departe de locația anterioară) */
 export const fieldSuspect = (r: FieldRow): "lower" | "high" | "far" | null =>
   r.consum != null && r.consum < 0 ? "lower" : r.consum != null && r.consum > JUMP_CONFIRM_M3 ? "high" : r.distanceM != null && r.distanceM > FAR_METERS ? "far" : null;
 
 /** Filtrează și sortează lista completă. Fără sortare explicită păstrează ordinea adreselor (cea de pe server). */
-export function filterField(rows: FieldRow[], f: FieldFilters): FieldRow[] {
+export function filterField(rows: FieldRow[], f: FieldFilters, mineRoutes?: Set<string>): FieldRow[] {
   const tokens = f.q.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5);
   const street = f.street.toLowerCase();
   const num = (v: string) => {
@@ -238,6 +260,15 @@ export function filterField(rows: FieldRow[], f: FieldFilters): FieldRow[] {
     if (f.by && r.by !== f.by) return false;
     if (f.locality && r.locality !== f.locality) return false;
     if (f.address === "has" ? !r.address : f.address === "none" ? !!r.address : false) return false;
+    if (f.route) {
+      if (f.route === "none") {
+        if (r.route) return false;
+      } else if (f.route === "mine") {
+        // fără rute atribuite utilizatorului, „Rutele mele” nu filtrează nimic
+        if (mineRoutes && mineRoutes.size && !(r.route && mineRoutes.has(r.route))) return false;
+      } else if (r.route !== f.route) return false;
+    }
+    if (f.issue === "any" ? !r.issue : f.issue === "serious" ? !(r.issue && SERIOUS.has(r.issue)) : false) return false;
     if (f.meterLoc === "yes" ? r.lat == null : f.meterLoc === "no" ? r.lat != null : false) return false;
     if (f.from && !(r._day && r._day >= f.from)) return false;
     if (f.to && !(r._day && r._day <= f.to)) return false;
@@ -296,7 +327,7 @@ export const MAX_LOC_ACCURACY = 100;
 export const MAX_ADDRESS = 200;
 
 export type SaveReadingResult =
-  | { ok: true; reading: ReadingDto; location: MeterLocationDto }
+  | { ok: true; reading: ReadingDto; location: MeterLocationDto; /** neregula raportată odată cu citirea (sau motivul pentru care n-a putut fi salvată) */ issue?: IssueDto | null; issueError?: string | null }
   /** `confirm`: citirea pare greșită (mai mică decât cea anterioară / un salt mare) — se salvează abia după confirmare. */
   | { ok: false; error: string; confirm?: "lower" | "high" };
 

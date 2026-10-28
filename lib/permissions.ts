@@ -46,6 +46,8 @@ export type PermissionKey =
   | "payers.delete"
   // Citiri lunare din teren (introducere index, locație, poză) — fără acces la datele plătitorilor
   | "meters.read"
+  // Rute de citire, comparația planificat / citit pe cititor, nereguli ale contoarelor (administrare)
+  | "meters.manage"
   // PBX / apeluri
   | "pbx.view"
   | "pbx.manage"
@@ -119,6 +121,7 @@ export const PERMISSION_GROUPS: {
       { key: "payers.notify", label: "Notificări (trimitere SMS/email/apel, șabloane)" },
       { key: "payers.delete", label: "Ștergere" },
       { key: "meters.read", label: "Citiri contoare (introducere index lunar, locație, poză) — pagina Citiri teren" },
+      { key: "meters.manage", label: "Rute de citire, planificat vs citit pe cititor, nereguli contoare (administrare)" },
     ],
   },
   {

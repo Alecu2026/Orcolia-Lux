@@ -21,6 +21,7 @@ const en: Messages = {
     users: "Users",
     auditLogs: "Audit Logs",
     deliveryLogs: "Notification log",
+    readingRoutes: "Reading routes",
     telegram: "Telegram",
     settings: "Settings",
   },

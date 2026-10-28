@@ -19,6 +19,7 @@
     users: "Utilizatori",
     auditLogs: "Audit Logs",
     deliveryLogs: "Jurnal notificări",
+    readingRoutes: "Rute de citire",
     telegram: "Telegram",
     settings: "Setări",
   },

@@ -9,6 +9,7 @@ import { INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import InvoiceViewButton from "./InvoiceViewButton";
 import MeterMonthView from "./MeterMonthView";
 import { Item, Section, Skeleton } from "./MeterBits";
+import MeterIssuesPanel from "./MeterIssuesPanel";
 import { IconChevronLeft } from "./icons";
 import { useMeterDataset } from "./useMeterDataset";
 import { useLocale, useT } from "@/lib/i18n/context";
@@ -314,6 +315,12 @@ export default function MeterPageClient({
           </Section>
         ) : (
           <Skeleton className="h-72" />
+        )}
+
+        {meter && (
+          <Section title={t("Starea contorului și nereguli")}>
+            <MeterIssuesPanel key={id} issues={meter.issues ?? []} canManage={meter.canManageIssues} months={detail?.months ?? []} sigiliu={row?.sigiliu ?? detail?.meter?.sigiliu ?? null} removedAt={removedAt} />
+          </Section>
         )}
 
         {meter ? (

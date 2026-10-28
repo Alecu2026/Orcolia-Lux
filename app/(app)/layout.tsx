@@ -43,6 +43,7 @@ export default async function AppLayout({
     "map.view": can(user, "map.view"),
     "payers.view": can(user, "payers.view"),
     "meters.read": can(user, "meters.read"),
+    "meters.manage": can(user, "meters.manage"),
     "pbx.view": can(user, "pbx.view"),
     "pbx.manage": can(user, "pbx.manage"),
     "appointments.view": can(user, "appointments.view"),

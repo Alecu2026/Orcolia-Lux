@@ -7,6 +7,7 @@ import {
   FAR_METERS,
   JUMP_CONFIRM_M3,
   countActiveFieldFilters,
+  fieldConsum,
   fieldFiltersToParams,
   fieldSuspect,
   filterField,
@@ -14,6 +15,8 @@ import {
   type FieldFilters,
   type FieldRow,
 } from "@/lib/meter-readings";
+import { ISSUE_LABELS, isIssueKind, SERIOUS_ISSUES } from "@/lib/meter-issues";
+import { prepareRoutes, routeOf } from "@/lib/meter-routes";
 import { DEFAULT_PER_PAGE, NOTIFY_PER_PAGE, normalizePerPageClient, perPageLabel } from "@/lib/payer-notify";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
@@ -22,6 +25,7 @@ import { useToast } from "./toast";
 import ReadingForm from "./ReadingForm";
 import VirtualList from "./VirtualList";
 import { useFieldDataset } from "./useFieldDataset";
+import { onQueueSynced, removeQueued, retryQueued, syncNow, useFieldQueue } from "./field-queue";
 import { MAX_LOC_ACCURACY, mapsUrl, type MeterLocationDto } from "@/lib/meter-readings";
 
 const STORAGE_KEY = "filters:/contoare/citiri";
@@ -73,13 +77,79 @@ const dmy = (s: string | null) => (s ? s.slice(0, 10).split("-").reverse().join(
  * Aceeași schemă ca „Contoare” / „Plătitori": toată lista stă în browser (IndexedDB + memorie), filtrele și sortarea sunt instant, tabelul are rânduri
  * virtualizate, paginare numerică și pop-up pentru citire.
  */
+/** Bara de stare a coadei de pe telefon: fără internet, citiri în așteptare / respinse, lista cozii cu „Retrimite” și „Șterge”. */
+function QueueBanner({ q, loadedAt, tag }: { q: ReturnType<typeof useFieldQueue>; loadedAt: number | null; tag: string }) {
+  const t = useT();
+  const waiting = q.items.filter((i) => i.state === "wait").length;
+  const failed = q.items.filter((i) => i.state === "error").length;
+  if (q.online && q.items.length === 0) return null;
+  const time = (ms: number) => new Date(ms).toLocaleTimeString(tag, { hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className={`card mb-3 p-3 text-sm ${!q.online ? "border-st-progress/50 bg-st-progress/10" : ""}`} role="status">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {!q.online && <span className="font-semibold">📴 {t("Fără internet")} — {t("citirile se salvează pe telefon și pleacă singure când revine conexiunea.")}</span>}
+        {waiting > 0 && (
+          <span>
+            ⏳ <b className="tabular-nums">{waiting}</b> {t("citiri în așteptare")}
+            {q.syncing ? ` · ${t("se trimit…")}` : ""}
+          </span>
+        )}
+        {failed > 0 && (
+          <span className="text-st-cancelled">
+            ⚠ <b className="tabular-nums">{failed}</b> {t("respinse de server")}
+          </span>
+        )}
+        {loadedAt && <span className="text-xs text-ink-soft">{t("Lista descărcată la {time}", { time: time(loadedAt) })}</span>}
+        {waiting > 0 && (
+          <button type="button" onClick={() => void syncNow()} disabled={!q.online || q.syncing} className="tap ml-auto h-8 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong disabled:opacity-50">
+            {t("Trimite acum")}
+          </button>
+        )}
+      </div>
+      {q.items.length > 0 && (
+        <details className="mt-2" open={failed > 0}>
+          <summary className="cursor-pointer text-xs font-semibold text-brand">{t("Vezi citirile din coadă")}</summary>
+          <ul className="mt-1.5 divide-y divide-[var(--color-line)] text-[13px]">
+            {q.items.map((i) => (
+              <li key={i.cid} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5">
+                <span className="font-mono font-semibold">{i.contor}</span>
+                <span className="min-w-0 flex-1 truncate text-ink-soft">{i.name}</span>
+                {i.value != null ? <span className="tabular-nums font-semibold">{i.value.toLocaleString(tag, { maximumFractionDigits: 3 })} m³</span> : <span className="text-xs text-ink-soft">{t("fără index")}</span>}
+                {i.issueKind && isIssueKind(i.issueKind) && <span className="rounded bg-st-cancelled/10 px-1.5 text-[11px] font-semibold text-st-cancelled">⚑ {t(ISSUE_LABELS[i.issueKind])}</span>}
+                <span className="text-xs text-ink-soft">{time(i.readAt)}{i.photo ? " · 📷" : ""}</span>
+                {i.state === "wait" && !i.error && <span className="rounded bg-st-progress/15 px-1.5 text-[11px] font-semibold text-st-progress">{t("În așteptare")}</span>}
+                {i.error && <span className="w-full text-xs text-st-cancelled">{i.state === "error" ? `${t("Respinsă")}: ` : ""}{i.error}</span>}
+                <span className="ml-auto flex gap-1">
+                  {i.state === "error" && (
+                    <button type="button" onClick={() => void retryQueued(i.cid)} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-xs hover:bg-[var(--color-surface-2)]">{t("Retrimite")}</button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { if (window.confirm(t("Ștergi această citire din coadă? Nu va mai fi trimisă."))) void removeQueued(i.cid); }}
+                    className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-xs text-st-cancelled hover:bg-[var(--color-surface-2)]"
+                  >
+                    {t("Șterge")}
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export default function FieldReadings({
   openId,
   canViewMeter,
   initialQuery,
+  meId,
 }: {
   openId: string | null;
   canViewMeter: boolean;
+  /** Utilizatorul curent: „Rutele mele” = rutele atribuite lui. */
+  meId: string;
   /** Parametrii din adresă (?q=…&status=…): link de partajat. */
   initialQuery: Record<string, string | undefined>;
 }) {
@@ -89,6 +159,54 @@ export default function FieldReadings({
   const nf = (n: number) => n.toLocaleString(tag);
   const ds = useFieldDataset();
   const data = ds.data;
+  const q = useFieldQueue();
+  const patchRow = ds.patchRow;
+  // citirile trimise cu succes din coadă: rândul se actualizează cu ce a salvat serverul
+  useEffect(
+    () =>
+      onQueueSynced((item, res) => {
+        if (res.issue) patchRow(item.meterId, { issue: res.issue.resolvedAt ? null : res.issue.kind });
+        const rd = res.reading;
+        const loc = res.location;
+        if (!rd || !loc) return;
+        patchRow(item.meterId, {
+          value: rd.value,
+          readAt: new Date(rd.readAt).getTime(),
+          photo: !!rd.photoUrl,
+          by: rd.userName,
+          distanceM: rd.distanceM,
+          geo: rd.lat != null && rd.lng != null,
+          // la o retrimitere (citire deja salvată) serverul nu știe adresa: nu o ștergem din rând
+          ...(loc.address != null ? { address: loc.address, addrField: loc.addrField } : {}),
+          lat: loc.lat,
+          lng: loc.lng,
+          locAcc: loc.accuracy,
+        });
+      }),
+    [patchRow],
+  );
+  /** Lista de afișat: citirile din coada de pe telefon se văd peste lista descărcată (⏳ în așteptare / ⚠ respinse). */
+  const routes = ds.routes;
+  const myRoutes = useMemo(() => routes.filter((r) => r.readerId === meId), [routes, meId]);
+  const mineIds = useMemo(() => new Set(myRoutes.map((r) => r.id)), [myRoutes]);
+  /** Fiecare contor primește ruta lui (prima rută ale cărei reguli i se potrivesc: sector 1C / localitate / stradă). */
+  const routed = useMemo(() => {
+    if (!data) return [];
+    if (routes.length === 0) return data.rows;
+    const prepared = prepareRoutes(routes);
+    return data.rows.map((r): FieldRow => ({ ...r, route: routeOf({ sector: r.sector, address: r.address }, prepared) }));
+  }, [data, routes]);
+  const rowsAll = useMemo(() => {
+    if (q.items.length === 0) return routed;
+    const by = new Map(q.items.map((i) => [i.meterId, i]));
+    return routed.map((r): FieldRow => {
+      const it = by.get(r.id);
+      if (!it) return r;
+      const issue = it.issueKind ?? r.issue;
+      if (it.value == null) return { ...r, issue };
+      return { ...r, issue, value: it.value, readAt: it.readAt, photo: !!it.photo, by: t("Tu"), distanceM: null, consum: fieldConsum(it.value, r.lastIndex), geo: it.lat != null, pending: it.state === "error" ? "error" : "wait" };
+    });
+  }, [routed, q.items, t]);
 
   const initialFilters = useMemo(() => sanitizeFieldFilters(initialQuery), [initialQuery]);
   const [filters, setFilters] = useState<FieldFilters>(initialFilters);
@@ -97,6 +215,7 @@ export default function FieldReadings({
   const [perPage, setPerPage] = useState(normalizePerPageClient(initialQuery.perPage));
   const [selId, setSelId] = useState<string | null>(openId);
   const [ready, setReady] = useState(false);
+  const routeInit = useRef(false);
   const debounce = useRef<Partial<Record<TextKey, ReturnType<typeof setTimeout>>>>({});
   const jumpTo = useRef<string | null>(null);
 
@@ -137,6 +256,16 @@ export default function FieldReadings({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Cititorul cu o rută atribuită vede implicit doar ruta lui (o dată, după ce rutele s-au încărcat); poate alege oricând „Toate rutele”.
+  useEffect(() => {
+    if (routeInit.current || !ready || routes.length === 0) return;
+    routeInit.current = true;
+    if (myRoutes.length > 0 && !filters.route && !initialQuery.route) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setFilters((f) => ({ ...f, route: myRoutes.length === 1 ? myRoutes[0].id : "mine" }));
+    }
+  }, [ready, routes, myRoutes, filters.route, initialQuery.route]);
+
   // Salvează filtrele + sincronizează adresa (link de partajat), fără navigare.
   useEffect(() => {
     if (!ready) return;
@@ -156,7 +285,7 @@ export default function FieldReadings({
 
   // Controalele se actualizează imediat; lista de ~25.000 de rânduri se recalculează în randarea următoare (amânată), deci un select nu „se agață".
   const listFilters = useDeferredValue(filters);
-  const list = useMemo(() => (data ? filterField(data.rows, listFilters) : []), [data, listFilters]);
+  const list = useMemo(() => (data ? filterField(rowsAll, listFilters, mineIds) : []), [data, rowsAll, listFilters, mineIds]);
   const totalPages = Math.max(1, Math.ceil(list.length / perPage));
   const curPage = Math.min(page, totalPages);
   const pageRows = useMemo(() => list.slice((curPage - 1) * perPage, curPage * perPage), [list, curPage, perPage]);
@@ -177,7 +306,7 @@ export default function FieldReadings({
     let flagged = 0;
     const users = new Set<string>();
     const localities = new Set<string>();
-    for (const r of data.rows) {
+    for (const r of rowsAll) {
       if (r.locality) localities.add(r.locality);
       if (r.value != null) {
         done++;
@@ -185,8 +314,8 @@ export default function FieldReadings({
         if (r.by) users.add(r.by);
       }
     }
-    return { total: data.rows.length, done, flagged, users: [...users].sort((a, b) => a.localeCompare(b)), localities: [...localities].sort((a, b) => a.localeCompare(b)) };
-  }, [data]);
+    return { total: rowsAll.length, done, flagged, users: [...users].sort((a, b) => a.localeCompare(b)), localities: [...localities].sort((a, b) => a.localeCompare(b)) };
+  }, [data, rowsAll]);
 
   function setFilter(patch: Partial<FieldFilters>) {
     setFilters((f) => ({ ...f, ...patch }));
@@ -210,7 +339,7 @@ export default function FieldReadings({
   const onOpen = useCallback((r: FieldRow) => setSelId(r.id), [setSelId]);
 
   const active = countActiveFieldFilters({ ...filters, q: draft.q, street: draft.street, consumMin: draft.consumMin, consumMax: draft.consumMax });
-  const selected = selId && data ? (data.rows.find((r) => r.id === selId) ?? null) : null;
+  const selected = selId && data ? (rowsAll.find((r) => r.id === selId) ?? null) : null;
 
   /** Următorul contor necitit după cel dat: în ordinea listei curente (filtre / sortare, fără filtrul de status), apoi de la început; dacă filtrele n-au lăsat niciunul, în toată lista (ordinea adreselor). */
   const nextUnread = useCallback(
@@ -222,9 +351,9 @@ export default function FieldReadings({
         for (let k = 0; k < i; k++) if (ordered[k].value == null) return ordered[k].id;
         return null;
       };
-      return find(filterField(data.rows, { ...filters, status: "all" })) ?? find(data.rows);
+      return find(filterField(rowsAll, { ...filters, status: "all" })) ?? find(rowsAll);
     },
-    [data, filters],
+    [data, rowsAll, filters],
   );
 
   const from = list.length === 0 ? 0 : (curPage - 1) * perPage + 1;
@@ -244,13 +373,15 @@ export default function FieldReadings({
       const s = v == null ? "" : typeof v === "number" ? String(v).replace(".", ",") : v;
       return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const head = ["Nr. contor", "Abonat", "Adresă", "Index anterior (m³)", "Data indexului anterior", "Index curent (m³)", "Consum (m³)", "Citit la", "Citit de", "Poză", "Distanță față de citirea anterioară (m)", "Latitudine contor", "Longitudine contor"].map((h) => esc(t(h)));
+    const head = ["Nr. contor", "Abonat", "Adresă", "Index anterior (m³)", "Data indexului anterior", "Index curent (m³)", "Consum (m³)", "Citit la", "Citit de", "Poză", "Distanță față de citirea anterioară (m)", "Latitudine contor", "Longitudine contor", "Stare", "Sector 1C", "Rută", "Neregulă"].map((h) => esc(t(h)));
     const lines = [head.join(";")];
     for (const r of list) {
       lines.push(
         [
           r.contor, r.name, r.address, r.lastIndex, dmy(r.lastDate), r.value, r.consum,
           r.readAt ? new Date(r.readAt).toLocaleString(tag) : "", r.by, r.photo ? t("da") : "", r.distanceM, r.lat, r.lng,
+          r.value == null ? "" : r.pending === "wait" ? t("În așteptare (pe telefon)") : r.pending === "error" ? t("Respinsă") : t("Trimis"),
+          r.sector, routes.find((x) => x.id === r.route)?.name ?? "", r.issue && isIssueKind(r.issue) ? t(ISSUE_LABELS[r.issue]) : "",
         ].map(esc).join(";"),
       );
     }
@@ -283,6 +414,8 @@ export default function FieldReadings({
 
   return (
     <div>
+      <QueueBanner q={q} loadedAt={ds.loadedAt} tag={tag} />
+
       {/* ── Progres ───────────────────────────────────────────────────────── */}
       <div className="card mb-3 p-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -352,6 +485,21 @@ export default function FieldReadings({
           <option value="">{t("Localitate: toate")}</option>
           {stats.localities.map((l) => <option key={l} value={l}>{l}</option>)}
           {filters.locality && !stats.localities.includes(filters.locality) && <option value={filters.locality}>{filters.locality}</option>}
+        </select>
+        {routes.length > 0 && (
+          <select value={filters.route} onChange={(e) => setFilter({ route: e.target.value })} className={fld(filters.route)} aria-label={t("Ruta de citire")}>
+            <option value="">{t("Rută: toate")}</option>
+            {myRoutes.length > 0 && <option value="mine">{myRoutes.length === 1 ? t("Ruta mea") : t("Rutele mele")}</option>}
+            {routes.map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+            <option value="none">{t("Fără rută")}</option>
+          </select>
+        )}
+        <select value={filters.issue} onChange={(e) => setFilter({ issue: e.target.value as FieldFilters["issue"] })} className={fld(filters.issue)} aria-label={t("Starea contorului")}>
+          <option value="">{t("Stare contor: toate")}</option>
+          <option value="any">{t("Cu neregulă deschisă")}</option>
+          <option value="serious">{t("Nereguli grave (fraudă, defect, curgere inversă)")}</option>
         </select>
         <select value={filters.address} onChange={(e) => setFilter({ address: e.target.value as FieldFilters["address"] })} className={fld(filters.address)} aria-label={t("Adresă contor")}>
           <option value="">{t("Adresă: toate")}</option>
@@ -448,6 +596,7 @@ export default function FieldReadings({
           </select>
         </label>
       </div>
+      {!data && !q.online && <div className="card mb-2 p-6 text-center text-ink-soft">{t("Fără internet, iar lista nu e descărcată pe acest telefon. Deschide pagina o dată cu internet ca să o descarci.")}</div>}
       {ds.loading && !data && <div className="mb-2 h-0.5 animate-pulse rounded-full bg-brand opacity-60" />}
       {ds.error && (
         <p className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
@@ -509,6 +658,7 @@ export default function FieldReadings({
           canViewMeter={canViewMeter}
           onClose={() => setSelId(null)}
           onSaved={onSaved}
+          onIssue={(kind) => patchRow(selected.id, { issue: kind })}
           onNext={() => {
             const n = nextUnread(selected.id);
             jumpTo.current = n;
@@ -541,14 +691,14 @@ const FieldTr = memo(function FieldTr({ r, onOpen, compact }: { r: FieldRow; onO
       className={`grid cursor-pointer outline-none hover:bg-brand-soft/30 focus-visible:bg-brand-soft/40 ${r.value != null ? "bg-st-done/5" : ""}`}
       style={{ gridTemplateColumns: compact ? GRID_COMPACT : GRID, height: ROW_H, contain: "layout style" }}
     >
-      <div role="cell" className={`${CELL} sticky left-0 z-10 bg-[var(--color-surface)] font-mono font-medium`}>{r.contor}</div>
+      <div role="cell" className={`${CELL} sticky left-0 z-10 bg-[var(--color-surface)] font-mono font-medium`}>{r.issue && isIssueKind(r.issue) && <span className={`mr-0.5 ${SERIOUS_ISSUES.includes(r.issue) ? "text-st-cancelled" : "text-st-progress"}`} title={t(ISSUE_LABELS[r.issue])}>⚑</span>}{r.contor}</div>
       <div role="cell" className={CELL} title={r.name}>{r.name}</div>
       <div role="cell" className={CELL} title={r.addrField ? `${r.address} · ${t("adresă scrisă din teren")}` : (r.address ?? "")}>{r.address ? <>{r.address}{r.addrField && <span className="ml-1 text-ink-soft" aria-hidden>✎</span>}</> : <Dash />}</div>
       <div role="cell" className={num_}>{r.lastIndex != null ? num(r.lastIndex) : <Dash />}</div>
       <div role="cell" className={CELL}>{r.lastDate ? dmy(r.lastDate) : <Dash />}</div>
       {!compact && (
         <>
-        <div role="cell" className={`${num_} ${r.value != null ? "font-bold text-st-done" : ""}`}>{r.value != null ? `✓ ${num(r.value)}` : <Dash />}</div>
+        <div role="cell" className={`${num_} ${r.value != null ? "font-bold text-st-done" : ""}`}>{r.value != null ? `${r.pending === "wait" ? "⏳" : r.pending === "error" ? "⚠" : "✓"} ${num(r.value)}` : <Dash />}</div>
         <div role="cell" className={`${num_} ${sus === "lower" || sus === "high" ? "font-semibold text-st-cancelled" : r.consum != null && r.consum > 0 ? "font-semibold" : "text-ink-soft"}`} title={sus === "lower" || sus === "high" ? suspectLabel(sus, t) : undefined}>
           {r.consum != null ? `${sus === "lower" || sus === "high" ? "⚠ " : ""}${num(r.consum)} m³` : <Dash />}
         </div>
@@ -717,17 +867,17 @@ function FieldCards({ rows, onOpen, resetKey }: { rows: FieldRow[]; onOpen: (r: 
         key={r.id}
         type="button"
         onClick={() => onOpen(r)}
-        className={`tap flex w-full cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-left ${r.value != null ? "border-st-done/40 bg-st-done/5" : "border-[var(--color-line)] bg-[var(--color-surface)] hover:bg-brand-soft/40"}`}
+        className={`tap flex w-full cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-left ${r.pending === "wait" ? "border-st-progress/50 bg-st-progress/10" : r.pending === "error" ? "border-st-cancelled/50 bg-st-cancelled/5" : r.value != null ? "border-st-done/40 bg-st-done/5" : "border-[var(--color-line)] bg-[var(--color-surface)] hover:bg-brand-soft/40"}`}
       >
         <span className="min-w-0 flex-1">
-          <span className="block font-mono text-[15px] font-bold">{r.contor}</span>
+          <span className="block font-mono text-[15px] font-bold">{r.issue && isIssueKind(r.issue) && <span className={`mr-1 ${SERIOUS_ISSUES.includes(r.issue) ? "text-st-cancelled" : "text-st-progress"}`} title={t(ISSUE_LABELS[r.issue])}>⚑</span>}{r.contor}</span>
           <span className="block truncate text-[13px]">{r.address ?? "—"}</span>
           <span className="block truncate text-[11px] text-ink-soft">{r.name}</span>
         </span>
         <span className="shrink-0 text-right text-[12px]">
           {r.value != null ? (
             <>
-              <span className="block text-base font-bold tabular-nums text-st-done">✓ {num(r.value)} m³</span>
+              <span className={`block text-base font-bold tabular-nums ${r.pending === "wait" ? "text-st-progress" : r.pending === "error" ? "text-st-cancelled" : "text-st-done"}`}>{r.pending === "wait" ? "⏳" : r.pending === "error" ? "⚠" : "✓"} {num(r.value)} m³</span>
               <span className={`block ${sus ? "font-semibold text-st-cancelled" : "text-ink-soft"}`}>
                 {sus ? `⚠ ${r.consum != null ? `${num(r.consum)} m³ · ` : ""}` : r.consum != null ? `+${num(r.consum)} m³ · ` : ""}
                 {r.readAt ? dt(r.readAt) : ""}
@@ -755,8 +905,10 @@ function ReadingDialog({
   onClose,
   onSaved,
   onNext,
+  onIssue,
 }: {
   row: FieldRow;
+  onIssue: (kind: string) => void;
   canViewMeter: boolean;
   onClose: () => void;
   onSaved: (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean, loc?: MeterLocationDto) => void;
@@ -790,6 +942,8 @@ function ReadingDialog({
         </div>
         <ReadingForm
           meterId={row.id}
+          contor={row.contor}
+          meterName={row.name}
           address={row.address}
           addressEditable={!row.address || row.addrField}
           meterLat={row.lat}
@@ -801,6 +955,8 @@ function ReadingDialog({
           onSaved={(patch, reading, loc) => onSaved(row.id, patch, reading.userName, reading.distanceM, reading.lat != null && reading.lng != null, loc)}
           onNext={onNext}
           onClose={onClose}
+          openIssue={row.issue}
+          onIssue={onIssue}
         />
         {canViewMeter && (
           <Link href={`/contoare/${encodeURIComponent(row.id)}`} className="mt-3 block text-center text-xs text-brand underline">

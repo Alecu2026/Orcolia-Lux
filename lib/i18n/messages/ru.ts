@@ -21,6 +21,7 @@ const ru: Messages = {
     users: "Пользователи",
     auditLogs: "Журнал аудита",
     deliveryLogs: "Журнал уведомлений",
+    readingRoutes: "Маршруты обходов",
     telegram: "Telegram",
     settings: "Настройки",
   },

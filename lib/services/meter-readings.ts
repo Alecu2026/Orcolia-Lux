@@ -3,6 +3,9 @@ import type { MeterReading } from "@prisma/client";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { getMeterSnap } from "./meter-cache";
+import { logAudit } from "./audit";
+import { listRoutes, getSectorMap, sectorOfMeter } from "./meter-route-data";
+import type { FieldList } from "../meter-routes";
 import {
   FAR_METERS,
   JUMP_CONFIRM_M3,
@@ -58,10 +61,10 @@ export async function listMeterReadings(meterId: string, limit = 36): Promise<Re
  * Lista pentru persoana care face citirile: contoarele ACTIVE, în ordinea adreselor (ca să se poată merge pe stradă), cu ultimul index cunoscut și
  * cu citirea de luna aceasta (dacă există). Din lista din memorie + citirile din teren (puține), fără interogări grele.
  */
-export async function getFieldList(): Promise<{ period: string; rows: FieldTuple[] }> {
+export async function getFieldList(): Promise<FieldList> {
   const period = currentPeriod();
-  if (DEMO) return { period, rows: [] };
-  const [snap, recent, locs] = await Promise.all([
+  if (DEMO) return { period, rows: [], routes: [] };
+  const [snap, recent, locs, routes, sectors, openIssues] = await Promise.all([
     getMeterSnap(),
     // luna aceasta + cele două dinainte: citirile din teren mai noi decât indexul din 1C
     prisma.meterReading.findMany({
@@ -70,7 +73,12 @@ export async function getFieldList(): Promise<{ period: string; rows: FieldTuple
     }),
     // adresa / locația contoarelor completate din teren (o înregistrare mică pe contor)
     prisma.meterLocation.findMany({ select: { meterId: true, address: true, lat: true, lng: true, accuracy: true } }),
+    listRoutes(),
+    getSectorMap(),
+    // neregulile deschise (cea mai nouă pe contor): marcaj în listă
+    prisma.meterIssue.findMany({ where: { resolvedAt: null }, select: { meterId: true, kind: true, reportedAt: true }, orderBy: { reportedAt: "asc" } }),
   ]);
+  const issueBy = new Map(openIssues.map((i) => [i.meterId, i.kind]));
   const locBy = new Map(locs.map((l) => [l.meterId, l]));
   const thisMonth = new Map<string, (typeof recent)[number]>();
   const lastBefore = new Map<string, (typeof recent)[number]>();
@@ -102,9 +110,10 @@ export async function getFieldList(): Promise<{ period: string; rows: FieldTuple
       cur ? cur.value : null, cur ? cur.readAt.getTime() : null, cur?.photoUrl ? 1 : 0,
       cur ? cur.userName : null, cur ? cur.distanceM : null, cur && cur.lat != null && cur.lng != null ? 1 : 0,
       geo?.lat ?? null, geo?.lng ?? null, fieldAddr ? 1 : 0, geo?.accuracy ?? null,
+      sectorOfMeter(r.id, sectors), issueBy.get(r.id) ?? null,
     ];
   });
-  return { period, rows };
+  return { period, rows, routes: routes.filter((r) => r.active) };
 }
 
 export type SaveInput = {
@@ -117,7 +126,14 @@ export type SaveInput = {
   confirmed: boolean;
   /** Adresa contorului scrisă din teren — se păstrează doar dacă 1C n-are adresă pentru acest contor. */
   address?: string | null;
+  /** Momentul real al citirii (citirile făcute fără internet se trimit mai târziu): luna citirii se socotește după el. Gol = acum. */
+  readAt?: Date | null;
+  /** Vine din coada de pe telefon: o citire mai recentă deja salvată nu se suprascrie cu una mai veche. */
+  fromQueue?: boolean;
 };
+
+/** O citire din coada offline nu poate avea ora în viitor și nici să fie mai veche de atât. */
+export const QUEUE_MAX_AGE_DAYS = 40;
 
 /** Salvează (sau corectează) citirea de luna aceasta a unui contor. */
 export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveReadingResult> {
@@ -129,7 +145,15 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
   if (!row) return { ok: false, error: "Contorul nu există în lista curentă." };
   if (row.removedAt) return { ok: false, error: "Contorul este scos din uz." };
 
-  const period = currentPeriod();
+  const now = new Date();
+  let takenAt = now;
+  if (input.readAt) {
+    const t = input.readAt.getTime();
+    if (!Number.isFinite(t) || t > now.getTime() + 10 * 60_000) return { ok: false, error: "Ora citirii e în viitor (verifică ceasul telefonului)." };
+    if (t < now.getTime() - QUEUE_MAX_AGE_DAYS * 86_400_000) return { ok: false, error: `Citirea e mai veche de ${QUEUE_MAX_AGE_DAYS} de zile și nu se mai poate trimite.` };
+    takenAt = input.readAt;
+  }
+  const period = currentPeriod(takenAt);
   // Indexul anterior: cel mai recent între 1C și o citire din teren dintr-o lună anterioară.
   const lastField = await prisma.meterReading.findFirst({
     where: { meterId: input.meterId, period: { not: period } },
@@ -170,7 +194,7 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     clientId: row.clientId,
     value: v,
     prevValue: prev,
-    readAt: new Date(),
+    readAt: takenAt,
     lat,
     lng,
     accuracy,
@@ -178,6 +202,12 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     userId: actor.id,
     userName: actor.name,
   };
+  if (input.fromQueue) {
+    const existing = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { readAt: true, value: true, userName: true } });
+    if (existing && existing.readAt.getTime() > takenAt.getTime() + 1000) {
+      return { ok: false, error: `Pentru acest contor există deja o citire mai recentă: ${existing.value} m³, de ${existing.userName}. Citirea de pe telefon (${v} m³) nu a fost aplicată.` };
+    }
+  }
   const saved = await prisma.meterReading.upsert({
     where: { meterId_period: { meterId: input.meterId, period } },
     create: { meterId: input.meterId, period, ...data },
@@ -236,3 +266,38 @@ export async function getReading(readingId: string): Promise<MeterReading | null
 }
 
 export { FAR_METERS };
+
+export type AuditUser = { id: string; name: string; role: string; isSuperAdmin?: boolean };
+
+/** Salvează citirea și o trece în Audit Logs (folosit de acțiunea din formular și de sincronizarea cozii offline). */
+export async function saveReadingLogged(user: AuditUser, input: SaveInput): Promise<SaveReadingResult> {
+  const res = await saveReading({ id: user.id, name: user.name }, input);
+  if (res.ok) {
+    const r = res.reading;
+    const consum = r.prevValue != null ? Math.round((r.value - r.prevValue) * 1000) / 1000 : null;
+    await logAudit(
+      { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
+      {
+        action: "meter.reading",
+        module: "Meters",
+        objectId: input.meterId,
+        objectName: r.contor,
+        oldValue: r.prevValue != null ? `${r.prevValue} m³` : null,
+        newValue: `${r.value} m³`,
+        details: {
+          extra: [
+            { label: "Perioada", value: r.period },
+            ...(consum != null ? [{ label: "Consum", value: `${consum} m³` }] : []),
+            ...(r.lat != null && r.lng != null ? [{ label: "Locație citire", value: `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}${r.accuracy != null ? ` (±${Math.round(r.accuracy)} m)` : ""}` }] : [{ label: "Locație citire", value: "fără locație" }]),
+            ...(r.distanceM != null ? [{ label: "Distanță față de citirea anterioară", value: `${r.distanceM} m` }] : []),
+            ...(res.location.addrField && res.location.address ? [{ label: "Adresă scrisă din teren", value: res.location.address }] : []),
+            ...(input.fromQueue ? [{ label: "Trimisă din coada offline", value: `citită la ${takenAtLabel(r.readAt)}` }] : []),
+          ],
+        },
+      },
+    );
+  }
+  return res;
+}
+
+const takenAtLabel = (iso: string) => new Date(iso).toLocaleString("ro-RO", { timeZone: "Europe/Bucharest" });

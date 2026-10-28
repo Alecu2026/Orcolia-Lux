@@ -8,6 +8,7 @@ import { addressKey, averageConsum, enumLabel, type MeterRow, type MeterRowBase 
 import { INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import { IconX } from "./icons";
 import ReadingForm from "./ReadingForm";
+import MeterIssuesPanel from "./MeterIssuesPanel";
 import { currentPeriod, type ReadingDto } from "@/lib/meter-readings";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
@@ -148,6 +149,12 @@ export default function MeterDetailDialog({
 
         {canRead && !row.removedAt && (
           <FieldReadingSection key={row.id} row={row} existing={thisMonth} lastIndex={lastIndex} lastDate={lastDate} pending={pending} />
+        )}
+
+        {detail && (
+          <Section title={t("Starea contorului și nereguli")}>
+            <MeterIssuesPanel key={row.id} issues={detail.issues ?? []} canManage={detail.canManageIssues} months={detail.months} sigiliu={row.sigiliu} removedAt={row.removedAt} />
+          </Section>
         )}
 
         <Section title={t("Contor")}>

@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { saveMeterReadingAction, uploadMeterPhotoAction } from "@/app/actions/meter-readings";
-import { MAX_ADDRESS, MAX_LOC_ACCURACY, mapsUrl, parseIndex, type MeterLocationDto, type ReadingDto } from "@/lib/meter-readings";
+import { reportMeterIssueAction, saveMeterReadingAction, uploadMeterPhotoAction } from "@/app/actions/meter-readings";
+import { ISSUE_KINDS, ISSUE_LABELS, MAX_ISSUE_NOTE, isIssueKind } from "@/lib/meter-issues";
+import { JUMP_CONFIRM_M3, MAX_ADDRESS, MAX_LOC_ACCURACY, mapsUrl, parseIndex, type MeterLocationDto, type ReadingDto } from "@/lib/meter-readings";
 import { optimizeImage } from "@/lib/image-optimize";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 import { useToast } from "./toast";
+import { enqueueReading, useFieldQueue, type QueueItem } from "./field-queue";
 
 type Geo =
   | { state: "asking" }
@@ -40,6 +42,11 @@ export default function ReadingForm({
   onSaved,
   onNext,
   onClose,
+  contor,
+  meterName,
+  onQueued,
+  openIssue = null,
+  onIssue,
 }: {
   meterId: string;
   /** Adresa contorului — se arată ca să fie clar unde se face citirea (locația GPS se salvează împreună cu indexul). */
@@ -61,6 +68,15 @@ export default function ReadingForm({
   /** Dacă există: după salvare apare „Următorul contor”. */
   onNext?: () => void;
   onClose?: () => void;
+  /** Nr. contorului și abonatul — pentru coada de pe telefon (afișare). */
+  contor?: string;
+  meterName?: string;
+  /** Citirea a fost salvată pe telefon (fără internet): se trimite singură mai târziu. */
+  onQueued?: (item: QueueItem) => void;
+  /** Neregula deja deschisă pentru contor (cod), dacă există. */
+  openIssue?: string | null;
+  /** Neregula a fost raportată (rândul din listă se marchează). */
+  onIssue?: (kind: string) => void;
 }) {
   const t = useT();
   const toast = useToast();
@@ -72,6 +88,14 @@ export default function ReadingForm({
   const [value, setValue] = useState(initialValue != null ? String(initialValue).replace(".", ",") : "");
   const [geo, setGeo] = useState<Geo>({ state: "asking" });
   const [saved, setSaved] = useState<ReadingDto | null>(null);
+  /** Citirea e salvată doar pe telefon (fără internet) și așteaptă trimiterea. */
+  const [queued, setQueued] = useState<{ value: number | null } | null>(null);
+  /** Starea contorului: gol = normal; altfel codul neregulii găsite + observații. */
+  const [issueKind, setIssueKind] = useState<string>("");
+  const [issueNote, setIssueNote] = useState("");
+  /** Neregula a fost raportată (fără index) — formularul se încheie ca după o salvare. */
+  const [issueDone, setIssueDone] = useState<string | null>(null);
+  const { online } = useFieldQueue();
   const [photo, setPhoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
@@ -149,13 +173,96 @@ export default function ReadingForm({
     return res.ok;
   }
 
+  /** Fără internet: citirea (cu locația și poza) se salvează pe telefon și pleacă singură când revine conexiunea. */
+  async function saveOffline(confirmedAlready: boolean) {
+    if (parsed == null && !issueKind) return;
+    let conf = confirmedAlready;
+    // aceleași avertismente ca pe server, calculate din indexul anterior descărcat
+    if (parsed != null && !conf && prev != null) {
+      if (parsed < prev) {
+        if (!window.confirm(t("Indexul scris ({v} m³) este MAI MIC decât cel anterior ({p} m³). Salvezi oricum (de ex. contor înlocuit)?", { v: nf(parsed), p: nf(prev) }))) return;
+        conf = true;
+      } else if (parsed - prev > JUMP_CONFIRM_M3) {
+        if (!window.confirm(t("Consumul ar fi de {c} m³ într-o lună — neobișnuit de mare. Salvezi oricum?", { c: nf(parsed - prev) }))) return;
+        conf = true;
+      }
+    }
+    setBusy(true);
+    try {
+      const small = photo ? await optimizeImage(photo) : null;
+      const item = await enqueueReading({
+        meterId,
+        contor: contor ?? meterId,
+        name: meterName ?? "",
+        value: parsed,
+        issueKind: issueKind || null,
+        issueNote: issueKind ? issueNote.trim().slice(0, MAX_ISSUE_NOTE) || null : null,
+        lat: geo.state === "ok" ? geo.lat : null,
+        lng: geo.state === "ok" ? geo.lng : null,
+        accuracy: geo.state === "ok" ? Math.round(geo.acc) : null,
+        address: addressEditable && addr.trim() ? addr.trim() : null,
+        confirmed: conf,
+        photo: small,
+        photoName: small?.name ?? null,
+      });
+      setQueued({ value: parsed });
+      toast.success(parsed != null ? t("Citirea e salvată pe telefon.") : t("Neregula e salvată pe telefon."));
+      if (issueKind) onIssue?.(issueKind);
+      onQueued?.(item);
+    } catch {
+      setErr(t("Nu am putut salva pe telefon (spațiu insuficient?)."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function save(confirmed = false) {
     setErr(null);
+    if (issueKind === "OTHER" && !issueNote.trim()) {
+      setErr(t("Descrie problema în observații."));
+      return;
+    }
     if (parsed == null) {
-      setErr(t("Index invalid. Scrie un număr (m³), ex. 1234,5."));
+      if (!issueKind) {
+        setErr(t("Index invalid. Scrie un număr (m³), ex. 1234,5."));
+        return;
+      }
+      // doar neregula, fără index (ex. contor inaccesibil)
+      if (!navigator.onLine) {
+        await saveOffline(true);
+        return;
+      }
+      setBusy(true);
+      try {
+        const fd = new FormData();
+        fd.set("meterId", meterId);
+        fd.set("issueKind", issueKind);
+        fd.set("issueNote", issueNote.trim());
+        const r = await reportMeterIssueAction(fd);
+        if (!r.ok) {
+          setErr(t(r.error));
+          return;
+        }
+        setIssueDone(issueKind);
+        onIssue?.(issueKind);
+        toast.success(t("Neregula a fost raportată."));
+      } catch (e) {
+        if (!navigator.onLine || e instanceof TypeError) {
+          setBusy(false);
+          await saveOffline(true);
+          return;
+        }
+        setErr(t("Nu am putut salva. Verifică conexiunea și încearcă din nou."));
+      } finally {
+        setBusy(false);
+      }
       return;
     }
     if (geo.state !== "ok" && !confirmed && !window.confirm(t("Locația nu a fost obținută. Salvezi citirea fără locație?"))) return;
+    if (!navigator.onLine) {
+      await saveOffline(confirmed);
+      return;
+    }
     setBusy(true);
     try {
       const fd = new FormData();
@@ -168,6 +275,10 @@ export default function ReadingForm({
         fd.set("accuracy", String(Math.round(geo.acc)));
       }
       if (confirmed) fd.set("confirmed", "1");
+      if (issueKind) {
+        fd.set("issueKind", issueKind);
+        fd.set("issueNote", issueNote.trim());
+      }
       const res = await saveMeterReadingAction(fd);
       if (!res.ok) {
         if (res.confirm) {
@@ -188,8 +299,18 @@ export default function ReadingForm({
       setPhotoUrl(res.reading.photoUrl);
       onSaved?.({ value: res.reading.value, readAt: new Date(res.reading.readAt).getTime(), photo: !!res.reading.photoUrl }, res.reading, res.location);
       toast.success(t("Citirea a fost salvată."));
+      if (res.issue) {
+        setIssueDone(res.issue.kind);
+        onIssue?.(res.issue.kind);
+      } else if (res.issueError) toast.error(t(res.issueError));
       if (photo) await uploadPhoto(res.reading.id, photo, res.reading);
-    } catch {
+    } catch (e) {
+      // conexiunea a căzut chiar la salvare: citirea nu se pierde, se salvează pe telefon
+      if (!navigator.onLine || e instanceof TypeError) {
+        setBusy(false);
+        await saveOffline(confirmed);
+        return;
+      }
       setErr(t("Nu am putut salva. Verifică conexiunea și încearcă din nou."));
     } finally {
       setBusy(false);
@@ -234,7 +355,7 @@ export default function ReadingForm({
             onChange={(e) => setAddr(e.target.value)}
             maxLength={MAX_ADDRESS}
             autoComplete="off"
-            disabled={!!saved}
+            disabled={!!saved || !!queued}
             placeholder={t("Localitate, strada, nr. (1C nu are adresa acestui contor)")}
             className={addrCls}
           />
@@ -280,6 +401,37 @@ export default function ReadingForm({
         className={inputCls}
       />
 
+      <div className="mt-3">
+        <label className="mb-1 block text-xs font-semibold text-ink-soft" htmlFor={`${idxId}-issue`}>
+          {t("Starea contorului")}
+        </label>
+        <select
+          id={`${idxId}-issue`}
+          value={issueKind}
+          onChange={(e) => setIssueKind(e.target.value)}
+          disabled={!!saved || !!queued || !!issueDone}
+          className={`h-10 w-full rounded-xl border bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand ${issueKind ? "border-st-cancelled/60" : "border-[var(--color-line)]"}`}
+        >
+          <option value="">{t("Normal — fără probleme")}</option>
+          {ISSUE_KINDS.map((k) => (
+            <option key={k} value={k}>{t(ISSUE_LABELS[k])}</option>
+          ))}
+        </select>
+        {issueKind && !saved && !queued && !issueDone && (
+          <textarea
+            value={issueNote}
+            onChange={(e) => setIssueNote(e.target.value)}
+            maxLength={MAX_ISSUE_NOTE}
+            rows={2}
+            placeholder={issueKind === "OTHER" ? t("Descrie problema (obligatoriu)") : t("Observații (opțional)")}
+            className="mt-2 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-sm outline-none focus:border-brand"
+          />
+        )}
+        {openIssue && isIssueKind(openIssue) && !issueDone && (
+          <p className="mt-1.5 text-xs text-st-cancelled">⚑ {t("Neregulă deschisă la acest contor:")} {t(ISSUE_LABELS[openIssue])}</p>
+        )}
+      </div>
+
       <div className={`mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-[13px] ${geo.state === "ok" ? "border-st-done/40 bg-st-done/5" : geo.state === "asking" ? "border-[var(--color-line)]" : "border-st-progress/40 bg-st-progress/10"}`} role="status">
         <span aria-hidden>{geo.state === "ok" ? "📍" : geo.state === "asking" ? "⏳" : "⚠️"}</span>
         <span className="min-w-0 flex-1">
@@ -303,7 +455,7 @@ export default function ReadingForm({
         )}
         <label className="tap inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium hover:bg-brand-soft">
           📷 {photo || photoUrl ? t("Schimbă poza") : t("Fă o poză")}
-          <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={onPhotoPicked} disabled={busy} />
+          <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={onPhotoPicked} disabled={busy || !!queued} />
         </label>
       </div>
 
@@ -312,11 +464,22 @@ export default function ReadingForm({
         <p className="mt-3 rounded-lg bg-st-progress/10 px-3 py-2 text-sm text-st-progress">{t("Atenție: ești la {n} m de locația citirii anterioare a acestui contor.", { n: saved.distanceM })}</p>
       )}
       {saved && <p className="mt-3 rounded-lg bg-st-done/10 px-3 py-2 text-sm font-medium text-st-done">✓ {t("Citire salvată: {v} m³", { v: nf(saved.value) })}</p>}
+      {queued && (
+        <p className="mt-3 rounded-lg bg-st-progress/10 px-3 py-2 text-sm font-medium text-st-progress">
+          ⏳ {queued.value != null ? t("Salvat pe telefon: {v} m³ — se trimite singur când ai internet.", { v: nf(queued.value) }) : t("Neregula e salvată pe telefon — se trimite singură când ai internet.")}
+        </p>
+      )}
+      {issueDone && isIssueKind(issueDone) && (
+        <p className="mt-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm font-medium text-st-cancelled">⚑ {t("Neregulă raportată:")} {t(ISSUE_LABELS[issueDone])}</p>
+      )}
+      {!online && !saved && !queued && (
+        <p className="mt-3 rounded-lg bg-st-progress/10 px-3 py-2 text-xs text-st-progress">📴 {t("Fără internet — citirea se salvează pe telefon și pleacă singură când revine conexiunea.")}</p>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {!saved ? (
-          <button type="button" onClick={() => void save()} disabled={busy || parsed == null} className="tap h-11 flex-1 cursor-pointer rounded-xl bg-brand px-4 text-base font-semibold text-white hover:bg-brand-strong disabled:opacity-50">
-            {busy ? t("Se salvează…") : initialValue != null ? t("Corectează citirea") : t("Salvează citirea")}
+        {!saved && !queued && !issueDone ? (
+          <button type="button" onClick={() => void save()} disabled={busy || (parsed == null && !issueKind)} className="tap h-11 flex-1 cursor-pointer rounded-xl bg-brand px-4 text-base font-semibold text-white hover:bg-brand-strong disabled:opacity-50">
+            {busy ? t("Se salvează…") : parsed == null && issueKind ? t("Raportează doar neregula (fără index)") : initialValue != null ? t("Corectează citirea") : t("Salvează citirea")}
           </button>
         ) : (
           <>

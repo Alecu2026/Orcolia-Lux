@@ -4,6 +4,7 @@ import { DEMO } from "../demo";
 import { SVC_SEWER, SVC_WATER, type OneCConsumer, type OneCLine, type OneCMeter, type OneCReading } from "../apa-canal-1c";
 import type { MeterStatic } from "../meters";
 import type { ReadingDto } from "../meter-readings";
+import type { IssueDto } from "../meter-issues";
 
 /**
  * Contoarele din exportul 1C (colecția OneCRecord: un rând per abonat și lună, cu lista contoarelor, a citirilor și a liniilor de calcul).
@@ -108,7 +109,7 @@ function composeAddress(r: Pick<RecForMeters, "oras" | "strada" | "casa" | "apar
 }
 
 /** Identitatea abonatului peste luni: cont personal; firmele/instituțiile (fără cont) — nr. de contract; altfel numele. */
-const subscriberKey = (r: { contPersonal: string | null; nrContract: string | null; nume: string | null }) =>
+export const subscriberKey = (r: { contPersonal: string | null; nrContract: string | null; nume: string | null }) =>
   r.contPersonal ? `c:${r.contPersonal}` : r.nrContract ? `k:${r.nrContract}` : `n:${(r.nume ?? "").trim().toLowerCase()}`;
 
 /** Id-ul public al unui contor 1C: stabil între sincronizări (id-ul înregistrării se schimbă la fiecare import). `k` = poziția între contoarele cu același număr. */
@@ -246,7 +247,14 @@ export type MeterDetail = {
 };
 
 /** Răspunsul rutei de detalii: detaliile contorului + referința facturii curente (pentru „Vezi” / „Editează”). */
-export type MeterDetailResponse = MeterDetail & { invoice: { id: string; publicToken: string } | null; /** ultimele citiri din teren ale contorului (cele mai noi primele) */ field: ReadingDto[] };
+export type MeterDetailResponse = MeterDetail & {
+  invoice: { id: string; publicToken: string } | null;
+  /** ultimele citiri din teren ale contorului (cele mai noi primele) */
+  field: ReadingDto[];
+  /** neregulile raportate în teren la acest contor (cele mai noi primele) și dacă utilizatorul le poate rezolva */
+  issues: IssueDto[];
+  canManageIssues: boolean;
+};
 
 const EMPTY_DETAIL: MeterDetail = { months: [], meter: null, reading: null, lines: [], consumer: null, history: [], subscriber: null };
 

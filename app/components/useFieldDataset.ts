@@ -2,20 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { currentPeriod, dayOf, decodeField, fieldConsum, type FieldRow, type FieldTuple } from "@/lib/meter-readings";
+import type { RouteDto } from "@/lib/meter-routes";
 import { idbGet, idbSet } from "./usePayerDataset";
 
 const IDB_KEY = "field-v1";
 const FRESH_MS = 15_000; // sub 15 s de la ultima verificare nu mai întrebăm serverul
 const POLL_MS = 2 * 60_000; // cât timp pagina e vizibilă, la 2 minute vedem ce au mai citit colegii (cerere condiționată: 304 dacă nu s-a schimbat nimic)
 
-type Stored = { at: number; etag: string | null; period: string; rows: FieldTuple[] };
-type Memo = { rows: FieldRow[]; tuples: FieldTuple[]; period: string; at: number; etag: string | null };
+type Stored = { at: number; etag: string | null; period: string; rows: FieldTuple[]; routes?: RouteDto[] };
+type Memo = { rows: FieldRow[]; tuples: FieldTuple[]; period: string; at: number; etag: string | null; routes: RouteDto[] };
 
 /** Lista decodată, păstrată cât timp aplicația rămâne deschisă: la întoarcerea în pagină apare din prima randare, fără IndexedDB și fără decodare. */
 let memo: Memo | null = null;
 
 /** Ce se schimbă pe un rând când se salvează o citire. */
-export type FieldPatch = { value: number; readAt: number; photo: boolean; by?: string | null; distanceM?: number | null; geo?: boolean; address?: string | null; lat?: number | null; lng?: number | null; addrField?: boolean; locAcc?: number | null };
+export type FieldPatch = { value: number; readAt: number; photo: boolean; by?: string | null; distanceM?: number | null; geo?: boolean; issue?: string | null; address?: string | null; lat?: number | null; lng?: number | null; addrField?: boolean; locAcc?: number | null };
 
 /**
  * Lista „Citiri teren” în memoria browserului: întâi din IndexedDB (instant, doar dacă e din luna curentă), apoi reîmprospătată de pe server în fundal
@@ -26,13 +27,15 @@ export function useFieldDataset() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedAt, setLoadedAt] = useState<number | null>(() => memo?.at ?? null);
+  const [routes, setRoutes] = useState<RouteDto[]>(() => memo?.routes ?? []);
   const inflight = useRef<Promise<void> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const apply = useCallback((tuples: FieldTuple[], period: string, at: number, etag: string | null) => {
+  const apply = useCallback((tuples: FieldTuple[], period: string, at: number, etag: string | null, rt: RouteDto[]) => {
     const rows = decodeField(tuples);
-    memo = { rows, tuples, period, at, etag };
+    memo = { rows, tuples, period, at, etag, routes: rt };
     setData({ period, rows });
+    setRoutes(rt);
     setLoadedAt(at);
   }, []);
 
@@ -49,15 +52,15 @@ export function useFieldDataset() {
           setLoadedAt(at);
           return;
         }
-        const j = (await res.json()) as { period?: string; rows?: FieldTuple[]; error?: string };
+        const j = (await res.json()) as { period?: string; rows?: FieldTuple[]; routes?: RouteDto[]; error?: string };
         if (!res.ok || !j.rows || !j.period) throw new Error(j.error ?? "Eroare la încărcare.");
         const at = Date.now();
         const etag = res.headers.get("etag");
-        apply(j.rows, j.period, at, etag);
-        void idbSet(IDB_KEY, { at, etag, period: j.period, rows: j.rows } satisfies Stored);
+        apply(j.rows, j.period, at, etag, j.routes ?? []);
+        void idbSet(IDB_KEY, { at, etag, period: j.period, rows: j.rows, routes: j.routes ?? [] } satisfies Stored);
       } catch (e) {
-        // Dacă avem deja date (din memorie / cache-ul local) le păstrăm; mesajul de eroare apare oricum, cu „Reîncearcă".
-        setError(e instanceof Error ? e.message : "Eroare la încărcare.");
+        // Dacă avem deja date (din memorie / cache-ul local) le păstrăm. Fără internet nu e o eroare: lucrăm cu lista descărcată (banner „Fără internet”).
+        if (typeof navigator === "undefined" || navigator.onLine) setError(e instanceof Error ? e.message : "Eroare la încărcare.");
       } finally {
         setLoading(false);
         inflight.current = null;
@@ -78,7 +81,7 @@ export function useFieldDataset() {
       const stored = await idbGet<Stored>(IDB_KEY);
       if (!alive) return;
       if (stored?.rows?.length && stored.period === currentPeriod()) {
-        apply(stored.rows, stored.period, stored.at, stored.etag);
+        apply(stored.rows, stored.period, stored.at, stored.etag, stored.routes ?? []);
         if (Date.now() - stored.at <= FRESH_MS) return;
       }
       await fetchFresh();
@@ -117,6 +120,7 @@ export function useFieldDataset() {
       distanceM: patch.distanceM !== undefined ? patch.distanceM : old.distanceM,
       consum: fieldConsum(value, old.lastIndex),
       geo: patch.geo ?? old.geo,
+      issue: patch.issue !== undefined ? patch.issue : old.issue,
       address: patch.address !== undefined ? patch.address : old.address,
       lat: patch.lat !== undefined ? patch.lat : old.lat,
       lng: patch.lng !== undefined ? patch.lng : old.lng,
@@ -139,15 +143,16 @@ export function useFieldDataset() {
     tu[13] = next.lng;
     tu[14] = next.addrField ? 1 : 0;
     tu[15] = next.locAcc;
+    tu[17] = next.issue;
     tuples[i] = tu;
     // ETag-ul vechi nu mai descrie lista locală: la următoarea verificare serverul trimite lista întreagă (sigur corectă).
     memo = { ...memo, rows, tuples, etag: null };
     setData({ period: memo.period, rows });
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      if (memo) void idbSet(IDB_KEY, { at: memo.at, etag: null, period: memo.period, rows: memo.tuples } satisfies Stored);
+      if (memo) void idbSet(IDB_KEY, { at: memo.at, etag: null, period: memo.period, rows: memo.tuples, routes: memo.routes } satisfies Stored);
     }, 600);
   }, []);
 
-  return { data, loading, error, loadedAt, refresh: fetchFresh, patchRow };
+  return { data, routes, loading, error, loadedAt, refresh: fetchFresh, patchRow };
 }

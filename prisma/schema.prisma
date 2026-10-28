@@ -1270,3 +1270,52 @@ model MeterReading {
   @@index([meterId, readAt])
   @@index([userId, period])
 }
+
+/// Rută de citire: ce contoare (după datele din 1C: sector / localitate / stradă) citește un cititor și în ce zile ale lunii.
+/// Un contor aparține primei rute (după ordine) ale cărei reguli i se potrivesc.
+model ReadingRoute {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  name       String
+  /// valorile „Участок” (sector) din 1C
+  sectors    String[]
+  localities String[]
+  /// fragmente de adresă (stradă), fără diacritice / majuscule
+  streets    String[]
+  readerId   String?  @db.ObjectId
+  /// fereastra din lună în care se citește (zilele lunii)
+  startDay   Int      @default(1)
+  endDay     Int      @default(28)
+  order      Int      @default(0)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([readerId])
+}
+
+/// Starea contorului / neregula găsită în teren (defect, fraudă, curgere inversă etc.). Poate fi legată de o citire sau raportată singură (contor inaccesibil).
+model MeterIssue {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  meterId      String
+  contor       String
+  /// DEFECT, REVERSE, FRAUD, SEAL, LEAK, UNREADABLE, INACCESSIBLE, OTHER (vezi lib/meter-issues.ts)
+  kind         String
+  note         String?
+  /// luna raportării, „YYYY-MM”
+  period       String
+  readingId    String?   @db.ObjectId
+  /// momentul real al constatării (la citirile offline, ora de pe telefon)
+  reportedAt   DateTime
+  userId       String    @db.ObjectId
+  userName     String
+  createdAt    DateTime  @default(now())
+  resolvedAt   DateTime?
+  resolvedById String?   @db.ObjectId
+  resolvedName String?
+  resolvedNote String?
+
+  @@index([meterId, reportedAt])
+  @@index([resolvedAt, reportedAt])
+  @@index([period])
+  @@index([userId, period])
+}

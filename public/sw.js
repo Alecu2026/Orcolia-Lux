@@ -1,9 +1,12 @@
 /* Service Worker — caching + push notifications + badge */
 
 // Cache version tied to deploy — update this string to bust old caches
-const CACHE_VER = "v5";
+const CACHE_VER = "v6";
 const CACHE = `app-${CACHE_VER}`;
 const OFFLINE_URL = "/offline.html";
+
+// Pagini care trebuie să se deschidă și fără internet (citiri făcute în teren): ultima versiune văzută cu internet se păstrează în cache.
+const OFFLINE_PAGES = ["/contoare/citiri"];
 
 const PRECACHE = [
   OFFLINE_URL,
@@ -84,10 +87,20 @@ self.addEventListener("fetch", (event) => {
       (async () => {
         try {
           // navigation preload response (already in-flight while SW started)
+          const keep = OFFLINE_PAGES.includes(url.pathname);
           const preloaded = await event.preloadResponse;
-          if (preloaded) return preloaded;
-          return await fetch(request);
+          const res = preloaded || (await fetch(request));
+          // doar răspunsurile normale (nu redirecturile la autentificare) se păstrează, o singură copie pe pagină (fără parametri)
+          if (keep && res.ok && !res.redirected) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(url.pathname, copy)).catch(() => {});
+          }
+          return res;
         } catch {
+          if (OFFLINE_PAGES.includes(url.pathname)) {
+            const page = await caches.match(url.pathname);
+            if (page) return page;
+          }
           return (await caches.match(OFFLINE_URL)) ?? new Response("Offline", { status: 503 });
         }
       })(),

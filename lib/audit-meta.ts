@@ -83,6 +83,11 @@ export const ACTION_LABELS: Record<string, string> = {
   "integration.update": "Modificare integrare",
   "meter.reading": "Citire contor din teren",
   "meter.location": "Adresă / locație contor",
+  "meter.route_create": "Creare rută de citire",
+  "meter.route_update": "Editare rută de citire",
+  "meter.route_delete": "Ștergere rută de citire",
+  "meter.issue": "Neregulă / stare contor raportată",
+  "meter.issue_resolve": "Neregulă contor rezolvată",
 };
 
 // Etichete scurte pentru afișarea compactă (un singur rând).
@@ -131,6 +136,11 @@ const SHORT_LABELS: Record<string, string> = {
   "integration.update": "Integrare modificată",
   "meter.reading": "Citire contor",
   "meter.location": "Adresă / locație contor",
+  "meter.route_create": "Rută de citire creată",
+  "meter.route_update": "Rută de citire modificată",
+  "meter.route_delete": "Rută de citire ștearsă",
+  "meter.issue": "Neregulă contor raportată",
+  "meter.issue_resolve": "Neregulă contor rezolvată",
 };
 
 export function actionLabel(action: string): string {

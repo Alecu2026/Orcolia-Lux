@@ -4,8 +4,10 @@ import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { parseIndex, type PhotoResult, type SaveReadingResult } from "@/lib/meter-readings";
-import { getReading, saveReading, setReadingPhoto } from "@/lib/services/meter-readings";
-import { logAudit } from "@/lib/services/audit";
+import { getReading, saveReadingLogged } from "@/lib/services/meter-readings";
+import { uploadReadingPhoto } from "@/lib/services/meter-photo";
+import { reportIssue } from "@/lib/services/meter-issues";
+import type { IssueDto } from "@/lib/meter-issues";
 
 /**
  * Citiri lunare din teren — acțiuni pentru persoana responsabilă (permisiunea „Citiri contoare”). Logica stă în lib/services/meter-readings.ts
@@ -26,47 +28,33 @@ export async function saveMeterReadingAction(formData: FormData): Promise<SaveRe
   if (!meterId || meterId.length > 300) return { ok: false, error: "Contor invalid." };
   const value = parseIndex(String(formData.get("value") ?? ""));
   if (value == null) return { ok: false, error: "Index invalid. Scrie un număr (m³), ex. 1234,5." };
-  const res = await saveReading(
-    { id: user.id, name: user.name },
-    {
-      meterId,
-      value,
-      lat: num(formData.get("lat")),
-      lng: num(formData.get("lng")),
-      accuracy: num(formData.get("accuracy")),
-      confirmed: formData.get("confirmed") === "1",
-      address: typeof formData.get("address") === "string" ? String(formData.get("address")) : null,
-    },
-  );
-  if (res.ok) {
-    const r = res.reading;
-    const consum = r.prevValue != null ? Math.round((r.value - r.prevValue) * 1000) / 1000 : null;
-    await logAudit(
-      { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
-      {
-        action: "meter.reading",
-        module: "Meters",
-        objectId: meterId,
-        objectName: r.contor,
-        oldValue: r.prevValue != null ? `${r.prevValue} m³` : null,
-        newValue: `${r.value} m³`,
-        details: {
-          extra: [
-            { label: "Perioada", value: r.period },
-            ...(consum != null ? [{ label: "Consum", value: `${consum} m³` }] : []),
-            ...(r.lat != null && r.lng != null ? [{ label: "Locație citire", value: `${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}${r.accuracy != null ? ` (±${Math.round(r.accuracy)} m)` : ""}` }] : [{ label: "Locație citire", value: "fără locație" }]),
-            ...(r.distanceM != null ? [{ label: "Distanță față de citirea anterioară", value: `${r.distanceM} m` }] : []),
-            ...(res.location.addrField && res.location.address ? [{ label: "Adresă scrisă din teren", value: res.location.address }] : []),
-          ],
-        },
-      },
-    );
+  const res = await saveReadingLogged(user, {
+    meterId,
+    value,
+    lat: num(formData.get("lat")),
+    lng: num(formData.get("lng")),
+    accuracy: num(formData.get("accuracy")),
+    confirmed: formData.get("confirmed") === "1",
+    address: typeof formData.get("address") === "string" ? String(formData.get("address")) : null,
+  });
+  // neregula găsită la contor (defect, fraudă, curgere inversă…) se salvează odată cu citirea; dacă ea eșuează, citirea rămâne salvată
+  const issueKind = String(formData.get("issueKind") ?? "");
+  if (res.ok && issueKind) {
+    const r = await reportIssue(user, { meterId, kind: issueKind, note: String(formData.get("issueNote") ?? ""), readingId: res.reading.id });
+    return r.ok ? { ...res, issue: r.issue } : { ...res, issueError: r.error };
   }
   return res;
 }
 
-const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
-const MAX_PHOTO = 15 * 1024 * 1024;
+/** Doar neregula, fără index (contor inaccesibil, defect găsit fără citire). */
+export async function reportMeterIssueAction(formData: FormData): Promise<{ ok: true; issue: IssueDto } | { ok: false; error: string }> {
+  const user = await requireUser();
+  if (!can(user, "meters.read")) return { ok: false, error: "Fără permisiune." };
+  const meterId = String(formData.get("meterId") ?? "");
+  if (!meterId || meterId.length > 300) return { ok: false, error: "Contor invalid." };
+  const r = await reportIssue(user, { meterId, kind: String(formData.get("issueKind") ?? ""), note: String(formData.get("issueNote") ?? "") });
+  return r.ok ? { ok: true, issue: r.issue } : r;
+}
 
 /** Poza contorului pentru o citire deja salvată (se poate înlocui). */
 export async function uploadMeterPhotoAction(formData: FormData): Promise<PhotoResult> {
@@ -75,20 +63,5 @@ export async function uploadMeterPhotoAction(formData: FormData): Promise<PhotoR
   if (DEMO) return { ok: false, error: "Mod demo." };
   const reading = await getReading(String(formData.get("readingId") ?? ""));
   if (!reading) return { ok: false, error: "Citirea nu există. Salvează întâi indexul." };
-  const file = formData.get("file") as File | null;
-  if (!file || !file.size) return { ok: false, error: "Nicio poză selectată." };
-  if (!PHOTO_TYPES.has(file.type)) return { ok: false, error: "Poza trebuie să fie JPEG, PNG, WebP sau HEIC." };
-  if (file.size > MAX_PHOTO) return { ok: false, error: "Poza depășește 15 MB." };
-
-  const { env } = await import("@/lib/env");
-  if (!env.blob.enabled) return { ok: false, error: "Stocarea fișierelor nu este configurată (BLOB_READ_WRITE_TOKEN lipsă)." };
-  const { put, del } = await import("@vercel/blob");
-  const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : file.type.startsWith("image/hei") ? "heic" : "jpg";
-  const safe = reading.contor.replace(/[^\w.-]/g, "_").slice(0, 40);
-  const blob = await put(`meters/${reading.period}/${safe}-${Date.now()}.${ext}`, file, { access: "public", addRandomSuffix: true });
-  const res = await setReadingPhoto(reading.id, blob.url, file.name || `${safe}.${ext}`);
-  if (!res) return { ok: false, error: "Citirea nu există." };
-  // poza veche (înlocuită) se șterge din stocare; un eșec aici nu strică salvarea
-  if (res.oldUrl) await del(res.oldUrl).catch(() => {});
-  return { ok: true, photoUrl: blob.url };
+  return uploadReadingPhoto(reading.id, formData.get("file") as File);
 }
