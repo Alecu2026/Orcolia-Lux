@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import RowColorPicker from "./RowColorPicker";
+import { setAppointmentColorAction } from "@/app/actions/row-color";
 import { setStatus as setStatusAction, deleteAppointment, rescheduleAppointment, updateAppointmentFieldAction } from "@/app/actions/appointments";
 import DataTable, { type Col, type Filter } from "./DataTable";
 import { DateTimePick, EditableSelect, EditableText, PopEditor } from "./InlineCells";
@@ -109,7 +111,17 @@ export default function AppointmentsTable({
       )}
     </PopEditor>
   );
+  /** Culoarea rândului: salvată în baza de date; optimist în listă. */
+  function setColor(a: ApptVM, color: string | null) {
+    const prev = rows;
+    setRows((cur) => cur.map((r) => (r.id === a.id ? { ...r, color } : r)));
+    setAppointmentColorAction(a.id, color)
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(t(res.error)); } })
+      .catch(() => { setRows(prev); toast.error(m.common.error); });
+  }
+
   const columns: Col<ApptVM>[] = [
+    ...(canManage ? [{ key: "rc", label: "", minW: 28, render: (a: ApptVM) => <div onClick={(e) => e.stopPropagation()}><RowColorPicker value={a.color} onChange={(c) => setColor(a, c)} /></div> } satisfies Col<ApptVM>] : []),
     {
       key: "open", label: "", minW: 28,
       render: (a) => <button type="button" onClick={() => setDetail(a.id)} title={t("Deschide detaliile")} className="cursor-pointer rounded px-0.5 font-semibold text-brand hover:bg-brand-soft/60">↗</button>,
@@ -214,6 +226,7 @@ export default function AppointmentsTable({
       {initialCreate && <AutoOpenQuickAdd />}
       <DataTable
         storageKey="appointments"
+        rowColor={(a) => a.color}
         rows={rows}
         columns={columns}
         filters={filters}

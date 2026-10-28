@@ -5,6 +5,8 @@ import { unreadCount } from "@/lib/queries/notifications";
 import { getCompanySettings } from "@/lib/queries/company";
 import AppShell from "@/app/components/AppShell";
 import PWARegister from "@/app/components/PWARegister";
+import { TableLookProvider } from "@/app/components/TableLookContext";
+import { sanitizePreset } from "@/lib/table-look";
 import OpenInApp from "@/app/components/OpenInApp";
 import PayersPrefetch from "@/app/components/PayersPrefetch";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
@@ -52,6 +54,7 @@ export default async function AppLayout({
   };
 
   return (
+    <TableLookProvider preset={sanitizePreset(user.tableLook)} canCustomize={can(user, "tables.customize")}>
     <AppShell
       userName={user.name}
       demo={DEMO}
@@ -66,5 +69,6 @@ export default async function AppLayout({
       <OpenInApp />
       {(perms["payers.view"] || perms["invoices.view"]) && <PayersPrefetch payers={perms["payers.view"]} invoices={perms["invoices.view"]} />}
     </AppShell>
+    </TableLookProvider>
   );
 }

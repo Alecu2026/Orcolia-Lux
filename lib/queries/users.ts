@@ -37,6 +37,7 @@ const USER_SELECT = {
   taskViewScope: true,
   taskViewTeamIds: true,
   taskViewMemberIds: true,
+  tableLook: true,
 } as const;
 
 export async function listUsers(): Promise<UserRow[]> {

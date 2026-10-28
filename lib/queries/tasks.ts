@@ -43,6 +43,8 @@ export type TaskRow = {
   createdAt: Date;
   /** Clientul a scris în conversația tichetului și operatorii n-au citit încă. */
   chatUnread: boolean;
+  /** Culoarea rândului în liste (hex), aleasă de utilizator; null = fără culoare. */
+  color: string | null;
 };
 
 const TASK_SELECT = {
@@ -69,6 +71,7 @@ const TASK_SELECT = {
   extraTeamIds: true,
   assignmentSettingsJson: true,
   bypassQuietHours: true,
+  color: true,
   // Fără selecturi pe relații (assignee/team/project/category/creator): fiecare devine un $in separat pe MongoDB, lent la mii de rânduri.
   // Numele se completează din hărți mici păstrate în memorie (vezi taskLookups).
   fromName: true,
@@ -181,6 +184,7 @@ function toRow(t: TaskDbRow, l: Lookups): TaskRow {
     clientName: null,
     creatorName: ticketCreatorName({ type: t.type, fromName: t.fromName, fromEmail: t.fromEmail, creator: l.users.has(t.creatorId) ? { name: l.users.get(t.creatorId)! } : null }),
     createdAt: t.createdAt,
+    color: t.color ?? null,
     chatUnread: t.chatLastSender === "CLIENT" && !!t.chatLastMsgAt && (!t.chatStaffReadAt || t.chatStaffReadAt < t.chatLastMsgAt),
   };
 }
@@ -480,6 +484,7 @@ function toTuple(t: TaskDbRow): TaskTuple {
     t.type === "TICKET" ? (t.fromName || t.fromEmail || "").trim() : "",
     t.address ?? "",
     t.reminderSchedule ? JSON.stringify(t.reminderSchedule) : null,
+    t.color ?? null,
   ];
 }
 

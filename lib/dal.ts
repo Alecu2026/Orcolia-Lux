@@ -18,6 +18,8 @@ export type CurrentUser = {
   taskViewScope: string;
   taskViewTeamIds: string[];
   taskViewMemberIds: string[];
+  /** Aspectul tabelelor setat de administrator (vezi lib/table-look.ts); gol = implicit. */
+  tableLook?: unknown;
 };
 
 /** Super-admin: acces la Audit Logs + gestionarea celorlalți super-admini. */
@@ -76,6 +78,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
           taskViewScope: true,
           taskViewTeamIds: true,
           taskViewMemberIds: true,
+          tableLook: true,
         },
       },
     },

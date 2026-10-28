@@ -36,6 +36,8 @@ export type ApptVM = {
   endTime: string;
   categoryName: string | null;
   categoryColor: string | null;
+  /** Culoarea rândului în liste (hex), aleasă de utilizator; null = fără. */
+  color: string | null;
   remEmail: boolean;
   remTelegram: boolean;
   /** „Mesaj / detalii” scris la creare (separat de „Descriere” = titlu). */

@@ -129,6 +129,8 @@ model User {
   isSuperAdmin Boolean  @default(false)
   // Permisiuni individuale (chei din lib/permissions.ts). ADMIN le are pe toate.
   permissions  String[] @default([])
+  // Aspectul tabelelor setat de administrator pentru acest utilizator (densitate, mărime text, lățime, culori — vezi lib/table-look.ts). Cine are „Personalizare tabele” îl poate schimba singur.
+  tableLook    Json?
   // Evenimente la care primește notificări „observator" (chei din lib/notify-meta.ts).
   // Listă vidă = toate evenimentele (când notifyScope permite).
   notifyEvents String[] @default([])
@@ -314,6 +316,8 @@ model Task {
   assignmentSettingsJson String?
   // Dacă true, notificările Telegram se trimit și în orele de somn pentru acest task
   bypassQuietHours Boolean @default(false)
+  // Culoarea rândului în liste (hex „#rrggbb”), aleasă de utilizatori cu drept de editare; gol = fără culoare.
+  color String?
 
   projectId String?  @db.ObjectId
   project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -802,6 +806,8 @@ model Appointment {
   clientNameSnapshot   String
   categoryNameSnapshot String?
   categoryColorSnapshot String?
+  // Culoarea rândului în listă (hex „#rrggbb”), aleasă de utilizator; gol = fără culoare.
+  color String?
 
   reminderEmailEnabled    Boolean @default(false)
   reminderTelegramEnabled Boolean @default(false)

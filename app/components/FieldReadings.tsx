@@ -499,15 +499,21 @@ export default function FieldReadings({
             {t("Toate rutele")}
           </label>
         )}
-        {routes.length > 0 && (restricted ? myRoutes.length > 1 : true) && (
+        {routes.length > 0 && (
+
           <select value={restricted ? (mineIds.has(filters.route) ? filters.route : "") : filters.route} onChange={(e) => setFilter({ route: e.target.value })} className={fld(restricted ? (mineIds.has(filters.route) ? filters.route : "") : filters.route)} aria-label={t("Ruta de citire")}>
             {restricted ? (
-              <>
-                <option value="">{t("Rutele mele")}</option>
-                {myRoutes.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
-              </>
+              myRoutes.length === 1 ? (
+                // o singură rută: filtrul arată titlul ei (cititorul vede mereu pe ce rută lucrează)
+                <option value="">{myRoutes[0].name}</option>
+              ) : (
+                <>
+                  <option value="">{t("Rutele mele")}</option>
+                  {myRoutes.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </>
+              )
             ) : (
               <>
                 <option value="">{t("Rută: toate")}</option>

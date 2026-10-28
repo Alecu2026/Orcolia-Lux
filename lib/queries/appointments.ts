@@ -21,6 +21,7 @@ export const LIST_SELECT = {
   clientNameSnapshot: true,
   categoryNameSnapshot: true,
   categoryColorSnapshot: true,
+  color: true,
   reminderEmailEnabled: true,
   reminderTelegramEnabled: true,
   message: true,
@@ -37,6 +38,8 @@ export type AppointmentListItem = {
   clientNameSnapshot: string;
   categoryNameSnapshot: string | null;
   categoryColorSnapshot: string | null;
+  /** Culoarea rândului în liste (hex), aleasă de utilizator. */
+  color?: string | null;
   reminderEmailEnabled: boolean;
   reminderTelegramEnabled: boolean;
   message?: string | null;

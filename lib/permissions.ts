@@ -55,6 +55,8 @@ export type PermissionKey =
   | "reports.view"
   | "users.manage"
   | "notifications.receive"
+  // Personalizarea tabelelor de către utilizator: lățimea coloanelor, culori, mărimea textului, celule spațioase, ordinea coloanelor
+  | "tables.customize"
   | "admin";
 
 export const PERMISSION_GROUPS: {
@@ -145,6 +147,7 @@ export const PERMISSION_GROUPS: {
     group: "Administrare",
     items: [
       { key: "users.manage", label: "Gestionare utilizatori" },
+      { key: "tables.customize", label: "Personalizare tabele (lățimi coloane, culori, mărime text, celule spațioase)" },
       { key: "admin", label: "Acces administrativ (tot)" },
     ],
   },

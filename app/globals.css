@@ -156,3 +156,24 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--color-line) transparent;
 }
+
+/* Tabele: hover pe rând. Celulele au fundal propriu, deci hover-ul se aplică pe celule; culoarea se poate alege din „Culori tabel” (--dt-hover). */
+.dt-root tbody tr:hover > td,
+.dt-root .dt-hover-sample > td {
+  background-color: var(--dt-hover, color-mix(in srgb, var(--color-brand-soft) 45%, var(--color-surface)));
+}
+/* mânerul de redimensionare a coloanelor */
+.dt-resize {
+  touch-action: none;
+}
+
+/* Culoarea unui rând (aleasă de utilizator): fundal ușor pe tot rândul + bară colorată în stânga; la hover culoarea se intensifică */
+.dt-root tbody tr[data-rc] > td {
+  background-color: color-mix(in srgb, var(--dt-rc) 18%, var(--dt-row, var(--color-surface)));
+}
+.dt-root tbody tr[data-rc]:hover > td {
+  background-color: color-mix(in srgb, var(--dt-rc) 32%, var(--dt-row, var(--color-surface)));
+}
+.dt-root tbody tr[data-rc] > td:first-child {
+  box-shadow: inset 4px 0 0 var(--dt-rc);
+}

@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isSuper, type CurrentUser } from "@/lib/dal";
 import { can, ALL_PERMISSION_KEYS, PERMISSIONS_V2 } from "@/lib/permissions";
+import { sanitizePreset } from "@/lib/table-look";
 import { hashPassword } from "@/lib/password";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
@@ -60,6 +61,15 @@ function parseIdList(formData: FormData, key: string): string[] {
   return [...new Set(formData.getAll(key).map(String).filter((v) => /^[a-f0-9]{24}$/i.test(v)))];
 }
 
+/** Aspectul tabelelor setat de administrator (JSON din formular) → obiect curățat (gol = implicit). */
+function parseTableLook(formData: FormData): Prisma.InputJsonValue {
+  try {
+    return sanitizePreset(JSON.parse(String(formData.get("tableLook") ?? "{}"))) as Prisma.InputJsonValue;
+  } catch {
+    return {};
+  }
+}
+
 const TASK_VIEW_SCOPES = ["ALL", "RESTRICTED"];
 function parseTaskViewScope(formData: FormData): string {
   const v = String(formData.get("taskViewScope") ?? "ALL");
@@ -108,6 +118,7 @@ export async function createUser(
       notifyTeamIds: parseIdList(formData, "notifyTeamIds"),
       notifyMemberIds: parseIdList(formData, "notifyMemberIds"),
       taskViewScope: parseTaskViewScope(formData),
+      tableLook: parseTableLook(formData),
       taskViewTeamIds: parseIdList(formData, "taskViewTeamIds"),
       taskViewMemberIds: parseIdList(formData, "taskViewMemberIds"),
     },
@@ -199,6 +210,7 @@ export async function updateUser(
         notifyTeamIds: parseIdList(formData, "notifyTeamIds"),
         notifyMemberIds: parseIdList(formData, "notifyMemberIds"),
         taskViewScope: parseTaskViewScope(formData),
+        tableLook: parseTableLook(formData),
         taskViewTeamIds: parseIdList(formData, "taskViewTeamIds"),
         taskViewMemberIds: parseIdList(formData, "taskViewMemberIds"),
         ...(newPassword.length >= 8 ? { passwordHash: await hashPassword(newPassword) } : {}),

@@ -1,6 +1,9 @@
 "use client";
 
 import DateFilterInput from "./DateFilterInput";
+import TableColorsDialog from "./TableColorsDialog";
+import { useTableLook } from "./TableLookContext";
+import { colorVars, hasColors, headStyle, sanitizeColors, type TableColors } from "@/lib/table-look";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DEFAULT_PER_PAGE,
@@ -88,7 +91,7 @@ const TEXT_CLS: Record<Look["text"], string> = {
   violet: "text-violet-700 dark:text-violet-300",
   rose: "text-rose-700 dark:text-rose-300",
 };
-const ZEBRA_BG = "bg-[color-mix(in_srgb,var(--color-surface-2)_70%,var(--color-surface))]";
+const ZEBRA_BG = "bg-[var(--dt-zebra,color-mix(in_srgb,var(--color-surface-2)_70%,var(--color-surface)))]";
 
 type Persisted = {
   /** Mod telefon (carduri): true/false = ales de utilizator; lipsă = automat (carduri pe ecran îngust). */
@@ -103,7 +106,14 @@ type Persisted = {
   cv?: Record<string, boolean>;
   /** Aspect (densitate, text, culori). */
   lk?: Partial<Look>;
+  /** Lățimile coloanelor trase cu mouse-ul (px, pe cheia coloanei). */
+  cw?: Record<string, number>;
+  /** Culori alese din paleta completă (antet, text, fundal, hover, linii). */
+  cc?: TableColors;
 };
+
+const MIN_COL_W = 40;
+const MAX_COL_W = 900;
 
 const collator = new Intl.Collator("ro", { numeric: true });
 
@@ -166,6 +176,7 @@ export default function DataTable<T extends { id: string }>({
   cardAvatar,
   emptyText,
   rowClassName,
+  rowColor,
   presetValues,
   pending,
 }: {
@@ -185,6 +196,8 @@ export default function DataTable<T extends { id: string }>({
   noun?: string;
   emptyText?: string;
   rowClassName?: (r: T) => string;
+  /** Culoarea rândului (hex): fundal ușor + bară în stânga; la telefon, bară pe card. */
+  rowColor?: (r: T) => string | null | undefined;
   /** Chei de coloane care alcătuiesc rezumatul cardului de pe telefon (titlu + două valori), în ordine; restul se vede la desfacere. */
   cardKeys?: string[];
   /** Litera din cercul cardului (implicit: prima literă a primei coloane). */
@@ -208,7 +221,17 @@ export default function DataTable<T extends { id: string }>({
   // ── Coloane personalizabile: ordine (drag & drop sau ▲▼) și vizibilitate, salvate în localStorage ──
   const [order, setOrder] = useState<string[]>([]);
   const [vis, setVis] = useState<Record<string, boolean>>({});
-  const [look, setLook] = useState<Look>(DEFAULT_LOOK);
+  // Aspectul predefinit de administrator = valoarea implicită; „Personalizare tabele” (permisiune) = poate schimba singur (localStorage, peste preset).
+  const { preset, canCustomize } = useTableLook();
+  const { colors: presetColors, ...presetLook } = preset;
+  const BASE_LOOK: Look = { ...DEFAULT_LOOK, ...presetLook };
+  const [look, setLook] = useState<Look>(BASE_LOOK);
+  /** Lățimi proprii ale coloanelor (px) și culori proprii — salvate în localStorage împreună cu restul aspectului. */
+  const [colW, setColW] = useState<Record<string, number>>({});
+  const [colors, setColors] = useState<TableColors>(presetColors ?? {});
+  const [colorsOpen, setColorsOpen] = useState(false);
+  const resizing = useRef(false);
+  const headRef = useRef<HTMLTableSectionElement>(null);
   const [colsOpen, setColsOpen] = useState(false);
   // Mod telefon: fiecare rând devine un card cu câmpurile unul sub altul. `cardsPref` = alegerea utilizatorului (null = automat:
   // carduri pe ecrane înguste, tabel pe restul).
@@ -233,10 +256,12 @@ export default function DataTable<T extends { id: string }>({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setNarrow(window.matchMedia("(max-width: 639px)").matches);
     if (savedCols && typeof savedCols.cm === "boolean") setCardsPref(savedCols.cm);
-    if (savedCols) {
+    if (savedCols && canCustomize) {
       const ck = new Set(columns.map((c) => c.key));
       if (Array.isArray(savedCols.co)) setOrder(savedCols.co.filter((k) => ck.has(k)));
-      if (savedCols.lk) setLook({ ...DEFAULT_LOOK, ...savedCols.lk });
+      if (savedCols.lk) setLook({ ...BASE_LOOK, ...savedCols.lk });
+      if (savedCols.cw) setColW(Object.fromEntries(Object.entries(savedCols.cw).filter(([k, w]) => ck.has(k) && typeof w === "number" && w >= MIN_COL_W && w <= MAX_COL_W)));
+      if (savedCols.cc) setColors(sanitizeColors(savedCols.cc));
       if (savedCols.cv) setVis(Object.fromEntries(Object.entries(savedCols.cv).filter(([k, b]) => ck.has(k) && typeof b === "boolean")));
     }
     const known = new Set(filters.map((f) => f.key));
@@ -268,11 +293,12 @@ export default function DataTable<T extends { id: string }>({
   useEffect(() => {
     if (!ready) return;
     try {
-      const empty = Object.keys(values).length === 0 && perPage === DEFAULT_PER_PAGE && sortKey === (defaultSort?.key ?? "") && sortDir === (defaultSort?.dir ?? "asc") && order.length === 0 && Object.keys(vis).length === 0 && JSON.stringify(look) === JSON.stringify(DEFAULT_LOOK) && cardsPref === null;
+      const empty = Object.keys(values).length === 0 && perPage === DEFAULT_PER_PAGE && sortKey === (defaultSort?.key ?? "") && sortDir === (defaultSort?.dir ?? "asc") && (!canCustomize || (order.length === 0 && Object.keys(vis).length === 0)) && (!canCustomize || (JSON.stringify(look) === JSON.stringify(BASE_LOOK) && Object.keys(colW).length === 0 && JSON.stringify(colors) === JSON.stringify(presetColors ?? {}))) && cardsPref === null;
       if (empty) localStorage.removeItem(STORAGE);
-      else localStorage.setItem(STORAGE, JSON.stringify({ v: values, pp: perPage, sk: sortKey, sd: sortDir, co: order, cv: vis, lk: look, ...(cardsPref === null ? {} : { cm: cardsPref }) } satisfies Persisted));
+      else localStorage.setItem(STORAGE, JSON.stringify({ v: values, pp: perPage, sk: sortKey, sd: sortDir, co: canCustomize ? order : [], cv: canCustomize ? vis : {}, ...(canCustomize ? { lk: look } : {}), ...(canCustomize && Object.keys(colW).length ? { cw: colW } : {}), ...(canCustomize && JSON.stringify(colors) !== JSON.stringify(presetColors ?? {}) ? { cc: colors } : {}), ...(cardsPref === null ? {} : { cm: cardsPref }) } satisfies Persisted));
     } catch {}
-  }, [values, perPage, sortKey, sortDir, order, vis, look, cardsPref, ready, STORAGE, defaultSort]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, perPage, sortKey, sortDir, order, vis, look, cardsPref, colW, colors, ready, STORAGE, defaultSort]);
 
   // Închide fereastra „Coloane" la click în afara ei sau la Escape.
   useEffect(() => {
@@ -317,12 +343,59 @@ export default function DataTable<T extends { id: string }>({
   const sortableCols = labeled.filter((c) => c.sort);
   // Lățimi explicite pentru FIECARE coloană (colgroup + table-layout: fixed), scalate cu „Lățime celule": așa setarea chiar schimbă tabelul,
   // indiferent de conținut. Baza = minW, iar la coloanele cu maxW (text lung, tăiat cu „…") media dintre minW și maxW.
-  const colWidths = visibleCols.map((c) => Math.round((c.maxW ? (c.minW + c.maxW) / 2 : c.minW) * look.width / 100));
+  const colWidths = visibleCols.map((c) => colW[c.key] ?? Math.round((c.maxW ? (c.minW + c.maxW) / 2 : c.minW) * look.width / 100));
   const tableMinWidth = colWidths.reduce((a, b) => a + b, 0);
   const roomy = look.density === "roomy";
   // Setările implicite păstrează comportamentul clasic (coloanele își iau lățimea din conținut). Lățimile explicite se aplică doar când
   // alegi altă lățime sau rânduri spațioase — exact cazurile în care setarea trebuie să se vadă.
-  const fixed = look.width !== 100 || roomy;
+  const fixed = look.width !== 100 || roomy || Object.keys(colW).length > 0;
+
+  /**
+   * Redimensionare ca la ClickUp: tragi marginea din dreapta a antetului. Prima dată, lățimile curente ale TUTUR coloanelor se „înghesuie” (se măsoară) ca tabelul să nu sară
+   * la trecerea pe lățimi fixe; apoi coloana trasă urmărește cursorul. Dublu-click pe margine = lățimea implicită a acelei coloane.
+   */
+  function startResize(e: React.PointerEvent, key: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const head = headRef.current;
+    if (!head) return;
+    resizing.current = true;
+    const measured: Record<string, number> = {};
+    head.querySelectorAll<HTMLElement>("th[data-ck]").forEach((th) => {
+      measured[th.dataset.ck as string] = Math.round(th.getBoundingClientRect().width);
+    });
+    const base = { ...measured, ...colW };
+    const startX = e.clientX;
+    const startW = base[key] ?? MIN_COL_W;
+    let raf = 0;
+    let latest = startW;
+    const apply = () => {
+      raf = 0;
+      setColW({ ...base, [key]: latest });
+    };
+    const move = (ev: PointerEvent) => {
+      latest = Math.min(MAX_COL_W, Math.max(MIN_COL_W, Math.round(startW + ev.clientX - startX)));
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (raf) cancelAnimationFrame(raf);
+      setColW({ ...base, [key]: latest });
+      setTimeout(() => { resizing.current = false; }, 0);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }
+  function resetColW(key: string) {
+    setColW((w) => {
+      const n = { ...w };
+      delete n[key];
+      return n;
+    });
+  }
 
   /** Mută coloana `from` înaintea coloanei `to` (drag & drop) sau cu un pas (▲▼). */
   function moveCol(from: string, to: string) {
@@ -435,6 +508,43 @@ export default function DataTable<T extends { id: string }>({
   const hideRows = !!pending && activeCount > 0;
   const sortedByUser = sortKey !== (defaultSort?.key ?? "") || sortDir !== (defaultSort?.dir ?? "asc");
 
+  // Lățimi stabile la derulare: într-o listă lungă doar rândurile din zona vizibilă există în DOM, iar în layout-ul automat lățimea unei coloane depinde de conținutul lor —
+  // fără corecție, coloanele se lărgeau / strângeau pe măsură ce derulai. Lățimea de pornire a fiecărei coloane se estimează din conținutul TUTUROR rândurilor paginii (nu doar din cele
+  // vizibile), între minim și maxim; în plus se reține cea mai mare lățime văzută (crește, nu mai scade) — deci lățimile rămân fixe la derulare.
+  const [grown, setGrown] = useState<Record<string, number>>({});
+  const naturalW = useMemo(() => {
+    const o: Record<string, number> = {};
+    if (!virt) return o;
+    for (const c of visibleCols) {
+      if (!c.sort) continue;
+      let mx = 0;
+      for (const r of pageRows) {
+        const v = c.sort(r);
+        if (v == null) continue;
+        const len = typeof v === "number" ? Math.min(String(v).length, 9) : Math.min(String(v).length, 400);
+        if (len > mx) mx = len;
+      }
+      o[c.key] = Math.ceil(mx * look.font * 0.56) + 16;
+    }
+    return o;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [virt, pageRows, columns, order, vis, look.font]);
+  useEffect(() => {
+    if (!virt || fixed) return;
+    const id = requestAnimationFrame(() => {
+      const ths = headRef.current?.querySelectorAll<HTMLElement>("th[data-ck]");
+      if (!ths) return;
+      let next: Record<string, number> | null = null;
+      ths.forEach((th) => {
+        const k = th.dataset.ck as string;
+        const w = Math.ceil(th.getBoundingClientRect().width);
+        if (w > (grown[k] ?? 0) + 1) (next ??= { ...grown })[k] = w;
+      });
+      if (next) setGrown(next);
+    });
+    return () => cancelAnimationFrame(id);
+  });
+
   // Înălțimea reală a unui rând = media celor randate (aspectul — densitate, font — o schimbă); se măsoară după fiecare mutare a ferestrei.
   useEffect(() => {
     if (!virt) return;
@@ -517,11 +627,12 @@ export default function DataTable<T extends { id: string }>({
         >
           {cards ? `▦ ${t("Tabel")}` : `📱 ${t("Mod telefon")}`}
         </button>
+        {canCustomize && (
         <div ref={colsBox} className="relative">
           <button
             type="button"
             onClick={() => setColsOpen((o) => !o)}
-            className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${order.length || Object.keys(vis).length || JSON.stringify(look) !== JSON.stringify(DEFAULT_LOOK) ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+            className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${order.length || Object.keys(vis).length || Object.keys(colW).length || hasColors(colors) || JSON.stringify(look) !== JSON.stringify(BASE_LOOK) ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
             title={t("Alege și ordonează coloanele")}
           >
             ⚙ {t("Coloane")}
@@ -556,12 +667,22 @@ export default function DataTable<T extends { id: string }>({
                   {t("Lățimea se aplică tuturor coloanelor; textul care nu încape se taie cu „…”. La „Rânduri spațioase” textul se rupe pe până la 3 rânduri.")}
                 </p>
               </div>
-              <button type="button" onClick={() => { setOrder([]); setVis({}); setLook(DEFAULT_LOOK); }} className="tap mt-2 h-7 w-full cursor-pointer rounded-lg border border-[var(--color-line)] text-[11px] hover:bg-[var(--color-surface-2)]">
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                <button type="button" onClick={() => { setColorsOpen(true); setColsOpen(false); }} className={`tap h-7 cursor-pointer rounded-lg border text-[11px] ${hasColors(colors) ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] hover:bg-[var(--color-surface-2)]"}`}>
+                  🎨 {t("Culori…")}
+                </button>
+                <button type="button" disabled={Object.keys(colW).length === 0} onClick={() => setColW({})} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] text-[11px] hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40" title={t("Revine la lățimile implicite ale coloanelor")}>
+                  ↔ {t("Resetează lățimile")}
+                </button>
+              </div>
+              <button type="button" onClick={() => { setOrder([]); setVis({}); setLook(BASE_LOOK); setColW({}); setColors(presetColors ?? {}); }} className="tap mt-1.5 h-7 w-full cursor-pointer rounded-lg border border-[var(--color-line)] text-[11px] hover:bg-[var(--color-surface-2)]">
                 {t("Resetează coloanele și aspectul")}
               </button>
             </div>
           )}
+          {colorsOpen && <TableColorsDialog value={colors} onChange={setColors} onClose={() => setColorsOpen(false)} />}
         </div>
+        )}
         </div>
         <label className="flex items-center gap-1.5 text-xs text-ink-soft">
           {t("Afișează")}
@@ -585,7 +706,8 @@ export default function DataTable<T extends { id: string }>({
             // Rezumat: primele trei coloane vizibile (titlu + două valori scurte); restul se vede la desfacere.
             const [c0, c1, c2, ...rest] = cardFields;
             const initial = cardAvatar ? cardAvatar(r) : String(c0?.sort?.(r) ?? "").trim().charAt(0).toUpperCase();
-            return (
+            const rcCard = rowColor?.(r);
+            const cardEl = (
               <CompactCard
                 key={r.id}
                 avatar={initial}
@@ -615,6 +737,7 @@ export default function DataTable<T extends { id: string }>({
                 )}
               </CompactCard>
             );
+            return rcCard ? <div key={r.id} style={{ borderLeft: `4px solid ${rcCard}`, borderRadius: 12 }}>{cardEl}</div> : cardEl;
             };
             // Multe carduri (de ex. „Toate”): doar cele din zona vizibilă există în DOM.
             return pageRows.length > 60
@@ -631,8 +754,8 @@ export default function DataTable<T extends { id: string }>({
       ) : (
       <div
         ref={scrollBox}
-        className="card overflow-auto"
-        style={{ maxHeight: perPage > 50 ? "max(78vh, 890px)" : undefined }}
+        className="card dt-root overflow-auto"
+        style={{ maxHeight: perPage > 50 ? "max(78vh, 890px)" : undefined, ...colorVars(colors) }}
         onScroll={virt ? (e) => {
           const top = e.currentTarget.scrollTop;
           if (scrollRaf.current) return;
@@ -657,20 +780,21 @@ export default function DataTable<T extends { id: string }>({
               {visibleCols.map((c, i) => <col key={c.key} style={{ width: colWidths[i] }} />)}
             </colgroup>
           )}
-          <thead className={`sticky top-0 z-20 ${HEADER_CLS[look.header]}`}>
+          <thead ref={headRef} className={`sticky top-0 z-20 ${HEADER_CLS[look.header]}`} style={headStyle(colors)}>
             <tr>
               {visibleCols.map((c, ci) => (
                 <th
                   key={c.key}
-                  style={fixed ? undefined : { minWidth: Math.round(c.minW * look.width / 100) }}
-                  draggable={c.label !== ""}
-                  onDragStart={(e) => { setDragKey(c.key); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.key); }}
+                  data-ck={c.key}
+                  style={{ ...(fixed ? {} : { minWidth: virt ? Math.max(Math.round(Math.min(Math.max(naturalW[c.key] ?? 0, c.minW), c.maxW ?? Infinity) * look.width / 100), grown[c.key] ?? 0) : Math.round(c.minW * look.width / 100) }), ...headStyle(colors) }}
+                  draggable={c.label !== "" && canCustomize}
+                  onDragStart={(e) => { if (resizing.current) { e.preventDefault(); return; } setDragKey(c.key); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.key); }}
                   onDragOver={(e) => { if (dragKey && c.label !== "") { e.preventDefault(); setOverKey(c.key); } }}
                   onDragLeave={() => setOverKey((k) => (k === c.key ? null : k))}
                   onDrop={(e) => { e.preventDefault(); if (dragKey) moveCol(dragKey, c.key); setDragKey(null); setOverKey(null); }}
                   onDragEnd={() => { setDragKey(null); setOverKey(null); }}
-                  title={c.label !== "" ? t("Trage ca să muți coloana") : undefined}
-                  className={`${fixed ? "overflow-hidden" : ""} border-b border-[var(--color-line)] ${HEADER_CLS[look.header]} ${DENSITY[look.density].px} ${DENSITY[look.density].head} font-semibold leading-tight ${c.right ? "text-right" : "text-left"} ${c.sticky && ci <= 1 ? "sticky left-0 z-30" : ""} ${c.label !== "" ? "cursor-grab" : ""} ${overKey === c.key && dragKey !== c.key ? "shadow-[inset_3px_0_0_var(--color-brand)]" : ""} ${dragKey === c.key ? "opacity-50" : ""}`}
+                  title={c.label !== "" && canCustomize ? t("Trage ca să muți coloana") : undefined}
+                  className={`relative ${fixed ? "overflow-hidden" : ""} border-b border-[var(--color-line)] ${HEADER_CLS[look.header]} ${DENSITY[look.density].px} ${DENSITY[look.density].head} font-semibold leading-tight ${c.right ? "text-right" : "text-left"} ${c.sticky && ci <= 1 ? "sticky left-0 z-30" : ""} ${c.label !== "" && canCustomize ? "cursor-grab" : ""} ${overKey === c.key && dragKey !== c.key ? "shadow-[inset_3px_0_0_var(--color-brand)]" : ""} ${dragKey === c.key ? "opacity-50" : ""}`}
                 >
                   {c.sort ? (
                     <button type="button" onClick={() => toggleSort(c.key)} className="inline-flex cursor-pointer items-center gap-1 font-semibold hover:text-brand">
@@ -678,6 +802,18 @@ export default function DataTable<T extends { id: string }>({
                       <span className="text-[10px] opacity-60">{sortKey === c.key ? (sortDir === "asc" ? "▲" : "▼") : "↕"}</span>
                     </button>
                   ) : t(c.label)}
+                  {c.label !== "" && canCustomize && (
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={t("Trage ca să schimbi lățimea coloanei")}
+                      title={t("Trage ca să schimbi lățimea coloanei (dublu-click = implicit)")}
+                      draggable={false}
+                      onPointerDown={(e) => startResize(e, c.key)}
+                      onDoubleClick={() => resetColW(c.key)}
+                      className="dt-resize absolute right-0 top-0 z-10 h-full w-2 cursor-col-resize select-none hover:bg-brand/40"
+                    />
+                  )}
                 </th>
               ))}
             </tr>
@@ -692,6 +828,8 @@ export default function DataTable<T extends { id: string }>({
               <tr
                 key={r.id}
                 data-vr=""
+                data-rc={rowColor?.(r) ? "" : undefined}
+                style={rowColor?.(r) ? ({ "--dt-rc": rowColor(r) } as React.CSSProperties) : undefined}
                 onClick={onRowClick ? (e) => { if (rowClickSkipsControls && (e.target as HTMLElement).closest("button, a, select, input, textarea, label, [role=button], [role=combobox], [data-no-row]")) return; onRowClick(r); } : undefined}
                 className={`${onRowClick ? "cursor-pointer" : ""} hover:bg-brand-soft/30 ${rowClassName?.(r) ?? ""}`}
               >
@@ -699,7 +837,7 @@ export default function DataTable<T extends { id: string }>({
                   <td
                     key={c.key}
                     style={!fixed && c.maxW ? { maxWidth: Math.round(c.maxW * look.width / 100) } : undefined}
-                    className={`${fixed ? "overflow-hidden" : ""} border-b border-[var(--color-line)] ${look.zebra && ri % 2 === 1 ? ZEBRA_BG : "bg-[var(--color-surface)]"} ${DENSITY[look.density].px} ${DENSITY[look.density].cell} ${fixed && !roomy ? "whitespace-nowrap" : ""} ${c.right ? "text-right tabular-nums" : ""} ${c.sticky && ci <= 1 ? "sticky left-0 z-10 font-medium" : ""}`}
+                    className={`${fixed ? "overflow-hidden" : ""} border-b border-[var(--color-line)] ${look.zebra && ri % 2 === 1 ? ZEBRA_BG : "bg-[var(--dt-row,var(--color-surface))]"} ${DENSITY[look.density].px} ${DENSITY[look.density].cell} ${fixed && !roomy ? "whitespace-nowrap" : ""} ${c.right ? "text-right tabular-nums" : ""} ${c.sticky && ci <= 1 ? "sticky left-0 z-10 font-medium" : ""}`}
                   >
                     {/* Rânduri compacte/normale: o singură linie, textul lung se taie cu „…". Spațioase: textul se rupe pe până la 3 rânduri. */}
                     {c.maxW || roomy ? <div className={roomy ? "line-clamp-3 break-words" : "truncate"}>{c.render(r)}</div> : c.render(r)}

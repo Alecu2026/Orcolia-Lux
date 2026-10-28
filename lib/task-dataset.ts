@@ -34,6 +34,7 @@ export type TaskTuple = [
   string, // 22 solicitantul (tichete din email/portal: fromName sau fromEmail), altfel ""
   string, // 23 adresa (text) sau ""
   string | null, // 24 reminderSchedule (JSON) — lipsește în listele salvate înainte de această versiune
+  string | null, // 25 culoarea rândului (hex) — lipsește în listele salvate înainte de această versiune
 ];
 
 export type TaskNames = {
@@ -86,6 +87,7 @@ export type DecodedTask = {
   creatorName: string;
   createdAt: string;
   chatUnread: boolean;
+  color: string | null;
 };
 
 /** Tupluri → rânduri complete (cu numele rezolvate din dicționar). Aceeași logică ca `toRow` de pe server. */
@@ -130,6 +132,7 @@ export function decodeTasks(tuples: TaskTuple[], names: TaskNames): DecodedTask[
       creatorName: r[2] === "TICKET" && r[22] ? r[22] : names.u[r[10]] ?? "Necunoscut",
       createdAt: new Date(r[20]).toISOString(),
       chatUnread: r[21] === 1,
+      color: r[25] ?? null,
     };
   }
   return out;

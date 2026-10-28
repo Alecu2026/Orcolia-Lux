@@ -38,6 +38,8 @@ type Task = {
   categoryId: string | null;
   categoryName: string | null;
   categoryColor: string | null;
+  /** Culoarea rândului în liste (hex), aleasă de utilizator. */
+  color?: string | null;
 };
 
 /** Cine poate muta cardul (schimba statusul): aceeași regulă ca pe server (canWorkOnTask / „Închidere”), calculată în browser ca să meargă și pe lista completă. */
@@ -422,6 +424,7 @@ export default function TaskKanban({
                       setDragId(t.id);
                     }}
                     onDragEnd={() => { setDragId(null); setOverCol(null); }}
+                    style={t.color ? { borderLeft: `4px solid ${t.color}` } : undefined}
                     className={`card block ${movable ? "cursor-grab active:cursor-grabbing" : ""} p-2.5 hover:opacity-90 ${dragId === t.id ? "opacity-50" : ""}`}
                   >
                     <div className="flex items-start gap-2">

@@ -94,6 +94,8 @@ export type Task = {
   description: string | null;
   /** Mesaj nou de la client în conversația tichetului (necitit de operatori). */
   chatUnread?: boolean;
+  /** Culoarea rândului în liste (hex), aleasă de utilizator; null = fără culoare. */
+  color?: string | null;
 };
 
 export const ST: Record<Status, { label: string; dot: string; badge: string }> = {

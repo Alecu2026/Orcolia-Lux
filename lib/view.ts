@@ -16,6 +16,7 @@ export function toVM(a: AppointmentListItem, tz: string): ApptVM {
     endTime: formatTime(a.endAt, tz),
     categoryName: a.categoryNameSnapshot,
     categoryColor: a.categoryColorSnapshot,
+    color: a.color ?? null,
     remEmail: a.reminderEmailEnabled,
     remTelegram: a.reminderTelegramEnabled,
     message: a.message ?? "",

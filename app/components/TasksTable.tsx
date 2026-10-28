@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { describeSchedule, parseReminderSchedule } from "@/lib/reminder-schedule";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import RowColorPicker from "./RowColorPicker";
+import { setTaskColorAction } from "@/app/actions/row-color";
 import {
   getTaskRowAction,
   setTaskStatus,
@@ -345,7 +347,17 @@ export default function TasksTable({
   const now = new Date();
   const overdue = (t: Task) => !!t.dueAt && new Date(t.dueAt) < now && t.status !== "DONE" && t.status !== "CANCELLED";
 
+  /** Culoarea rândului: se salvează în baza de date (se vede la toți, rămâne la reîncărcare); optimist în listă. */
+  function setColor(t: Task, color: string | null) {
+    const prev = rows;
+    setRows((cur) => cur.map((x) => (x.id === t.id ? { ...x, color } : x)));
+    setTaskColorAction(t.id, color)
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(tr(res.error)); } })
+      .catch(() => { setRows(prev); toast.error(tr(m.common.error)); });
+  }
+
   const columns: Col<Task>[] = [
+    ...(canEdit ? [{ key: "rc", label: "", minW: 28, render: (t: Task) => <div onClick={(e) => e.stopPropagation()}><RowColorPicker value={t.color ?? null} onChange={(c) => setColor(t, c)} /></div> } satisfies Col<Task>] : []),
     {
       key: "seq", label: "#", minW: 45, sort: (t) => t.seq,
       render: (t) => (
@@ -625,6 +637,7 @@ export default function TasksTable({
       )}
       <DataTable
         storageKey={`tasks:${basePath}:${scope}`}
+        rowColor={(t) => t.color}
         // fără „Editare” rândul nu se poate modifica pe loc: click pe el deschide pagina sarcinii / cererii
         onRowClick={canEdit ? undefined : (t) => router.push(`${t.type === "TICKET" ? "/tickets" : "/tasks"}/${t.id}`)}
         rowClickSkipsControls

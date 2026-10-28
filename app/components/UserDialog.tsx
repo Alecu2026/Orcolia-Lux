@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createUser, updateUser } from "@/app/actions/users";
+import TableColorsDialog from "./TableColorsDialog";
+import { LOOK_DENSITIES, LOOK_FONTS, LOOK_HEADERS, LOOK_TEXTS, LOOK_WIDTHS, hasPreset, sanitizePreset, type TableLookPreset } from "@/lib/table-look";
 import { ALL_PERMISSION_KEYS, PERMISSIONS_V2, PERMISSION_GROUPS, USER_TYPES, effectivePermissionKeys, userTypeOf } from "@/lib/permissions";
 import { NOTIFY_EVENTS } from "@/lib/notify-meta";
 import { useMessages, useT } from "@/lib/i18n/context";
@@ -25,6 +27,8 @@ export type UserRow = {
   taskViewScope: string;
   taskViewTeamIds: string[];
   taskViewMemberIds: string[];
+  /** Aspectul tabelelor setat de administrator (vezi lib/table-look.ts). */
+  tableLook?: unknown;
 };
 export type Opt = { id: string; name: string };
 
@@ -129,6 +133,9 @@ export default function UserDialog({
   const [viewMembers, setViewMembers] = useState<Set<string>>(() => new Set(user?.taskViewMemberIds ?? []));
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  /** Aspectul tabelelor pentru acest utilizator (setat de administrator): îl vede exact așa, iar cu „Personalizare tabele” îl poate schimba singur. */
+  const [look, setLook] = useState<TableLookPreset>(() => sanitizePreset(user?.tableLook));
+  const [lookColorsOpen, setLookColorsOpen] = useState(false);
 
   // Rolul e blocat dacă: te editezi pe tine (nu te poți retrograda), editezi un alt admin fără să fii super, sau nu ești administrator.
   const roleLocked = !!user && (user.id === viewerId || (!viewerIsSuper && user.role === "ADMIN") || user.isSuperAdmin);
@@ -231,6 +238,7 @@ export default function UserDialog({
       if (notifyScope === "TEAMS") for (const id of notifyTeams) fd.append("notifyTeamIds", id);
       if (notifyScope === "MEMBERS") for (const id of notifyMembers) fd.append("notifyMemberIds", id);
     }
+    fd.set("tableLook", JSON.stringify(look));
     fd.set("taskViewScope", viewMode === "ALL" ? "ALL" : "RESTRICTED");
     if (viewMode === "CUSTOM") {
       for (const id of viewTeams) fd.append("taskViewTeamIds", id);
@@ -437,9 +445,63 @@ export default function UserDialog({
             )}
           </section>
 
-          {/* 3 · Notificări */}
+          {/* 3 · Aspect tabele */}
           <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">3 · {m.users.notificationsLabel}</h3>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">3 · {t("Aspect tabele")}</h3>
+            <div className={card}>
+              <p className="mb-2 text-[11px] text-ink-soft">
+                {perms.has("tables.customize") || isAdminRole
+                  ? t("Are „Personalizare tabele”: pornește de la aspectul de mai jos, dar își poate schimba singur lățimile coloanelor, culorile, mărimea textului, celulele și coloanele (salvat în browserul lui).")
+                  : t("NU are „Personalizare tabele”: vede exact aspectul de mai jos și nu poate schimba nimic (butoanele de personalizare nu apar). Bifează „Personalizare tabele” în permisiuni ca să-i dai voie.")}
+              </p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[12px] sm:grid-cols-3">
+                <label className="flex flex-col gap-0.5">{t("Rânduri")}
+                  <select value={look.density ?? "compact"} onChange={(e) => { setTouched(true); setLook({ ...look, density: e.target.value as TableLookPreset["density"] }); }} className="h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5">
+                    {LOOK_DENSITIES.map((d) => <option key={d} value={d}>{d === "compact" ? t("Compacte") : d === "normal" ? t("Normale") : t("Spațioase")}</option>)}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-0.5">{t("Text")}
+                  <select value={look.font ?? 11} onChange={(e) => { setTouched(true); setLook({ ...look, font: Number(e.target.value) as TableLookPreset["font"] }); }} className="h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5">
+                    {LOOK_FONTS.map((f) => <option key={f} value={f}>{f === 10 ? t("Mic") : f === 11 ? t("Normal") : f === 13 ? t("Mare") : t("Foarte mare")}</option>)}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-0.5">{t("Lățime coloane")}
+                  <select value={look.width ?? 100} onChange={(e) => { setTouched(true); setLook({ ...look, width: Number(e.target.value) as TableLookPreset["width"] }); }} className="h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5">
+                    {LOOK_WIDTHS.map((w) => <option key={w} value={w}>{w === 85 ? t("Înguste") : w === 100 ? t("Normale") : w === 125 ? t("Late") : t("Foarte late")}</option>)}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-0.5">{t("Culoare antet")}
+                  <select value={look.header ?? "default"} onChange={(e) => { setTouched(true); setLook({ ...look, header: e.target.value as TableLookPreset["header"] }); }} className="h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5">
+                    {LOOK_HEADERS.map((h) => <option key={h} value={h}>{t(h === "default" ? "Neutru" : h === "brand" ? "Turcoaz" : h === "sky" ? "Albastru" : h === "emerald" ? "Verde" : h === "orange" ? "Portocaliu" : h === "violet" ? "Violet" : "Gri închis")}</option>)}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-0.5">{t("Culoare text")}
+                  <select value={look.text ?? "default"} onChange={(e) => { setTouched(true); setLook({ ...look, text: e.target.value as TableLookPreset["text"] }); }} className="h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5">
+                    {LOOK_TEXTS.map((x) => <option key={x} value={x}>{t(x === "default" ? "Implicită" : x === "brand" ? "Turcoaz" : x === "sky" ? "Albastru" : x === "emerald" ? "Verde" : x === "violet" ? "Violet" : "Roz")}</option>)}
+                  </select>
+                </label>
+                <label className="flex items-end gap-1.5 pb-1.5">
+                  <input type="checkbox" checked={!!look.zebra} onChange={(e) => { setTouched(true); setLook({ ...look, zebra: e.target.checked }); }} className="size-4 accent-[var(--color-brand)]" />
+                  {t("Rânduri alternate")}
+                </label>
+              </div>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                <button type="button" className={chip} onClick={() => setLookColorsOpen(true)}>🎨 {t("Culori…")}{look.colors ? " ✓" : ""}</button>
+                <button type="button" className={chip} disabled={!hasPreset(look)} onClick={() => { setTouched(true); setLook({}); }}>↺ {t("Resetează aspectul")}</button>
+              </div>
+              {lookColorsOpen && (
+                <TableColorsDialog
+                  value={look.colors ?? {}}
+                  onChange={(c) => { setTouched(true); setLook((l) => ({ ...l, colors: Object.keys(c).length ? c : undefined })); }}
+                  onClose={() => setLookColorsOpen(false)}
+                />
+              )}
+            </div>
+          </section>
+
+          {/* 4 · Notificări */}
+          <section className="flex flex-col gap-2">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">4 · {m.users.notificationsLabel}</h3>
             <div className={card}>
               <p className="mb-2 text-[11px] text-ink-soft">
                 {isAdminRole
