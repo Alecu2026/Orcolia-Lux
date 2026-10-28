@@ -76,7 +76,10 @@ function showUpdateBanner(newVersionLabel: string, updateLabel: string) {
     "font-size:13px", "font-weight:700", "cursor:pointer", "white-space:nowrap",
   ].join(";");
   btn.onclick = () => {
-    navigator.serviceWorker.controller?.postMessage("SKIP_WAITING");
+    // Noul service worker se activează singur la instalare (skipWaiting), deci de obicei nu mai e nimic „în așteptare”: reîncărcăm pagina ca să ruleze versiunea nouă.
+    btn.disabled = true;
+    navigator.serviceWorker.getRegistration().then((reg) => reg?.waiting?.postMessage("SKIP_WAITING")).catch(() => {});
+    setTimeout(() => window.location.reload(), 250);
   };
 
   banner.appendChild(text);
