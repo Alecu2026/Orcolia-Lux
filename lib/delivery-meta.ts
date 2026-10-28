@@ -35,6 +35,10 @@ export const KIND_LABEL: Record<string, string> = {
   "app.notification": "Notificare aplicație",
 };
 export const KIND_OPTIONS = Object.entries(KIND_LABEL).map(([key, label]) => ({ key, label }));
+
+/** Mesajele trimise PLĂTITORILOR (campanii din „Notificări plătitori”, teste, facturi pe email): jurnalul de pe pagina Notificări plătitori arată doar aceste tipuri. */
+export const PAYER_DELIVERY_KINDS = ["payer.campaign", "payer.test", "invoice.email"] as const;
+export const PAYER_KIND_OPTIONS = KIND_OPTIONS.filter((k) => (PAYER_DELIVERY_KINDS as readonly string[]).includes(k.key));
 export const kindLabel = (k: string | null | undefined, t: (s: string) => string = (x) => x) => (k ? t(KIND_LABEL[k] ?? k) : t("Nespecificat"));
 
 export const SOURCE_OPTIONS = [

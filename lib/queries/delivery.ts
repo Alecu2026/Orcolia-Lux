@@ -41,6 +41,8 @@ export type DeliveryListRow = Omit<DeliveryFullRow, "bodyHtml" | "body" | "provi
 
 export type DeliveryFilter = {
   channel?: string; status?: string; kind?: string; source?: string; sender?: string; recipient?: string; objectType?: string;
+  /** Restricție fixă pe tipuri (jurnalul plătitorilor): rândurile din alte tipuri nu se văd, indiferent de filtre. */
+  kinds?: readonly string[];
   campaign?: string; from?: Date; to?: Date; problems?: boolean; search?: string; page?: number; pageSize?: number;
   /** Totalul se numără din nou (nu din memorie). */
   fresh?: boolean;
@@ -58,6 +60,7 @@ function buildWhere(f: DeliveryFilter): Prisma.DeliveryLogWhereInput {
   if (f.status) and.push({ status: f.status });
   if (f.problems && !f.status) and.push({ status: { in: ["FAILED", "SKIPPED"] } });
   if (f.kind) and.push({ kind: f.kind });
+  if (f.kinds?.length) and.push({ kind: { in: [...f.kinds] } });
   if (f.source) and.push(f.source === "cron" ? { source: { startsWith: "cron" } } : { source: f.source });
   if (f.sender) and.push({ fromUserId: f.sender });
   if (f.recipient) and.push({ toUserId: f.recipient });
@@ -147,15 +150,18 @@ export async function listDeliveryChunk(
 }
 
 /** Un mesaj întreg (pop-up) + alte mesaje către același destinatar / pentru același obiect / din aceeași campanie. */
-export async function getDeliveryDetail(id: string): Promise<{ row: DeliveryFullRow; sameRecipient: DeliveryListRow[]; sameObject: DeliveryListRow[]; campaign: { total: number; sent: number; failed: number; skipped: number } | null } | null> {
+export async function getDeliveryDetail(id: string, kinds?: readonly string[]): Promise<{ row: DeliveryFullRow; sameRecipient: DeliveryListRow[]; sameObject: DeliveryListRow[]; campaign: { total: number; sent: number; failed: number; skipped: number } | null } | null> {
   if (DEMO || !/^[0-9a-f]{24}$/i.test(id)) return null;
   const row = await prisma.deliveryLog.findUnique({ where: { id } });
   if (!row) return null;
+  // jurnal restricționat: un mesaj din alt tip nu există (nici măcar după id)
+  if (kinds?.length && !(row.kind && kinds.includes(row.kind))) return null;
+  const only: Prisma.DeliveryLogWhereInput = kinds?.length ? { kind: { in: [...kinds] } } : {};
   const recipientWhere: Prisma.DeliveryLogWhereInput | null = row.toClientId ? { toClientId: row.toClientId } : row.toUserId ? { toUserId: row.toUserId } : row.to ? { to: row.to } : null;
   const [sameRecipient, sameObject, camp] = await Promise.all([
-    recipientWhere ? prisma.deliveryLog.findMany({ where: { AND: [recipientWhere, { id: { not: id } }] }, select: LIST_SELECT, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12 }) : Promise.resolve([] as ListRaw[]),
-    row.objectId ? prisma.deliveryLog.findMany({ where: { objectId: row.objectId, id: { not: id } }, select: LIST_SELECT, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12 }) : Promise.resolve([] as ListRaw[]),
-    row.campaignId ? prisma.deliveryLog.groupBy({ by: ["status"], where: { campaignId: row.campaignId }, _count: { _all: true } }) : Promise.resolve(null),
+    recipientWhere ? prisma.deliveryLog.findMany({ where: { AND: [recipientWhere, { id: { not: id } }, only] }, select: LIST_SELECT, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12 }) : Promise.resolve([] as ListRaw[]),
+    row.objectId ? prisma.deliveryLog.findMany({ where: { AND: [{ objectId: row.objectId, id: { not: id } }, only] }, select: LIST_SELECT, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12 }) : Promise.resolve([] as ListRaw[]),
+    row.campaignId ? prisma.deliveryLog.groupBy({ by: ["status"], where: { AND: [{ campaignId: row.campaignId }, only] }, _count: { _all: true } }) : Promise.resolve(null),
   ]);
   const campaign = camp
     ? { total: camp.reduce((s, g) => s + g._count._all, 0), sent: camp.find((g) => g.status === "SENT")?._count._all ?? 0, failed: camp.find((g) => g.status === "FAILED")?._count._all ?? 0, skipped: camp.find((g) => g.status === "SKIPPED")?._count._all ?? 0 }
@@ -164,14 +170,16 @@ export async function getDeliveryDetail(id: string): Promise<{ row: DeliveryFull
 }
 
 /** Câte trimiteri în ultimele 24 h, pe canal și status (rezumatul de deasupra listei); ținut ~15 s în memorie. */
-let summaryMemo: { at: number; v: Record<string, Record<string, number>> } | null = null;
-export async function deliverySummary(): Promise<Record<string, Record<string, number>>> {
+const summaryMemo = new Map<string, { at: number; v: Record<string, Record<string, number>> }>();
+export async function deliverySummary(kinds?: readonly string[]): Promise<Record<string, Record<string, number>>> {
   if (DEMO) return {};
-  if (summaryMemo && Date.now() - summaryMemo.at < 15_000) return summaryMemo.v;
-  const groups = await prisma.deliveryLog.groupBy({ by: ["channel", "status"], where: { createdAt: { gte: new Date(Date.now() - 86_400_000) } }, _count: { _all: true } });
+  const mk = kinds?.join(",") ?? "";
+  const hit = summaryMemo.get(mk);
+  if (hit && Date.now() - hit.at < 15_000) return hit.v;
+  const groups = await prisma.deliveryLog.groupBy({ by: ["channel", "status"], where: { createdAt: { gte: new Date(Date.now() - 86_400_000) }, ...(kinds?.length ? { kind: { in: [...kinds] } } : {}) }, _count: { _all: true } });
   const v: Record<string, Record<string, number>> = {};
   for (const g of groups) (v[g.channel] ??= {})[g.status] = g._count._all;
-  summaryMemo = { at: Date.now(), v };
+  summaryMemo.set(mk, { at: Date.now(), v });
   return v;
 }
 
@@ -180,11 +188,13 @@ export async function exportDelivery(f: Omit<DeliveryFilter, "page" | "pageSize"
   return prisma.deliveryLog.findMany({ where: buildWhere(f), orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 10_000 });
 }
 
-export function deliveryFilterFromState(s: DeliveryFilterState, page?: number, pageSize?: number): DeliveryFilter {
+export function deliveryFilterFromState(s: DeliveryFilterState, page?: number, pageSize?: number, kinds?: readonly string[]): DeliveryFilter {
   return {
+    kinds,
     channel: s.channel || undefined,
     status: s.status || undefined,
-    kind: s.kind || undefined,
+    // un tip ales în afara celor permise nu dă rezultate din alte tipuri: restricția fixă rămâne
+    kind: s.kind && (!kinds?.length || kinds.includes(s.kind)) ? s.kind : undefined,
     source: s.source || undefined,
     sender: s.sender || undefined,
     recipient: s.recipient || undefined,

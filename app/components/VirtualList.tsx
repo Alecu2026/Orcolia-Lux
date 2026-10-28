@@ -16,6 +16,7 @@ export default function VirtualList({
   overscanPx = 500,
   className = "",
   height = "min(78dvh, 900px)",
+  resetKey,
 }: {
   count: number;
   itemKey: (i: number) => string;
@@ -25,6 +26,8 @@ export default function VirtualList({
   overscanPx?: number;
   className?: string;
   height?: string;
+  /** Derularea se întoarce sus doar când se schimbă această cheie (implicit: când se schimbă numărul de elemente). */
+  resetKey?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const countRef = useRef(count);
@@ -35,12 +38,15 @@ export default function VirtualList({
   const [view, setView] = useState({ top: 0, h: 700 });
   const heights = meas.count === count ? meas.h : null;
 
+  const resetToken = resetKey ?? String(count);
   useEffect(() => {
     countRef.current = count;
+  }, [count]);
+  useEffect(() => {
     if (box.current) box.current.scrollTop = 0;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setView((v) => (v.top === 0 ? v : { ...v, top: 0 }));
-  }, [count]);
+  }, [resetToken]);
 
   useEffect(() => {
     const el = box.current;

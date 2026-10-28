@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { setTaskStatus } from "@/app/actions/tasks";
 import { useToast } from "./toast";
+import VirtualList from "./VirtualList";
+import { useTaskDataset } from "./useTaskDataset";
 import { useProofPrompt } from "./ProofDialog";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
@@ -21,7 +23,10 @@ type Task = {
   status: Status;
   priority: Priority;
   progress: number;
-  dueAt: Date | null;
+  dueAt: Date | string | null;
+  creatorId: string;
+  extraAssigneeIds: string[];
+  extraTeamIds: string[];
   assigneeId: string | null;
   assigneeName: string | null;
   teamId: string | null;
@@ -33,9 +38,17 @@ type Task = {
   categoryId: string | null;
   categoryName: string | null;
   categoryColor: string | null;
-  /** Calculat pe server: poate userul muta cardul (schimba statusul)? */
-  canMove?: boolean;
 };
+
+/** Cine poate muta cardul (schimba statusul): aceeași regulă ca pe server (canWorkOnTask / „Închidere”), calculată în browser ca să meargă și pe lista completă. */
+type Mover = { id: string; teamIds: string[]; canEdit: boolean; canClose: boolean };
+const canMoveTask = (u: Mover, t: Task): boolean =>
+  u.canClose || u.canEdit || t.creatorId === u.id || t.assigneeId === u.id || t.extraAssigneeIds.includes(u.id) || (!!t.teamId && u.teamIds.includes(t.teamId)) || t.extraTeamIds.some((x) => u.teamIds.includes(x));
+
+/** Câte carduri se afișează (cele mai noi, după filtre); 0 = toate. */
+const LIMITS = [20, 50, 100, 200, 500, 1000, 0] as const;
+const LIMIT_KEY = "kanban-limit";
+const DEFAULT_LIMIT = 100;
 
 const COLUMNS: { status: Status; dot: string }[] = [
   { status: "NEW", dot: "bg-st-new" },
@@ -63,7 +76,7 @@ const fldCls = (val: string) =>
       : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"
   }`;
 
-function matchesDue(dueAt: Date | null, filter: string): boolean {
+function matchesDue(dueAt: Date | string | null, filter: string): boolean {
   if (!filter) return true;
   if (filter === "none") return dueAt === null;
   if (!dueAt) return false;
@@ -96,12 +109,19 @@ function matchesDue(dueAt: Date | null, filter: string): boolean {
 
 export default function TaskKanban({
   items,
+  dataset,
+  scope,
+  mover,
   users,
   teams,
   projects,
   categories = [],
 }: {
   items: Task[];
+  /** Lista e mare: `items` are doar cele mai noi rânduri, iar restul vine din /api/tasks/dataset. `total` = câte sunt în total. */
+  dataset?: { total: number };
+  scope: string;
+  mover: Mover;
   users: Opt[];
   teams: Opt[];
   projects: Opt[];
@@ -111,8 +131,28 @@ export default function TaskKanban({
   const toast = useToast();
   const proof = useProofPrompt();
   const m = useMessages();
-  const [tasks, setTasks] = useState(items);
-  useEffect(() => setTasks(items), [items]);
+  // Lista completă (strat 1: cache pe server, strat 2: IndexedDB + ETag, strat 3: memoria paginii); până sosește, se lucrează cu rândurile din HTML.
+  const ds = useTaskDataset({ enabled: !!dataset, kind: "KANBAN", scope, userId: mover.id });
+  const base: Task[] = ds.rows ?? items;
+  const [tasks, setTasks] = useState<Task[]>(base);
+  // când vine altă listă (rânduri din HTML → lista completă, sau o reîmprospătare), cardurile se iau din ea (modelul „stare derivată din props”)
+  const [seenBase, setSeenBase] = useState<Task[]>(base);
+  if (seenBase !== base) {
+    setSeenBase(base);
+    setTasks(base);
+  }
+  const [limit, setLimit] = useState<number>(DEFAULT_LIMIT);
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem(LIMIT_KEY));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if ((LIMITS as readonly number[]).includes(v) && localStorage.getItem(LIMIT_KEY) !== null) setLimit(v);
+    } catch {}
+  }, []);
+  function chooseLimit(n: number) {
+    setLimit(n);
+    try { localStorage.setItem(LIMIT_KEY, String(n)); } catch {}
+  }
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<Status | null>(null);
@@ -162,34 +202,46 @@ export default function TaskKanban({
       .sort((a, b) => a.name.localeCompare(b.name, "ro"));
   }, [tasks]);
 
+  // Controalele se actualizează imediat; lista (până la zeci de mii de sarcini) se recalculează în randarea următoare, amânată.
+  const flt = useMemo(
+    () => ({ fSearch, fStatus, fType, fPriority, fAssignee, fTeam, fProject, fClient, fDeadline, fCategory }),
+    [fSearch, fStatus, fType, fPriority, fAssignee, fTeam, fProject, fClient, fDeadline, fCategory],
+  );
+  const dflt = useDeferredValue(flt);
+  /** Filtrele se aplică pe TOATĂ lista (cele mai noi primele); abia apoi se taie la numărul ales. */
   const filtered = useMemo(() => {
-    const term = fSearch.trim().toLowerCase();
+    const term = dflt.fSearch.trim().toLowerCase();
     return tasks.filter((t) => {
-      if (fStatus && t.status !== fStatus) return false;
-      if (fType && t.type !== fType) return false;
-      if (fPriority && t.priority !== fPriority) return false;
-      if (fAssignee && t.assigneeId !== fAssignee) return false;
-      if (fTeam && t.teamId !== fTeam) return false;
-      if (fProject && t.projectId !== fProject) return false;
-      if (fClient && t.clientId !== fClient) return false;
-      if (fCategory && t.categoryId !== fCategory) return false;
-      if (!matchesDue(t.dueAt, fDeadline)) return false;
+      if (dflt.fStatus && t.status !== dflt.fStatus) return false;
+      if (dflt.fType && t.type !== dflt.fType) return false;
+      if (dflt.fPriority && t.priority !== dflt.fPriority) return false;
+      if (dflt.fAssignee && t.assigneeId !== dflt.fAssignee) return false;
+      if (dflt.fTeam && t.teamId !== dflt.fTeam) return false;
+      if (dflt.fProject && t.projectId !== dflt.fProject) return false;
+      if (dflt.fClient && t.clientId !== dflt.fClient) return false;
+      if (dflt.fCategory && t.categoryId !== dflt.fCategory) return false;
+      if (!matchesDue(t.dueAt, dflt.fDeadline)) return false;
       if (term && !t.title.toLowerCase().includes(term)) return false;
       return true;
     });
-  }, [tasks, fSearch, fStatus, fType, fPriority, fAssignee, fTeam, fProject, fClient, fDeadline, fCategory]);
+  }, [tasks, dflt]);
+  const shown = useMemo(() => (limit > 0 ? filtered.slice(0, limit) : filtered), [filtered, limit]);
 
   const byStatus = useMemo(() => {
     const m = new Map<Status, Task[]>();
     for (const c of COLUMNS) m.set(c.status, []);
-    for (const t of filtered) m.get(t.status)?.push(t);
+    for (const t of shown) m.get(t.status)?.push(t);
     return m;
-  }, [filtered]);
+  }, [shown]);
+  const resetKey = useMemo(() => [limit, ...Object.values(dflt)].join("|"), [limit, dflt]);
+  // lista completă încă se încarcă: se văd doar rândurile din HTML, iar totalul vine de la server
+  const loadingMore = !!dataset && !ds.rows && !ds.error;
+  const total = loadingMore && !hasFilters ? (dataset?.total ?? filtered.length) : filtered.length;
 
   function move(id: string, status: Status) {
     const task = tasks.find((t) => t.id === id);
     if (!task || task.status === status) return;
-    if (task.canMove === false) { toast.error(tr("Nu ai permisiunea de editare.")); return; }
+    if (!canMoveTask(mover, task)) { toast.error(tr("Nu ai permisiunea de editare.")); return; }
     const prev = tasks;
     setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, status } : t)));
     setTaskStatus(id, status).then((res) => {
@@ -297,7 +349,17 @@ export default function TaskKanban({
           <option value="month">{m.kanban.dueThisMonth}</option>
           <option value="none">{m.kanban.dueNone}</option>
         </select>
+        <select value={limit} onChange={(e) => chooseLimit(Number(e.target.value))} className={fldCls(limit !== DEFAULT_LIMIT ? "x" : "")} aria-label={tr("Câte sarcini se afișează")} title={tr("Câte sarcini se afișează (cele mai noi, după filtre)")}>
+          {LIMITS.map((n) => (
+            <option key={n} value={n}>{n === 0 ? tr("Toate") : tr("Primele {n}", { n })}</option>
+          ))}
+        </select>
       </div>
+      <p className="mb-2 text-xs text-ink-soft">
+        {tr("Se afișează {shown} din {total} sarcini (cele mai noi)", { shown: shown.length.toLocaleString(), total: total.toLocaleString() })}
+        {loadingMore && " · " + tr("se încarcă lista completă…")}
+        {ds.error && <span className="text-st-cancelled"> · {tr("Nu am putut încărca lista completă.")}</span>}
+      </p>
 
       {/* Board — overflow wrapper întors cu 180° pe X ca bara de scroll să apară sus */}
       <div className="overflow-x-auto pt-1 [transform:rotateX(180deg)]">
@@ -332,22 +394,35 @@ export default function TaskKanban({
                 </span>
               </div>
               <div
-                className={`flex min-h-24 flex-1 flex-col gap-2 rounded-2xl p-2 transition-colors ${
+                className={`min-h-24 flex-1 rounded-2xl p-2 transition-colors ${
                   isOver ? "bg-brand-soft ring-2 ring-brand" : "bg-[var(--color-surface-2)]/60"
                 }`}
               >
-                {colItems.map((t) => (
+                {colItems.length === 0 ? (
+                  <p className="py-3 text-center text-xs text-ink-soft">—</p>
+                ) : (
+                  <VirtualList
+                    count={colItems.length}
+                    itemKey={(i) => colItems[i].id}
+                    estimate={80}
+                    gap={8}
+                    overscanPx={400}
+                    height="min(70dvh, 780px)"
+                    resetKey={resetKey}
+                    render={(i) => {
+                      const t = colItems[i];
+                      const movable = canMoveTask(mover, t);
+                      return (
                   <Link
-                    key={t.id}
                     href={`/tasks/${t.id}`}
-                    draggable={t.canMove !== false}
+                    draggable={movable}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/plain", t.id);
                       e.dataTransfer.effectAllowed = "move";
                       setDragId(t.id);
                     }}
                     onDragEnd={() => { setDragId(null); setOverCol(null); }}
-                    className={`card block ${t.canMove === false ? "" : "cursor-grab active:cursor-grabbing"} p-2.5 hover:opacity-90 ${dragId === t.id ? "opacity-50" : ""}`}
+                    className={`card block ${movable ? "cursor-grab active:cursor-grabbing" : ""} p-2.5 hover:opacity-90 ${dragId === t.id ? "opacity-50" : ""}`}
                   >
                     <div className="flex items-start gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.title}</span>
@@ -367,8 +442,10 @@ export default function TaskKanban({
                       {t.progress > 0 && ` · ${t.progress}%`}
                     </p>
                   </Link>
-                ))}
-                {colItems.length === 0 && <p className="py-3 text-center text-xs text-ink-soft">—</p>}
+                      );
+                    }}
+                  />
+                )}
               </div>
             </div>
           );

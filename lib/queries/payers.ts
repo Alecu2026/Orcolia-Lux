@@ -247,6 +247,29 @@ async function installDateMap(): Promise<Map<string, string | null>> {
   return m;
 }
 
+let sectorMemo: { at: number; map: Map<string, string> } | null = null;
+/**
+ * Sectorul din 1C („Участок”) al fiecărui plătitor, din ultima lui înregistrare 1C (OneCRecord). Doar plătitorii cu sector completat.
+ * Citit ca instalarea (proiecție mică); ținut 5 minute în memorie pentru căile care filtrează direct în baza de date (trimitere, export).
+ */
+export async function payerSectorMap(fresh = false): Promise<Map<string, string>> {
+  if (DEMO) return new Map();
+  if (!fresh && sectorMemo && Date.now() - sectorMemo.at < 5 * 60_000) return sectorMemo.map;
+  const rows = await prisma.oneCRecord.findMany({ where: { clientId: { not: null } }, select: { clientId: true, sectorUchastok: true, dataDoc: true } });
+  const best = new Map<string, { d: string; s: string }>();
+  for (const r of rows) {
+    const s = r.sectorUchastok?.trim();
+    if (!r.clientId || !s) continue;
+    const d = r.dataDoc ?? "";
+    const cur = best.get(r.clientId);
+    if (!cur || d >= cur.d) best.set(r.clientId, { d, s });
+  }
+  const map = new Map<string, string>();
+  for (const [id, v] of best) map.set(id, v.s);
+  sectorMemo = { at: Date.now(), map };
+  return map;
+}
+
 /** Sortare după data instalării (string "YYYY-MM-DD", comparabil lexicografic) — fără dată cunoscută
  * trece mereu la final, indiferent de direcție (altfel "cele mai vechi" ar scoate în față exact
  * clienții fără informație, care nu sunt "vechi", sunt necunoscuți). */
@@ -708,10 +731,11 @@ async function latestInvoiceStatsFromRows(): Promise<{ latest: Map<string, Lates
  */
 export async function getPayerSnapshot(): Promise<SnapTuple[]> {
   if (DEMO) return [];
-  const [clients, stats, installBy] = await Promise.all([
+  const [clients, stats, installBy, sectorBy] = await Promise.all([
     prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true } }),
     latestInvoiceStats(),
     installDateMap(),
+    payerSectorMap(true),
   ]);
   const { latest, count } = stats && stats.latest.size > 0 ? stats : await latestInvoiceStatsFromRows();
   return clients.map((c): SnapTuple => {
@@ -721,6 +745,7 @@ export async function getPayerSnapshot(): Promise<SnapTuple[]> {
       c.portalPasswordHash ? 1 : 0, count.get(c.id) ?? 0,
       inv?.number ?? null, inv?.status ?? null, inv?.grandTotal ?? null, inv?.currency ?? null, inv?.dueDate ? inv.dueDate.getTime() : null,
       c.consumAddress, c.lastNotifiedAt ? c.lastNotifiedAt.getTime() : null, installBy.get(c.id) ?? null, c.lastInvoiceSectorNr,
+      sectorBy.get(c.id) ?? null,
     ];
   });
 }

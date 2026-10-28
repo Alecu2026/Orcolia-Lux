@@ -4,6 +4,7 @@
  * rulează și în browser (previzualizare mesaj, contor SMS, salvarea filtrelor în localStorage).
  */
 
+import { cleanSectorList, parseSectorFilter } from "./sector-filter";
 import type { PayerRow } from "./queries/payers";
 
 // ── Filtre ──────────────────────────────────────────────────────────────────────────────────────
@@ -16,6 +17,8 @@ export type NotifyFilters = {
   month: string;
   account: "" | "activated" | "pending";
   sector: "" | "privat" | "comunal";
+  /** Sectoarele din 1C („Участок”), unul sau mai multe, separate prin „|” (vezi lib/sector-filter.ts). */
+  usector: string;
   invoiceStatus: string;
   debt: "" | "has" | "none";
   minDebt: string;
@@ -43,7 +46,7 @@ export type NotifyFilters = {
 };
 
 export const EMPTY_FILTERS: NotifyFilters = {
-  q: "", street: "", month: "", account: "", sector: "", invoiceStatus: "", debt: "",
+  q: "", street: "", month: "", account: "", sector: "", usector: "", invoiceStatus: "", debt: "",
   minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", sort: "", nameFix: "", invoices: "",
 };
 
@@ -134,6 +137,7 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     month: /^\d{4}-\d{2}$/.test(month) ? month : "",
     account: ONE_OF(get(src, "account"), ["activated", "pending"] as const),
     sector: ONE_OF(get(src, "sector"), ["privat", "comunal"] as const),
+    usector: cleanSectorList(get(src, "usector")),
     invoiceStatus: ONE_OF(get(src, "invoiceStatus"), ["DRAFT", "SENT", "PAID", "OVERDUE", "CANCELLED"] as const),
     debt: ONE_OF(get(src, "debt"), ["has", "none"] as const),
     minDebt: cleanMoney(get(src, "minDebt")),
@@ -373,7 +377,7 @@ export type SnapInvoice = NonNullable<PayerRow["latestInvoice"]>;
  * trecere simplă prin 19.000 de rânduri cu comparații pe numere (fără parsare de date, fără șiruri): _h = text de căutare, _he/_hp = are email /
  * telefon, _nm = ultima notificare (ms, 0 = niciodată), _st = sector (0 necunoscut, 1 privat, 2 comunal), _dk = soldul facturii afișate (NaN = fără factură).
  */
-export type SnapRow = PayerRow & { sector: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number };
+export type SnapRow = PayerRow & { sector: string | null; /** sectorul din 1C („Участок”) */ uch: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number };
 
 const SECTOR_CODE = (s: string | null): 0 | 1 | 2 => (s === "Sector privat" ? 1 : s === "Sector comunal" ? 2 : 0);
 
@@ -394,6 +398,8 @@ export type SnapTuple = [
   activated: 0 | 1, invoiceCount: number,
   invNumber: string | null, invStatus: string | null, invTotal: number | null, invCurrency: string | null, invDueMs: number | null,
   address: string | null, notifiedMs: number | null, installed: string | null, sector: string | null,
+  /** sectorul din 1C („Участок”) — lipsește în listele salvate înainte de această versiune */
+  uch?: string | null,
 ];
 /** Factura unei luni: [clientId, număr, status, total, valută, scadență ms]. */
 export type MonthTuple = [clientId: string, number: string, status: string, total: number, currency: string, dueMs: number | null];
@@ -422,6 +428,7 @@ export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[
     lastNotifiedAt: iso(t[14]),
     installedAt: t[15],
     sector: t[16],
+    uch: t[17] ?? null,
     _h: [t[1], t[2], t[3], t[4], t[5]].filter(Boolean).join("\n").toLowerCase(),
     _he: t[4] != null && t[4] !== "",
     _hp: t[5] != null && t[5] !== "",
@@ -513,6 +520,7 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
   const d7 = now - 7 * 86_400_000;
   const d30 = now - 30 * 86_400_000;
   const sectorCode = f.sector === "privat" ? 1 : f.sector === "comunal" ? 2 : 0;
+  const uSectors = parseSectorFilter(f.usector);
   const order = f.sort === "debtDesc" || f.sort === "debtAsc" || f.sort === "installDesc" || f.sort === "installAsc" ? orderFor(rows, f.sort) : null;
   const wantStatus = f.invoiceStatus;
   const money = f.debt !== "" || hasMin || hasMax || wantStatus !== "";
@@ -524,6 +532,7 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
     if (street && !(r.consumAddress ?? "").toLowerCase().includes(street)) continue;
     if (f.account === "activated" ? !r.activated : f.account === "pending" ? r.activated : false) continue;
     if (sectorCode && r._st !== sectorCode) continue;
+    if (uSectors && !(r.uch && uSectors.has(r.uch))) continue;
     if (f.kind === "person" ? r.meterSeries == null : f.kind === "company" ? r.meterSeries != null : false) continue;
     if (f.nameFix && !r.name.includes("?")) continue;
 

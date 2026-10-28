@@ -6,6 +6,7 @@
  * rămân rânduri separate (nu se unesc pe adresă).
  */
 
+import { cleanSectorList, parseSectorFilter } from "./sector-filter";
 import type { SnapInvoice } from "./payer-notify";
 
 // ── Filtre ──────────────────────────────────────────────────────────────────────────────────────
@@ -26,6 +27,8 @@ export type MeterFilters = {
   shared: "" | "address" | "subscriber";
   kind: "" | "person" | "company";
   sector: "" | "privat" | "comunal";
+  /** Sectoarele din 1C („Участок”), unul sau mai multe, separate prin „|” (vezi lib/sector-filter.ts). */
+  usector: string;
   account: "" | "activated" | "pending";
   debt: "" | "has" | "none";
   invoiceStatus: string;
@@ -38,7 +41,7 @@ export type MeterFilters = {
 };
 
 export const EMPTY_METER_FILTERS: MeterFilters = {
-  q: "", street: "", status: "", reading: "", consum: "", sursa: "", shared: "", kind: "", sector: "", account: "", debt: "",
+  q: "", street: "", status: "", reading: "", consum: "", sursa: "", shared: "", kind: "", sector: "", usector: "", account: "", debt: "",
   invoiceStatus: "", installedFrom: "", installedTo: "", source: "", sort: "",
 };
 
@@ -68,6 +71,7 @@ export function sanitizeMeterFilters(src: Source): MeterFilters {
     shared: ONE_OF(get(src, "shared"), ["address", "subscriber"] as const),
     kind: ONE_OF(get(src, "kind"), ["person", "company"] as const),
     sector: ONE_OF(get(src, "sector"), ["privat", "comunal"] as const),
+    usector: cleanSectorList(get(src, "usector")),
     account: ONE_OF(get(src, "account"), ["activated", "pending"] as const),
     debt: ONE_OF(get(src, "debt"), ["has", "none"] as const),
     invoiceStatus: ONE_OF(get(src, "invoiceStatus"), ["DRAFT", "SENT", "PAID", "OVERDUE", "CANCELLED"] as const),
@@ -116,6 +120,8 @@ export type MeterTuple = [
   string | null, string | null, 0 | 1, 0 | 1,
   string | null, string | null, number | null, string | null, number | null,
   string | null,
+  /** 35 sectorul din 1C („Участок”) al abonatului */
+  string | null,
 ];
 
 export type MeterRowBase = {
@@ -151,6 +157,8 @@ export type MeterRowBase = {
   person: boolean;
   invoice: SnapInvoice | null;
   sector: string | null;
+  /** Sectorul din 1C („Участок”) al abonatului, dacă e completat. */
+  uch: string | null;
 };
 
 /**
@@ -221,6 +229,7 @@ export function decodeMeters(tuples: MeterTuple[], presorted = false): MeterRow[
       person: t[28] === 1,
       invoice,
       sector: t[34],
+      uch: t[35] ?? null,
       _h: [t[2], t[3], t[4], t[5], t[6], t[7], t[25], t[26]].filter(Boolean).join("\n").toLowerCase(),
       _a: addressKey(t[6]),
       _ac: 0,
@@ -284,6 +293,7 @@ export function filterMeters(allRows: MeterRow[], f: MeterFilters): MeterRow[] {
   const street = addressKey(f.street);
   const sursa = f.sursa.toLowerCase();
   const sectorCode = f.sector === "privat" ? 1 : f.sector === "comunal" ? 2 : 0;
+  const uSectors = parseSectorFilter(f.usector);
   const order = f.sort ? orderFor(allRows, f.sort) : null;
   const out: MeterRow[] = [];
 
@@ -302,6 +312,7 @@ export function filterMeters(allRows: MeterRow[], f: MeterFilters): MeterRow[] {
     if (f.shared === "address" ? r._ac < 2 : f.shared === "subscriber" ? r.meterCount < 2 : false) continue;
     if (f.kind === "person" ? !r.person : f.kind === "company" ? r.person : false) continue;
     if (sectorCode && r._st !== sectorCode) continue;
+    if (uSectors && !(r.uch && uSectors.has(r.uch))) continue;
     if (f.account === "activated" ? !r.activated : f.account === "pending" ? r.activated : false) continue;
     if (f.source === "1c" ? r.source !== "1c" : f.source === "axioma" ? r.source !== "axioma" : false) continue;
     if (f.invoiceStatus && r.invoice?.status !== f.invoiceStatus) continue;

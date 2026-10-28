@@ -79,7 +79,9 @@ export default function DeliveryDetailDialog({
   onNext,
   onOpen,
   onFilter,
+  apiBase = "/api/admin/delivery",
 }: {
+  apiBase?: string;
   id: string;
   preview: DeliveryRow | null;
   onClose: () => void;
@@ -100,7 +102,7 @@ export default function DeliveryDetailDialog({
   useEffect(() => {
     if (cache.has(id)) return;
     const ctl = new AbortController();
-    fetch(`/api/admin/delivery/${id}`, { signal: ctl.signal })
+    fetch(`${apiBase}/${id}`, { signal: ctl.signal })
       .then(async (r) => {
         const j = await r.json();
         if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
@@ -115,7 +117,7 @@ export default function DeliveryDetailDialog({
         if (e.name !== "AbortError") setError(e.message);
       });
     return () => ctl.abort();
-  }, [id]);
+  }, [id, apiBase]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

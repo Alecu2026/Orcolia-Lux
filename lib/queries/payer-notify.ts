@@ -6,6 +6,8 @@ import type { InvoiceStatus } from "@prisma/client";
 import { notifyCriterion, type NotifyCriterion, type NotifyFilters } from "../payer-notify";
 import type { ListPayersOpts } from "./payers";
 import { dayBoundsUtc } from "../date";
+import { parseSectorFilter } from "../sector-filter";
+import { payerSectorMap } from "./payers";
 
 /** Filtrele curățate (vezi sanitizeFilters) → opțiunile interogării de plătitori. */
 export function filtersToListOpts(f: NotifyFilters): ListPayersOpts {
@@ -64,9 +66,19 @@ export function notifiedClientIds(c: NotifyCriterion): Promise<string[]> {
 export async function filtersToListOptsAsync(f: NotifyFilters): Promise<ListPayersOpts> {
   const opts = filtersToListOpts(f);
   const crit = notifyCriterion(f);
-  if (!crit) return opts;
+  // sectoarele din 1C: plătitorii din sectoarele alese (hartă mică, ținută 5 minute) → restricție pe id-uri, ca la „notificați în perioada…”
+  const uSectors = parseSectorFilter(f.usector);
+  let sectorIds: string[] | null = null;
+  if (uSectors) {
+    const map = await payerSectorMap();
+    sectorIds = [];
+    for (const [id, s] of map) if (uSectors.has(s)) sectorIds.push(id);
+  }
+  if (!crit) return sectorIds ? { ...opts, idsIn: sectorIds } : opts;
   const ids = await notifiedClientIds(crit);
-  return crit.negate ? { ...opts, idsNotIn: ids } : { ...opts, idsIn: ids };
+  if (!sectorIds) return crit.negate ? { ...opts, idsNotIn: ids } : { ...opts, idsIn: ids };
+  const notified = new Set(ids);
+  return { ...opts, idsIn: sectorIds.filter((id) => notified.has(id) !== crit.negate) };
 }
 
 /** Șabloanele salvate, cele mai noi primele. */

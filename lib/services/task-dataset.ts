@@ -19,7 +19,8 @@ import type { TaskTuple } from "../task-dataset";
  * - ETag = hash-ul conținutului → același conținut = 304, chiar dacă lista a fost refăcută.
  */
 
-export type DatasetKind = "TASK" | "TICKET";
+/** KANBAN = toate tipurile de sarcini (sarcini, tichete, ordine de lucru), cu permisiunea paginii Kanban. */
+export type DatasetKind = "TASK" | "TICKET" | "KANBAN";
 
 type Entry = {
   epoch: number;
@@ -52,14 +53,14 @@ type User = PermissionSubject & { id: string; teamIds?: string[]; taskViewScope:
 
 /** Scop + tip → filtrul listei pentru acest utilizator, sau null dacă nu are voie. Aceeași regulă ca pagina (/tasks, /tickets). */
 export function datasetFilter(user: User, kind: DatasetKind, scopeIn: string): TaskFilter | null {
-  if (!can(user, kind === "TICKET" ? "tickets.view" : "tasks.view")) return null;
+  if (!can(user, kind === "KANBAN" ? "kanban.view" : kind === "TICKET" ? "tickets.view" : "tasks.view")) return null;
   const scope = (["mine", "all", "created"].includes(scopeIn) && !(scopeIn === "all" && !canUseAllScope(user)) ? scopeIn : "mine") as "mine" | "all" | "created";
   return {
     scope,
     userId: user.id,
     teamIds: user.teamIds,
     ...taskViewFilter(user),
-    types: [kind],
+    ...(kind === "KANBAN" ? {} : { types: [kind] }),
   };
 }
 

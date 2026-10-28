@@ -1,7 +1,6 @@
 import { requirePermission } from "@/lib/dal";
-import { getT } from "@/lib/i18n/server-t";
-import { can, canUseAllScope, canWorkOnTask } from "@/lib/permissions";
-import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
+import { can, canUseAllScope } from "@/lib/permissions";
+import { listTasksForPage, taskViewFilter } from "@/lib/queries/tasks";
 import { userOptions } from "@/lib/queries/users";
 import { teamOptions } from "@/lib/queries/teams";
 import { projectOptions } from "@/lib/queries/projects";
@@ -10,15 +9,17 @@ import TaskKanban from "@/app/components/TaskKanban";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Kanban: lista mică (≤ ~1500 de sarcini) vine întreagă în HTML; lista mare vine ca primele 100 (cele mai noi) + totalul, iar restul îl aduce browserul din
+ * /api/tasks/dataset (cache pe server, IndexedDB cu ETag, memoria paginii). Filtrele rulează pe toată lista, iar câte carduri se afișează (20 … 1000, Toate) se alege din pagină.
+ */
 export default async function KanbanPage() {
   const user = await requirePermission("kanban.view");
-  const tr = await getT();
 
-  const KANBAN_LIMIT = 100;
   // STAFF vede doar task-urile proprii/echipei lui; ADMIN vede tot
   const kanbanScope = canUseAllScope(user) ? "all" : "mine";
   const [result, users, teams, projects, categories] = await Promise.all([
-    listTasks({ scope: kanbanScope, userId: user.id, teamIds: user.teamIds, ...taskViewFilter(user), page: 1, pageSize: KANBAN_LIMIT }),
+    listTasksForPage({ scope: kanbanScope, userId: user.id, teamIds: user.teamIds, ...taskViewFilter(user) }),
     userOptions(),
     teamOptions(),
     projectOptions(),
@@ -27,12 +28,16 @@ export default async function KanbanPage() {
 
   return (
     <div className="w-full">
-      {result.hasMore && (
-        <div className="mb-3 rounded-xl border border-amber-300/40 bg-amber-100/60 px-4 py-2.5 text-xs text-amber-900 dark:bg-amber-500/15 dark:text-amber-300">
-          {tr("Kanban afișează primele {n} sarcini. Folosește lista pentru filtrare avansată cu mai multe date.", { n: KANBAN_LIMIT })}
-        </div>
-      )}
-      <TaskKanban items={result.items.map((t) => ({ ...t, canMove: canWorkOnTask(user, t) || can(user, "tasks.close") }))} users={users} teams={teams} projects={projects} categories={categories} />
+      <TaskKanban
+        items={result.items}
+        dataset={result.dataset ? { total: result.total } : undefined}
+        scope={kanbanScope}
+        mover={{ id: user.id, teamIds: user.teamIds ?? [], canEdit: can(user, "tasks.edit"), canClose: can(user, "tasks.close") }}
+        users={users}
+        teams={teams}
+        projects={projects}
+        categories={categories}
+      />
     </div>
   );
 }

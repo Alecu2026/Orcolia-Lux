@@ -4,7 +4,8 @@ import { createHash } from "node:crypto";
 import { after } from "next/server";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
-import { buildMeterStatic } from "../queries/meters";
+import { buildMeterStatic, parseMeterId } from "../queries/meters";
+import { getSectorMap } from "./meter-route-data";
 import { getPayerSnap, type PayerSnap } from "./payer-cache";
 import {
   decodeMeters,
@@ -185,7 +186,7 @@ let jl1: { key: string; snap: MeterSnap } | null = null;
 let jBuilding: { key: string; p: Promise<MeterSnap> } | null = null;
 
 /** Alipește datele plătitorului la fiecare contor (după client; dacă legătura lipsește — după contul personal sau contract). */
-function join(rows: MeterStatic[], pay: PayerSnap): MeterTuple[] {
+function join(rows: MeterStatic[], pay: PayerSnap, sectors: Map<string, string>): MeterTuple[] {
   const byId = new Map(pay.rows.map((r) => [r.id, r]));
   const bySeries = new Map<string, string>();
   const byContract = new Map<string, string>();
@@ -206,6 +207,7 @@ function join(rows: MeterStatic[], pay: PayerSnap): MeterTuple[] {
       p?.phone ?? null, p?.email ?? null, p?.activated ? 1 : 0, (p ? p.meterSeries != null : s[4] != null) ? 1 : 0,
       inv?.number ?? null, inv?.status ?? null, inv?.grandTotal ?? null, inv?.currency ?? null, inv?.dueDate ? Date.parse(inv.dueDate) : null,
       p?.sector ?? null,
+      sectors.get(parseMeterId(s[0])?.subKey ?? "") ?? null,
     ];
     return t;
   });
@@ -220,7 +222,7 @@ export async function getMeterSnap(): Promise<MeterSnap> {
   if (jBuilding && jBuilding.key === key) return jBuilding.p;
   const p = (async () => {
     const t0 = Date.now();
-    const tuples = join(st.rows, pay);
+    const tuples = join(st.rows, pay, await getSectorMap(st.version));
     const gz = gzipSync(Buffer.from(JSON.stringify({ v: 1, at: st.builtAt, sorted: true, rows: tuples }), "utf8"), { level: 6 });
     const snap: MeterSnap = { version: createHash("sha1").update(key).digest("hex").slice(0, 16), builtAt: st.builtAt, gz, rows: decodeMeters(tuples, true) };
     jl1 = { key, snap };

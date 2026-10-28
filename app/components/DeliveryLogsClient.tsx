@@ -210,12 +210,25 @@ export default function DeliveryLogsClient({
   initialFilters,
   initialPage,
   initialPs,
+  apiBase = "/api/admin/delivery",
+  pageBase = "/admin/jurnal-notificari",
+  pageParams = "",
+  kindOptions = KIND_OPTIONS,
+  storageKey = STORAGE_KEY,
 }: {
   initial: Page;
   users: Opt[];
   initialFilters: DeliveryFilterState;
   initialPage: number;
   initialPs: DeliveryPs;
+  /** Rutele API ale jurnalului (lista, rezumat, detalii, export). Implicit: jurnalul complet al super-adminilor. */
+  apiBase?: string;
+  /** Pagina în care stă jurnalul (adresa se sincronizează cu filtrele) + parametrii fixi ai paginii (ex. „view=jurnal”). */
+  pageBase?: string;
+  pageParams?: string;
+  /** Tipurile de mesaje din filtrul „Tip” (jurnalul plătitorilor are doar cele către plătitori). */
+  kindOptions?: readonly { key: string; label: string }[];
+  storageKey?: string;
 }) {
   const t = useT();
   const tag = dateTag(useLocale());
@@ -253,7 +266,7 @@ export default function DeliveryLogsClient({
   useEffect(() => {
     if (key === "") {
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const saved = localStorage.getItem(storageKey);
         if (saved) {
           const sp = new URLSearchParams(saved);
           const f = sanitizeDeliveryState(Object.fromEntries(sp.entries()));
@@ -273,23 +286,24 @@ export default function DeliveryLogsClient({
     if (!ready) return;
     const p = deliveryStateToParams(filters, { ps });
     try {
-      if (p.toString()) localStorage.setItem(STORAGE_KEY, p.toString());
-      else localStorage.removeItem(STORAGE_KEY);
+      if (p.toString()) localStorage.setItem(storageKey, p.toString());
+      else localStorage.removeItem(storageKey);
       document.cookie = `${DELIVERY_PS_COOKIE}=${ps}; path=/; max-age=31536000; samesite=lax`;
     } catch {}
-    window.history.replaceState(null, "", `/admin/jurnal-notificari${key ? `?${key}` : ""}`);
-  }, [key, filters, ps, ready]);
+    const qs = [pageParams, key].filter(Boolean).join("&");
+    window.history.replaceState(null, "", `${pageBase}${qs ? `?${qs}` : ""}`);
+  }, [key, filters, ps, ready, pageBase, pageParams, storageKey]);
 
   // Rezumatul ultimelor 24 h (se reîmprospătează odată cu lista).
   useEffect(() => {
     if (!ready) return;
     const ctl = new AbortController();
-    fetch("/api/admin/delivery/summary", { signal: ctl.signal })
+    fetch(`${apiBase}/summary`, { signal: ctl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => j && setSummary(j as Summary))
       .catch(() => {});
     return () => ctl.abort();
-  }, [ready, tick]);
+  }, [ready, tick, apiBase]);
 
   // Pagini numerice: din cache dacă am mai văzut-o (reîmprospătată discret după 20 s), altfel de la server; o cerere nouă o anulează pe cea veche.
   useEffect(() => {
@@ -305,7 +319,7 @@ export default function DeliveryLogsClient({
     const ctl = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`/api/admin/delivery?${key}${tick > 0 ? "&fresh=1" : ""}`, { signal: ctl.signal })
+    fetch(`${apiBase}?${key}${tick > 0 ? "&fresh=1" : ""}`, { signal: ctl.signal })
       .then(async (r) => {
         const j = await r.json();
         if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
@@ -345,7 +359,7 @@ export default function DeliveryLogsClient({
         let first = acc.length === 0;
         for (;;) {
           const qs = `${key}${tick > 0 && first ? "&fresh=1" : ""}&limit=${first ? DELIVERY_FIRST_CHUNK : DELIVERY_NEXT_CHUNK}&loaded=${acc.length}${cursor ? `&cursor=${cursor}` : ""}`;
-          const r = await fetch(`/api/admin/delivery?${qs}`, { signal: ctl.signal });
+          const r = await fetch(`${apiBase}?${qs}`, { signal: ctl.signal });
           const j = (await r.json()) as { items: DeliveryRow[]; total: number; nextCursor: string | null; capped: boolean; error?: string };
           if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
           acc = acc.concat(j.items);
@@ -364,7 +378,7 @@ export default function DeliveryLogsClient({
     })();
     return () => ctl.abort();
      
-  }, [key, ready, tick, all]);
+  }, [key, ready, tick, all, apiBase]);
 
   function setFilter(patch: Partial<DeliveryFilterState>) {
     setFilters((f) => ({ ...f, ...patch }));
@@ -460,7 +474,7 @@ export default function DeliveryLogsClient({
         </label>
         <select value={filters.kind} onChange={(e) => setFilter({ kind: e.target.value })} className={fldCls(filters.kind)} aria-label={t("Tip mesaj")}>
           <option value="">{t("Tip: toate")}</option>
-          {KIND_OPTIONS.map((k) => <option key={k.key} value={k.key}>{t(k.label)}</option>)}
+          {kindOptions.map((k) => <option key={k.key} value={k.key}>{t(k.label)}</option>)}
         </select>
         <select value={filters.source} onChange={(e) => setFilter({ source: e.target.value })} className={fldCls(filters.source)} aria-label={t("Sursa")}>
           <option value="">{t("Sursa: toate")}</option>
@@ -526,7 +540,7 @@ export default function DeliveryLogsClient({
               <option value="all">{t("Toate")}</option>
             </select>
           </label>
-          <a href={`/api/admin/delivery/export${exportQs ? `?${exportQs}` : ""}`} download className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]" title={t("Exportă mesajele filtrate (CSV, maximum 10.000)")}>
+          <a href={`${apiBase}/export${exportQs ? `?${exportQs}` : ""}`} download className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]" title={t("Exportă mesajele filtrate (CSV, maximum 10.000)")}>
             ⬇ CSV
           </a>
         </div>
@@ -577,6 +591,7 @@ export default function DeliveryLogsClient({
         <DeliveryDetailDialog
           key={selId}
           id={selId}
+          apiBase={apiBase}
           preview={items.find((r) => r.id === selId) ?? null}
           onClose={() => setSelId(null)}
           onPrev={selIdx > 0 ? () => setSelId(items[selIdx - 1].id) : undefined}

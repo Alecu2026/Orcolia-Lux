@@ -24,6 +24,8 @@ import CompactCard, { CompactField } from "./CompactCard";
 import VirtualList from "./VirtualList";
 import MeterDetailDialog from "./MeterDetailDialog";
 import { useMeterDataset } from "./useMeterDataset";
+import SectorFilter from "./SectorFilter";
+import { distinctSectors } from "@/lib/sector-filter";
 
 type Page = { items: MeterRowBase[]; total: number };
 type TextKey = "q" | "street";
@@ -265,6 +267,7 @@ export default function MetersManager({
   // Filtrele „active" iau în calcul și ce e tastat dar încă neaplicat (debounce) — culoarea reacționează imediat.
   const active = countActiveMeterFilters({ ...filters, q: draft.q, street: draft.street });
   const sources = useMemo(() => (ds.rows ? distinctSources(ds.rows) : []), [ds.rows]);
+  const uSectors = useMemo(() => (ds.rows ? distinctSectors(ds.rows) : []), [ds.rows]);
 
   // ── Virtualizare: din cele (până la ~25.000) de rânduri ale paginii se desenează doar cele din zona vizibilă ──
   const pageRows = view.items;
@@ -410,6 +413,7 @@ export default function MetersManager({
           <option value="privat">{t("Sector privat")}</option>
           <option value="comunal">{t("Sector comunal")}</option>
         </select>
+        <SectorFilter options={uSectors} value={filters.usector} onChange={(v) => setFilter({ usector: v })} className={(on) => fld(on ? "x" : "")} />
         <select value={filters.account} onChange={(e) => setFilter({ account: e.target.value as MeterFilters["account"] })} className={fld(filters.account)} aria-label={t("Cont portal")}>
           <option value="">{t("Cont portal: toate")}</option>
           <option value="activated">{t("Activat")}</option>

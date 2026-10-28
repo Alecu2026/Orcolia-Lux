@@ -44,6 +44,8 @@ import PayerBulkDeleteDialog from "./PayerBulkDeleteDialog";
 import VirtualList from "./VirtualList";
 import { PAYERS_PP_COOKIE } from "@/lib/payer-prefs";
 import { usePayerDataset } from "./usePayerDataset";
+import SectorFilter from "./SectorFilter";
+import { distinctSectors } from "@/lib/sector-filter";
 import ExportButton from "./ExportButton";
 import {
   createPayerTemplateAction,
@@ -250,6 +252,7 @@ export default function PayerNotifyManager({
   // ── Motor local: toți plătitorii în memorie, filtrați/sortați/paginați în JS (instant). Până se încarcă setul
   //    (sau cât timp se încarcă o lună nouă), se folosește interogarea clasică pe server de mai jos. ──
   const ds = usePayerDataset(ready, months.slice(0, 3).map((x) => x.month));
+  const uSectors = useMemo(() => (ds.rows ? distinctSectors(ds.rows) : []), [ds.rows]);
   // Controalele (liste, câmpuri) se actualizează imediat; lista de 19.000 de rânduri se recalculează în randarea următoare (amânată), deci
   // un select nu „se agață" cât timp se filtrează/sortează.
   const listFilters = useDeferredValue(filters);
@@ -747,6 +750,7 @@ export default function PayerNotifyManager({
           <option value="privat">{t("Sector privat")}</option>
           <option value="comunal">{t("Sector comunal")}</option>
         </select>
+        <SectorFilter options={uSectors} value={filters.usector} onChange={(v) => setFilter({ usector: v })} className={(on) => fld(on ? "x" : "")} />
         <select value={filters.account} onChange={(e) => setFilter({ account: e.target.value as NotifyFilters["account"] })} className={fld(filters.account)} aria-label={t("Cont portal")}>
           <option value="">{t("Cont portal: toate")}</option>
           <option value="activated">{t("Activat")}</option>

@@ -4,7 +4,7 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { getMeterSnap } from "./meter-cache";
 import { logAudit } from "./audit";
-import { listRoutes, getSectorMap, sectorOfMeter } from "./meter-route-data";
+import { listRoutes } from "./meter-route-data";
 import type { FieldList } from "../meter-routes";
 import {
   FAR_METERS,
@@ -64,7 +64,7 @@ export async function listMeterReadings(meterId: string, limit = 36): Promise<Re
 export async function getFieldList(): Promise<FieldList> {
   const period = currentPeriod();
   if (DEMO) return { period, rows: [], routes: [] };
-  const [snap, recent, locs, routes, sectors, openIssues] = await Promise.all([
+  const [snap, recent, locs, routes, openIssues] = await Promise.all([
     getMeterSnap(),
     // luna aceasta + cele două dinainte: citirile din teren mai noi decât indexul din 1C
     prisma.meterReading.findMany({
@@ -74,7 +74,6 @@ export async function getFieldList(): Promise<FieldList> {
     // adresa / locația contoarelor completate din teren (o înregistrare mică pe contor)
     prisma.meterLocation.findMany({ select: { meterId: true, address: true, lat: true, lng: true, accuracy: true } }),
     listRoutes(),
-    getSectorMap(),
     // neregulile deschise (cea mai nouă pe contor): marcaj în listă
     prisma.meterIssue.findMany({ where: { resolvedAt: null }, select: { meterId: true, kind: true, reportedAt: true }, orderBy: { reportedAt: "asc" } }),
   ]);
@@ -110,7 +109,8 @@ export async function getFieldList(): Promise<FieldList> {
       cur ? cur.value : null, cur ? cur.readAt.getTime() : null, cur?.photoUrl ? 1 : 0,
       cur ? cur.userName : null, cur ? cur.distanceM : null, cur && cur.lat != null && cur.lng != null ? 1 : 0,
       geo?.lat ?? null, geo?.lng ?? null, fieldAddr ? 1 : 0, geo?.accuracy ?? null,
-      sectorOfMeter(r.id, sectors), issueBy.get(r.id) ?? null,
+      // sectorul din 1C vine odată cu lista de contoare (aceeași versiune, mereu la zi)
+      r.uch, issueBy.get(r.id) ?? null,
     ];
   });
   return { period, rows, routes: routes.filter((r) => r.active) };
