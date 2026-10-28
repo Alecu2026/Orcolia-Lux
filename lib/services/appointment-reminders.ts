@@ -39,7 +39,7 @@ export async function checkAppointmentReminders(): Promise<{ checked: number; no
     // `not: null` e necesar: filtrul `lte` al lui Prisma pe MongoDB potrivește și documentele cu nextReminderAt = null
     where: { status: { in: [...APPT_REMINDER_STATUSES] }, AND: [{ nextReminderAt: { not: null } }, { nextReminderAt: { lte: now } }] },
     select: {
-      id: true, userId: true, title: true, message: true, status: true, startAt: true,
+      id: true, userId: true, assigneeId: true, title: true, message: true, status: true, startAt: true,
       clientNameSnapshot: true, categoryNameSnapshot: true,
       reminderEmailEnabled: true, reminderTelegramEnabled: true,
       reminderSchedule: true, reminderIntervalMinutes: true, nextReminderAt: true,
@@ -69,8 +69,9 @@ export async function checkAppointmentReminders(): Promise<{ checked: number; no
       const service = a.categoryNameSnapshot ?? a.title;
       const left = timeLeftText(a.startAt.getTime() - now.getTime());
 
+      // cel care a creat programarea + cel pentru care e (dacă există)
       await notifyUsers(
-        [a.userId],
+        a.assigneeId ? [a.userId, a.assigneeId] : [a.userId],
         {
           title: `🔔 ${a.clientNameSnapshot} – ${left}`,
           body: `${service} · ${date} la ${time}${a.message?.trim() ? ` · ${a.message.trim()}` : ""}`,

@@ -25,6 +25,8 @@ export const LIST_SELECT = {
   color: true,
   reminderEmailEnabled: true,
   reminderTelegramEnabled: true,
+  userId: true,
+  assigneeId: true,
   reminderOffsets: true,
   reminderSchedule: true,
   reminderIntervalMinutes: true,
@@ -48,12 +50,18 @@ export type AppointmentListItem = {
   reminderTelegramEnabled: boolean;
   message?: string | null;
   categoryId?: string | null;
+  /** Cine a creat programarea / pentru cine e (opțional). */
+  userId?: string;
+  assigneeId?: string | null;
   /** Pragurile fixe vechi (reminder-presets) — cât timp programarea nu are remindere noi. */
   reminderOffsets?: string[];
   /** Reminderele noi, ca la sarcini (JSON din reminder-schedule.ts) sau interval fix în minute. */
   reminderSchedule?: unknown;
   reminderIntervalMinutes?: number | null;
 };
+
+/** Programările unui utilizator: cele create de el SAU cele în care e „pentru” (asignat). */
+export const mineWhere = (userId: string): Prisma.AppointmentWhereInput => ({ OR: [{ userId }, { assigneeId: userId }] });
 
 const ACTIVE_STATUSES: AppointmentStatus[] = [
   "NEW",
@@ -76,7 +84,7 @@ export function listByDateKey(userId: string, dateKey: string, filter: ApptFilte
     return Promise.resolve(demoAppointments().filter((a) => a.dateKey === dateKey));
   }
   return prisma.appointment.findMany({
-    where: applyFilter({ userId, dateKey }, filter),
+    where: applyFilter({ ...mineWhere(userId), dateKey }, filter),
     select: LIST_SELECT,
     orderBy: { startAt: "asc" },
   });
@@ -89,7 +97,7 @@ export function listByDateKeys(userId: string, dateKeys: string[], filter: ApptF
     return Promise.resolve(demoAppointments().filter((a) => set.has(a.dateKey)));
   }
   return prisma.appointment.findMany({
-    where: applyFilter({ userId, dateKey: { in: dateKeys } }, filter),
+    where: applyFilter({ ...mineWhere(userId), dateKey: { in: dateKeys } }, filter),
     select: LIST_SELECT,
     orderBy: { startAt: "asc" },
   });
@@ -99,7 +107,7 @@ export function listByDateKeys(userId: string, dateKeys: string[], filter: ApptF
 export function listAllForUser(userId: string, limit = 20000) {
   if (DEMO) return Promise.resolve(demoAppointments());
   return prisma.appointment.findMany({
-    where: { userId },
+    where: mineWhere(userId),
     select: LIST_SELECT,
     orderBy: { startAt: "desc" },
     take: limit,
@@ -113,7 +121,7 @@ export function listForKanban(userId: string, dateKeys: string[]) {
     return Promise.resolve(demoAppointments().filter((a) => set.has(a.dateKey)));
   }
   return prisma.appointment.findMany({
-    where: { userId, dateKey: { in: dateKeys } },
+    where: { ...mineWhere(userId), dateKey: { in: dateKeys } },
     select: LIST_SELECT,
     orderBy: { startAt: "asc" },
   });
@@ -153,7 +161,7 @@ export async function apptsBetween(opts: {
   if (DEMO) return [];
   return prisma.appointment.findMany({
     where: {
-      ...(opts.userId ? { userId: opts.userId } : {}),
+      ...(opts.userId ? mineWhere(opts.userId) : {}),
       ...(opts.clientId ? { clientId: opts.clientId } : {}),
       startAt: { gte: opts.from, lt: opts.to },
     },
@@ -172,7 +180,7 @@ export function getAppointment(userId: string, id: string) {
     );
   }
   return prisma.appointment.findFirst({
-    where: { id, userId },
+    where: { id, ...mineWhere(userId) },
     select: {
       ...LIST_SELECT,
       message: true,
@@ -199,7 +207,7 @@ export async function nextAppointment(userId: string) {
   }
   return prisma.appointment.findFirst({
     where: {
-      userId,
+      ...mineWhere(userId),
       startAt: { gte: new Date() },
       status: { in: ["NEW", "CONFIRMED", "IN_PROGRESS"] },
     },
@@ -225,7 +233,7 @@ export async function dayStats(userId: string, dateKey: string) {
   }
   const grouped = await prisma.appointment.groupBy({
     by: ["status"],
-    where: { userId, dateKey },
+    where: { ...mineWhere(userId), dateKey },
     _count: { _all: true },
   });
   const byStatus = Object.fromEntries(
@@ -253,11 +261,13 @@ export async function findOverlapping(
   startAt: Date,
   endAt: Date,
   excludeId?: string,
+  assigneeId?: string | null,
 ) {
   if (DEMO) return null;
   return prisma.appointment.findFirst({
     where: {
-      userId,
+      // ocupat = programare a celui care creează SAU a celui pentru care se face (directorul nu poate fi programat în două locuri)
+      OR: [...(mineWhere(userId).OR ?? []), ...(assigneeId ? (mineWhere(assigneeId).OR ?? []) : [])],
       ...(excludeId ? { id: { not: excludeId } } : {}),
       status: { in: ACTIVE_STATUSES },
       startAt: { lt: endAt },

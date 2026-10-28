@@ -2399,4 +2399,11 @@ export const EN: Record<string, string> = {
   "1 oră": "1 hour",
   "{n} ore": "{n} hours",
   "{n} min": "{n} min",
+  "Pentru": "For",
+  "tu": "you",
+  "de la": "from",
+  "Pentru (cine participă)": "For (who attends)",
+  "— fără —": "— none —",
+  "eu": "me",
+  "Programarea apare și la el, iar el și tu primiți notificare (aplicație, push, Telegram).": "The appointment also shows for them, and both of you get a notification (app, push, Telegram).",
 };

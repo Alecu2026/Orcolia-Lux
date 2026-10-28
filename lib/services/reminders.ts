@@ -57,6 +57,10 @@ export async function processDueReminders(limit = 50) {
       continue;
     }
 
+    // Revendicare atomică: cron-ul extern și temporizatorul serverului rulează în paralel; doar cine reușește să incrementeze `attempts` (încă egal cu valoarea citită) trimite.
+    const claimed = await prisma.reminder.updateMany({ where: { id: r.id, status: "PENDING", attempts: r.attempts }, data: { attempts: r.attempts + 1 } });
+    if (claimed.count === 0) continue;
+
     const settings = await getSettings(r.userId);
     const tz = settings.timezone;
     const date = formatDate(appt.startAt, tz);
@@ -91,7 +95,7 @@ export async function processDueReminders(limit = 50) {
       await logNotification(r.userId, r.type, client.email ?? client.telegramChatId, r.appointmentId, r.id, true);
       sent++;
     } catch (e) {
-      const attempts = r.attempts + 1;
+      const attempts = r.attempts + 1; // deja incrementat la revendicare
       const status = attempts >= MAX_ATTEMPTS ? "FAILED" : "PENDING";
       await prisma.reminder.update({
         where: { id: r.id },

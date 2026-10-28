@@ -158,6 +158,7 @@ model User {
   sessions        Session[]
   clients         Client[]
   appointments    Appointment[]
+  assignedAppointments Appointment[] @relation("AppointmentAssignee")
   categories      Category[]
   reminders       Reminder[]
   // Listă (nu 1:1): TelegramAccount.userId NU e @unique — pe MongoDB, un index unic pe un
@@ -786,8 +787,12 @@ model Category {
 
 model Appointment {
   id        String  @id @default(auto()) @map("_id") @db.ObjectId
+  // Cel care a creat programarea (secretara)
   userId    String  @db.ObjectId
   user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Opțional: cel pentru care e programarea (directorul) — o vede și el, e notificat el și cel care a creat-o
+  assigneeId String? @db.ObjectId
+  assignee   User?   @relation("AppointmentAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   clientId  String  @db.ObjectId
   client    Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   categoryId String? @db.ObjectId
@@ -832,6 +837,7 @@ model Appointment {
   @@index([userId, clientId])
   @@index([clientId])
   @@index([nextReminderAt])
+  @@index([assigneeId, dateKey])
 }
 
 model Reminder {

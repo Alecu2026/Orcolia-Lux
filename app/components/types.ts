@@ -14,6 +14,8 @@ export type QuickDefaults = {
   reminderEmail: boolean;
   reminderTelegram: boolean;
   reminderOffsets: string[];
+  /** Utilizatorii cărora li se poate asigna o programare (pentru lista „Pentru”); gol = fără câmpul. */
+  assignees?: { id: string; name: string; me?: boolean }[];
 };
 
 export type ApptStatus =
@@ -40,6 +42,11 @@ export type ApptVM = {
   color: string | null;
   remEmail: boolean;
   remTelegram: boolean;
+  /** Cine a creat programarea și pentru cine e (opțional) — numele, pentru afișare; id-urile, pentru editare. */
+  creatorId: string;
+  creatorName: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
   /** Categoria curentă (pentru editare). */
   categoryId: string | null;
   /** Durata în minute (pentru editare). */
@@ -53,6 +60,7 @@ export type ApptVM = {
 };
 
 export type QuickPrefill = Partial<{
+  assigneeId: string;
   /** Prezent ⇒ editarea programării existente (nu una nouă). */
   id: string;
   title: string;

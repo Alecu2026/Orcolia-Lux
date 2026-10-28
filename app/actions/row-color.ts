@@ -41,7 +41,7 @@ export async function setAppointmentColorAction(id: string, color: string | null
   if (!OID.test(id ?? "")) return { error: "Programare invalidă." };
   const c = parseColor(color);
   if (!c.ok) return { error: "Culoare invalidă." };
-  const upd = await prisma.appointment.updateMany({ where: { id, userId: user.id }, data: { color: c.value } });
+  const upd = await prisma.appointment.updateMany({ where: { id, OR: [{ userId: user.id }, { assigneeId: user.id }] }, data: { color: c.value } });
   if (upd.count === 0) return { error: "Programare inexistentă." };
   revalidatePath("/appointments");
   return { ok: true };

@@ -89,6 +89,7 @@ export default function QuickAddDialog({
       return "";
     }
   })();
+  const [assigneeId, setAssigneeId] = useState(prefill?.assigneeId ?? "");
   const [status, setStatus] = useState<"NEW" | "CONFIRMED">(
     prefill?.status ?? "NEW",
   );
@@ -138,6 +139,7 @@ export default function QuickAddDialog({
           <input type="hidden" name="clientId" value={client.id} />
           <input type="hidden" name="clientName" value={client.id ? "" : client.name} />
           <input type="hidden" name="categoryId" value={categoryId} />
+          <input type="hidden" name="assigneeId" value={assigneeId} />
           <input type="hidden" name="dateKey" value={dateKey} />
           <input type="hidden" name="durationMinutes" value={duration} />
           <input type="hidden" name="reminderEmail" value={remEmail ? "true" : "false"} />
@@ -148,6 +150,23 @@ export default function QuickAddDialog({
             <label className="mb-1.5 block text-xs font-semibold text-ink-soft">{m.appts.clientLabel}</label>
             <ClientCombobox value={client} onPick={setClient} />
           </div>
+
+          {(defaults.assignees?.length ?? 0) > 0 && (
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-ink-soft">{t("Pentru (cine participă)")}</label>
+              <select
+                value={assigneeId}
+                onChange={(e) => setAssigneeId(e.target.value)}
+                className="h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand"
+              >
+                <option value="">{t("— fără —")}</option>
+                {defaults.assignees!.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}{u.me ? ` (${t("eu")})` : ""}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-ink-soft">{t("Programarea apare și la el, iar el și tu primiți notificare (aplicație, push, Telegram).")}</p>
+            </div>
+          )}
 
           {categories.length > 0 && (
             <div>

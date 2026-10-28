@@ -33,6 +33,7 @@ const dmy = (key: string) => key.split("-").reverse().join(".");
 function prefillOf(a: ApptVM): QuickPrefill {
   return {
     id: a.id,
+    assigneeId: a.assigneeId ?? undefined,
     clientId: a.clientId,
     clientName: a.clientName,
     categoryId: a.categoryId ?? undefined,
@@ -80,8 +81,10 @@ export default function AppointmentsTable({
   today,
   tz,
   canManage = true,
+  userId,
 }: {
   canManage?: boolean;
+  userId?: string;
   items: ApptVM[];
   categories: CategoryLite[];
   quickDefaults: QuickDefaults;
@@ -182,6 +185,14 @@ export default function AppointmentsTable({
       render: (a) => { const [h1, m1] = a.time.split(":").map(Number); const [h2, m2] = a.endTime.split(":").map(Number); return `${h2 * 60 + m2 - (h1 * 60 + m1)} ${t("min")}`; },
     },
     { key: "client", label: t("Client"), minW: 180, maxW: 240, sort: (a) => a.clientName, render: (a) => <span title={a.clientName}>{a.clientName}</span> },
+    {
+      key: "assignee", label: t("Pentru"), minW: 130, maxW: 200, sort: (a) => a.assigneeName ?? "",
+      render: (a) => {
+        // arată cealaltă persoană: cel creat de mine → pentru cine e; programat pentru mine → cine a creat
+        const text = a.assigneeId ? (a.assigneeId === userId ? `${t("tu")} · ${t("de la")} ${a.creatorName}` : a.assigneeName ?? "") : "";
+        return text ? <span title={text}>{text}</span> : dash;
+      },
+    },
     {
       key: "title", label: t("Descriere"), minW: 200, maxW: 300,
       render: (a) => <EditableText value={a.title} allowEmpty disabled={!canManage} onSave={(v) => patchAppt(a, { title: v }, { title: v })} display={a.title ? <span title={a.title}>{a.title}</span> : undefined} />,
@@ -320,6 +331,7 @@ export default function AppointmentsTable({
             <div className="divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)] text-sm">
               <Row label={t("Status")}><ApptStatusDropdown status={current.status} pending={busy === current.id || !canManage} onChange={(s) => change(current.id, s)} /></Row>
               <Row label={t("Categorie")}>{current.categoryName ?? "—"}</Row>
+              {current.assigneeId && <Row label={t("Pentru")}>{current.assigneeId === userId ? `${t("tu")} · ${t("de la")} ${current.creatorName}` : current.assigneeName ?? "—"}</Row>}
               <Row label={t("Remindere")}>{[remText(current, t, dateTag(locale)), current.remEmail ? "Email" : "", current.remTelegram ? "Telegram" : ""].filter(Boolean).join(" · ") || "—"}</Row>
               {current.title && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{t("Descriere")}</p><p className="whitespace-pre-wrap text-[13px]">{current.title}</p></div>}
               {current.message && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{t("Detalii")}</p><p className="whitespace-pre-wrap text-[13px]">{current.message}</p></div>}

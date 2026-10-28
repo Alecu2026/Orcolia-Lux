@@ -228,6 +228,7 @@ async function processUpcomingAppointments(since: Date, now: Date): Promise<numb
         categoryNameSnapshot: true,
         clientNameSnapshot: true,
         userId: true,
+        assigneeId: true,
         reminderSchedule: true,
         reminderIntervalMinutes: true,
         reminderOffsets: true,
@@ -256,7 +257,7 @@ async function processUpcomingAppointments(since: Date, now: Date): Promise<numb
       const timeLabel = lead.key === "24h" ? "mâine" : "în 1 oră";
 
       await notifyUsers(
-        [appt.userId],
+        appt.assigneeId ? [appt.userId, appt.assigneeId] : [appt.userId],
         {
           title: `📅 ${appt.clientNameSnapshot} – ${timeLabel}`,
           body: `${service} la ora ${timeStr}`,

@@ -2399,4 +2399,11 @@ export const RU: Record<string, string> = {
   "1 oră": "1 час",
   "{n} ore": "{n} ч.",
   "{n} min": "{n} мин",
+  "Pentru": "Для",
+  "tu": "вы",
+  "de la": "от",
+  "Pentru (cine participă)": "Для (кто участвует)",
+  "— fără —": "— нет —",
+  "eu": "я",
+  "Programarea apare și la el, iar el și tu primiți notificare (aplicație, push, Telegram).": "Запись появится и у них, а вы оба получите уведомление (приложение, push, Telegram).",
 };

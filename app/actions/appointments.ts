@@ -25,6 +25,7 @@ import {
   type ApptFilter,
 } from "@/lib/queries/appointments";
 import { getSettings } from "@/lib/queries/settings";
+import { mineWhere } from "@/lib/queries/appointments";
 import { todayKey, tomorrowKey, weekKeys, addDaysToKey } from "@/lib/date";
 import { toVM } from "@/lib/view";
 import type { ApptVM } from "@/app/components/types";
@@ -90,6 +91,7 @@ export async function createQuickAppointment(
       reminderSchedule: rem.schedule,
       reminderIntervalMinutes: rem.interval,
       status: d.status,
+      assigneeId: String(formData.get("assigneeId") ?? "") || undefined,
     },
     "WEB",
   );
@@ -149,6 +151,7 @@ export async function updateAppointmentAction(_prev: ApptState, formData: FormDa
     reminderSchedule: rem.schedule,
     reminderIntervalMinutes: rem.interval,
     status: d.status,
+    assigneeId: String(formData.get("assigneeId") ?? "") || null,
   });
   if (!res.ok) return { error: res.error };
   revalidateAll();
@@ -226,7 +229,7 @@ export async function updateAppointmentFieldAction(
   if (DEMO) return { error: "Mod demo." };
   const OID = /^[0-9a-f]{24}$/i;
   if (!OID.test(id ?? "")) return { error: "Programare invalidă." };
-  const owned = await prisma.appointment.findFirst({ where: { id, userId: user.id }, select: { id: true } });
+  const owned = await prisma.appointment.findFirst({ where: { id, ...mineWhere(user.id) }, select: { id: true } });
   if (!owned) return { error: "Programare inexistentă." };
 
   const data: Record<string, unknown> = {};

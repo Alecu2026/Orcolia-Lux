@@ -6,6 +6,7 @@ import { todayKey, tomorrowKey } from "@/lib/date";
 import { toVM } from "@/lib/view";
 import AppointmentsTable from "@/app/components/AppointmentsTable";
 import { can } from "@/lib/permissions";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,13 @@ export default async function AppointmentsPage({
   const today = todayKey(tz);
   const tomorrow = tomorrowKey(tz);
   // Toate programările odată; filtrarea (perioadă, status, categorie, text…) rulează în browser — vezi DataTable.
-  const items = (await listAllForUser(user.id)).map((a) => toVM(a, tz));
+  const list = await listAllForUser(user.id);
+  // utilizatorii activi cu acces la Programări: pentru lista „Pentru” (asignare) și pentru numele celor care au creat / pentru care e programarea
+  const people = (await prisma.user.findMany({ where: { isActive: true }, select: { id: true, name: true, role: true, permissions: true } })).filter((u) => can(u, "appointments.view"));
+  const names = Object.fromEntries(people.map((u) => [u.id, u.name]));
+  const missing = [...new Set(list.flatMap((a) => [a.userId, a.assigneeId]).filter((id): id is string => Boolean(id) && !names[id as string]))];
+  if (missing.length) for (const u of await prisma.user.findMany({ where: { id: { in: missing } }, select: { id: true, name: true } })) names[u.id] = u.name;
+  const items = list.map((a) => toVM(a, tz, names));
 
   const quickDefaults = {
     today,
@@ -32,6 +39,7 @@ export default async function AppointmentsPage({
     reminderEmail: settings.defaultReminderEmail,
     reminderTelegram: settings.defaultReminderTelegram,
     reminderOffsets: settings.reminderOffsets,
+    assignees: people.map((u) => ({ id: u.id, name: u.name, me: u.id === user.id })).sort((a, b) => a.name.localeCompare(b.name)),
   };
 
   return (
@@ -43,6 +51,7 @@ export default async function AppointmentsPage({
       today={today}
       tz={tz}
       canManage={can(user, "appointments.manage")}
+      userId={user.id}
     />
   );
 }

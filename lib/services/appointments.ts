@@ -3,13 +3,68 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { getSettings } from "../queries/settings";
 import { findOrCreateClient } from "../queries/clients";
-import { findOverlapping } from "../queries/appointments";
-import { zonedToUtc, addDaysToKey, formatTime, isValidDateKey, isValidTimeOfDay } from "../date";
+import { findOverlapping, mineWhere } from "../queries/appointments";
+import { notifyUsers } from "./notifications";
+import { can } from "../permissions";
+import { zonedToUtc, addDaysToKey, formatDate, formatTime, isValidDateKey, isValidTimeOfDay } from "../date";
 import { sanitizeReminderPresets, type ReminderPresetKey } from "../reminder-presets";
 import { APPT_REMINDER_STATUSES, nextApptReminderAt, parseReminderSchedule, type ReminderSchedule } from "../reminder-schedule";
 import type { AppointmentStatus, CreatedFrom, Prisma } from "@prisma/client";
 
 const OID = /^[0-9a-f]{24}$/i;
+
+/** Utilizatorul „pentru care” e programarea (director): activ, cu acces la Programări, diferit de cel care o creează; altfel null. */
+async function resolveAssignee(creatorId: string, assigneeId?: string | null): Promise<{ id: string; name: string } | null> {
+  if (!assigneeId || !OID.test(assigneeId) || assigneeId === creatorId) return null;
+  const u = await prisma.user.findFirst({ where: { id: assigneeId, isActive: true }, select: { id: true, name: true, role: true, permissions: true } });
+  return u && can(u, "appointments.view") ? { id: u.id, name: u.name } : null;
+}
+
+/**
+ * Notifică părțile unei programări cu asignat (cine a creat-o + cel pentru care e): în aplicație, push și Telegram.
+ *  - "created": ambii (cel asignat află de programare, cel care a creat primește confirmarea);
+ *  - "assigned": noul asignat + cel care a creat (dacă altcineva a făcut schimbarea);
+ *  - "changed": doar cealaltă parte decât cel care a modificat.
+ * Best-effort: o eroare de notificare nu strică salvarea.
+ */
+async function notifyParties(a: {
+  kind: "created" | "assigned" | "changed";
+  id: string;
+  clientName: string;
+  startAt: Date;
+  tz: string;
+  creatorId: string;
+  assignee: { id: string; name: string };
+  actorId: string;
+}) {
+  try {
+    const creator = await prisma.user.findUnique({ where: { id: a.creatorId }, select: { name: true } });
+    const when = `${formatDate(a.startAt, a.tz)} la ${formatTime(a.startAt, a.tz)}`;
+    const url = `/appointments?id=${a.id}`;
+    const toAssignee = a.assignee.id !== a.actorId;
+    const toCreator = a.kind === "created" ? true : a.creatorId !== a.actorId;
+    if (toAssignee) {
+      await notifyUsers(
+        [a.assignee.id],
+        a.kind === "changed"
+          ? { title: `🔄 Programare modificată: ${a.clientName}`, body: when, url }
+          : { title: `📅 Ai o programare: ${a.clientName}`, body: `${when} · programată de ${creator?.name ?? "—"}`, url },
+        { telegram: true },
+      );
+    }
+    if (toCreator) {
+      await notifyUsers(
+        [a.creatorId],
+        a.kind === "changed"
+          ? { title: `🔄 Programare modificată: ${a.clientName}`, body: `${when} · ${a.assignee.name}`, url }
+          : { title: `✅ Programare pentru ${a.assignee.name}: ${a.clientName}`, body: when, url },
+        { telegram: true },
+      );
+    }
+  } catch (e) {
+    console.error("[appointments] notificarea părților:", e);
+  }
+}
 
 const isReminderStatus = (s: string) => (APPT_REMINDER_STATUSES as readonly string[]).includes(s);
 
@@ -37,6 +92,8 @@ export type CreateApptInput = {
   reminderSchedule?: ReminderSchedule | null;
   reminderIntervalMinutes?: number | null;
   status?: "NEW" | "CONFIRMED";
+  /** Pentru cine e programarea (ex. directorul): o vede și el, iar el și cel care o creează sunt notificați. */
+  assigneeId?: string | null;
 };
 
 export type CreateApptResult =
@@ -161,7 +218,8 @@ export async function createAppointment(
   const endAt = new Date(startAt.getTime() + duration * 60_000);
 
   // 4. Conflict
-  const overlap = await findOverlapping(userId, startAt, endAt);
+  const assignee = await resolveAssignee(userId, input.assigneeId);
+  const overlap = await findOverlapping(userId, startAt, endAt, undefined, assignee?.id);
   if (overlap) {
     return {
       ok: false,
@@ -179,6 +237,7 @@ export async function createAppointment(
   const appt = await prisma.appointment.create({
     data: {
       userId,
+      ...(assignee ? { assigneeId: assignee.id } : {}),
       clientId: client.id,
       categoryId: category?.id ?? null,
       title,
@@ -205,7 +264,7 @@ export async function createAppointment(
   // Pierde cea creată ulterior (id mai mare), deci rămâne exact una.
   const clash = await prisma.appointment.findFirst({
     where: {
-      userId,
+      OR: [...(mineWhere(userId).OR ?? []), ...(assignee ? (mineWhere(assignee.id).OR ?? []) : [])],
       id: { not: appt.id },
       status: { in: ["NEW", "CONFIRMED", "IN_PROGRESS", "DONE"] },
       startAt: { lt: endAt },
@@ -233,6 +292,8 @@ export async function createAppointment(
     offsets,
   });
 
+  if (assignee) await notifyParties({ kind: "created", id: appt.id, clientName: client.name, startAt, tz, creatorId: userId, assignee, actorId: userId });
+
   // 7. „Ultima programare" a clientului = cea mai târzie (o programare adăugată pentru o dată mai veche NU o suprascrie)
   await prisma.client
     .updateMany({
@@ -254,9 +315,9 @@ export async function changeStatus(
   if (DEMO) return { ok: false as const, error: "Mod demo: modificările nu se salvează." };
   if (!OID.test(id ?? "")) return { ok: false as const, error: "Programare inexistentă." };
   const appt = await prisma.appointment.findFirst({
-    where: { id, userId },
+    where: { id, ...mineWhere(userId) },
     select: {
-      id: true, clientId: true, status: true, startAt: true, endAt: true, dateKey: true,
+      id: true, clientId: true, assigneeId: true, status: true, startAt: true, endAt: true, dateKey: true,
       reminderEmailEnabled: true, reminderTelegramEnabled: true, reminderOffsets: true,
       reminderSchedule: true, reminderIntervalMinutes: true,
       client: { select: { email: true, telegramChatId: true } },
@@ -268,7 +329,7 @@ export async function changeStatus(
 
   // O programare anulată / absentă care redevine activă ocupă din nou intervalul: dacă între timp a fost luat de alta, refuzăm.
   if ((appt.status === "CANCELLED" || appt.status === "NO_SHOW") && status !== "CANCELLED" && status !== "NO_SHOW") {
-    const overlap = await findOverlapping(userId, appt.startAt, appt.endAt, id);
+    const overlap = await findOverlapping(userId, appt.startAt, appt.endAt, id, appt.assigneeId);
     if (overlap) {
       const settingsForTz = await getSettings(userId);
       return { ok: false as const, error: `Interval ocupat: ${overlap.clientNameSnapshot} la ${formatTime(overlap.startAt, settingsForTz.timezone)}.` };
@@ -334,9 +395,12 @@ export async function reschedule(
   const [settings, appt] = await Promise.all([
     getSettings(userId),
     prisma.appointment.findFirst({
-      where: { id, userId },
+      where: { id, ...mineWhere(userId) },
       select: {
         id: true,
+        userId: true,
+        assigneeId: true,
+        clientNameSnapshot: true,
         status: true,
         startAt: true,
         endAt: true,
@@ -360,7 +424,7 @@ export async function reschedule(
   const startAt = zonedToUtc(dateKey, time, tz);
   const endAt = new Date(startAt.getTime() + duration * 60_000);
 
-  const overlap = await findOverlapping(userId, startAt, endAt, id);
+  const overlap = await findOverlapping(userId, startAt, endAt, id, appt.assigneeId);
   if (overlap) {
     return {
       ok: false as const,
@@ -392,6 +456,10 @@ export async function reschedule(
     offsets: sanitizeReminderPresets(appt.reminderOffsets as string[]),
   });
 
+  if (appt.assigneeId) {
+    const as = await prisma.user.findUnique({ where: { id: appt.assigneeId }, select: { id: true, name: true } });
+    if (as) await notifyParties({ kind: "changed", id, clientName: appt.clientNameSnapshot, startAt, tz, creatorId: appt.userId, assignee: as, actorId: userId });
+  }
   return { ok: true as const, startAt };
 }
 
@@ -411,6 +479,8 @@ export type UpdateApptInput = {
   reminderIntervalMinutes?: number | null;
   /** Doar pentru o programare „Nouă” / „Confirmată” (celelalte statusuri se schimbă separat). */
   status?: "NEW" | "CONFIRMED";
+  /** Pentru cine e programarea; gol / lipsă = fără asignat. */
+  assigneeId?: string | null;
 };
 
 /**
@@ -424,7 +494,7 @@ export async function updateAppointment(userId: string, id: string, input: Updat
   if (!isValidDateKey(input.dateKey) || !isValidTimeOfDay(input.time)) return { ok: false as const, error: "Dată sau oră invalidă." };
   const [settings, appt] = await Promise.all([
     getSettings(userId),
-    prisma.appointment.findFirst({ where: { id, userId }, select: { id: true, status: true, clientId: true, startAt: true } }),
+    prisma.appointment.findFirst({ where: { id, ...mineWhere(userId) }, select: { id: true, userId: true, assigneeId: true, status: true, clientId: true, startAt: true } }),
   ]);
   if (!appt) return { ok: false as const, error: "Programare inexistentă." };
   const tz = settings.timezone;
@@ -451,9 +521,11 @@ export async function updateAppointment(userId: string, id: string, input: Updat
   const endAt = new Date(startAt.getTime() + duration * 60_000);
   const status: AppointmentStatus = (appt.status === "NEW" || appt.status === "CONFIRMED") && input.status ? input.status : appt.status;
 
+  const assignee = await resolveAssignee(appt.userId, input.assigneeId); // gol / lipsă = fără asignat
+
   // o programare anulată / absentă nu ocupă intervalul
   if (status !== "CANCELLED" && status !== "NO_SHOW") {
-    const overlap = await findOverlapping(userId, startAt, endAt, id);
+    const overlap = await findOverlapping(appt.userId, startAt, endAt, id, assignee?.id);
     if (overlap) return { ok: false as const, error: `Interval ocupat: ${overlap.clientNameSnapshot} la ${formatTime(overlap.startAt, tz)}.` };
   }
 
@@ -466,6 +538,7 @@ export async function updateAppointment(userId: string, id: string, input: Updat
     data: {
       clientId: client.id,
       clientNameSnapshot: client.name,
+      assigneeId: assignee?.id ?? null,
       categoryId: category?.id ?? null,
       categoryNameSnapshot: category?.name ?? null,
       categoryColorSnapshot: category?.color ?? null,
@@ -492,6 +565,12 @@ export async function updateAppointment(userId: string, id: string, input: Updat
       data: { lastAppointmentAt: startAt },
     })
     .catch(() => {});
+
+  if (assignee) {
+    const startChanged = startAt.getTime() !== appt.startAt.getTime();
+    const kind = assignee.id !== appt.assigneeId ? "assigned" : startChanged ? "changed" : null;
+    if (kind) await notifyParties({ kind, id, clientName: client.name, startAt, tz, creatorId: appt.userId, assignee, actorId: userId });
+  }
 
   return { ok: true as const, startAt };
 }
