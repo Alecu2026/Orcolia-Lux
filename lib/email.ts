@@ -2,18 +2,21 @@ import "server-only";
 import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "./env";
 import { prisma } from "./prisma";
+import { logDelivery, withDeliveryMeta, wrapMailTransport, type DeliveryMeta } from "./delivery-log";
 
 let cached: Transporter | null = null;
 
 function getTransporter(): Transporter | null {
   if (!env.smtp.enabled) return null;
   if (!cached) {
-    cached = nodemailer.createTransport({
-      host: env.smtp.host,
-      port: env.smtp.port,
-      secure: env.smtp.secure,
-      auth: { user: env.smtp.user, pass: env.smtp.pass },
-    });
+    cached = wrapMailTransport(
+      nodemailer.createTransport({
+        host: env.smtp.host,
+        port: env.smtp.port,
+        secure: env.smtp.secure,
+        auth: { user: env.smtp.user, pass: env.smtp.pass },
+      }),
+    );
   }
   return cached;
 }
@@ -106,7 +109,7 @@ function taskReminderTemplate(raw: TaskReminderEmailData): string {
 </body></html>`;
 }
 
-export async function sendTaskReminderEmail(d: TaskReminderEmailData): Promise<void> {
+async function sendTaskReminderEmailImpl(d: TaskReminderEmailData): Promise<void> {
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
   const from = env.smtp.from;
@@ -176,7 +179,7 @@ function invoiceTemplate(d: InvoiceEmailData): string {
 </body></html>`;
 }
 
-export async function sendInvoiceEmail(d: InvoiceEmailData): Promise<void> {
+async function sendInvoiceEmailImpl(d: InvoiceEmailData): Promise<void> {
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
   const from =
@@ -238,7 +241,7 @@ function verificationCodeTemplate(d: VerificationCodeEmailData): string {
 </body></html>`;
 }
 
-export async function sendVerificationCodeEmail(d: VerificationCodeEmailData): Promise<void> {
+async function sendVerificationCodeEmailImpl(d: VerificationCodeEmailData): Promise<void> {
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
   const subject =
@@ -257,7 +260,7 @@ export async function sendVerificationCodeEmail(d: VerificationCodeEmailData): P
 }
 
 /** Trimite reminder-ul. Aruncă eroare la eșec (pentru logica de retry). */
-export async function sendReminderEmail(d: ReminderEmailData): Promise<void> {
+async function sendReminderEmailImpl(d: ReminderEmailData): Promise<void> {
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
 
@@ -317,7 +320,7 @@ function payerNotificationTemplate(d: PayerNotificationEmailData): string {
 }
 
 /** Notificare către un plătitor (din /notificari-platitori). Aruncă eroare la eșec. */
-export async function sendPayerNotificationEmail(d: PayerNotificationEmailData): Promise<void> {
+async function sendPayerNotificationEmailImpl(d: PayerNotificationEmailData): Promise<void> {
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
   await transporter.sendMail({
@@ -346,7 +349,7 @@ export type TicketMessageEmailData = {
  * Email către client: „ai primit un mesaj nou la tichetul tău" — cu începutul mesajului și un buton spre conversația din portal,
  * unde poate răspunde. Aruncă eroare la eșec; apelantul decide ce face (conversația se salvează oricum).
  */
-export async function sendTicketMessageEmail(d: TicketMessageEmailData): Promise<void> {
+async function sendTicketMessageEmailImpl(d: TicketMessageEmailData): Promise<void> {
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
   const company = escapeHtml(d.companyName?.trim() || "Apă-Canal");
@@ -386,3 +389,23 @@ export async function sendTicketMessageEmail(d: TicketMessageEmailData): Promise
 </body></html>`;
   await transporter.sendMail({ from: env.smtp.from, to: d.to, subject, text, html });
 }
+
+// ── Jurnal: fiecare trimitere de email intră în jurnal (cu tipul ei și destinatarul); fără SMTP configurat se notează „omis”. ──
+async function logged<D extends { to: string }>(d: D, meta: DeliveryMeta, send: (d: D) => Promise<void>): Promise<void> {
+  if (!env.smtp.enabled) await logDelivery({ ...meta, channel: "EMAIL", status: "SKIPPED", to: d.to, error: "SMTP neconfigurat." });
+  return withDeliveryMeta({ ...meta, toName: meta.toName }, () => send(d));
+}
+const idFromUrl = (url: string, seg: string) => new RegExp(`/${seg}/([0-9a-f]{24})`, "i").exec(url)?.[1] ?? null;
+
+export const sendTaskReminderEmail = (d: TaskReminderEmailData) =>
+  logged(d, { kind: d.isOverdue ? "task.overdue" : "task.reminder", toName: d.userName, objectType: "task", objectId: idFromUrl(d.taskUrl, "tasks"), objectName: d.taskTitle }, sendTaskReminderEmailImpl);
+export const sendInvoiceEmail = (d: InvoiceEmailData) =>
+  logged(d, { kind: "invoice.email", toName: d.clientName, objectType: "invoice", objectName: d.invoiceNumber }, sendInvoiceEmailImpl);
+export const sendVerificationCodeEmail = (d: VerificationCodeEmailData) =>
+  logged(d, { kind: "verification.code", toName: d.name, objectName: d.purpose }, sendVerificationCodeEmailImpl);
+export const sendReminderEmail = (d: ReminderEmailData) =>
+  logged(d, { kind: "appointment.reminder", toName: d.clientName, objectType: "appointment", objectName: d.service }, sendReminderEmailImpl);
+export const sendPayerNotificationEmail = (d: PayerNotificationEmailData) =>
+  logged(d, { kind: "payer.campaign" }, sendPayerNotificationEmailImpl);
+export const sendTicketMessageEmail = (d: TicketMessageEmailData) =>
+  logged(d, { kind: "ticket.message", toName: d.clientName, objectType: "ticket", objectId: idFromUrl(d.url, "tickets"), objectName: d.ticketTitle }, sendTicketMessageEmailImpl);

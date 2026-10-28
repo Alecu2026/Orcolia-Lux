@@ -20,6 +20,7 @@ const en: Messages = {
     pbx: "PBX",
     users: "Users",
     auditLogs: "Audit Logs",
+    deliveryLogs: "Notification log",
     telegram: "Telegram",
     settings: "Settings",
   },

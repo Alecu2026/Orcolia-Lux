@@ -5,16 +5,20 @@ import { env } from "../env";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "./notifications";
 import nodemailer from "nodemailer";
 import { htmlToText } from "../email-body";
+import { wrapMailTransport, type DeliveryMeta } from "../delivery-log";
 
 // ── Email transport (shared with lib/email.ts logic) ────────────────────────
-function getTransport() {
+function getTransport(meta?: DeliveryMeta) {
   if (!env.smtp.enabled) return null;
-  return nodemailer.createTransport({
-    host: env.smtp.host,
-    port: env.smtp.port,
-    secure: env.smtp.secure,
-    auth: { user: env.smtp.user, pass: env.smtp.pass },
-  });
+  return wrapMailTransport(
+    nodemailer.createTransport({
+      host: env.smtp.host,
+      port: env.smtp.port,
+      secure: env.smtp.secure,
+      auth: { user: env.smtp.user, pass: env.smtp.pass },
+    }),
+    meta,
+  );
 }
 
 // ── RFC 2047 word decoding (subiect/fromName din email headers) ──────────────
@@ -319,7 +323,7 @@ async function sendAutoAck(opts: {
   ticketSeq: number | null;
   emailThreadId: string | null | undefined;
 }): Promise<string | null> {
-  const transport = getTransport();
+  const transport = getTransport({ kind: "ticket.ack", toName: opts.toName ?? null, objectType: "ticket" });
   if (!transport) return null;
 
   const seqLabel = opts.ticketSeq != null ? ` (#${opts.ticketSeq})` : "";
@@ -391,7 +395,7 @@ export async function sendEmailReply(opts: {
   });
   if (!ticket?.fromEmail) throw new Error("Cererea nu are email client asociat.");
 
-  const transport = getTransport();
+  const transport = getTransport({ kind: "ticket.reply", fromUserId: opts.staffUserId ?? null, fromName: opts.staffName, objectType: "ticket", objectId: opts.taskId });
   if (!transport) throw new Error("SMTP neconfigurat.");
 
   const company = opts.companyName || "Echipa noastră";
@@ -560,7 +564,7 @@ export async function checkAutoCloseEmailTickets(): Promise<number> {
   }).catch(() => null);
   const fromAddr = env.smtp.from?.match(/<(.+)>/)?.[1] ?? env.smtp.from ?? "";
   const fromName = company?.companyName || "Suport";
-  const transport = getTransport();
+  const transport = getTransport({ kind: "ticket.autoclose", objectType: "ticket" });
 
   let count = 0;
 

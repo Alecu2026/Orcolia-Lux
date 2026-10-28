@@ -879,6 +879,50 @@ model NotificationLog {
   @@index([userId, createdAt])
 }
 
+/// Jurnalul TUTUROR trimiterilor (email, SMS, Telegram, push, notificări în aplicație): ce s-a trimis, cui, de cine, cu ce rezultat. Se scrie la nivelul cel mai de jos al
+/// trimiterii (vezi lib/delivery-log.ts), deci prinde orice trimitere, indiferent de unde pornește. Se șterge singur după 90 de zile (cron zilnic).
+model DeliveryLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  /// EMAIL | SMS | TELEGRAM | PUSH | INAPP
+  channel    String
+  /// SENT | FAILED | SKIPPED (omis: canal neconfigurat, destinatar fără adresă / abonament…)
+  status     String
+  /// tipul trimiterii (ex. task.reminder, invoice.email, payer.campaign, verification.code, ticket.message); gol = nespecificat
+  kind       String?
+  /// ce a pornit trimiterea: web (acțiune a unui utilizator) | cron:<nume> | timer | bot | system
+  source     String
+  toUserId   String?  @db.ObjectId
+  toClientId String?  @db.ObjectId
+  toName     String?
+  /// adresa efectivă: email, telefon, chat id Telegram, „N dispozitive” (push)
+  to         String?
+  fromUserId String?  @db.ObjectId
+  fromName   String?
+  /// adresa / numele de expeditor folosit (From)
+  fromAddr   String?
+  subject    String?
+  body       String?
+  bodyHtml   String?
+  objectType String?
+  objectId   String?
+  objectName String?
+  campaignId String?
+  error      String?
+  /// id-ul dat de furnizor (Message-ID SMTP, message_id Telegram, răspunsul gateway-ului SMS)
+  providerId String?
+  durationMs Int?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([channel, createdAt])
+  @@index([status, createdAt])
+  @@index([kind, createdAt])
+  @@index([toUserId, createdAt])
+  @@index([toClientId, createdAt])
+  @@index([objectId, createdAt])
+  @@index([campaignId])
+}
+
 model VoiceCommandLog {
   id            String      @id @default(auto()) @map("_id") @db.ObjectId
   userId        String      @db.ObjectId

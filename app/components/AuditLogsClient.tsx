@@ -277,7 +277,7 @@ export default function AuditLogsClient({
     const ctl = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`/api/admin/audit?${key}`, { signal: ctl.signal })
+    fetch(`/api/admin/audit?${key}${tick > 0 ? "&fresh=1" : ""}`, { signal: ctl.signal })
       .then(async (r) => {
         const j = await r.json();
         if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
@@ -317,7 +317,7 @@ export default function AuditLogsClient({
       try {
         let first = acc.length === 0;
         for (;;) {
-          const qs = `${key}&limit=${first ? AUDIT_FIRST_CHUNK : AUDIT_NEXT_CHUNK}&loaded=${acc.length}${cursor ? `&cursor=${cursor}` : ""}`;
+          const qs = `${key}${tick > 0 && first ? "&fresh=1" : ""}&limit=${first ? AUDIT_FIRST_CHUNK : AUDIT_NEXT_CHUNK}&loaded=${acc.length}${cursor ? `&cursor=${cursor}` : ""}`;
           const r = await fetch(`/api/admin/audit?${qs}`, { signal: ctl.signal });
           const j = (await r.json()) as { items: AuditRow[]; total: number; nextCursor: string | null; capped: boolean; error?: string };
           if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");

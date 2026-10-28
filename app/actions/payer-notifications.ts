@@ -9,6 +9,7 @@ import { env } from "@/lib/env";
 import { isRateLimited } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/services/audit";
 import { sendPayerNotificationEmail } from "@/lib/email";
+import { withDeliveryMeta } from "@/lib/delivery-log";
 import { sendSms } from "@/lib/sms";
 import { sendCall } from "@/lib/call-gateway";
 import { listMatchingPayerContacts } from "@/lib/queries/payers";
@@ -206,6 +207,7 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
       address: c.consumAddress,
     });
     const base = { campaignId: input.campaignId, clientId: c.id, clientName: c.name, userId: user.id, userName: user.name };
+    const dmeta = { kind: "payer.campaign", campaignId: input.campaignId, toClientId: c.id, toName: c.name, objectType: "client", objectId: c.id };
 
     if (email.enabled) {
       if (alreadySent.has(`${c.id}:EMAIL`)) {
@@ -216,7 +218,8 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
         const subject = oneLine(renderTemplate(email.subject, vars));
         const body = renderTemplate(email.body, vars);
         try {
-          await sendPayerNotificationEmail({ to: c.email.trim(), subject, body, companyName: company?.companyName });
+          const emailTo = c.email.trim();
+          await withDeliveryMeta(dmeta, () => sendPayerNotificationEmail({ to: emailTo, subject, body, companyName: company?.companyName }));
           res.email = { status: "sent" };
           notifiedIds.add(c.id);
           logs.push({ ...base, channel: "EMAIL", to: c.email.trim(), status: "SENT", error: null, subject, body });
@@ -237,7 +240,7 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
         const rendered = renderTemplate(sms.body, vars);
         const body = sms.ascii ? stripLatinDiacritics(rendered) : rendered;
         try {
-          await sendSms(phone, body);
+          await withDeliveryMeta(dmeta, () => sendSms(phone, body));
           res.sms = { status: "sent" };
           notifiedIds.add(c.id);
           logs.push({ ...base, channel: "SMS", to: phone, status: "SENT", error: null, subject: null, body });
@@ -353,19 +356,19 @@ export async function sendTestNotificationAction(input: {
     if (input.email.enabled) {
       if (!isEmail(user.email)) return { ok: false, error: "Contul tău nu are o adresă de email validă." };
       const company = await prisma.companySettings.findUnique({ where: { singleton: "main" }, select: { companyName: true } });
-      await sendPayerNotificationEmail({
+      await withDeliveryMeta({ kind: "payer.test", toName: user.name }, () => sendPayerNotificationEmail({
         to: user.email,
         subject: `[TEST] ${oneLine(renderTemplate(input.email.subject, sample))}`,
         body: renderTemplate(input.email.body, sample),
         companyName: company?.companyName,
-      });
+      }));
       done.push(`email la ${user.email}`);
     }
     if (input.sms.enabled) {
       const phone = normalizePhone(input.testPhone);
       if (!phone) return { ok: false, error: "Introdu un număr de telefon valid pentru testul SMS (ex. 069123456)." };
       const rendered = renderTemplate(input.sms.body, sample);
-      const reply = await sendSms(phone, input.sms.ascii ? stripLatinDiacritics(rendered) : rendered);
+      const reply = await withDeliveryMeta({ kind: "payer.test", toName: user.name }, () => sendSms(phone, input.sms.ascii ? stripLatinDiacritics(rendered) : rendered));
       done.push(`SMS la ${phone}${reply ? ` (răspuns gateway: ${reply})` : ""}`);
     }
     if (callIn.enabled) {

@@ -17,8 +17,8 @@ export function register() {
   if (process.env.DISABLE_TASK_REMINDER_TIMER === "1") return;
   setTimeout(() => {
     const tick = () =>
-      import("./lib/services/tasks")
-        .then((m) => m.checkTaskReminders())
+      Promise.all([import("./lib/services/tasks"), import("./lib/delivery-log")])
+        .then(([m, d]) => d.withDeliveryMeta({ source: "timer" }, () => m.checkTaskReminders()))
         .catch((e) => console.error("[startup] reamintirile sarcinilor:", e));
     void tick();
     const timer = setInterval(() => void tick(), 60_000);

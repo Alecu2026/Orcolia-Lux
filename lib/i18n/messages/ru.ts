@@ -20,6 +20,7 @@ const ru: Messages = {
     pbx: "АТС",
     users: "Пользователи",
     auditLogs: "Журнал аудита",
+    deliveryLogs: "Журнал уведомлений",
     telegram: "Telegram",
     settings: "Настройки",
   },

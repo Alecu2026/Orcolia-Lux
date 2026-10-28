@@ -4,6 +4,7 @@ import { DEMO } from "../demo";
 import { env } from "../env";
 import { sendPushToUser } from "../push";
 import { sendMessage, invisibleLink, type InlineButton } from "../telegram";
+import { logDelivery, withDeliveryMeta } from "../delivery-log";
 
 export type NotifyPayload = {
   title: string;
@@ -77,11 +78,12 @@ export async function filteredAdminRecipients(ctx: AdminNotifyContext): Promise<
  *  - push web (telefon/desktop) dacă userul are abonament
  *  - Telegram dacă userul are chat legat
  */
-export async function notifyUsers(
-  userIds: string[],
-  payload: NotifyPayload,
-  opts: { telegram?: boolean } = {},
-): Promise<void> {
+export function notifyUsers(userIds: string[], payload: NotifyPayload, opts: { telegram?: boolean } = {}): Promise<void> {
+  // tot ce pleacă de aici (în aplicație, push, Telegram) se leagă în jurnal de sarcina din notificare
+  return withDeliveryMeta({ kind: "app.notification", ...(payload.taskId ? { objectType: "task", objectId: payload.taskId } : {}) }, () => notifyUsersImpl(userIds, payload, opts));
+}
+
+async function notifyUsersImpl(userIds: string[], payload: NotifyPayload, opts: { telegram?: boolean } = {}): Promise<void> {
   if (DEMO) {
     console.log("[notify] mod demo — notificare ignorată", payload.title);
     return;
@@ -103,8 +105,16 @@ export async function notifyUsers(
         taskId: payload.taskId ?? null,
       })),
     })
-    .then(() => console.log(`[notify] in-app: ${ids.length} notificări create pentru "${payload.title}"`))
-    .catch((e) => console.error("[notify] in-app: createMany a eșuat", e));
+    .then(async () => {
+      console.log(`[notify] in-app: ${ids.length} notificări create pentru "${payload.title}"`);
+      const names = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }).catch(() => []);
+      const nameOf = new Map(names.map((u) => [u.id, u.name]));
+      await Promise.all(ids.map((uid) => logDelivery({ channel: "INAPP", status: "SENT", toUserId: uid, toName: nameOf.get(uid) ?? null, subject: payload.title, body: payload.body ?? null })));
+    })
+    .catch(async (e) => {
+      console.error("[notify] in-app: createMany a eșuat", e);
+      await Promise.all(ids.map((uid) => logDelivery({ channel: "INAPP", status: "FAILED", toUserId: uid, subject: payload.title, body: payload.body ?? null, error: e instanceof Error ? e.message : String(e) })));
+    });
 
   // 2) Push + Telegram (best-effort, în paralel)
   await Promise.all(

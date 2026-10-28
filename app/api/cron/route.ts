@@ -4,6 +4,7 @@ import { isCronAuthorized } from "@/lib/cron-auth";
 import { processDueReminders } from "@/lib/services/reminders";
 import { checkOverdueTasks, checkTaskReminders } from "@/lib/services/tasks";
 import { notifyUsers, filteredAdminRecipients } from "@/lib/services/notifications";
+import { withDeliveryMeta } from "@/lib/delivery-log";
 import { checkUnansweredEmailTickets, checkAutoCloseEmailTickets } from "@/lib/services/email-ticket";
 import { pollInbox } from "@/lib/services/imap-poller";
 import { prewarmPayers } from "@/lib/services/payer-cache";
@@ -35,6 +36,9 @@ async function run() {
     select: { lastRunAt: true },
   });
   const since = ckpt.lastRunAt;
+
+  // Jurnalul trimiterilor se păstrează 90 de zile
+  await prisma.deliveryLog.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 90 * 86_400_000) } } }).catch((e) => console.error("[cron] curățarea jurnalului trimiterilor:", e));
 
   // Scadența facturilor Apă-Canal = 25 a lunii (corectează și ce a rămas pe alte date): înainte de pre-încălzirea listelor
   await normalizeApaCanalDueDates().catch((e) => console.error("[cron] scadența facturilor Apă-Canal:", e));
@@ -259,10 +263,10 @@ async function processUpcomingAppointments(since: Date, now: Date): Promise<numb
 
 export async function GET(req: Request) {
   if (!isCronAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  return run();
+  return withDeliveryMeta({ source: "cron:daily" }, run);
 }
 
 export async function POST(req: Request) {
   if (!isCronAuthorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  return run();
+  return withDeliveryMeta({ source: "cron:daily" }, run);
 }

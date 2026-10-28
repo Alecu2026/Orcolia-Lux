@@ -39,6 +39,8 @@ export type AuditFilter = {
   withChanges?: boolean;
   page?: number;
   pageSize?: number;
+  /** Totalul se numără din nou (nu din memorie). */
+  fresh?: boolean;
 };
 
 const LIST_CLIP = 260;
@@ -89,10 +91,11 @@ const LIST_SELECT = {
  */
 const COUNT_TTL_MS = 20_000;
 const countMemo = new Map<string, { n: number; at: number }>();
-async function countCached(where: Prisma.AuditLogWhereInput): Promise<number> {
+async function countCached(where: Prisma.AuditLogWhereInput, fresh = false): Promise<number> {
   const key = JSON.stringify(where);
   const hit = countMemo.get(key);
-  if (hit && Date.now() - hit.at < COUNT_TTL_MS) return hit.n;
+  // „Reîmprospătează” (fresh) sare peste memorie: totalul apare exact, nu cel de acum câteva secunde
+  if (!fresh && hit && Date.now() - hit.at < COUNT_TTL_MS) return hit.n;
   const n = await prisma.auditLog.count({ where });
   if (countMemo.size >= 40) countMemo.delete(countMemo.keys().next().value as string);
   countMemo.set(key, { n, at: Date.now() });
@@ -105,7 +108,7 @@ async function countCached(where: Prisma.AuditLogWhereInput): Promise<number> {
  */
 export async function listAuditChunk(
   filter: AuditFilter,
-  opts: { cursor?: string; limit?: number; loaded?: number },
+  opts: { cursor?: string; limit?: number; loaded?: number; fresh?: boolean },
 ): Promise<{ items: AuditListRow[]; total: number; nextCursor: string | null; capped: boolean }> {
   if (DEMO) return { items: [], total: 0, nextCursor: null, capped: false };
   const where = buildWhere(filter);
@@ -123,7 +126,8 @@ export async function listAuditChunk(
           ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         })
       : Promise.resolve([]),
-    countCached(where),
+    // prima bucată numără proaspăt (totalul din antet să fie exact); următoarele folosesc memoria, ca totalul să rămână același cât se încarcă
+    countCached(where, opts.fresh || !cursor),
   ]);
   const hasMore = rows.length > take;
   const page = hasMore ? rows.slice(0, take) : rows;
@@ -150,7 +154,7 @@ export async function listAuditLogs(
       skip: (n - 1) * pageSize,
       take: pageSize,
     });
-  let [rows, total] = await Promise.all([fetchPage(wanted), countCached(where)]);
+  let [rows, total] = await Promise.all([fetchPage(wanted), countCached(where, filter.fresh)]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(wanted, totalPages);

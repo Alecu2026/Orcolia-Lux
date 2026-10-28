@@ -1,6 +1,7 @@
 import "server-only";
 import { createHmac } from "node:crypto";
 import { env } from "./env";
+import { deliveryErrorText, logDelivery } from "./delivery-log";
 
 const BASE = () => `https://api.telegram.org/bot${env.telegram.botToken}`;
 
@@ -14,12 +15,67 @@ export function taskOpenButton(seq: number | null | undefined, taskId: string): 
   return [[{ text: label, url: `${env.appUrl}/tasks/${taskId}` }]];
 }
 
+/** Metodele care trimit un mesaj nou (celelalte — editare, ștergere, răspuns la buton — nu intră în jurnal). */
+const LOGGED_METHODS = new Set(["sendMessage", "sendPhoto", "sendDocument"]);
+
+/** Din butoanele mesajului (link spre /tasks/<id>) aflăm despre ce sarcină / tichet e vorba. */
+function objectFromKeyboard(body: Record<string, unknown>): { objectType: string; objectId: string } | null {
+  const rows = (body.reply_markup as { inline_keyboard?: { url?: string }[][] } | undefined)?.inline_keyboard;
+  for (const row of rows ?? []) for (const b of row) {
+    const m = b.url ? /\/(tasks|tickets)\/([0-9a-f]{24})/i.exec(b.url) : null;
+    if (m) return { objectType: m[1] === "tickets" ? "ticket" : "task", objectId: m[2] };
+  }
+  return null;
+}
+
+async function tgLog(method: string, body: Record<string, unknown>, status: "SENT" | "FAILED" | "SKIPPED", extra: { error?: string; providerId?: string; durationMs: number }) {
+  if (!LOGGED_METHODS.has(method)) return;
+  const chat = String(body.chat_id ?? "");
+  const text = String(body.text ?? body.caption ?? "");
+  const firstLine = text.replace(/<[^>]+>/g, "").split("\n").find((l) => l.trim())?.trim().slice(0, 200) ?? null;
+  const who = await telegramRecipient(chat);
+  await logDelivery({
+    channel: "TELEGRAM",
+    status,
+    to: chat,
+    toUserId: who?.userId ?? null,
+    toName: who?.name ?? null,
+    subject: method === "sendMessage" ? firstLine : `[${method === "sendPhoto" ? "poză" : "document"}] ${firstLine ?? ""}`.trim(),
+    body: text || (typeof body.photo === "string" ? String(body.photo) : typeof body.document === "string" ? String(body.document) : null),
+    ...objectFromKeyboard(body),
+    ...extra,
+  });
+}
+
+const chatCache = new Map<string, { at: number; v: { userId: string | null; name: string | null } | null }>();
+/** Cui aparține un chat Telegram (cont legat → utilizator); ținut 2 minute în memorie, ca jurnalul să nu încarce baza de date. */
+async function telegramRecipient(chatId: string): Promise<{ userId: string | null; name: string | null } | null> {
+  const hit = chatCache.get(chatId);
+  if (hit && Date.now() - hit.at < 120_000) return hit.v;
+  let v: { userId: string | null; name: string | null } | null = null;
+  try {
+    const { prisma } = await import("./prisma");
+    const acc = await prisma.telegramAccount.findFirst({ where: { chatId }, select: { userId: true, firstName: true, lastName: true, username: true, user: { select: { name: true } } } });
+    if (acc) v = { userId: acc.userId, name: acc.user?.name ?? ([acc.firstName, acc.lastName].filter(Boolean).join(" ") || (acc.username ? `@${acc.username}` : null)) };
+    // chat setat manual de administrator la utilizator (fără cont legat prin bot)
+    if (!v?.userId) {
+      const u = await prisma.user.findFirst({ where: { telegramChatId: chatId }, select: { id: true, name: true } });
+      if (u) v = { userId: u.id, name: u.name };
+    }
+  } catch {}
+  if (chatCache.size > 500) chatCache.clear();
+  chatCache.set(chatId, { at: Date.now(), v });
+  return v;
+}
+
 async function tgCall<T = unknown>(
   method: string,
   body: Record<string, unknown>,
 ): Promise<T | null> {
+  const t0 = Date.now();
   if (!env.telegram.botToken) {
     console.error(`[telegram] ${method} omis: TELEGRAM_BOT_TOKEN nu este configurat`);
+    await tgLog(method, body, "SKIPPED", { error: "TELEGRAM_BOT_TOKEN nu este configurat.", durationMs: 0 });
     return null;
   }
   try {
@@ -31,11 +87,15 @@ async function tgCall<T = unknown>(
     const data = await res.json();
     if (!data?.ok) {
       console.error(`[telegram] ${method} a răspuns cu eroare:`, data?.description ?? data);
+      await tgLog(method, body, "FAILED", { error: String(data?.description ?? `HTTP ${res.status}`), durationMs: Date.now() - t0 });
       return null;
     }
+    const mid = (data.result as { message_id?: number } | undefined)?.message_id;
+    await tgLog(method, body, "SENT", { providerId: mid != null ? String(mid) : undefined, durationMs: Date.now() - t0 });
     return data.result as T;
   } catch (e) {
     console.error(`[telegram] ${method} request eșuat:`, e);
+    await tgLog(method, body, "FAILED", { error: deliveryErrorText(e), durationMs: Date.now() - t0 });
     return null;
   }
 }

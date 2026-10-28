@@ -64,6 +64,7 @@ const NAV: NavItem[] = [
   { href: "/team",             labelKey: "team",        icon: usersIcon(),     perm: "teams.view" },
   { href: "/harta",            labelKey: "map",         icon: mapIcon(),       perm: "map.view" },
   { href: "/admin/audit-logs", labelKey: "auditLogs",   icon: shieldIcon(),    perm: "audit.view" },
+  { href: "/admin/jurnal-notificari", labelKey: "deliveryLogs", icon: bellIcon(), perm: "audit.view" },
   { href: "/telegram",         labelKey: "telegram",    icon: sendIcon() },
   { href: "/settings",         labelKey: "settings",    icon: gearIcon() },
 ];

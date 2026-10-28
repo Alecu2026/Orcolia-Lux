@@ -1,5 +1,6 @@
 import "server-only";
 import { env } from "./env";
+import { deliveryErrorText, logDelivery } from "./delivery-log";
 
 const TIMEOUT_MS = 15_000;
 
@@ -11,6 +12,19 @@ const TIMEOUT_MS = 15_000;
  *    dacă e setat; orice răspuns 2xx = trimis.
  */
 export async function sendSms(to: string, message: string): Promise<string | void> {
+  const t0 = Date.now();
+  try {
+    const reply = await sendSmsImpl(to, message);
+    await logDelivery({ channel: "SMS", status: "SENT", to, body: message, fromAddr: env.sms.from || null, providerId: typeof reply === "string" ? reply : null, durationMs: Date.now() - t0 });
+    return reply;
+  } catch (e) {
+    const notConfigured = e instanceof Error && e.message === "SMS neconfigurat.";
+    await logDelivery({ channel: "SMS", status: notConfigured ? "SKIPPED" : "FAILED", to, body: message, fromAddr: env.sms.from || null, error: deliveryErrorText(e), durationMs: Date.now() - t0 });
+    throw e;
+  }
+}
+
+async function sendSmsImpl(to: string, message: string): Promise<string | void> {
   const provider = env.sms.provider;
   if (!provider) throw new Error("SMS neconfigurat.");
 

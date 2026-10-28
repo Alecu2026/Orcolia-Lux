@@ -18,6 +18,7 @@
     pbx: "PBX",
     users: "Utilizatori",
     auditLogs: "Audit Logs",
+    deliveryLogs: "Jurnal notificări",
     telegram: "Telegram",
     settings: "Setări",
   },

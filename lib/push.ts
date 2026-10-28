@@ -2,6 +2,7 @@ import "server-only";
 import webpush from "web-push";
 import { prisma } from "./prisma";
 import { env } from "./env";
+import { logDelivery } from "./delivery-log";
 
 let configured = false;
 
@@ -21,8 +22,12 @@ export async function sendPushToUser(
   userId: string,
   payload: PushPayload,
 ): Promise<{ sent: number; removed: number }> {
+  const t0 = Date.now();
+  const who = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }).catch(() => null);
+  const base = { channel: "PUSH" as const, toUserId: userId, toName: who?.name ?? null, subject: payload.title, body: payload.body };
   if (!ensureConfigured()) {
     console.log("[push] omis: VAPID neconfigurat (NEXT_PUBLIC_VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY)");
+    await logDelivery({ ...base, status: "SKIPPED", error: "VAPID neconfigurat.", durationMs: 0 });
     return { sent: 0, removed: 0 };
   }
 
@@ -32,6 +37,8 @@ export async function sendPushToUser(
   });
   if (subs.length === 0) {
     console.log(`[push] user ${userId} nu are niciun abonament push activ`);
+    await logDelivery({ ...base, status: "SKIPPED", error: "Utilizatorul nu are niciun dispozitiv abonat la notificări push.", durationMs: Date.now() - t0 });
+    return { sent: 0, removed: 0 };
   }
 
   let sent = 0;
@@ -66,5 +73,14 @@ export async function sendPushToUser(
     }),
   );
 
+  if (subs.length > 0) {
+    await logDelivery({
+      ...base,
+      status: sent > 0 ? "SENT" : "FAILED",
+      to: `${sent}/${subs.length} dispozitive`,
+      error: sent > 0 ? (removed > 0 ? `${removed} abonament(e) expirat(e) șterse` : null) : removed > 0 ? "Abonamentele erau expirate (șterse)." : "Trimiterea către dispozitive a eșuat.",
+      durationMs: Date.now() - t0,
+    });
+  }
   return { sent, removed };
 }

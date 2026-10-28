@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { withDeliveryMeta } from "@/lib/delivery-log";
 import { env } from "@/lib/env";
 import { handleUpdate } from "@/lib/services/telegram-bot";
 
@@ -13,6 +14,6 @@ export async function POST(req: Request) {
   if (!update) return new Response("bad request", { status: 400 });
 
   // Procesare în fundal — răspundem 200 imediat
-  after(() => handleUpdate(update).catch(() => {}));
+  after(() => withDeliveryMeta({ source: "bot" }, () => handleUpdate(update)).catch(() => {}));
   return new Response("ok");
 }
