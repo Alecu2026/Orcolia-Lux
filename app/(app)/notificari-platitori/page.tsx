@@ -8,8 +8,9 @@ import { ssrPayerPage } from "@/lib/services/payer-cache";
 import { listPayerTemplates } from "@/lib/queries/payer-notify";
 import { normalizePerPageClient, sanitizeFilters } from "@/lib/payer-notify";
 import { auditUserOptions } from "@/lib/queries/audit";
-import { deliveryFilterFromState, listDelivery, listDeliveryChunk, normalizeDeliveryPageSize } from "@/lib/queries/delivery";
-import { DELIVERY_FIRST_CHUNK, DELIVERY_PS_COOKIE, PAYER_DELIVERY_KINDS, PAYER_KIND_OPTIONS, normalizeDeliveryPs, sanitizeDeliveryState } from "@/lib/delivery-meta";
+import { deliveryFilterFromState, normalizeDeliveryPageSize } from "@/lib/queries/delivery";
+import { listPayerLog, listPayerLogChunk } from "@/lib/queries/payer-log";
+import { DELIVERY_FIRST_CHUNK, DELIVERY_PS_COOKIE, normalizeDeliveryPs, sanitizeDeliveryState } from "@/lib/delivery-meta";
 import PayerNotifyManager from "@/app/components/PayerNotifyManager";
 import DeliveryLogsClient from "@/app/components/DeliveryLogsClient";
 import { getT } from "@/lib/i18n/server-t";
@@ -46,15 +47,15 @@ export default async function PayerNotificationsPage({
     const page = ps === "all" ? 1 : Math.max(1, Math.floor(Number(sp.page)) || 1);
     const [initial, users] = await Promise.all([
       ps === "all"
-        ? listDeliveryChunk(deliveryFilterFromState(filters, undefined, undefined, PAYER_DELIVERY_KINDS), { limit: DELIVERY_FIRST_CHUNK }).then((c) => ({ ...c, page: 1, pageSize: DELIVERY_FIRST_CHUNK, totalPages: 1 }))
-        : listDelivery(deliveryFilterFromState(filters, page, normalizeDeliveryPageSize(ps), PAYER_DELIVERY_KINDS)),
+        ? listPayerLogChunk(deliveryFilterFromState(filters), { limit: DELIVERY_FIRST_CHUNK }).then((c) => ({ ...c, page: 1, pageSize: DELIVERY_FIRST_CHUNK, totalPages: 1 }))
+        : listPayerLog(deliveryFilterFromState(filters, page, normalizeDeliveryPageSize(ps))),
       auditUserOptions(),
     ]);
     return (
       <div className="w-full">
         {tabs}
         <p className="mb-3 text-sm text-ink-soft">
-          {t("Istoricul notificărilor trimise plătitorilor (email, SMS, facturi pe email): cine a trimis, către cine, ce mesaj și dacă a ajuns. Click pe un rând pentru mesajul întreg.")}
+          {t("Toate notificările trimise plătitorilor din această pagină (email, SMS, apel vocal): cine a trimis, către cine, ce mesaj și dacă a ajuns. Click pe un rând pentru mesajul întreg.")}
         </p>
         <DeliveryLogsClient
           initial={JSON.parse(JSON.stringify(initial))}
@@ -65,7 +66,7 @@ export default async function PayerNotificationsPage({
           apiBase="/api/platitori/jurnal"
           pageBase="/notificari-platitori"
           pageParams="view=jurnal"
-          kindOptions={PAYER_KIND_OPTIONS}
+          mode="payers"
           storageKey="filters:payer-delivery"
         />
       </div>

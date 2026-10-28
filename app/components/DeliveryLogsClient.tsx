@@ -7,6 +7,7 @@ import {
   CHANNEL_LABEL,
   DELIVERY_ALL_CAP,
   DELIVERY_CHANNELS,
+  PAYER_CHANNELS,
   DELIVERY_DEFAULT_PAGE_SIZE,
   DELIVERY_FIRST_CHUNK,
   DELIVERY_NEXT_CHUNK,
@@ -215,6 +216,8 @@ export default function DeliveryLogsClient({
   pageParams = "",
   kindOptions = KIND_OPTIONS,
   storageKey = STORAGE_KEY,
+  mode = "delivery",
+  apiParams = "",
 }: {
   initial: Page;
   users: Opt[];
@@ -229,7 +232,15 @@ export default function DeliveryLogsClient({
   /** Tipurile de mesaje din filtrul „Tip” (jurnalul plătitorilor are doar cele către plătitori). */
   kindOptions?: readonly { key: string; label: string }[];
   storageKey?: string;
+  /** „payers” = jurnalul Notificări plătitori (email / SMS / apel vocal): fără filtrele care nu se aplică (tip, sursă, destinatar utilizator, obiect, „omis”). */
+  mode?: "delivery" | "payers";
+  /** Parametri adăugați la cererile către API (ex. „scope=workers”). */
+  apiParams?: string;
 }) {
+  const payersMode = mode === "payers";
+  const channels: readonly string[] = payersMode ? PAYER_CHANNELS : DELIVERY_CHANNELS;
+  const statuses: readonly string[] = payersMode ? DELIVERY_STATUSES.filter((x) => x !== "SKIPPED") : DELIVERY_STATUSES;
+  const qsExtra = apiParams ? `&${apiParams}` : "";
   const t = useT();
   const tag = dateTag(useLocale());
   const nf = (n: number) => n.toLocaleString(tag);
@@ -298,12 +309,12 @@ export default function DeliveryLogsClient({
   useEffect(() => {
     if (!ready) return;
     const ctl = new AbortController();
-    fetch(`${apiBase}/summary`, { signal: ctl.signal })
+    fetch(`${apiBase}/summary${apiParams ? `?${apiParams}` : ""}`, { signal: ctl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => j && setSummary(j as Summary))
       .catch(() => {});
     return () => ctl.abort();
-  }, [ready, tick, apiBase]);
+  }, [ready, tick, apiBase, apiParams]);
 
   // Pagini numerice: din cache dacă am mai văzut-o (reîmprospătată discret după 20 s), altfel de la server; o cerere nouă o anulează pe cea veche.
   useEffect(() => {
@@ -319,7 +330,7 @@ export default function DeliveryLogsClient({
     const ctl = new AbortController();
     setLoading(true);
     setError(null);
-    fetch(`${apiBase}?${key}${tick > 0 ? "&fresh=1" : ""}`, { signal: ctl.signal })
+    fetch(`${apiBase}?${key}${qsExtra}${tick > 0 ? "&fresh=1" : ""}`, { signal: ctl.signal })
       .then(async (r) => {
         const j = await r.json();
         if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
@@ -359,7 +370,7 @@ export default function DeliveryLogsClient({
         let first = acc.length === 0;
         for (;;) {
           const qs = `${key}${tick > 0 && first ? "&fresh=1" : ""}&limit=${first ? DELIVERY_FIRST_CHUNK : DELIVERY_NEXT_CHUNK}&loaded=${acc.length}${cursor ? `&cursor=${cursor}` : ""}`;
-          const r = await fetch(`${apiBase}?${qs}`, { signal: ctl.signal });
+          const r = await fetch(`${apiBase}?${qs}${qsExtra}`, { signal: ctl.signal });
           const j = (await r.json()) as { items: DeliveryRow[]; total: number; nextCursor: string | null; capped: boolean; error?: string };
           if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
           acc = acc.concat(j.items);
@@ -378,7 +389,7 @@ export default function DeliveryLogsClient({
     })();
     return () => ctl.abort();
      
-  }, [key, ready, tick, all, apiBase]);
+  }, [key, ready, tick, all, apiBase, qsExtra]);
 
   function setFilter(patch: Partial<DeliveryFilterState>) {
     setFilters((f) => ({ ...f, ...patch }));
@@ -428,7 +439,7 @@ export default function DeliveryLogsClient({
       {/* ── Rezumat ultimele 24 h (click pe un canal îl filtrează) ─────────────── */}
       <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs">
         <span className="text-ink-soft">{t("Ultimele 24 h")}:</span>
-        {DELIVERY_CHANNELS.map((c) => {
+        {channels.map((c) => {
           const s = summary?.[c] ?? {};
           const total = (s.SENT ?? 0) + (s.FAILED ?? 0) + (s.SKIPPED ?? 0);
           return (
@@ -462,16 +473,17 @@ export default function DeliveryLogsClient({
         />
         <select value={filters.channel} onChange={(e) => setFilter({ channel: e.target.value })} className={fldCls(filters.channel)} aria-label={t("Canal")}>
           <option value="">{t("Canal: toate")}</option>
-          {DELIVERY_CHANNELS.map((c) => <option key={c} value={c}>{CHANNEL_ICON[c]} {t(CHANNEL_LABEL[c])}</option>)}
+          {channels.map((c) => <option key={c} value={c}>{CHANNEL_ICON[c]} {t(CHANNEL_LABEL[c])}</option>)}
         </select>
         <select value={filters.status} onChange={(e) => setFilter({ status: e.target.value })} className={fldCls(filters.status)} aria-label={t("Status")}>
           <option value="">{t("Status: toate")}</option>
-          {DELIVERY_STATUSES.map((s) => <option key={s} value={s}>{t(STATUS_LABEL[s])}</option>)}
+          {statuses.map((s) => <option key={s} value={s}>{t(STATUS_LABEL[s])}</option>)}
         </select>
         <label className={`flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2 text-xs ${filters.problems ? "border-st-cancelled bg-st-cancelled/10 font-semibold text-st-cancelled" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"}`} title={t("Doar mesajele eșuate sau omise")}>
           <input type="checkbox" checked={filters.problems} onChange={(e) => setFilter({ problems: e.target.checked })} className="size-3 accent-[var(--color-brand)]" />
           {t("Doar probleme")}
         </label>
+        {!payersMode && <>
         <select value={filters.kind} onChange={(e) => setFilter({ kind: e.target.value })} className={fldCls(filters.kind)} aria-label={t("Tip mesaj")}>
           <option value="">{t("Tip: toate")}</option>
           {kindOptions.map((k) => <option key={k.key} value={k.key}>{t(k.label)}</option>)}
@@ -480,10 +492,12 @@ export default function DeliveryLogsClient({
           <option value="">{t("Sursa: toate")}</option>
           {SOURCE_OPTIONS.map((s) => <option key={s.key} value={s.key}>{t(s.label)}</option>)}
         </select>
+        </>}
         <select value={filters.sender} onChange={(e) => setFilter({ sender: e.target.value })} className={fldCls(filters.sender)} aria-label={t("Declanșat de")}>
           <option value="">{t("Declanșat de: oricine")}</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
+        {!payersMode && <>
         <select value={filters.recipient} onChange={(e) => setFilter({ recipient: e.target.value })} className={fldCls(filters.recipient)} aria-label={t("Destinatar utilizator")}>
           <option value="">{t("Destinatar: oricine")}</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -492,6 +506,7 @@ export default function DeliveryLogsClient({
           <option value="">{t("Obiect: toate")}</option>
           {OBJECT_TYPES.map((o) => <option key={o.key} value={o.key}>{t(o.label)}</option>)}
         </select>
+        </>}
         <span className="flex items-center gap-1" title={t("Perioada (ziua în fusul orar al firmei)")}>
           <input type="date" value={filters.from} max={filters.to || undefined} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t("De la data")} className={txtCls(filters.from)} />
           <span className="text-ink-soft">–</span>
@@ -540,7 +555,7 @@ export default function DeliveryLogsClient({
               <option value="all">{t("Toate")}</option>
             </select>
           </label>
-          <a href={`${apiBase}/export${exportQs ? `?${exportQs}` : ""}`} download className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]" title={t("Exportă mesajele filtrate (CSV, maximum 10.000)")}>
+          <a href={`${apiBase}/export${exportQs || apiParams ? `?${[exportQs, apiParams].filter(Boolean).join("&")}` : ""}`} download className="inline-flex h-8 items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]" title={t("Exportă mesajele filtrate (CSV, maximum 10.000)")}>
             ⬇ CSV
           </a>
         </div>

@@ -6,8 +6,7 @@ import type { InvoiceStatus } from "@prisma/client";
 import { notifyCriterion, type NotifyCriterion, type NotifyFilters } from "../payer-notify";
 import type { ListPayersOpts } from "./payers";
 import { dayBoundsUtc } from "../date";
-import { parseSectorFilter } from "../sector-filter";
-import { payerSectorMap } from "./payers";
+import { addressLocality, parseSectorFilter } from "../sector-filter";
 
 /** Filtrele curățate (vezi sanitizeFilters) → opțiunile interogării de plătitori. */
 export function filtersToListOpts(f: NotifyFilters): ListPayersOpts {
@@ -66,13 +65,20 @@ export function notifiedClientIds(c: NotifyCriterion): Promise<string[]> {
 export async function filtersToListOptsAsync(f: NotifyFilters): Promise<ListPayersOpts> {
   const opts = filtersToListOpts(f);
   const crit = notifyCriterion(f);
-  // sectoarele din 1C: plătitorii din sectoarele alese (hartă mică, ținută 5 minute) → restricție pe id-uri, ca la „notificați în perioada…”
+  // sectoarele / localitățile alese: id-urile plătitorilor care se potrivesc, din lista din memorie (aceeași regulă ca în browser). Dacă lista nu poate fi citită, eroarea
+  // se propagă (mai bine nicio trimitere decât una către toți plătitorii).
   const uSectors = parseSectorFilter(f.usector);
+  const uLocs = parseSectorFilter(f.uloc);
   let sectorIds: string[] | null = null;
-  if (uSectors) {
-    const map = await payerSectorMap();
+  if (uSectors || uLocs) {
+    const { getPayerSnap } = await import("../services/payer-cache");
+    const snap = await getPayerSnap();
     sectorIds = [];
-    for (const [id, s] of map) if (uSectors.has(s)) sectorIds.push(id);
+    for (const r of snap.rows) {
+      if (uSectors && !(r.uch && uSectors.has(r.uch))) continue;
+      if (uLocs && !uLocs.has(addressLocality(r.consumAddress))) continue;
+      sectorIds.push(r.id);
+    }
   }
   if (!crit) return sectorIds ? { ...opts, idsIn: sectorIds } : opts;
   const ids = await notifiedClientIds(crit);

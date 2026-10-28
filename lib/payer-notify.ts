@@ -4,7 +4,7 @@
  * rulează și în browser (previzualizare mesaj, contor SMS, salvarea filtrelor în localStorage).
  */
 
-import { cleanSectorList, parseSectorFilter } from "./sector-filter";
+import { addressLocality, cleanSectorList, effectiveSector, parseSectorFilter } from "./sector-filter";
 import type { PayerRow } from "./queries/payers";
 
 // ── Filtre ──────────────────────────────────────────────────────────────────────────────────────
@@ -19,6 +19,8 @@ export type NotifyFilters = {
   sector: "" | "privat" | "comunal";
   /** Sectoarele din 1C („Участок”), unul sau mai multe, separate prin „|” (vezi lib/sector-filter.ts). */
   usector: string;
+  /** Localitățile din adresă („or.Cahul”, „r-n.Cahul”), una sau mai multe, separate prin „|”. */
+  uloc: string;
   invoiceStatus: string;
   debt: "" | "has" | "none";
   minDebt: string;
@@ -46,7 +48,7 @@ export type NotifyFilters = {
 };
 
 export const EMPTY_FILTERS: NotifyFilters = {
-  q: "", street: "", month: "", account: "", sector: "", usector: "", invoiceStatus: "", debt: "",
+  q: "", street: "", month: "", account: "", sector: "", usector: "", uloc: "", invoiceStatus: "", debt: "",
   minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", sort: "", nameFix: "", invoices: "",
 };
 
@@ -138,6 +140,7 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     account: ONE_OF(get(src, "account"), ["activated", "pending"] as const),
     sector: ONE_OF(get(src, "sector"), ["privat", "comunal"] as const),
     usector: cleanSectorList(get(src, "usector")),
+    uloc: cleanSectorList(get(src, "uloc")),
     invoiceStatus: ONE_OF(get(src, "invoiceStatus"), ["DRAFT", "SENT", "PAID", "OVERDUE", "CANCELLED"] as const),
     debt: ONE_OF(get(src, "debt"), ["has", "none"] as const),
     minDebt: cleanMoney(get(src, "minDebt")),
@@ -428,7 +431,7 @@ export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[
     lastNotifiedAt: iso(t[14]),
     installedAt: t[15],
     sector: t[16],
-    uch: t[17] ?? null,
+    uch: effectiveSector(t[17], t[16]),
     _h: [t[1], t[2], t[3], t[4], t[5]].filter(Boolean).join("\n").toLowerCase(),
     _he: t[4] != null && t[4] !== "",
     _hp: t[5] != null && t[5] !== "",
@@ -521,6 +524,7 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
   const d30 = now - 30 * 86_400_000;
   const sectorCode = f.sector === "privat" ? 1 : f.sector === "comunal" ? 2 : 0;
   const uSectors = parseSectorFilter(f.usector);
+  const uLocs = parseSectorFilter(f.uloc);
   const order = f.sort === "debtDesc" || f.sort === "debtAsc" || f.sort === "installDesc" || f.sort === "installAsc" ? orderFor(rows, f.sort) : null;
   const wantStatus = f.invoiceStatus;
   const money = f.debt !== "" || hasMin || hasMax || wantStatus !== "";
@@ -533,6 +537,7 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
     if (f.account === "activated" ? !r.activated : f.account === "pending" ? r.activated : false) continue;
     if (sectorCode && r._st !== sectorCode) continue;
     if (uSectors && !(r.uch && uSectors.has(r.uch))) continue;
+    if (uLocs && !uLocs.has(addressLocality(r.consumAddress))) continue;
     if (f.kind === "person" ? r.meterSeries == null : f.kind === "company" ? r.meterSeries != null : false) continue;
     if (f.nameFix && !r.name.includes("?")) continue;
 

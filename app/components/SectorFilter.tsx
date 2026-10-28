@@ -13,12 +13,15 @@ export default function SectorFilter({
   value,
   onChange,
   className,
+  kind = "sector",
 }: {
   options: { value: string; count: number }[];
   value: string;
   onChange: (v: string) => void;
   /** Clasa butonului (aceeași ca la celelalte filtre din pagină, în funcție de „activ / inactiv”). */
   className: (active: boolean) => string;
+  /** „sector” (sectoarele din 1C / din factură) sau „locality” (localitatea din adresă: or.Cahul, r-n.Cahul). */
+  kind?: "sector" | "locality";
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -46,17 +49,19 @@ export default function SectorFilter({
   const all = [...options, ...chosen.filter((c) => !known.has(c)).map((c) => ({ value: c, count: 0 }))];
 
   const toggle = (v: string) => onChange(cleanSectorList((chosen.includes(v) ? chosen.filter((x) => x !== v) : [...chosen, v]).join(SECTOR_SEP)));
-  const label = chosen.length === 0 ? t("Sector 1C: toate") : chosen.length === 1 ? chosen[0] : t("{n} sectoare", { n: chosen.length });
+  const loc = kind === "locality";
+  const title = loc ? t("Localități") : t("Sectoare");
+  const label = chosen.length === 0 ? (loc ? t("Localitate: toate") : t("Sector: toate")) : chosen.length === 1 ? chosen[0] : loc ? t("{n} localități", { n: chosen.length }) : t("{n} sectoare", { n: chosen.length });
 
   return (
     <div ref={box} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open} aria-label={t("Sectoare (1C)")} title={t("Filtrează după sectoarele din 1C (poți alege mai multe)")} className={`${className(chosen.length > 0)} sel-arrow max-w-44 cursor-pointer truncate text-left`}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open} aria-label={title} title={loc ? t("Filtrează după localitate (poți alege mai multe)") : t("Filtrează după sectoare (poți alege mai multe)")} className={`${className(chosen.length > 0)} sel-arrow max-w-44 cursor-pointer truncate text-left`}>
         {label}
       </button>
       {open && (
         <div role="listbox" aria-multiselectable className="absolute left-0 top-full z-30 mt-1 w-64 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1.5 shadow-lg">
           <div className="mb-1 flex items-center justify-between px-1.5 text-[11px] text-ink-soft">
-            <span>{t("Sectoare (1C)")}</span>
+            <span>{title}</span>
             {chosen.length > 0 && (
               <button type="button" onClick={() => onChange("")} className="cursor-pointer font-semibold text-brand hover:underline">
                 {t("Șterge alegerea")}

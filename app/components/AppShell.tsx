@@ -276,24 +276,33 @@ function AppShellInner({
       <NavWarmup hrefs={visibleNav(NAV, perms).map((n) => n.href)} />
       <div className="lg:grid lg:grid-cols-[260px_1fr]">
         {/* Sidebar desktop */}
-        <aside className="sticky top-0 hidden h-dvh flex-col border-r border-[var(--color-line)] bg-[var(--color-surface)] p-4 lg:flex">
-          <Brand label={appointmentsLabel} />
-          <div className="mt-6 flex-1">
+        <aside className="sticky top-0 hidden h-dvh flex-col overflow-hidden border-r border-[var(--color-line)] bg-[var(--color-surface)] p-4 lg:flex">
+          <div className="shrink-0">
+            <Brand label={appointmentsLabel} />
+          </div>
+          {/* Meniul derulează singur când nu încap toate elementele (ecran mic / multe pagini); brandul și contul rămân fixate */}
+          <div className="sidebar-scroll -mr-2 mt-6 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
             <NavList perms={perms} items={NAV} appointmentsLabel={appointmentsLabel} />
           </div>
-          <Account userName={userName} />
+          <div className="shrink-0">
+            <Account userName={userName} />
+          </div>
         </aside>
 
         {/* Drawer mobil */}
         {drawer && (
           <div className="fixed inset-0 z-50 lg:hidden">
             <div className="absolute inset-0 bg-black/40" onClick={() => setDrawer(false)} />
-            <aside className="absolute left-0 top-0 flex h-full w-72 flex-col overflow-y-auto bg-[var(--color-surface)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <Brand label={appointmentsLabel} />
-              <div className="mt-6 flex-1">
+            <aside className="absolute left-0 top-0 flex h-full w-72 flex-col overflow-hidden bg-[var(--color-surface)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <div className="shrink-0">
+                <Brand label={appointmentsLabel} />
+              </div>
+              <div className="sidebar-scroll -mr-2 mt-6 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
                 <NavList onNavigate={() => setDrawer(false)} perms={perms} items={NAV} appointmentsLabel={appointmentsLabel} />
               </div>
-              <Account userName={userName} />
+              <div className="shrink-0">
+                <Account userName={userName} />
+              </div>
             </aside>
           </div>
         )}

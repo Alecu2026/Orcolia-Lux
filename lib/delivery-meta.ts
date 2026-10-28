@@ -1,9 +1,11 @@
 // Constante și funcții partajate pentru Jurnalul notificărilor (folosite și pe server, și în browser).
 
-export const DELIVERY_CHANNELS = ["EMAIL", "SMS", "TELEGRAM", "PUSH", "INAPP"] as const;
+export const DELIVERY_CHANNELS = ["EMAIL", "SMS", "CALL", "TELEGRAM", "PUSH", "INAPP"] as const;
+/** Canalele jurnalului „Notificări plătitori”. */
+export const PAYER_CHANNELS = ["EMAIL", "SMS", "CALL"] as const;
 export type DeliveryChannelKey = (typeof DELIVERY_CHANNELS)[number];
-export const CHANNEL_LABEL: Record<string, string> = { EMAIL: "Email", SMS: "SMS", TELEGRAM: "Telegram", PUSH: "Push", INAPP: "În aplicație" };
-export const CHANNEL_ICON: Record<string, string> = { EMAIL: "✉️", SMS: "💬", TELEGRAM: "✈️", PUSH: "🔔", INAPP: "📥" };
+export const CHANNEL_LABEL: Record<string, string> = { EMAIL: "Email", SMS: "SMS", CALL: "Apel vocal", TELEGRAM: "Telegram", PUSH: "Push", INAPP: "În aplicație" };
+export const CHANNEL_ICON: Record<string, string> = { EMAIL: "✉️", SMS: "💬", CALL: "📞", TELEGRAM: "✈️", PUSH: "🔔", INAPP: "📥" };
 
 export const DELIVERY_STATUSES = ["SENT", "FAILED", "SKIPPED"] as const;
 export const STATUS_LABEL: Record<string, string> = { SENT: "Trimis", FAILED: "Eșuat", SKIPPED: "Omis" };
@@ -15,6 +17,7 @@ export const STATUS_CLS: Record<string, string> = {
 export const CHANNEL_CLS: Record<string, string> = {
   EMAIL: "bg-sky-100 text-sky-800",
   SMS: "bg-amber-100 text-amber-800",
+  CALL: "bg-emerald-100 text-emerald-800",
   TELEGRAM: "bg-cyan-100 text-cyan-800",
   PUSH: "bg-purple-100 text-purple-700",
   INAPP: "bg-slate-100 text-slate-700",
@@ -38,6 +41,8 @@ export const KIND_OPTIONS = Object.entries(KIND_LABEL).map(([key, label]) => ({ 
 
 /** Mesajele trimise PLĂTITORILOR (campanii din „Notificări plătitori”, teste, facturi pe email): jurnalul de pe pagina Notificări plătitori arată doar aceste tipuri. */
 export const PAYER_DELIVERY_KINDS = ["payer.campaign", "payer.test", "invoice.email"] as const;
+/** Tipurile trimise PLĂTITORILOR din „Notificări plătitori” (restul mesajelor = lucrători / sistem). */
+export const PAYER_CAMPAIGN_KINDS = ["payer.campaign", "payer.test"] as const;
 export const PAYER_KIND_OPTIONS = KIND_OPTIONS.filter((k) => (PAYER_DELIVERY_KINDS as readonly string[]).includes(k.key));
 export const kindLabel = (k: string | null | undefined, t: (s: string) => string = (x) => x) => (k ? t(KIND_LABEL[k] ?? k) : t("Nespecificat"));
 

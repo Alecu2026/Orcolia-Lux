@@ -1,6 +1,6 @@
 import { getCurrentUser, isSuper } from "@/lib/dal";
 import { deliveryFilterFromState, listDelivery, listDeliveryChunk, normalizeDeliveryPageSize } from "@/lib/queries/delivery";
-import { sanitizeDeliveryState } from "@/lib/delivery-meta";
+import { PAYER_CAMPAIGN_KINDS, sanitizeDeliveryState } from "@/lib/delivery-meta";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -13,13 +13,15 @@ export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
   const state = sanitizeDeliveryState(Object.fromEntries(sp.entries()));
   const fresh = sp.get("fresh") === "1";
+  // „Lucrători”: tot ce NU e notificare către plătitori din pagina Notificări plătitori
+  const notKinds = sp.get("scope") === "workers" ? PAYER_CAMPAIGN_KINDS : undefined;
   try {
     if (sp.get("ps") === "all") {
-      const res = await listDeliveryChunk(deliveryFilterFromState(state), { cursor: sp.get("cursor") ?? undefined, limit: Number(sp.get("limit")) || undefined, loaded: Number(sp.get("loaded")) || 0, fresh });
+      const res = await listDeliveryChunk(deliveryFilterFromState(state, undefined, undefined, undefined, notKinds), { cursor: sp.get("cursor") ?? undefined, limit: Number(sp.get("limit")) || undefined, loaded: Number(sp.get("loaded")) || 0, fresh });
       return Response.json(res, { headers: { "Cache-Control": "private, no-store" } });
     }
     const page = Math.max(1, Math.floor(Number(sp.get("page"))) || 1);
-    const res = await listDelivery({ ...deliveryFilterFromState(state, page, normalizeDeliveryPageSize(sp.get("ps"))), fresh });
+    const res = await listDelivery({ ...deliveryFilterFromState(state, page, normalizeDeliveryPageSize(sp.get("ps")), undefined, notKinds), fresh });
     return Response.json(res, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     console.error("[delivery] listă eșuată:", e);

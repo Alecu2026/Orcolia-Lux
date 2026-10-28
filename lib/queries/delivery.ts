@@ -43,6 +43,8 @@ export type DeliveryFilter = {
   channel?: string; status?: string; kind?: string; source?: string; sender?: string; recipient?: string; objectType?: string;
   /** Restricție fixă pe tipuri (jurnalul plătitorilor): rândurile din alte tipuri nu se văd, indiferent de filtre. */
   kinds?: readonly string[];
+  /** Exclude aceste tipuri (jurnalul „Lucrători”: tot ce NU e notificare către plătitori; rândurile fără tip rămân). */
+  notKinds?: readonly string[];
   campaign?: string; from?: Date; to?: Date; problems?: boolean; search?: string; page?: number; pageSize?: number;
   /** Totalul se numără din nou (nu din memorie). */
   fresh?: boolean;
@@ -61,6 +63,7 @@ function buildWhere(f: DeliveryFilter): Prisma.DeliveryLogWhereInput {
   if (f.problems && !f.status) and.push({ status: { in: ["FAILED", "SKIPPED"] } });
   if (f.kind) and.push({ kind: f.kind });
   if (f.kinds?.length) and.push({ kind: { in: [...f.kinds] } });
+  if (f.notKinds?.length) and.push({ kind: { notIn: [...f.notKinds] } });
   if (f.source) and.push(f.source === "cron" ? { source: { startsWith: "cron" } } : { source: f.source });
   if (f.sender) and.push({ fromUserId: f.sender });
   if (f.recipient) and.push({ toUserId: f.recipient });
@@ -171,12 +174,12 @@ export async function getDeliveryDetail(id: string, kinds?: readonly string[]): 
 
 /** Câte trimiteri în ultimele 24 h, pe canal și status (rezumatul de deasupra listei); ținut ~15 s în memorie. */
 const summaryMemo = new Map<string, { at: number; v: Record<string, Record<string, number>> }>();
-export async function deliverySummary(kinds?: readonly string[]): Promise<Record<string, Record<string, number>>> {
+export async function deliverySummary(kinds?: readonly string[], notKinds?: readonly string[]): Promise<Record<string, Record<string, number>>> {
   if (DEMO) return {};
-  const mk = kinds?.join(",") ?? "";
+  const mk = `${kinds?.join(",") ?? ""}|${notKinds?.join(",") ?? ""}`;
   const hit = summaryMemo.get(mk);
   if (hit && Date.now() - hit.at < 15_000) return hit.v;
-  const groups = await prisma.deliveryLog.groupBy({ by: ["channel", "status"], where: { createdAt: { gte: new Date(Date.now() - 86_400_000) }, ...(kinds?.length ? { kind: { in: [...kinds] } } : {}) }, _count: { _all: true } });
+  const groups = await prisma.deliveryLog.groupBy({ by: ["channel", "status"], where: { createdAt: { gte: new Date(Date.now() - 86_400_000) }, ...(kinds?.length ? { kind: { in: [...kinds] } } : {}), ...(notKinds?.length ? { kind: { notIn: [...notKinds] } } : {}) }, _count: { _all: true } });
   const v: Record<string, Record<string, number>> = {};
   for (const g of groups) (v[g.channel] ??= {})[g.status] = g._count._all;
   summaryMemo.set(mk, { at: Date.now(), v });
@@ -188,9 +191,10 @@ export async function exportDelivery(f: Omit<DeliveryFilter, "page" | "pageSize"
   return prisma.deliveryLog.findMany({ where: buildWhere(f), orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 10_000 });
 }
 
-export function deliveryFilterFromState(s: DeliveryFilterState, page?: number, pageSize?: number, kinds?: readonly string[]): DeliveryFilter {
+export function deliveryFilterFromState(s: DeliveryFilterState, page?: number, pageSize?: number, kinds?: readonly string[], notKinds?: readonly string[]): DeliveryFilter {
   return {
     kinds,
+    notKinds,
     channel: s.channel || undefined,
     status: s.status || undefined,
     // un tip ales în afara celor permise nu dă rezultate din alte tipuri: restricția fixă rămâne

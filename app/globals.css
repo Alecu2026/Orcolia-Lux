@@ -150,3 +150,9 @@ body {
   from { background-position: -40% 0; }
   to { background-position: 140% 0; }
 }
+
+/* Meniul lateral: derulare discretă când nu încap toate elementele */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
