@@ -157,6 +157,7 @@ export default function DataTable<T extends { id: string }>({
   filters,
   defaultSort,
   onRowClick,
+  rowClickSkipsControls = false,
   toolbar,
   summaryExtra,
   noun,
@@ -173,6 +174,8 @@ export default function DataTable<T extends { id: string }>({
   filters: Filter<T>[];
   defaultSort?: { key: string; dir: "asc" | "desc" };
   onRowClick?: (r: T) => void;
+  /** Click pe un buton / link / câmp din interiorul rândului (status, progres, selectoare) nu declanșează și `onRowClick`. */
+  rowClickSkipsControls?: boolean;
   /** Butoane în dreapta barei de filtre (ex. „+ Nou", Export). */
   toolbar?: ReactNode;
   /** Text în plus lângă numărătoare (primește lista filtrată). */
@@ -688,7 +691,7 @@ export default function DataTable<T extends { id: string }>({
               <tr
                 key={r.id}
                 data-vr=""
-                onClick={onRowClick ? () => onRowClick(r) : undefined}
+                onClick={onRowClick ? (e) => { if (rowClickSkipsControls && (e.target as HTMLElement).closest("button, a, select, input, textarea, label, [role=button], [role=combobox], [data-no-row]")) return; onRowClick(r); } : undefined}
                 className={`${onRowClick ? "cursor-pointer" : ""} hover:bg-brand-soft/30 ${rowClassName?.(r) ?? ""}`}
               >
                 {visibleCols.map((c, ci) => (

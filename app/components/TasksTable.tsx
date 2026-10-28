@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { describeSchedule, parseReminderSchedule } from "@/lib/reminder-schedule";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   getTaskRowAction,
   setTaskStatus,
@@ -197,6 +198,7 @@ export default function TasksTable({
   // Listă nouă de pe server (ex. după o reîncărcare) → o preluăm; fără efect, direct la randare (modelul recomandat de React).
   const [seenItems, setSeenItems] = useState(items);
   // Lista completă (când pagina a primit doar primele rânduri): înlocuiește rândurile din HTML imediat ce e gata.
+  const router = useRouter();
   const ds = useTaskDataset({ enabled: !!dataset, kind: ticketMode ? "TICKET" : "TASK", scope, userId });
   const [seenDs, setSeenDs] = useState<typeof ds.rows>(null);
   if (ds.rows && ds.rows !== seenDs) {
@@ -623,6 +625,9 @@ export default function TasksTable({
       )}
       <DataTable
         storageKey={`tasks:${basePath}:${scope}`}
+        // fără „Editare” rândul nu se poate modifica pe loc: click pe el deschide pagina sarcinii / cererii
+        onRowClick={canEdit ? undefined : (t) => router.push(`${t.type === "TICKET" ? "/tickets" : "/tasks"}/${t.id}`)}
+        rowClickSkipsControls
         rows={rows}
         columns={columns}
         filters={filters}

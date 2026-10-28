@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { deleteProject, updateProjectFieldAction, type ProjectFieldPatch } from "@/app/actions/projects";
 import { getProjectTasksAction, type ProjectTaskRow } from "@/app/actions/tasks";
 import DataTable, { type Col, type Filter } from "./DataTable";
@@ -61,6 +62,7 @@ export default function ProjectsTable({
   useEffect(() => setRows(projects), [projects]);
   const [dialog, setDialog] = useState<{ open: boolean; project: Project | null }>({ open: !!openCreate && canCreate, project: null });
   const [detail, setDetail] = useState<Project | null>(null);
+  const router = useRouter();
 
   const nameOf = (id: string | null, list: Opt[]) => (id ? (list.find((o) => o.id === id)?.name ?? "?") : null);
 
@@ -191,6 +193,9 @@ export default function ProjectsTable({
     <>
       <DataTable
         storageKey="projects"
+        // fără „Editare” rândul nu se poate modifica pe loc: click pe el deschide pagina proiectului
+        onRowClick={canEdit ? undefined : (p) => router.push(`/projects/${p.id}`)}
+        rowClickSkipsControls
         rows={rows}
         columns={columns}
         filters={filters}
