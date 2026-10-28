@@ -47,8 +47,13 @@ export function withDeliveryMeta<T>(meta: DeliveryMeta, fn: () => Promise<T>): P
   return als.run({ ...(als.getStore() ?? {}), ...meta }, fn);
 }
 
-const MAX_TEXT = 20_000;
-const MAX_HTML = 60_000;
+// Plafoane mici: clusterul de bază de date e mic și partajat, iar jurnalul crește cu fiecare mesaj trimis.
+const MAX_TEXT = 8_000;
+const MAX_HTML = 20_000;
+/** Tipurile trimise în masă: HTML-ul e același șablon pentru toți (textul simplu rămâne), deci nu-l păstrăm de mii de ori. */
+const BULK_KINDS = new Set(["payer.campaign"]);
+/** Notificările în aplicație / push: titlul ajunge (textul e deja în tabelul de notificări). */
+const TITLE_ONLY = new Set(["INAPP", "PUSH"]);
 const cut = (v: string | null | undefined, max: number) => (v == null ? null : v.length > max ? `${v.slice(0, max)}…` : v);
 
 /** Codurile de verificare (autentificare / resetare parolă) nu se păstrează în jurnal: cifrele din mesaj se maschează. */
@@ -103,8 +108,8 @@ export async function logDelivery(e: DeliveryEntry): Promise<void> {
       fromName: fromName ?? (fromUserId ? null : "Sistem"),
       fromAddr: e.fromAddr ?? null,
       subject: cut(secret ? maskCodes(e.subject) : e.subject, 500),
-      body: cut(secret ? maskCodes(e.body) : e.body, MAX_TEXT),
-      bodyHtml: cut(secret ? maskCodes(e.bodyHtml) : e.bodyHtml, MAX_HTML),
+      body: TITLE_ONLY.has(e.channel) ? null : cut(secret ? maskCodes(e.body) : e.body, MAX_TEXT),
+      bodyHtml: BULK_KINDS.has(m.kind ?? "") || TITLE_ONLY.has(e.channel) ? null : cut(secret ? maskCodes(e.bodyHtml) : e.bodyHtml, MAX_HTML),
       objectType: m.objectType ?? null,
       objectId: m.objectId ?? null,
       objectName: cut(m.objectName ?? null, 300),

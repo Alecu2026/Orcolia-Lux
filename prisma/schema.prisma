@@ -880,7 +880,7 @@ model NotificationLog {
 }
 
 /// Jurnalul TUTUROR trimiterilor (email, SMS, Telegram, push, notificări în aplicație): ce s-a trimis, cui, de cine, cu ce rezultat. Se scrie la nivelul cel mai de jos al
-/// trimiterii (vezi lib/delivery-log.ts), deci prinde orice trimitere, indiferent de unde pornește. Se șterge singur după 90 de zile (cron zilnic).
+/// trimiterii (vezi lib/delivery-log.ts), deci prinde orice trimitere, indiferent de unde pornește. Se șterge singur (cron zilnic): 30 de zile, iar INAPP / PUSH 14 zile.
 model DeliveryLog {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
   /// EMAIL | SMS | TELEGRAM | PUSH | INAPP

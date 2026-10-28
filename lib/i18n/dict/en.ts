@@ -2149,7 +2149,7 @@ export const EN: Record<string, string> = {
   "Temporizator server": "Server timer",
   "Tip mesaj": "Message type",
   "Tip: toate": "Type: all",
-  "Toate emailurile, SMS-urile, mesajele Telegram și notificările trimise de aplicație — pentru depanare. Vizibil doar pentru super-admini; se păstrează 90 de zile.": "All emails, SMS, Telegram messages and notifications sent by the app — for debugging. Visible to super admins only; kept for 90 days.",
+  "Toate emailurile, SMS-urile, mesajele Telegram și notificările trimise de aplicație — pentru depanare. Vizibil doar pentru super-admini; se păstrează 30 de zile (notificările în aplicație și push: 14 zile).": "All emails, SMS, Telegram messages and notifications sent by the app — for debugging. Visible to super admins only; kept for 30 days (in-app and push notifications: 14 days).",
   "Ultimele 24 h": "Last 24 h",
   "Vezi toată campania": "See the whole campaign",
   "mesaje": "messages",

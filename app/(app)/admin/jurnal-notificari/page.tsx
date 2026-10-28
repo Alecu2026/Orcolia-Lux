@@ -32,7 +32,7 @@ export default async function DeliveryLogsPage({ searchParams }: { searchParams:
     <div className="w-full">
       <div className="mb-3">
         <h1 className="text-lg font-bold">{t("Jurnal notificări")}</h1>
-        <p className="text-xs text-ink-soft">{t("Toate emailurile, SMS-urile, mesajele Telegram și notificările trimise de aplicație — pentru depanare. Vizibil doar pentru super-admini; se păstrează 90 de zile.")}</p>
+        <p className="text-xs text-ink-soft">{t("Toate emailurile, SMS-urile, mesajele Telegram și notificările trimise de aplicație — pentru depanare. Vizibil doar pentru super-admini; se păstrează 30 de zile (notificările în aplicație și push: 14 zile).")}</p>
       </div>
       <DeliveryLogsClient initial={JSON.parse(JSON.stringify(initial))} users={users} initialFilters={filters} initialPage={initial.page} initialPs={ps} />
     </div>

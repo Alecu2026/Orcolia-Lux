@@ -37,8 +37,10 @@ async function run() {
   });
   const since = ckpt.lastRunAt;
 
-  // Jurnalul trimiterilor se păstrează 90 de zile
-  await prisma.deliveryLog.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 90 * 86_400_000) } } }).catch((e) => console.error("[cron] curățarea jurnalului trimiterilor:", e));
+  // Jurnalul trimiterilor: 30 de zile (email / SMS / Telegram), 14 zile pentru notificările în aplicație și push (sunt multe și mici) — baza de date e mică și partajată
+  await prisma.deliveryLog
+    .deleteMany({ where: { OR: [{ channel: { in: ["INAPP", "PUSH"] }, createdAt: { lt: new Date(Date.now() - 14 * 86_400_000) } }, { createdAt: { lt: new Date(Date.now() - 30 * 86_400_000) } }] } })
+    .catch((e) => console.error("[cron] curățarea jurnalului trimiterilor:", e));
 
   // Scadența facturilor Apă-Canal = 25 a lunii (corectează și ce a rămas pe alte date): înainte de pre-încălzirea listelor
   await normalizeApaCanalDueDates().catch((e) => console.error("[cron] scadența facturilor Apă-Canal:", e));
