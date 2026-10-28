@@ -1,5 +1,6 @@
 "use client";
 
+import DateFilterInput from "./DateFilterInput";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DEFAULT_PER_PAGE,
@@ -463,7 +464,7 @@ export default function DataTable<T extends { id: string }>({
           f.kind === "select" ? (
             <FilterSelect key={f.key} fkey={f.key} label={f.label} options={f.options} value={values[f.key] ?? ""} onPick={pickFilter} />
           ) : f.kind === "date" ? (
-            <input key={f.key} type="date" value={values[f.key] ?? ""} onChange={(e) => { setValue(f.key, e.target.value); setDraft((d) => ({ ...d, [f.key]: e.target.value })); }} title={t(f.label)} aria-label={t(f.label)} className={txtFld(values[f.key] ?? "")} />
+            <DateFilterInput key={f.key} label={t(f.label)} value={values[f.key] ?? ""} onChange={(e) => { setValue(f.key, e.target.value); setDraft((d) => ({ ...d, [f.key]: e.target.value })); }} title={t(f.label)} aria-label={t(f.label)} className={txtFld(values[f.key] ?? "")} />
           ) : (
             <input
               key={f.key}

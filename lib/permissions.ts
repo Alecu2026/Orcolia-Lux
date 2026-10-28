@@ -223,6 +223,54 @@ export function homePath(user: PermissionSubject): string {
   return "/notificari";
 }
 
+/**
+ * Tipuri de utilizator cu permisiuni PREDEFINITE: la crearea / editarea unui cont se alege tipul și se bifează singure permisiunile lui (care apoi se pot ajusta).
+ * Tipul nu se salvează separat: se recunoaște după permisiunile bifate (dacă s-au schimbat față de tip, contul apare ca „Personalizat”).
+ */
+export type UserTypeKey = "reader" | "operator" | "supervisor" | "viewer";
+export const USER_TYPES: { key: UserTypeKey; label: string; description: string; permissions: PermissionKey[] }[] = [
+  {
+    key: "reader",
+    label: "Cititor",
+    description: "Doar pagina Citiri teren: introduce indexuri, poze, locația și neregulile contoarelor din rutele atribuite lui.",
+    permissions: ["meters.read"],
+  },
+  {
+    key: "operator",
+    label: "Operator",
+    description: "Sarcini, cereri, clienți, plătitori, notificări, programări și apeluri; fără administrare.",
+    permissions: [
+      "tasks.view", "tasks.create", "tasks.edit", "tasks.assign", "tasks.close",
+      "dashboard.view", "tickets.view", "kanban.view", "calendar.view",
+      "projects.view", "clients.view", "clients.create", "clients.edit",
+      "payers.view", "payers.notify", "invoices.view", "appointments.view", "appointments.manage", "teams.view",
+      "pbx.view",
+    ],
+  },
+  {
+    key: "supervisor",
+    label: "Responsabil citiri",
+    description: "Cititor + administrarea rutelor de citire, planificat vs citit și neregulile contoarelor; vede plătitorii și contoarele.",
+    permissions: ["meters.read", "meters.manage", "payers.view"],
+  },
+  {
+    key: "viewer",
+    label: "Doar vizualizare",
+    description: "Poate vedea toate paginile, fără să modifice nimic.",
+    permissions: ALL_PERMISSION_KEYS.filter((k) => k.endsWith(".view")),
+  },
+];
+
+/** Tipul de utilizator recunoscut după permisiuni (null = personalizat sau administrator). */
+export function userTypeOf(role: string, permissions: string[]): UserTypeKey | null {
+  if (role === "ADMIN" || permissions.includes("admin")) return null;
+  const have = new Set(effectivePermissionKeys(permissions));
+  for (const t of USER_TYPES) {
+    if (t.permissions.length === have.size && t.permissions.every((p) => have.has(p))) return t.key;
+  }
+  return null;
+}
+
 export function canAny(user: PermissionSubject, keys: PermissionKey[]): boolean {
   return keys.some((k) => can(user, k));
 }

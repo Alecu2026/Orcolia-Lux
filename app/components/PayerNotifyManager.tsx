@@ -1,5 +1,6 @@
 "use client";
 
+import DateFilterInput from "./DateFilterInput";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { PayerRow } from "@/lib/queries/payers";
@@ -719,8 +720,8 @@ export default function PayerNotifyManager({
           <option value="no">{t("Nenotificați")}</option>
         </select>
         <span className="flex items-center gap-1">
-          <input
-            type="date"
+          <DateFilterInput
+            label={t("De la")}
             value={filters.notifiedFrom}
             onChange={(e) => setFilter({ notifiedFrom: e.target.value })}
             title={t("Perioadă notificare: de la data")}
@@ -728,8 +729,8 @@ export default function PayerNotifyManager({
             className={txtFld(filters.notifiedFrom)}
           />
           <span className="text-ink-soft">–</span>
-          <input
-            type="date"
+          <DateFilterInput
+            label={t("Până la")}
             value={filters.notifiedTo}
             onChange={(e) => setFilter({ notifiedTo: e.target.value })}
             title={t("Perioadă notificare: până la data")}
@@ -758,8 +759,8 @@ export default function PayerNotifyManager({
           <option value="activated">{t("Activat")}</option>
           <option value="pending">{t("Neactivat")}</option>
         </select>
-        <input
-          type="date"
+        <DateFilterInput
+          label={t("Instalat")}
           value={filters.installedFrom}
           onChange={(e) => setFilter({ installedFrom: e.target.value })}
           title={t("Contor instalat după data")}

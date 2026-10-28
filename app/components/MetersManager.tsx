@@ -1,5 +1,6 @@
 "use client";
 
+import DateFilterInput from "./DateFilterInput";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -422,9 +423,9 @@ export default function MetersManager({
           <option value="pending">{t("Neactivat")}</option>
         </select>
         <span className="flex items-center gap-1">
-          <input type="date" value={filters.installedFrom} onChange={(e) => setFilter({ installedFrom: e.target.value })} title={t("Contor instalat de la data")} aria-label={t("Contor instalat de la data")} className={txtFld(filters.installedFrom)} />
+          <DateFilterInput label={t("De la")} value={filters.installedFrom} onChange={(e) => setFilter({ installedFrom: e.target.value })} title={t("Contor instalat de la data")} aria-label={t("Contor instalat de la data")} className={txtFld(filters.installedFrom)} />
           <span className="text-ink-soft">–</span>
-          <input type="date" value={filters.installedTo} onChange={(e) => setFilter({ installedTo: e.target.value })} title={t("Contor instalat până la data")} aria-label={t("Contor instalat până la data")} className={txtFld(filters.installedTo)} />
+          <DateFilterInput label={t("Până la")} value={filters.installedTo} onChange={(e) => setFilter({ installedTo: e.target.value })} title={t("Contor instalat până la data")} aria-label={t("Contor instalat până la data")} className={txtFld(filters.installedTo)} />
         </span>
         <select value={filters.sort} onChange={(e) => setFilter({ sort: e.target.value as MeterFilters["sort"] })} className={fld(filters.sort)} aria-label={t("Sortare")}>
           <option value="">{t("Sortare: abonat (A-Z)")}</option>

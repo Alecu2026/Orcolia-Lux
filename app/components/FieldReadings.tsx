@@ -1,5 +1,6 @@
 "use client";
 
+import DateFilterInput from "./DateFilterInput";
 import Link from "next/link";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -29,6 +30,7 @@ import { onQueueSynced, removeQueued, retryQueued, syncNow, useFieldQueue } from
 import { MAX_LOC_ACCURACY, mapsUrl, type MeterLocationDto } from "@/lib/meter-readings";
 
 const STORAGE_KEY = "filters:/contoare/citiri";
+const ALL_ROUTES_KEY = "field-all-routes";
 type TextKey = "q" | "street" | "consumMin" | "consumMax";
 
 // Aceleași clase ca filtrele din Contoare / Plătitori: câmpul cu valoare aleasă capătă fundal / chenar colorat.
@@ -215,7 +217,8 @@ export default function FieldReadings({
   const [perPage, setPerPage] = useState(normalizePerPageClient(initialQuery.perPage));
   const [selId, setSelId] = useState<string | null>(openId);
   const [ready, setReady] = useState(false);
-  const routeInit = useRef(false);
+  /** „Toate rutele”: bifat = vezi toate rutele; debifat (implicit) = doar rutele atribuite lui. Fără rute atribuite nu există restricție. */
+  const [allRoutes, setAllRoutes] = useState(false);
   const debounce = useRef<Partial<Record<TextKey, ReturnType<typeof setTimeout>>>>({});
   const jumpTo = useRef<string | null>(null);
 
@@ -242,10 +245,11 @@ export default function FieldReadings({
     const urlEmpty = countActiveFieldFilters(initialFilters) === 0 && !initialFilters.sort && !initialQuery.page && !initialQuery.perPage;
     if (urlEmpty) {
       try {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        if (localStorage.getItem(ALL_ROUTES_KEY) === "1") setAllRoutes(true);
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as { f?: unknown; perPage?: unknown } | null;
         if (saved) {
           const f = sanitizeFieldFilters((saved.f ?? {}) as Record<string, unknown>);
-          // eslint-disable-next-line react-hooks/set-state-in-effect
           setFilters(f);
           setDraft({ q: f.q, street: f.street, consumMin: f.consumMin, consumMax: f.consumMax });
           setPerPage(normalizePerPageClient(saved.perPage));
@@ -255,16 +259,6 @@ export default function FieldReadings({
     setReady(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Cititorul cu o rută atribuită vede implicit doar ruta lui (o dată, după ce rutele s-au încărcat); poate alege oricând „Toate rutele”.
-  useEffect(() => {
-    if (routeInit.current || !ready || routes.length === 0) return;
-    routeInit.current = true;
-    if (myRoutes.length > 0 && !filters.route && !initialQuery.route) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFilters((f) => ({ ...f, route: myRoutes.length === 1 ? myRoutes[0].id : "mine" }));
-    }
-  }, [ready, routes, myRoutes, filters.route, initialQuery.route]);
 
   // Salvează filtrele + sincronizează adresa (link de partajat), fără navigare.
   useEffect(() => {
@@ -285,7 +279,11 @@ export default function FieldReadings({
 
   // Controalele se actualizează imediat; lista de ~25.000 de rânduri se recalculează în randarea următoare (amânată), deci un select nu „se agață".
   const listFilters = useDeferredValue(filters);
-  const list = useMemo(() => (data ? filterField(rowsAll, listFilters, mineIds) : []), [data, rowsAll, listFilters, mineIds]);
+  // Cititorul cu rute atribuite vede DOAR contoarele rutelor lui; cu „Toate rutele” bifat le vede pe toate.
+  const restricted = myRoutes.length > 0 && !allRoutes;
+  const visibleRows = useMemo(() => (restricted ? rowsAll.filter((r) => !!r.route && mineIds.has(r.route)) : rowsAll), [restricted, rowsAll, mineIds]);
+  const effFilters = useMemo(() => (restricted ? { ...listFilters, route: mineIds.has(listFilters.route) ? listFilters.route : "mine" } : listFilters), [restricted, listFilters, mineIds]);
+  const list = useMemo(() => (data ? filterField(visibleRows, effFilters, mineIds) : []), [data, visibleRows, effFilters, mineIds]);
   const totalPages = Math.max(1, Math.ceil(list.length / perPage));
   const curPage = Math.min(page, totalPages);
   const pageRows = useMemo(() => list.slice((curPage - 1) * perPage, curPage * perPage), [list, curPage, perPage]);
@@ -306,7 +304,7 @@ export default function FieldReadings({
     let flagged = 0;
     const users = new Set<string>();
     const localities = new Set<string>();
-    for (const r of rowsAll) {
+    for (const r of visibleRows) {
       if (r.locality) localities.add(r.locality);
       if (r.value != null) {
         done++;
@@ -314,8 +312,8 @@ export default function FieldReadings({
         if (r.by) users.add(r.by);
       }
     }
-    return { total: rowsAll.length, done, flagged, users: [...users].sort((a, b) => a.localeCompare(b)), localities: [...localities].sort((a, b) => a.localeCompare(b)) };
-  }, [data, rowsAll]);
+    return { total: visibleRows.length, done, flagged, users: [...users].sort((a, b) => a.localeCompare(b)), localities: [...localities].sort((a, b) => a.localeCompare(b)) };
+  }, [data, visibleRows]);
 
   function setFilter(patch: Partial<FieldFilters>) {
     setFilters((f) => ({ ...f, ...patch }));
@@ -351,9 +349,9 @@ export default function FieldReadings({
         for (let k = 0; k < i; k++) if (ordered[k].value == null) return ordered[k].id;
         return null;
       };
-      return find(filterField(rowsAll, { ...filters, status: "all" })) ?? find(rowsAll);
+      return find(filterField(visibleRows, { ...effFilters, ...(restricted ? {} : { route: filters.route }), status: "all" }, mineIds)) ?? find(visibleRows);
     },
-    [data, rowsAll, filters],
+    [data, visibleRows, effFilters, filters.route, restricted, mineIds],
   );
 
   const from = list.length === 0 ? 0 : (curPage - 1) * perPage + 1;
@@ -486,14 +484,40 @@ export default function FieldReadings({
           {stats.localities.map((l) => <option key={l} value={l}>{l}</option>)}
           {filters.locality && !stats.localities.includes(filters.locality) && <option value={filters.locality}>{filters.locality}</option>}
         </select>
-        {routes.length > 0 && (
-          <select value={filters.route} onChange={(e) => setFilter({ route: e.target.value })} className={fld(filters.route)} aria-label={t("Ruta de citire")}>
-            <option value="">{t("Rută: toate")}</option>
-            {myRoutes.length > 0 && <option value="mine">{myRoutes.length === 1 ? t("Ruta mea") : t("Rutele mele")}</option>}
-            {routes.map((r) => (
-              <option key={r.id} value={r.id}>{r.name}</option>
-            ))}
-            <option value="none">{t("Fără rută")}</option>
+        {routes.length > myRoutes.length && myRoutes.length > 0 && (
+          <label className={`flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2 text-[12px] ${allRoutes ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"}`} title={t("Bifat: vezi contoarele tuturor rutelor. Debifat: doar rutele atribuite ție.")}>
+            <input
+              type="checkbox"
+              checked={allRoutes}
+              onChange={(e) => {
+                setAllRoutes(e.target.checked);
+                try { localStorage.setItem(ALL_ROUTES_KEY, e.target.checked ? "1" : "0"); } catch {}
+                setFilter({ route: "" });
+              }}
+              className="size-3 accent-[var(--color-brand)]"
+            />
+            {t("Toate rutele")}
+          </label>
+        )}
+        {routes.length > 0 && (restricted ? myRoutes.length > 1 : true) && (
+          <select value={restricted ? (mineIds.has(filters.route) ? filters.route : "") : filters.route} onChange={(e) => setFilter({ route: e.target.value })} className={fld(restricted ? (mineIds.has(filters.route) ? filters.route : "") : filters.route)} aria-label={t("Ruta de citire")}>
+            {restricted ? (
+              <>
+                <option value="">{t("Rutele mele")}</option>
+                {myRoutes.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </>
+            ) : (
+              <>
+                <option value="">{t("Rută: toate")}</option>
+                {myRoutes.length > 0 && <option value="mine">{myRoutes.length === 1 ? t("Ruta mea") : t("Rutele mele")}</option>}
+                {routes.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+                <option value="none">{t("Fără rută")}</option>
+              </>
+            )}
           </select>
         )}
         <select value={filters.issue} onChange={(e) => setFilter({ issue: e.target.value as FieldFilters["issue"] })} className={fld(filters.issue)} aria-label={t("Starea contorului")}>
@@ -524,9 +548,9 @@ export default function FieldReadings({
           <option value="no">{t("Fără locație")}</option>
         </select>
         <span className="flex items-center gap-1" title={t("Citit între zilele")}>
-          <input type="date" value={filters.from} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t("Citit de la data")} className={txtFld(filters.from)} />
+          <DateFilterInput label={t("De la")} value={filters.from} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t("Citit de la data")} className={txtFld(filters.from)} />
           <span className="text-ink-soft">–</span>
-          <input type="date" value={filters.to} onChange={(e) => setFilter({ to: e.target.value })} aria-label={t("Citit până la data")} className={txtFld(filters.to)} />
+          <DateFilterInput label={t("Până la")} value={filters.to} onChange={(e) => setFilter({ to: e.target.value })} aria-label={t("Citit până la data")} className={txtFld(filters.to)} />
         </span>
         <span className="flex items-center gap-1" title={t("Consum între (m³)")}>
           <input inputMode="decimal" value={draft.consumMin} onChange={(e) => onText("consumMin", e.target.value)} placeholder={t("Consum de la")} aria-label={t("Consum de la (m³)")} className={txtFld(draft.consumMin) + " w-24"} />

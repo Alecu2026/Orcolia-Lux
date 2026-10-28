@@ -1,5 +1,6 @@
 "use client";
 
+import DateFilterInput from "./DateFilterInput";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CHANNEL_CLS,
@@ -508,9 +509,9 @@ export default function DeliveryLogsClient({
         </select>
         </>}
         <span className="flex items-center gap-1" title={t("Perioada (ziua în fusul orar al firmei)")}>
-          <input type="date" value={filters.from} max={filters.to || undefined} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t("De la data")} className={txtCls(filters.from)} />
+          <DateFilterInput label={t("De la")} value={filters.from} max={filters.to || undefined} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t("De la data")} className={txtCls(filters.from)} />
           <span className="text-ink-soft">–</span>
-          <input type="date" value={filters.to} min={filters.from || undefined} onChange={(e) => setFilter({ to: e.target.value })} aria-label={t("Până la data")} className={txtCls(filters.to)} />
+          <DateFilterInput label={t("Până la")} value={filters.to} min={filters.from || undefined} onChange={(e) => setFilter({ to: e.target.value })} aria-label={t("Până la data")} className={txtCls(filters.to)} />
         </span>
         {filters.campaign && (
           <button type="button" onClick={() => setFilter({ campaign: "" })} className="tap h-8 rounded-lg border border-brand bg-brand/10 px-2 text-xs font-semibold text-brand" title={t("Scoate filtrul de campanie")}>

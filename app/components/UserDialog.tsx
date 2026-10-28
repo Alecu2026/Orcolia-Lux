@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createUser, updateUser } from "@/app/actions/users";
-import { ALL_PERMISSION_KEYS, PERMISSION_GROUPS, effectivePermissionKeys } from "@/lib/permissions";
+import { ALL_PERMISSION_KEYS, PERMISSIONS_V2, PERMISSION_GROUPS, USER_TYPES, effectivePermissionKeys, userTypeOf } from "@/lib/permissions";
 import { NOTIFY_EVENTS } from "@/lib/notify-meta";
 import { useMessages, useT } from "@/lib/i18n/context";
 import { useToast } from "./toast";
@@ -47,14 +47,6 @@ const VIEW_OF: Record<string, string> = (() => {
   }
   return out;
 })();
-
-const PRESET_VIEW = ALL_PERMISSION_KEYS.filter((k) => k.endsWith(".view"));
-const PRESET_OPERATOR = [
-  "tasks.view", "tasks.create", "tasks.edit", "tasks.assign", "tasks.close",
-  "dashboard.view", "tickets.view", "kanban.view", "calendar.view",
-  "projects.view", "clients.view", "clients.create", "clients.edit",
-  "payers.view", "invoices.view", "appointments.view", "appointments.manage", "teams.view",
-];
 
 function Toggle({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string; disabled?: boolean }) {
   return (
@@ -144,6 +136,7 @@ export default function UserDialog({
   const staffOptions = useMemo(() => allUsers.filter((u) => u.id !== user?.id).map((u) => ({ id: u.id, name: u.name })), [allUsers, user?.id]);
   const isAdminRole = role === "ADMIN";
   const hasFullAccess = perms.has("admin");
+  const activeType = useMemo(() => userTypeOf("STAFF", [...perms, PERMISSIONS_V2]), [perms]);
 
   /** Schimbă rolul. La un cont nou, „ce sarcini vede” urmează rolul (administrator = toate, angajat = doar ale lui) cât timp nu a fost ales explicit. */
   function changeRole(r: "ADMIN" | "STAFF") {
@@ -382,11 +375,28 @@ export default function UserDialog({
               <p className={`${card} bg-brand-soft/40 text-sm`}>{t("Administratorii au acces la tot. Permisiunile individuale se aplică doar angajaților.")}</p>
             ) : (
               <>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-ink-soft">{t("Pornește de la")}:</span>
-                  <button type="button" className={chip} onClick={() => applyPreset([])}>{t("Fără permisiuni")}</button>
-                  <button type="button" className={chip} onClick={() => applyPreset(PRESET_VIEW)}>{t("Doar vizualizare")}</button>
-                  <button type="button" className={chip} onClick={() => applyPreset(PRESET_OPERATOR)}>{t("Operator")}</button>
+                <div className={card}>
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase text-ink-soft">{t("Tip de utilizator")} <span className="font-normal normal-case">— {t("bifează singur permisiunile; le poți ajusta după")}</span></p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {USER_TYPES.map((ut) => {
+                      const on = activeType === ut.key;
+                      return (
+                        <button
+                          key={ut.key}
+                          type="button"
+                          title={t(ut.description)}
+                          aria-pressed={on}
+                          className={`${chip} ${on ? "!border-brand !bg-brand !text-white" : ""}`}
+                          onClick={() => applyPreset(ut.permissions as string[])}
+                        >
+                          {t(ut.label)}
+                        </button>
+                      );
+                    })}
+                    <button type="button" className={`${chip} ${perms.size === 0 ? "!border-brand !bg-brand-soft" : ""}`} onClick={() => applyPreset([])}>{t("Fără permisiuni")}</button>
+                    {!activeType && perms.size > 0 && <span className="text-[11px] text-ink-soft">{t("Personalizat")}</span>}
+                  </div>
+                  {activeType && <p className="mt-1.5 text-[11px] text-ink-soft">{t(USER_TYPES.find((x) => x.key === activeType)?.description ?? "")}</p>}
                 </div>
                 {hasFullAccess && (
                   <p className="rounded-lg bg-st-progress/10 px-3 py-2 text-xs text-st-progress">

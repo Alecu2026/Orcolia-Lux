@@ -1,5 +1,6 @@
 "use client";
 
+import DateFilterInput from "./DateFilterInput";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ACTION_OPTIONS,
@@ -421,9 +422,9 @@ export default function AuditLogsClient({
           {ACTION_OPTIONS.map((a) => <option key={a.key} value={a.key}>{t(a.label)}</option>)}
         </select>
         <span className="flex items-center gap-1" title={t("Perioada (ziua în fusul orar al firmei)")}>
-          <input type="date" value={filters.from} max={filters.to || undefined} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t("De la data")} className={txtCls(filters.from)} />
+          <DateFilterInput label={t("De la")} value={filters.from} max={filters.to || undefined} onChange={(e) => setFilter({ from: e.target.value })} aria-label={t("De la data")} className={txtCls(filters.from)} />
           <span className="text-ink-soft">–</span>
-          <input type="date" value={filters.to} min={filters.from || undefined} onChange={(e) => setFilter({ to: e.target.value })} aria-label={t("Până la data")} className={txtCls(filters.to)} />
+          <DateFilterInput label={t("Până la")} value={filters.to} min={filters.from || undefined} onChange={(e) => setFilter({ to: e.target.value })} aria-label={t("Până la data")} className={txtCls(filters.to)} />
         </span>
         <label className={`flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2 text-xs ${filters.changes ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"}`} title={t("Arată doar jurnalele care au modificări pe câmpuri (ce s-a schimbat)")}>
           <input type="checkbox" checked={filters.changes} onChange={(e) => setFilter({ changes: e.target.checked })} className="size-3 accent-[var(--color-brand)]" />
