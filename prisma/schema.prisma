@@ -813,6 +813,11 @@ model Appointment {
   reminderTelegramEnabled Boolean @default(false)
   // Praguri selectate pt. această programare: ex. ["DAY_BEFORE_8AM","H3"] — vezi lib/reminder-presets.ts
   reminderOffsets         String[] @default(["DAY_BEFORE_8AM", "H3"])
+  // Remindere ca la sarcini (vezi lib/reminder-schedule.ts): „înainte de începere” (mai multe praguri), zilnic / săptămânal / lunar / la interval, sau interval fix; se opresc la începerea programării.
+  // Cu programare / interval setat, reminderele vechi (Reminder, praguri fixe) nu se mai folosesc pentru această programare.
+  reminderSchedule        Json?
+  reminderIntervalMinutes Int?
+  nextReminderAt          DateTime?
 
   createdFrom CreatedFrom @default(WEB)
 
@@ -826,6 +831,7 @@ model Appointment {
   @@index([userId, status])
   @@index([userId, clientId])
   @@index([clientId])
+  @@index([nextReminderAt])
 }
 
 model Reminder {

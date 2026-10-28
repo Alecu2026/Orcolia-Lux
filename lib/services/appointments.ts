@@ -6,9 +6,12 @@ import { findOrCreateClient } from "../queries/clients";
 import { findOverlapping } from "../queries/appointments";
 import { zonedToUtc, addDaysToKey, formatTime, isValidDateKey, isValidTimeOfDay } from "../date";
 import { sanitizeReminderPresets, type ReminderPresetKey } from "../reminder-presets";
-import type { AppointmentStatus, CreatedFrom } from "@prisma/client";
+import { APPT_REMINDER_STATUSES, nextApptReminderAt, parseReminderSchedule, type ReminderSchedule } from "../reminder-schedule";
+import type { AppointmentStatus, CreatedFrom, Prisma } from "@prisma/client";
 
 const OID = /^[0-9a-f]{24}$/i;
+
+const isReminderStatus = (s: string) => (APPT_REMINDER_STATUSES as readonly string[]).includes(s);
 
 export type CreateApptInput = {
   clientId?: string;
@@ -26,6 +29,13 @@ export type CreateApptInput = {
   reminderTelegram: boolean;
   /** Praguri de remindere (vezi lib/reminder-presets.ts). Omis ⇒ se folosește standardul din Settings. */
   reminderOffsets?: string[];
+  /**
+   * Remindere ca la sarcini (vezi lib/reminder-schedule.ts): programare („înainte de începere”, zilnic, …) sau interval fix în minute. Dacă e dat unul dintre ele,
+   * `reminderOffsets` și reminderele vechi pentru client nu se mai folosesc: reamintirile pleacă din `checkAppointmentReminders` către proprietar
+   * (și către client, pe canalele bifate).
+   */
+  reminderSchedule?: ReminderSchedule | null;
+  reminderIntervalMinutes?: number | null;
   status?: "NEW" | "CONFIRMED";
 };
 
@@ -161,9 +171,11 @@ export async function createAppointment(
 
   // 5. Creare cu snapshot-uri
   const title = input.title?.trim() || category?.name || "Programare";
-  const offsets = sanitizeReminderPresets(
-    input.reminderOffsets ?? (settings.reminderOffsets as string[]),
-  );
+  const schedule = input.reminderSchedule ?? null;
+  const intervalMin = input.reminderIntervalMinutes && input.reminderIntervalMinutes > 0 ? Math.round(input.reminderIntervalMinutes) : null;
+  const engine = Boolean(schedule || intervalMin); // remindere noi (ca la sarcini) în loc de pragurile fixe vechi
+  const offsets = engine ? [] : sanitizeReminderPresets(input.reminderOffsets ?? (settings.reminderOffsets as string[]));
+  const nextReminderAt = engine && isReminderStatus(input.status ?? "NEW") ? nextApptReminderAt(schedule, intervalMin, startAt, new Date(), tz) : null;
   const appt = await prisma.appointment.create({
     data: {
       userId,
@@ -181,6 +193,9 @@ export async function createAppointment(
       reminderEmailEnabled: input.reminderEmail,
       reminderTelegramEnabled: input.reminderTelegram,
       reminderOffsets: offsets,
+      ...(schedule ? { reminderSchedule: schedule as unknown as Prisma.InputJsonValue } : {}),
+      reminderIntervalMinutes: intervalMin,
+      nextReminderAt,
       createdFrom: source,
     },
     select: { id: true, startAt: true },
@@ -204,8 +219,8 @@ export async function createAppointment(
     return { ok: false, error: `Interval ocupat: ${clash.clientNameSnapshot} la ${formatTime(clash.startAt, tz)}.` };
   }
 
-  // 6. Reminders
-  await createRemindersFor({
+  // 6. Reminders (vechile, către client — doar fără programare / interval nou)
+  if (!engine) await createRemindersFor({
     userId,
     appointmentId: appt.id,
     dateKey: input.dateKey,
@@ -243,10 +258,13 @@ export async function changeStatus(
     select: {
       id: true, clientId: true, status: true, startAt: true, endAt: true, dateKey: true,
       reminderEmailEnabled: true, reminderTelegramEnabled: true, reminderOffsets: true,
+      reminderSchedule: true, reminderIntervalMinutes: true,
       client: { select: { email: true, telegramChatId: true } },
     },
   });
   if (!appt) return { ok: false as const, error: "Programare inexistentă." };
+  const schedule = parseReminderSchedule(appt.reminderSchedule, new Date(), undefined, { allowBefore: true });
+  const engine = Boolean(schedule || appt.reminderIntervalMinutes);
 
   // O programare anulată / absentă care redevine activă ocupă din nou intervalul: dacă între timp a fost luat de alta, refuzăm.
   if ((appt.status === "CANCELLED" || appt.status === "NO_SHOW") && status !== "CANCELLED" && status !== "NO_SHOW") {
@@ -257,7 +275,15 @@ export async function changeStatus(
     }
   }
 
-  await prisma.appointment.update({ where: { id }, data: { status } });
+  // Remindere noi: o programare activă amintește mai departe; încheiată / anulată / absentă — se oprește; reactivată — reia de la momentul curent
+  const settingsForTz = engine ? await getSettings(userId) : null;
+  await prisma.appointment.update({
+    where: { id },
+    data: {
+      status,
+      ...(engine ? { nextReminderAt: isReminderStatus(status) ? nextApptReminderAt(schedule, appt.reminderIntervalMinutes, appt.startAt, new Date(), settingsForTz!.timezone) : null } : {}),
+    },
+  });
 
   if (status === "NO_SHOW" && appt.status !== "NO_SHOW") {
     await prisma.client
@@ -275,7 +301,7 @@ export async function changeStatus(
       where: { appointmentId: id, status: "PENDING" },
       data: { status: "CANCELLED" },
     });
-  } else if ((appt.status === "CANCELLED" || appt.status === "NO_SHOW") && appt.startAt.getTime() > Date.now()) {
+  } else if (!engine && (appt.status === "CANCELLED" || appt.status === "NO_SHOW") && appt.startAt.getTime() > Date.now()) {
     // Reactivată (anulată / absent → activă): reminderele anulate la acel moment se recreează pentru pragurile încă viitoare.
     const settings = await getSettings(userId);
     await createRemindersFor({
@@ -317,12 +343,16 @@ export async function reschedule(
         reminderEmailEnabled: true,
         reminderTelegramEnabled: true,
         reminderOffsets: true,
+        reminderSchedule: true,
+        reminderIntervalMinutes: true,
         client: { select: { email: true, telegramChatId: true } },
       },
     }),
   ]);
   const tz = settings.timezone;
   if (!appt) return { ok: false as const, error: "Programare inexistentă." };
+  const schedule = parseReminderSchedule(appt.reminderSchedule, new Date(), tz, { allowBefore: true });
+  const engine = Boolean(schedule || appt.reminderIntervalMinutes);
 
   const duration =
     durationMinutes ??
@@ -340,7 +370,8 @@ export async function reschedule(
 
   await prisma.appointment.update({
     where: { id },
-    data: { startAt, endAt, dateKey },
+    // remindere noi: pragurile „înainte de începere” se recalculează față de noua oră (cele trecute se sar)
+    data: { startAt, endAt, dateKey, ...(engine ? { nextReminderAt: isReminderStatus(appt.status) ? nextApptReminderAt(schedule, appt.reminderIntervalMinutes, startAt, new Date(), tz) : null } : {}) },
   });
 
   // Regenerează reminderele (doar pentru programări active: una anulată / absentă / încheiată nu mai primește remindere)
@@ -348,7 +379,7 @@ export async function reschedule(
     where: { appointmentId: id, status: "PENDING" },
     data: { status: "CANCELLED" },
   });
-  if (appt.status === "NEW" || appt.status === "CONFIRMED" || appt.status === "IN_PROGRESS") await createRemindersFor({
+  if (!engine && isReminderStatus(appt.status)) await createRemindersFor({
     userId,
     appointmentId: id,
     dateKey,
@@ -360,6 +391,107 @@ export async function reschedule(
     hasClientTelegram: Boolean(appt.client.telegramChatId),
     offsets: sanitizeReminderPresets(appt.reminderOffsets as string[]),
   });
+
+  return { ok: true as const, startAt };
+}
+
+export type UpdateApptInput = {
+  clientId?: string;
+  clientName?: string;
+  categoryId?: string;
+  dateKey: string;
+  time: string;
+  durationMinutes: number;
+  title?: string;
+  message?: string;
+  reminderEmail: boolean;
+  reminderTelegram: boolean;
+  /** Remindere ca la sarcini; fără niciuna, programarea rămâne fără remindere. */
+  reminderSchedule?: ReminderSchedule | null;
+  reminderIntervalMinutes?: number | null;
+  /** Doar pentru o programare „Nouă” / „Confirmată” (celelalte statusuri se schimbă separat). */
+  status?: "NEW" | "CONFIRMED";
+};
+
+/**
+ * Editare completă a unei programări: client, categorie, dată / oră / durată, descriere, mesaj, canale către client și reminderele.
+ * Verifică suprapunerea (cu excepția ei însăși) și recalculează următoarea reamintire; reminderele vechi (praguri fixe) se anulează —
+ * după editare programarea folosește doar noul sistem de remindere.
+ */
+export async function updateAppointment(userId: string, id: string, input: UpdateApptInput) {
+  if (DEMO) return { ok: false as const, error: "Mod demo: modificările nu se salvează." };
+  if (!OID.test(id ?? "")) return { ok: false as const, error: "Programare inexistentă." };
+  if (!isValidDateKey(input.dateKey) || !isValidTimeOfDay(input.time)) return { ok: false as const, error: "Dată sau oră invalidă." };
+  const [settings, appt] = await Promise.all([
+    getSettings(userId),
+    prisma.appointment.findFirst({ where: { id, userId }, select: { id: true, status: true, clientId: true, startAt: true } }),
+  ]);
+  if (!appt) return { ok: false as const, error: "Programare inexistentă." };
+  const tz = settings.timezone;
+
+  // client: cel ales; fără alegere nouă rămâne cel de până acum
+  let client: { id: string; name: string };
+  if (input.clientId || !input.clientName?.trim()) {
+    const cid = input.clientId || appt.clientId;
+    if (!OID.test(cid)) return { ok: false as const, error: "Clientul nu există." };
+    const found = await prisma.client.findFirst({ where: { id: cid }, select: { id: true, name: true } });
+    if (!found) return { ok: false as const, error: "Clientul nu există." };
+    client = found;
+  } else {
+    client = await findOrCreateClient(userId, { name: input.clientName });
+  }
+
+  let category: { id: string; name: string; color: string } | null = null;
+  if (input.categoryId && OID.test(input.categoryId)) {
+    category = await prisma.category.findFirst({ where: { id: input.categoryId }, select: { id: true, name: true, color: true } });
+  }
+
+  const duration = Math.min(1440, Math.max(1, Math.round(input.durationMinutes) || settings.slotMinutes));
+  const startAt = zonedToUtc(input.dateKey, input.time, tz);
+  const endAt = new Date(startAt.getTime() + duration * 60_000);
+  const status: AppointmentStatus = (appt.status === "NEW" || appt.status === "CONFIRMED") && input.status ? input.status : appt.status;
+
+  // o programare anulată / absentă nu ocupă intervalul
+  if (status !== "CANCELLED" && status !== "NO_SHOW") {
+    const overlap = await findOverlapping(userId, startAt, endAt, id);
+    if (overlap) return { ok: false as const, error: `Interval ocupat: ${overlap.clientNameSnapshot} la ${formatTime(overlap.startAt, tz)}.` };
+  }
+
+  const schedule = input.reminderSchedule ?? null;
+  const intervalMin = input.reminderIntervalMinutes && input.reminderIntervalMinutes > 0 ? Math.round(input.reminderIntervalMinutes) : null;
+  const nextReminderAt = isReminderStatus(status) ? nextApptReminderAt(schedule, intervalMin, startAt, new Date(), tz) : null;
+
+  await prisma.appointment.update({
+    where: { id },
+    data: {
+      clientId: client.id,
+      clientNameSnapshot: client.name,
+      categoryId: category?.id ?? null,
+      categoryNameSnapshot: category?.name ?? null,
+      categoryColorSnapshot: category?.color ?? null,
+      title: input.title?.trim() || category?.name || "Programare",
+      message: input.message?.trim() || null,
+      status,
+      startAt,
+      endAt,
+      dateKey: input.dateKey,
+      reminderEmailEnabled: input.reminderEmail,
+      reminderTelegramEnabled: input.reminderTelegram,
+      reminderOffsets: [],
+      reminderSchedule: schedule ? (schedule as unknown as Prisma.InputJsonValue) : (null as unknown as Prisma.InputJsonValue),
+      reminderIntervalMinutes: intervalMin,
+      nextReminderAt,
+    },
+  });
+  await prisma.reminder.updateMany({ where: { appointmentId: id, status: "PENDING" }, data: { status: "CANCELLED" } });
+
+  // „Ultima programare” a clientului (best-effort, ca la creare)
+  await prisma.client
+    .updateMany({
+      where: { id: client.id, OR: [{ lastAppointmentAt: { isSet: false } }, { lastAppointmentAt: null }, { lastAppointmentAt: { lt: startAt } }] },
+      data: { lastAppointmentAt: startAt },
+    })
+    .catch(() => {});
 
   return { ok: true as const, startAt };
 }

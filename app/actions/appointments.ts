@@ -13,7 +13,9 @@ import {
   createAppointment,
   changeStatus,
   reschedule,
+  updateAppointment,
 } from "@/lib/services/appointments";
+import { parseReminderSchedule, type ReminderSchedule } from "@/lib/reminder-schedule";
 import { DEMO } from "@/lib/demo";
 import { sanitizeReminderPresets } from "@/lib/reminder-presets";
 import {
@@ -66,6 +68,7 @@ export async function createQuickAppointment(
     return { error: parsed.error.issues[0]?.message ?? "Date invalide." };
   }
   const d = parsed.data;
+  const rem = readReminders(formData);
 
   const result = await createAppointment(
     user.id,
@@ -82,7 +85,10 @@ export async function createQuickAppointment(
       message: d.message || undefined,
       reminderEmail: d.reminderEmail,
       reminderTelegram: d.reminderTelegram,
-      reminderOffsets: sanitizeReminderPresets(d.reminderOffsets),
+      // formularul nou trimite reminderele ca la sarcini; „fără” = fără remindere (nu se cade pe standardul din setări)
+      reminderOffsets: rem.engine ? [] : sanitizeReminderPresets(d.reminderOffsets),
+      reminderSchedule: rem.schedule,
+      reminderIntervalMinutes: rem.interval,
       status: d.status,
     },
     "WEB",
@@ -91,6 +97,62 @@ export async function createQuickAppointment(
   if (!result.ok) return { error: result.error };
   revalidateAll();
   return { ok: true, id: result.id };
+}
+
+/** Reminderele din formular (ReminderPicker în mod programare): `remindersNew` marchează formularul nou; programarea e validată pe server. */
+function readReminders(fd: FormData): { engine: boolean; schedule: ReminderSchedule | null; interval: number | null } {
+  const engine = fd.get("remindersNew") === "1";
+  let schedule: ReminderSchedule | null = null;
+  const raw = String(fd.get("reminderSchedule") ?? "");
+  if (engine && raw) {
+    try {
+      schedule = parseReminderSchedule(JSON.parse(raw), new Date(), undefined, { allowBefore: true });
+    } catch {}
+  }
+  const n = Math.round(Number(fd.get("reminderIntervalMinutes") ?? 0));
+  const interval = engine && !schedule && Number.isFinite(n) && n >= 1 && n <= 366 * 1440 ? n : null;
+  return { engine, schedule, interval };
+}
+
+/** Editarea completă a unei programări (dialogul de editare). */
+export async function updateAppointmentAction(_prev: ApptState, formData: FormData): Promise<ApptState> {
+  const user = await requireUser();
+  if (!can(user, "appointments.manage")) return { error: "Fără permisiune." };
+  const parsed = quickAppointmentSchema.safeParse({
+    clientId: formData.get("clientId") ?? "",
+    clientName: formData.get("clientName") ?? "",
+    categoryId: formData.get("categoryId") ?? "",
+    dateKey: formData.get("dateKey"),
+    time: formData.get("time"),
+    durationMinutes: formData.get("durationMinutes") ?? 30,
+    title: formData.get("title") ?? "",
+    message: formData.get("message") ?? "",
+    reminderEmail: formData.get("reminderEmail") === "true",
+    reminderTelegram: formData.get("reminderTelegram") === "true",
+    status: (formData.get("status") as string) || "NEW",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Date invalide." };
+  const d = parsed.data;
+  const rem = readReminders(formData);
+
+  const res = await updateAppointment(user.id, String(formData.get("id") ?? ""), {
+    clientId: d.clientId || undefined,
+    clientName: d.clientName || undefined,
+    categoryId: d.categoryId || undefined,
+    dateKey: d.dateKey,
+    time: d.time,
+    durationMinutes: d.durationMinutes,
+    title: d.title || undefined,
+    message: d.message || undefined,
+    reminderEmail: d.reminderEmail,
+    reminderTelegram: d.reminderTelegram,
+    reminderSchedule: rem.schedule,
+    reminderIntervalMinutes: rem.interval,
+    status: d.status,
+  });
+  if (!res.ok) return { error: res.error };
+  revalidateAll();
+  return { ok: true };
 }
 
 export async function setStatus(id: string, status: string): Promise<ApptState> {

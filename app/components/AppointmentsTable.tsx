@@ -11,14 +11,16 @@ import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
 import OpenQuickAddButton from "./OpenQuickAddButton";
 import AutoOpenQuickAdd from "./AutoOpenQuickAdd";
-import { QuickAddProvider } from "./quick-add-context";
+import { QuickAddProvider, useQuickAdd } from "./quick-add-context";
 import { APPT_STATUSES, ApptStatusDropdown, apptLabel } from "./AppointmentItem";
 import { useToast } from "./toast";
-import { IconMail, IconSend, IconTrash, IconX } from "./icons";
+import { IconMail, IconPencil, IconSend, IconTrash, IconX } from "./icons";
+import { describeSchedule, parseReminderSchedule } from "@/lib/reminder-schedule";
+import { presetsToMinutes } from "@/lib/reminder-presets";
 import { humanDay } from "@/lib/date";
 import { useLocale, useMessages, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
-import type { ApptStatus, ApptVM, CategoryLite, QuickDefaults } from "./types";
+import type { ApptStatus, ApptVM, CategoryLite, QuickDefaults, QuickPrefill } from "./types";
 
 const iconBtn =
   "tap grid size-5 cursor-pointer place-items-center rounded border border-[var(--color-line)] hover:bg-brand-soft";
@@ -26,6 +28,48 @@ const topBtn =
   "tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]";
 
 const dmy = (key: string) => key.split("-").reverse().join(".");
+
+/** Datele programării pentru dialogul de editare (același dialog ca la „Programare nouă”). */
+function prefillOf(a: ApptVM): QuickPrefill {
+  return {
+    id: a.id,
+    clientId: a.clientId,
+    clientName: a.clientName,
+    categoryId: a.categoryId ?? undefined,
+    dateKey: a.dateKey,
+    time: a.time,
+    durationMinutes: a.durationMinutes,
+    title: a.title,
+    message: a.message,
+    reminderEmail: a.remEmail,
+    reminderTelegram: a.remTelegram,
+    reminderOffsets: a.remOffsets,
+    reminderSchedule: a.remSchedule,
+    reminderIntervalMinutes: a.remInterval,
+    status: a.status === "NEW" || a.status === "CONFIRMED" ? a.status : undefined,
+  };
+}
+
+/** Descrierea reminderelor: programarea nouă, intervalul fix sau (la programările vechi) pragurile fixe de până acum; "" = fără remindere. */
+function remText(a: ApptVM, t: (ro: string, v?: Record<string, string | number>) => string, tag: string): string {
+  const sch = a.remSchedule ? parseReminderSchedule(JSON.parse(a.remSchedule), new Date(), undefined, { allowBefore: true }) : null;
+  if (sch) return describeSchedule(sch, t, tag);
+  if (a.remInterval > 0) return t("La fiecare {n} min până la începere", { n: a.remInterval });
+  const mins = presetsToMinutes(a.remOffsets, a.time);
+  if (mins.length) return describeSchedule({ kind: "before", offsets: mins }, t, tag);
+  return "";
+}
+
+/** Buton „Editează” (deschide dialogul de programare cu datele ei). Trebuie să fie în interiorul QuickAddProvider. */
+function EditApptButton({ a, className, children }: { a: ApptVM; className?: string; children?: React.ReactNode }) {
+  const qa = useQuickAdd();
+  const t = useT();
+  return (
+    <button type="button" className={className} title={t("Editează programarea")} aria-label={t("Editează programarea")} onClick={() => qa.open(prefillOf(a))}>
+      {children ?? <IconPencil className="size-3" />}
+    </button>
+  );
+}
 
 /** Programări — tabel dens cu filtre locale (ca la Plătitori). Click pe rând = popup; statusul se schimbă direct din rând. */
 export default function AppointmentsTable({
@@ -169,11 +213,24 @@ export default function AppointmentsTable({
         </div>
       ),
     },
-    { key: "rem", label: t("Remindere"), minW: 70, render: (a) => (a.remEmail || a.remTelegram ? <span className="inline-flex items-center gap-1 text-ink-soft">{a.remEmail && <IconMail className="size-3" />}{a.remTelegram && <IconSend className="size-3" />}</span> : dash) },
     {
-      key: "act", label: "", minW: 40,
+      key: "rem", label: t("Remindere"), minW: 130, maxW: 260,
+      render: (a) => {
+        const txt = remText(a, t, dateTag(locale));
+        return txt || a.remEmail || a.remTelegram ? (
+          <span className="inline-flex items-center gap-1 text-ink-soft" title={txt}>
+            {txt && <span className="truncate">{txt}</span>}
+            {a.remEmail && <IconMail className="size-3 shrink-0" />}
+            {a.remTelegram && <IconSend className="size-3 shrink-0" />}
+          </span>
+        ) : dash;
+      },
+    },
+    {
+      key: "act", label: "", minW: 60,
       render: (a) => canManage ? (
-        <div onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <EditApptButton a={a} className={`${iconBtn} text-ink-soft`} />
           <button type="button" className={`${iconBtn} text-st-cancelled`} title={m.common.delete} onClick={() => remove(a.id)}><IconTrash className="size-3" /></button>
         </div>
       ) : null,
@@ -214,7 +271,7 @@ export default function AppointmentsTable({
       {
         kind: "select", key: "rem", label: t("Remindere: toate"),
         options: [{ value: "any", label: t("Cu remindere") }, { value: "none", label: t("Fără remindere") }],
-        test: (a, v) => (v === "any" ? a.remEmail || a.remTelegram : !a.remEmail && !a.remTelegram),
+        test: (a, v) => { const has = Boolean(a.remSchedule) || a.remInterval > 0 || a.remOffsets.length > 0 || a.remEmail || a.remTelegram; return v === "any" ? has : !has; },
       },
     ];
   }, [m, t, categories, today, quickDefaults.tomorrow]);
@@ -257,12 +314,13 @@ export default function AppointmentsTable({
             </div>
             <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
               <Link href={`/calendar?date=${current.dateKey}`} className="tap inline-flex h-8 cursor-pointer items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">{t("Vezi în calendar →")}</Link>
+              {canManage && <EditApptButton a={current} className="tap inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-[var(--color-surface-2)]"><IconPencil className="size-3.5" /> {t("Editează")}</EditApptButton>}
               {canManage && <button type="button" onClick={() => remove(current.id)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium text-st-cancelled hover:bg-[var(--color-surface-2)]">🗑 {m.common.delete}</button>}
             </div>
             <div className="divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)] text-sm">
               <Row label={t("Status")}><ApptStatusDropdown status={current.status} pending={busy === current.id || !canManage} onChange={(s) => change(current.id, s)} /></Row>
               <Row label={t("Categorie")}>{current.categoryName ?? "—"}</Row>
-              <Row label={t("Remindere")}>{current.remEmail || current.remTelegram ? [current.remEmail ? "Email" : "", current.remTelegram ? "Telegram" : ""].filter(Boolean).join(" · ") : "—"}</Row>
+              <Row label={t("Remindere")}>{[remText(current, t, dateTag(locale)), current.remEmail ? "Email" : "", current.remTelegram ? "Telegram" : ""].filter(Boolean).join(" · ") || "—"}</Row>
               {current.title && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{t("Descriere")}</p><p className="whitespace-pre-wrap text-[13px]">{current.title}</p></div>}
               {current.message && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{t("Detalii")}</p><p className="whitespace-pre-wrap text-[13px]">{current.message}</p></div>}
             </div>

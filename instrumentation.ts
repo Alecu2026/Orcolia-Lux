@@ -16,10 +16,19 @@ export function register() {
   // Dezactivare: DISABLE_TASK_REMINDER_TIMER=1. Pe Vercel (fără proces permanent) se apelează /api/cron/reminders din cron la 5–15 minute.
   if (process.env.DISABLE_TASK_REMINDER_TIMER === "1") return;
   setTimeout(() => {
+    // Sarcini + programări (reamintiri noi) + reminderele vechi ale programărilor către clienți (până acum le procesa doar cron-ul extern).
     const tick = () =>
-      Promise.all([import("./lib/services/tasks"), import("./lib/delivery-log")])
-        .then(([m, d]) => d.withDeliveryMeta({ source: "timer" }, () => m.checkTaskReminders()))
-        .catch((e) => console.error("[startup] reamintirile sarcinilor:", e));
+      Promise.all([import("./lib/services/tasks"), import("./lib/services/appointment-reminders"), import("./lib/services/reminders"), import("./lib/delivery-log")])
+        .then(([tasks, appts, legacy, d]) =>
+          d.withDeliveryMeta({ source: "timer" }, () =>
+            Promise.all([
+              tasks.checkTaskReminders().catch((e) => console.error("[startup] reamintirile sarcinilor:", e)),
+              appts.checkAppointmentReminders().catch((e) => console.error("[startup] reamintirile programărilor:", e)),
+              legacy.processDueReminders().catch((e) => console.error("[startup] reminderele vechi ale programărilor:", e)),
+            ]),
+          ),
+        )
+        .catch((e) => console.error("[startup] reamintiri:", e));
     void tick();
     const timer = setInterval(() => void tick(), 60_000);
     timer.unref?.();

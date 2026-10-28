@@ -4,12 +4,15 @@ import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   createQuickAppointment,
+  updateAppointmentAction,
   type ApptState,
 } from "@/app/actions/appointments";
 import type { CategoryLite, QuickDefaults, QuickPrefill } from "./types";
 import ClientCombobox from "./ClientCombobox";
 import { IconCheck, IconMail, IconSend, IconX } from "./icons";
-import ReminderOffsetPicker from "./ReminderOffsetPicker";
+import ReminderPicker from "./ReminderPicker";
+import { DEFAULT_TZ, zonedToUtc } from "@/lib/date";
+import { presetsToMinutes } from "@/lib/reminder-presets";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
 
@@ -49,8 +52,9 @@ export default function QuickAddDialog({
   const t = useT();
   const router = useRouter();
   const m = useMessages();
+  const editId = prefill?.id ?? "";
   const [state, formAction, pending] = useActionState<ApptState, FormData>(
-    createQuickAppointment,
+    editId ? updateAppointmentAction : createQuickAppointment,
     undefined,
   );
 
@@ -71,21 +75,29 @@ export default function QuickAddDialog({
   const [remTelegram, setRemTelegram] = useState(
     prefill?.reminderTelegram ?? defaults.reminderTelegram,
   );
-  const [reminderOffsets, setReminderOffsets] = useState<string[]>(
-    prefill?.reminderOffsets ?? defaults.reminderOffsets,
-  );
+  // Reminderele (ca la sarcini): programarea salvată; la o programare veche — pragurile fixe vechi convertite în „înainte de începere”; la una nouă — standardul din setări
+  const [remSchedule] = useState<string | null>(() => {
+    if (prefill?.reminderSchedule) return prefill.reminderSchedule;
+    if (prefill?.reminderIntervalMinutes) return null;
+    const mins = presetsToMinutes(prefill?.reminderOffsets ?? (editId ? [] : defaults.reminderOffsets), prefill?.time);
+    return mins.length ? JSON.stringify({ kind: "before", offsets: mins }) : null;
+  });
+  const startAtIso = (() => {
+    try {
+      return zonedToUtc(dateKey, time, DEFAULT_TZ).toISOString();
+    } catch {
+      return "";
+    }
+  })();
   const [status, setStatus] = useState<"NEW" | "CONFIRMED">(
     prefill?.status ?? "NEW",
   );
 
   // La selectarea categoriei, preia durata default
-  function pickCategory(c: CategoryLite) {
-    if (categoryId === c.id) {
-      setCategoryId("");
-    } else {
-      setCategoryId(c.id);
-      setDuration(String(c.defaultDurationMinutes));
-    }
+  function pickCategory(id: string) {
+    setCategoryId(id);
+    const c = categories.find((x) => x.id === id);
+    if (c) setDuration(String(c.defaultDurationMinutes));
   }
 
   useEffect(() => {
@@ -110,7 +122,7 @@ export default function QuickAddDialog({
     >
       <div className="card max-h-[92dvh] w-full max-w-lg overflow-auto rounded-b-none rounded-t-2xl p-5 shadow-2xl sm:rounded-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-bold">{m.appts.newTitle}</h2>
+          <h2 className="text-base font-bold">{editId ? t("Editează programarea") : m.appts.newTitle}</h2>
           <button
             onClick={onClose}
             className="tap grid size-9 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)]"
@@ -122,6 +134,7 @@ export default function QuickAddDialog({
 
         <form action={formAction} className="flex flex-col gap-4">
           {/* Hidden inputs sincronizate cu starea */}
+          {editId && <input type="hidden" name="id" value={editId} />}
           <input type="hidden" name="clientId" value={client.id} />
           <input type="hidden" name="clientName" value={client.id ? "" : client.name} />
           <input type="hidden" name="categoryId" value={categoryId} />
@@ -139,27 +152,16 @@ export default function QuickAddDialog({
           {categories.length > 0 && (
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-ink-soft">{m.appts.categoryLabel}</label>
-              <div className="flex flex-wrap gap-2">
+              <select
+                value={categoryId}
+                onChange={(e) => pickCategory(e.target.value)}
+                className="h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand"
+              >
+                <option value="">{t("— fără categorie —")}</option>
                 {categories.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => pickCategory(c)}
-                    className={`${chip} ${categoryId === c.id ? "text-white" : ""}`}
-                    style={
-                      categoryId === c.id
-                        ? { background: c.color, borderColor: c.color }
-                        : undefined
-                    }
-                  >
-                    <span
-                      className="mr-1.5 inline-block size-2 rounded-full align-middle"
-                      style={{ background: categoryId === c.id ? "#fff" : c.color }}
-                    />
-                    {c.name}
-                  </button>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
-              </div>
+              </select>
             </div>
           )}
 
@@ -219,6 +221,7 @@ export default function QuickAddDialog({
 
           <input
             name="title"
+            defaultValue={prefill?.title ?? ""}
             maxLength={120}
                         placeholder={t("Descriere scurtă (ex. Citire contor)")}
             className="h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand"
@@ -232,14 +235,14 @@ export default function QuickAddDialog({
           />
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            {(!editId || prefill?.status) && <button
               type="button"
               onClick={() => setStatus(status === "NEW" ? "CONFIRMED" : "NEW")}
               className={`${chip} inline-flex items-center gap-1.5 ${status === "CONFIRMED" ? "bg-st-confirmed text-white" : ""}`}
             >
               {status === "CONFIRMED" && <IconCheck className="size-3.5" />}
               {status === "CONFIRMED" ? m.appts.statusConfirmed : m.appts.statusNew}
-            </button>
+            </button>}
             <button
               type="button"
               onClick={() => setRemEmail(!remEmail)}
@@ -256,18 +259,11 @@ export default function QuickAddDialog({
             </button>
           </div>
 
-          {(remEmail || remTelegram) && (
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-ink-soft">
-                {m.appts.remindersLabel}
-              </label>
-              <ReminderOffsetPicker
-                name="reminderOffsets"
-                value={reminderOffsets}
-                onChange={setReminderOffsets}
-              />
-            </div>
-          )}
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-ink-soft">{m.appts.remindersLabel}</label>
+            <ReminderPicker interval={prefill?.reminderIntervalMinutes ?? null} schedule={remSchedule} startAt={startAtIso} />
+            <p className="mt-1.5 text-[11px] text-ink-soft">{t("Reamintirile ajung la tine (aplicație, push, Telegram). Clientul primește email / Telegram doar dacă bifezi canalul de mai sus.")}</p>
+          </div>
 
           {state?.error && (
             <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
@@ -280,7 +276,7 @@ export default function QuickAddDialog({
             disabled={pending || (!client.id && !client.name.trim())}
             className="tap h-13 min-h-12 rounded-xl bg-brand py-3 text-base font-semibold text-white hover:bg-brand-strong disabled:opacity-50"
           >
-            {pending ? m.common.saving : m.appts.saveBtn}
+            {pending ? m.common.saving : editId ? t("Salvează modificările") : m.appts.saveBtn}
           </button>
         </form>
       </div>

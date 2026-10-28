@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { processDueReminders } from "@/lib/services/reminders";
 import { checkOverdueTasks, checkTaskReminders } from "@/lib/services/tasks";
+import { checkAppointmentReminders } from "@/lib/services/appointment-reminders";
 import { notifyUsers, filteredAdminRecipients } from "@/lib/services/notifications";
 import { withDeliveryMeta } from "@/lib/delivery-log";
 import { checkUnansweredEmailTickets, checkAutoCloseEmailTickets } from "@/lib/services/email-ticket";
@@ -46,9 +47,10 @@ async function run() {
   await normalizeApaCanalDueDates().catch((e) => console.error("[cron] scadența facturilor Apă-Canal:", e));
 
   // ── Toate job-urile în paralel ───────────────────────────────────────────
-  const [remindersR, , , statusR, newTasksR, apptR, unansweredR, autoCloseR, imapR] = await Promise.allSettled([
+  const [remindersR, , , , statusR, newTasksR, apptR, unansweredR, autoCloseR, imapR] = await Promise.allSettled([
     processDueReminders(),
     checkTaskReminders(),
+    checkAppointmentReminders(),
     checkOverdueTasks(),
     processStatusChanges(since, now),
     processNewAdminTasks(since, now),
@@ -214,7 +216,7 @@ async function processUpcomingAppointments(since: Date, now: Date): Promise<numb
     const windowFrom = new Date(now.getTime() + lead.leadMs - lead.toleranceMs);
     const windowTo   = new Date(now.getTime() + lead.leadMs + lead.toleranceMs);
 
-    const appts = await prisma.appointment.findMany({
+    const allAppts = await prisma.appointment.findMany({
       where: {
         startAt: { gte: windowFrom, lte: windowTo },
         status: { notIn: ["CANCELLED", "NO_SHOW"] },
@@ -226,8 +228,14 @@ async function processUpcomingAppointments(since: Date, now: Date): Promise<numb
         categoryNameSnapshot: true,
         clientNameSnapshot: true,
         userId: true,
+        reminderSchedule: true,
+        reminderIntervalMinutes: true,
+        reminderOffsets: true,
       },
     });
+    // Programările cu remindere proprii (programare / interval, ca la sarcini) își trimit singure reamintirile (checkAppointmentReminders);
+    // cele fără niciun reminder ales (reminderOffsets gol) nu primesc nici aceste notificări fixe.
+    const appts = allAppts.filter((a) => !a.reminderSchedule && !a.reminderIntervalMinutes && a.reminderOffsets.length > 0);
 
     if (appts.length === 0) continue;
 

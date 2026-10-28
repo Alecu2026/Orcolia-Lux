@@ -2,11 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { DEFAULT_TZ, zonedParts } from "@/lib/date";
-import { computeNextRun, describeSchedule, parseReminderSchedule, type ReminderSchedule, type ReminderUnit } from "@/lib/reminder-schedule";
+import { computeNextRun, describeSchedule, offsetLabel, parseReminderSchedule, MAX_BEFORE_MIN, type ReminderSchedule, type ReminderUnit } from "@/lib/reminder-schedule";
 import { useLocale, useMessages, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 
-type Mode = "none" | "fixed" | "once" | "daily" | "weekly" | "monthly" | "every";
+type Mode = "none" | "fixed" | "once" | "daily" | "weekly" | "monthly" | "every" | "before";
+
+/** Pragurile „înainte de începere” propuse la programări (minute). */
+const BEFORE_PRESETS = [10, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080] as const;
 
 const FIXED = [10, 30, 60, 180, 360, 720, 1440, 10080] as const;
 const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
@@ -24,8 +27,12 @@ function tomorrowKey(): string {
  * „Reamintire periodică” pentru sarcini / tichete: fără reamintire, interval fix, sau o programare — o singură dată (dată + oră), zilnic, săptămânal
  * (zilele alese, ex. de 3 ori pe săptămână, la o oră), lunar (într-o zi a lunii, la o oră) ori la interval personalizat (la fiecare N minute / ore / zile / săptămâni).
  * Orele sunt ale firmei. Se trimite prin două câmpuri ascunse: `reminderIntervalMinutes` (interval fix) și `reminderSchedule` (JSON, validat pe server).
+ * Pentru programări (`startAt` dat, ISO) apare în plus „Înainte de începere”: mai multe praguri alese (ex. cu o zi, cu 3 ore și cu 30 de minute înainte), iar toate
+ * celelalte programări se opresc la începerea programării.
  */
-export default function ReminderPicker({ interval, schedule }: { interval: number | null; schedule: string | null }) {
+export default function ReminderPicker({ interval, schedule, startAt }: { interval: number | null; schedule: string | null; startAt?: string | null }) {
+  const appt = startAt !== undefined;
+  const startDate0 = startAt ? new Date(startAt) : null;
   const t = useT();
   const m = useMessages();
   const tag = dateTag(useLocale());
@@ -34,7 +41,7 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
   const init = useMemo(() => {
     let s: ReminderSchedule | null = null;
     try {
-      s = schedule ? parseReminderSchedule(JSON.parse(schedule)) : null;
+      s = schedule ? parseReminderSchedule(JSON.parse(schedule), new Date(), DEFAULT_TZ, { allowBefore: appt }) : null;
     } catch {}
     return s;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -44,7 +51,10 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
   const [mode, setMode] = useState<Mode>(init ? init.kind : interval && interval > 0 ? "fixed" : "none");
   const [fixed, setFixed] = useState<number>(interval && interval > 0 ? interval : 60);
   const [date, setDate] = useState(init?.kind === "once" ? init.date : tomorrowKey());
-  const [time, setTime] = useState(init && init.kind !== "every" ? init.time : "09:00");
+  const [time, setTime] = useState(init && "time" in init ? init.time : "09:00");
+  const [offsets, setOffsets] = useState<number[]>(init?.kind === "before" ? init.offsets : [1440, 180]);
+  const [customN, setCustomN] = useState(1);
+  const [customU, setCustomU] = useState<"minutes" | "hours" | "days">("hours");
   const [days, setDays] = useState<number[]>(init?.kind === "weekly" ? init.days : [1]);
   const [monthDay, setMonthDay] = useState<number>(init?.kind === "monthly" ? init.day : 1);
   const [every, setEvery] = useState<number>(init?.kind === "every" ? init.every : 2);
@@ -55,11 +65,12 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
     const p = zonedParts(new Date(), DEFAULT_TZ);
     return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
   })();
-  const [until, setUntil] = useState(init && init.kind !== "once" ? (init.until ?? "") : "");
+  const [until, setUntil] = useState(init && init.kind !== "once" && init.kind !== "before" ? (init.until ?? "") : "");
 
   // programarea curentă, ca obiect (null = nu e programată sau e incompletă)
   const built = useMemo<ReminderSchedule | null>(() => {
     const u = until ? { until } : {};
+    if (mode === "before") return parseReminderSchedule({ kind: "before", offsets }, new Date(), DEFAULT_TZ, { allowBefore: true });
     if (mode === "once") return parseReminderSchedule({ kind: "once", date, time });
     if (mode === "daily") return parseReminderSchedule({ kind: "daily", time, ...u });
     if (mode === "weekly") return parseReminderSchedule({ kind: "weekly", days, time, ...u });
@@ -70,15 +81,20 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
     }
     return null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, date, time, days, monthDay, every, unit, startDate, startTime, until]);
+  }, [mode, offsets, date, time, days, monthDay, every, unit, startDate, startTime, until]);
 
-  const next = built ? computeNextRun(built, new Date()) : null;
+  const next = built ? computeNextRun(built, new Date(), DEFAULT_TZ, startDate0) : null;
   const fmtNext = (d: Date) => d.toLocaleString(tag, { timeZone: DEFAULT_TZ, weekday: "short", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const incomplete = mode !== "none" && mode !== "fixed" && !built;
 
   const dayName = (d: number) => new Date(Date.UTC(2024, 0, d)).toLocaleDateString(tag, { weekday: "short", timeZone: "UTC" });
   const toggleDay = (d: number) => setDays((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : [...cur, d].sort((a, b) => a - b)));
   const preset = (list: number[]) => setDays(list);
+  const toggleOffset = (n: number) => setOffsets((cur) => (cur.includes(n) ? cur.filter((x) => x !== n) : [...cur, n].sort((a, b) => b - a)));
+  const addCustom = () => {
+    const min = Math.round(customN) * (customU === "days" ? 1440 : customU === "hours" ? 60 : 1);
+    if (Number.isInteger(min) && min >= 1 && min <= MAX_BEFORE_MIN) setOffsets((cur) => (cur.includes(min) ? cur : [...cur, min].sort((a, b) => b - a)));
+  };
 
   const fixedLabel: Record<number, string> = {
     10: m.tasks.reminder10m, 30: m.tasks.reminder30m, 60: m.tasks.reminder1h, 180: m.tasks.reminder3h,
@@ -88,6 +104,7 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
   return (
     <div className="flex flex-col gap-2">
       {/* câmpurile trimise cu formularul */}
+      {appt && <input type="hidden" name="remindersNew" value="1" />}
       <input type="hidden" name="reminderIntervalMinutes" value={mode === "fixed" ? fixed : 0} />
       <input type="hidden" name="reminderSchedule" value={built ? JSON.stringify(built) : ""} />
 
@@ -104,6 +121,11 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
         className={`${inp} w-full`}
       >
         <option value="none">{m.tasks.reminderNever}</option>
+        {appt && (
+          <optgroup label={t("Față de începerea programării")}>
+            <option value="before">{t("Înainte de începere (alege pragurile)")}</option>
+          </optgroup>
+        )}
         <optgroup label={t("Interval fix")}>
           {FIXED.map((n) => (
             <option key={n} value={`fixed:${n}`}>{fixedLabel[n]}</option>
@@ -120,6 +142,31 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
 
       {mode !== "none" && mode !== "fixed" && (
         <div className="flex flex-col gap-2.5 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)]/50 p-3">
+          {mode === "before" && (
+            <div>
+              <p className="mb-1 text-[11px] font-semibold text-ink-soft">{t("Amintește cu … înainte de începere")}</p>
+              <div className="flex flex-wrap gap-1">
+                {[...new Set([...BEFORE_PRESETS, ...offsets])].sort((a, b) => a - b).map((n) => (
+                  <button key={n} type="button" onClick={() => toggleOffset(n)} aria-pressed={offsets.includes(n)} className={chip(offsets.includes(n))}>
+                    {offsetLabel(n, t)}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 flex flex-wrap items-end gap-2">
+                <label className="text-[11px] font-semibold text-ink-soft">
+                  {t("Alt prag")}
+                  <input type="number" min={1} step={1} value={customN} onChange={(e) => setCustomN(Number(e.target.value))} className={`${inp} mt-0.5 w-20`} />
+                </label>
+                <select value={customU} onChange={(e) => setCustomU(e.target.value as "minutes" | "hours" | "days")} aria-label={t("Unitate")} className={`${inp} w-32`}>
+                  <option value="minutes">{t("minute")}</option>
+                  <option value="hours">{t("ore")}</option>
+                  <option value="days">{t("zile")}</option>
+                </select>
+                <button type="button" onClick={addCustom} className="tap h-9 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-semibold text-brand hover:bg-brand-soft">{t("Adaugă")}</button>
+              </div>
+            </div>
+          )}
+
           {mode === "once" && (
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="text-[11px] font-semibold text-ink-soft">
@@ -199,7 +246,7 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
             </>
           )}
 
-          {mode !== "once" && (
+          {mode !== "once" && mode !== "before" && (
             <label className="text-[11px] font-semibold text-ink-soft">
               {t("Până la data (opțional)")}
               <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} className={`${inp} mt-0.5 w-full sm:w-48`} />
@@ -209,7 +256,8 @@ export default function ReminderPicker({ interval, schedule }: { interval: numbe
           {incomplete && mode === "every" && (
             <p className="text-xs text-st-progress">{t("Alege un număr întreg de cel puțin 1 (maximum 366 de zile). Începutul e opțional: fără el, prima reamintire vine peste un interval.")}</p>
           )}
-          {incomplete && mode !== "every" && <p className="text-xs text-st-progress">{t("Completează toate câmpurile: reamintirea nu se va salva până atunci.")}</p>}
+          {incomplete && mode === "before" && <p className="text-xs text-st-progress">{t("Alege cel puțin un prag.")}</p>}
+          {incomplete && mode !== "every" && mode !== "before" && <p className="text-xs text-st-progress">{t("Completează toate câmpurile: reamintirea nu se va salva până atunci.")}</p>}
           {built && (
             <p className="text-xs text-ink-soft">
               <b className="text-ink">{describeSchedule(built, t, tag)}</b>

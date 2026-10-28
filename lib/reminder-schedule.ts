@@ -17,7 +17,13 @@ export type ReminderSchedule =
   /** `day`: 1–31 (într-o lună mai scurtă se ia ultima zi a lunii) sau 0 = ultima zi a lunii. */
   | { kind: "monthly"; day: number; time: string; until?: string }
   /** La fiecare `every` `unit`, începând de la `anchor` (instant ISO — prima reamintire). */
-  | { kind: "every"; every: number; unit: ReminderUnit; anchor: string; until?: string };
+  | { kind: "every"; every: number; unit: ReminderUnit; anchor: string; until?: string }
+  /** Doar pentru programări: la fiecare prag, cu atâtea MINUTE înainte de începerea programării (ex. [1440, 180, 30] = cu o zi, 3 ore și 30 de minute înainte). */
+  | { kind: "before"; offsets: number[] };
+
+/** Cea mai îndepărtată reamintire „înainte de începere”: 60 de zile. */
+export const MAX_BEFORE_MIN = 60 * 24 * 60;
+export const MAX_BEFORE_OFFSETS = 12;
 
 export const REMINDER_UNITS: ReminderUnit[] = ["minutes", "hours", "days", "weeks"];
 const UNIT_MS: Record<ReminderUnit, number> = { minutes: 60_000, hours: 3_600_000, days: 86_400_000, weeks: 7 * 86_400_000 };
@@ -30,13 +36,20 @@ const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
  * Validează și normalizează o programare venită din formular / bază de date (orice altceva → null). Pentru „la interval" fără început, prima reamintire
  * e peste un interval de acum (`now`); cu `startDate` + `startTime` — chiar la momentul ales.
  */
-export function parseReminderSchedule(raw: unknown, now: Date = new Date(), tz = DEFAULT_TZ): ReminderSchedule | null {
+export function parseReminderSchedule(raw: unknown, now: Date = new Date(), tz = DEFAULT_TZ, opts: { allowBefore?: boolean } = {}): ReminderSchedule | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const time = typeof o.time === "string" ? o.time : "";
   const until = typeof o.until === "string" && isValidDateKey(o.until) ? o.until : undefined;
   const withUntil = <T extends object>(s: T): T & { until?: string } => (until ? { ...s, until } : s);
   switch (o.kind) {
+    case "before": {
+      if (!opts.allowBefore) return null; // doar programările au „începere”
+      const offsets = Array.isArray(o.offsets)
+        ? [...new Set(o.offsets.map(Number).filter((n) => Number.isInteger(n) && n >= 1 && n <= MAX_BEFORE_MIN))].sort((a, b) => b - a).slice(0, MAX_BEFORE_OFFSETS)
+        : [];
+      return offsets.length > 0 ? { kind: "before", offsets } : null;
+    }
     case "once": {
       const date = typeof o.date === "string" ? o.date : "";
       return isValidDateKey(date) && isValidTimeOfDay(time) ? { kind: "once", date, time } : null;
@@ -76,7 +89,22 @@ const lastDayOf = (year: number, month: number) => new Date(Date.UTC(year, month
  * Prima reamintire STRICT după `after` (null = nu mai urmează niciuna: programare unică trecută sau perioada „până la" depășită).
  * Zilnic / săptămânal / lunar: se caută prima zi potrivită din calendarul firmei, la ora dată (corect și la schimbarea orei de vară).
  */
-export function computeNextRun(s: ReminderSchedule, after: Date, tz = DEFAULT_TZ): Date | null {
+export function computeNextRun(s: ReminderSchedule, after: Date, tz = DEFAULT_TZ, startAt?: Date | null): Date | null {
+  if (s.kind === "before") {
+    if (!startAt) return null;
+    let best: Date | null = null;
+    for (const o of s.offsets) {
+      const at = new Date(startAt.getTime() - o * 60_000);
+      if (at.getTime() > after.getTime() && at.getTime() < startAt.getTime() && (!best || at.getTime() < best.getTime())) best = at;
+    }
+    return best;
+  }
+  const r = computeNextRunBase(s, after, tz);
+  // o programare nu mai amintește după ce a început
+  return startAt && r && r.getTime() >= startAt.getTime() ? null : r;
+}
+
+function computeNextRunBase(s: Exclude<ReminderSchedule, { kind: "before" }>, after: Date, tz = DEFAULT_TZ): Date | null {
   const within = (d: Date | null): Date | null => {
     if (!d) return null;
     if (s.kind !== "once" && s.until && dateKeyOf(d, tz) > s.until) return null;
@@ -112,6 +140,29 @@ export function computeNextRun(s: ReminderSchedule, after: Date, tz = DEFAULT_TZ
   return null;
 }
 
+/** Programările care mai primesc remindere: noi, confirmate sau în desfășurare (nu și încheiate / anulate / absente). */
+export const APPT_REMINDER_STATUSES = ["NEW", "CONFIRMED", "IN_PROGRESS"] as const;
+
+/**
+ * Următoarea reamintire a unei programări (null = nu mai urmează niciuna): după programare sau la interval fix de la `now`, dar niciodată
+ * la/după începerea programării. Fără programare și fără interval ⇒ null (programarea nu are remindere noi).
+ */
+export function nextApptReminderAt(
+  schedule: ReminderSchedule | null,
+  intervalMinutes: number | null | undefined,
+  startAt: Date,
+  now: Date,
+  tz = DEFAULT_TZ,
+): Date | null {
+  if (startAt.getTime() <= now.getTime()) return null;
+  if (schedule) return computeNextRun(schedule, now, tz, startAt);
+  if (intervalMinutes && intervalMinutes > 0) {
+    const at = new Date(now.getTime() + intervalMinutes * 60_000);
+    return at.getTime() < startAt.getTime() ? at : null;
+  }
+  return null;
+}
+
 /** Descrierea programării, pentru afișare („Săptămânal: lun, mie, vin la 09:00”). `t` = traducerea; `tag` = limba pentru numele zilelor. */
 export function describeSchedule(
   s: ReminderSchedule,
@@ -121,8 +172,10 @@ export function describeSchedule(
 ): string {
   const dmy = (d: string) => d.split("-").reverse().join(".");
   const dayName = (d: number) => new Date(Date.UTC(2024, 0, d)).toLocaleDateString(tag, { weekday: "short", timeZone: "UTC" }); // 2024-01-01 = luni
-  const tail = s.kind !== "once" && s.until ? ` · ${t("până la {date}", { date: dmy(s.until) })}` : "";
+  const tail = s.kind !== "once" && s.kind !== "before" && s.until ? ` · ${t("până la {date}", { date: dmy(s.until) })}` : "";
   switch (s.kind) {
+    case "before":
+      return t("Înainte de programare: {list}", { list: s.offsets.map((n) => offsetLabel(n, t)).join(", ") });
     case "once":
       return t("O singură dată: {date} la {time}", { date: dmy(s.date), time: s.time });
     case "daily":
@@ -138,4 +191,16 @@ export function describeSchedule(
       return t("La fiecare {n} {unit}, începând de la {start}", { n: s.every, unit, start }) + tail;
     }
   }
+}
+
+/** „1 zi”, „3 ore”, „30 min”, „1 zi 2 ore” — pragul „înainte de începere”, pentru afișare. */
+export function offsetLabel(min: number, t: (ro: string, v?: Record<string, string | number>) => string): string {
+  const d = Math.floor(min / 1440);
+  const h = Math.floor((min % 1440) / 60);
+  const m = min % 60;
+  const parts: string[] = [];
+  if (d) parts.push(d === 1 ? t("1 zi") : t("{n} zile", { n: d }));
+  if (h) parts.push(h === 1 ? t("1 oră") : t("{n} ore", { n: h }));
+  if (m) parts.push(t("{n} min", { n: m }));
+  return parts.join(" ");
 }

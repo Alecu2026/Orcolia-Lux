@@ -18,12 +18,16 @@ export const LIST_SELECT = {
   endAt: true,
   dateKey: true,
   clientId: true,
+  categoryId: true,
   clientNameSnapshot: true,
   categoryNameSnapshot: true,
   categoryColorSnapshot: true,
   color: true,
   reminderEmailEnabled: true,
   reminderTelegramEnabled: true,
+  reminderOffsets: true,
+  reminderSchedule: true,
+  reminderIntervalMinutes: true,
   message: true,
 } as const;
 
@@ -43,6 +47,12 @@ export type AppointmentListItem = {
   reminderEmailEnabled: boolean;
   reminderTelegramEnabled: boolean;
   message?: string | null;
+  categoryId?: string | null;
+  /** Pragurile fixe vechi (reminder-presets) — cât timp programarea nu are remindere noi. */
+  reminderOffsets?: string[];
+  /** Reminderele noi, ca la sarcini (JSON din reminder-schedule.ts) sau interval fix în minute. */
+  reminderSchedule?: unknown;
+  reminderIntervalMinutes?: number | null;
 };
 
 const ACTIVE_STATUSES: AppointmentStatus[] = [

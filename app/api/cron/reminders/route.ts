@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { processDueReminders } from "@/lib/services/reminders";
 import { checkTaskReminders } from "@/lib/services/tasks";
+import { checkAppointmentReminders } from "@/lib/services/appointment-reminders";
 import { withDeliveryMeta } from "@/lib/delivery-log";
 
 export const dynamic = "force-dynamic";
@@ -21,16 +22,20 @@ async function run(req: Request) {
     return new Response("forbidden", { status: 401 });
   }
 
-  const [reminders, taskReminders] = await withDeliveryMeta({ source: "cron:reminders" }, () =>
+  const [reminders, taskReminders, appointmentReminders] = await withDeliveryMeta({ source: "cron:reminders" }, () =>
     Promise.all([
       processDueReminders(),
       checkTaskReminders().catch((e) => {
         console.error("[cron/reminders] reamintirile sarcinilor:", e);
         return { checked: 0, notified: 0 };
       }),
+      checkAppointmentReminders().catch((e) => {
+        console.error("[cron/reminders] reamintirile programărilor:", e);
+        return { checked: 0, notified: 0 };
+      }),
     ]),
   );
-  return Response.json({ ok: true, reminders, taskReminders });
+  return Response.json({ ok: true, reminders, taskReminders, appointmentReminders });
 }
 
 export async function GET(req: Request) {

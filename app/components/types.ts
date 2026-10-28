@@ -40,11 +40,25 @@ export type ApptVM = {
   color: string | null;
   remEmail: boolean;
   remTelegram: boolean;
+  /** Categoria curentă (pentru editare). */
+  categoryId: string | null;
+  /** Durata în minute (pentru editare). */
+  durationMinutes: number;
+  /** Reminderele noi: programarea ca JSON (reminder-schedule.ts) sau ""; intervalul fix în minute (0 = niciunul); pragurile vechi — doar dacă nu există remindere noi. */
+  remSchedule: string;
+  remInterval: number;
+  remOffsets: string[];
   /** „Mesaj / detalii” scris la creare (separat de „Descriere” = titlu). */
   message: string;
 };
 
 export type QuickPrefill = Partial<{
+  /** Prezent ⇒ editarea programării existente (nu una nouă). */
+  id: string;
+  title: string;
+  /** JSON-ul programării de remindere (sau ""), intervalul fix în minute. */
+  reminderSchedule: string;
+  reminderIntervalMinutes: number;
   clientId: string;
   clientName: string;
   clientPhone: string;
