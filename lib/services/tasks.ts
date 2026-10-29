@@ -16,6 +16,7 @@ import {
 import { formatTime, formatDate, DEFAULT_TZ } from "../date";
 import { can } from "../permissions";
 import { env } from "../env";
+import { absoluteUrl } from "../storage";
 import { notifyUsers, observerRecipients, filteredAdminRecipients } from "./notifications";
 import { Prisma } from "@prisma/client";
 import type { TaskStatus, TaskType, TaskPriority, CreatedFrom } from "@prisma/client";
@@ -1447,9 +1448,9 @@ export async function notifyAttachmentTelegram(
         const chatId = await telegramChatFor(uid);
         if (!chatId) continue;
         if (isImage) {
-          await sendPhoto(chatId, attUrl, caption, keyboard);
+          await sendPhoto(chatId, absoluteUrl(attUrl), caption, keyboard);
         } else {
-          await sendDocument(chatId, attUrl, caption, keyboard);
+          await sendDocument(chatId, absoluteUrl(attUrl), caption, keyboard);
         }
       } catch {
         // ignoră eșecul per-destinatar

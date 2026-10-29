@@ -365,7 +365,6 @@
     },
     map: {
       unavailable: "Hartă indisponibilă",
-      varNotSet: "nu este configurată.",
       noPins: "Niciun proiect cu locație",
       noPinsDesc: "Deschide un proiect și apasă pe hartă pentru a seta locația.",
       legend: "Legendă",
@@ -373,7 +372,6 @@
       onMap: "proiecte pe hartă",
       details: "Detalii",
       inZone: "proiecte în această zonă",
-      missingToken: "NEXT_PUBLIC_MAPBOX_TOKEN lipsește — harta indisponibilă.",
       pickerHint: "Apasă pe hartă sau trage markerul albastru pentru a seta locația.",
       deleteLocation: "✕ Șterge locația",
       latPlaceholder: "Latitudine",

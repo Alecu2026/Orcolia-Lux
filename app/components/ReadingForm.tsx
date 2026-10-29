@@ -5,6 +5,7 @@ import { reportMeterIssueAction, saveMeterReadingAction, uploadMeterPhotoAction 
 import { ISSUE_KINDS, ISSUE_LABELS, MAX_ISSUE_NOTE, isIssueKind } from "@/lib/meter-issues";
 import { JUMP_CONFIRM_M3, MAX_ADDRESS, MAX_LOC_ACCURACY, mapsUrl, parseIndex, type MeterLocationDto, type ReadingDto } from "@/lib/meter-readings";
 import { optimizeImage } from "@/lib/image-optimize";
+import { thumbUrl } from "@/lib/files-url";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 import { useToast } from "./toast";
@@ -451,7 +452,7 @@ export default function ReadingForm({
         <p className="mb-1 text-xs font-semibold text-ink-soft">{t("Poza contorului (opțional)")}</p>
         {(preview || photoUrl) && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview ?? photoUrl ?? ""} alt={t("Poza contorului")} className="mb-2 max-h-48 w-full rounded-xl border border-[var(--color-line)] object-cover" />
+          <img src={preview ?? (photoUrl ? thumbUrl(photoUrl, 640) : "")} decoding="async" alt={t("Poza contorului")} className="mb-2 max-h-48 w-full rounded-xl border border-[var(--color-line)] object-cover" />
         )}
         <label className="tap inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium hover:bg-brand-soft">
           📷 {photo || photoUrl ? t("Schimbă poza") : t("Fă o poză")}

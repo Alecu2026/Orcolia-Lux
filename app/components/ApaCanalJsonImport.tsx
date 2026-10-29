@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { upload } from "@vercel/blob/client";
+import { postFile } from "@/lib/upload-client";
 import { IconDroplet, IconX } from "./icons";
 import { useMessages, useT } from "@/lib/i18n/context";
 
@@ -37,7 +37,7 @@ export default function ApaCanalJsonImport({ className }: { className?: string }
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [pct, setPct] = useState(0);
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [fileId, setFileId] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [applied, setApplied] = useState<Applied | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export default function ApaCanalJsonImport({ className }: { className?: string }
   function reset() {
     setPhase("idle");
     setPct(0);
-    setBlobUrl(null);
+    setFileId(null);
     setStats(null);
     setApplied(null);
     setError(null);
@@ -60,18 +60,15 @@ export default function ApaCanalJsonImport({ className }: { className?: string }
     setPhase("uploading");
     setPct(0);
     try {
-      const blob = await upload(`apa-canal-import/${Date.now()}_${file.name}`, file, {
-        access: "public",
-        handleUploadUrl: "/api/upload/apa-canal-import",
-        onUploadProgress: ({ percentage }) => setPct(percentage),
-      });
-      setBlobUrl(blob.url);
+      const up = await postFile<{ fileId?: string }>("/api/upload/apa-canal-import", file, setPct);
+      if (!up.ok || !up.data?.fileId) throw new Error(up.data?.error ?? m.common.error);
+      setFileId(up.data.fileId);
       setPhase("analyzing");
 
       const res = await fetch("/api/import/apa-canal-json", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blobUrl: blob.url, commit: false }),
+        body: JSON.stringify({ fileId: up.data.fileId, commit: false }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? m.common.error);
@@ -86,14 +83,14 @@ export default function ApaCanalJsonImport({ className }: { className?: string }
   }
 
   async function handleConfirm() {
-    if (!blobUrl) return;
+    if (!fileId) return;
     setPhase("committing");
     setError(null);
     try {
       const res = await fetch("/api/import/apa-canal-json", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blobUrl, commit: true }),
+        body: JSON.stringify({ fileId, commit: true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? m.common.error);

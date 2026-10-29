@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { thumbUrl } from "@/lib/files-url";
 import { useMemo, useState } from "react";
 import type { MeterMonth } from "@/lib/queries/meters";
 import { enumLabel } from "@/lib/meters";
@@ -173,7 +174,7 @@ export default function MeterMonthView({
                 {f.photoUrl ? (
                   <a href={f.photoUrl} target="_blank" rel="noreferrer" title={t("Deschide poza")}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={f.photoUrl} alt={t("Poza contorului")} loading="lazy" className="max-h-56 w-full rounded-lg border border-[var(--color-line)] object-cover" />
+                    <img src={thumbUrl(f.photoUrl, 640)} alt={t("Poza contorului")} loading="lazy" decoding="async" className="max-h-56 w-full rounded-lg border border-[var(--color-line)] object-cover" />
                   </a>
                 ) : (
                   <p className="text-sm text-ink-soft">{t("Fără poză.")}</p>

@@ -12,8 +12,8 @@ const SKIP_TYPES = new Set(["image/svg+xml", "image/gif", "image/webp"]);
  */
 export async function optimizeImage(file: File): Promise<File> {
   if (!file.type.startsWith("image/") || SKIP_TYPES.has(file.type)) return file;
-  // Sub 200KB și dimensiuni mici → probabil nu merită procesarea
-  if (file.size < 200 * 1024) return file;
+  // Sub 120KB → nu merită procesarea
+  if (file.size < 120 * 1024) return file;
 
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
@@ -31,7 +31,7 @@ export async function optimizeImage(file: File): Promise<File> {
       }
 
       // Dacă imaginea e deja mică și sub limita de size, nu recomprima
-      if (img.naturalWidth <= MAX_PX && img.naturalHeight <= MAX_PX && file.size < 300 * 1024) {
+      if (img.naturalWidth <= MAX_PX && img.naturalHeight <= MAX_PX && file.size < 200 * 1024) {
         resolve(file);
         return;
       }
@@ -67,15 +67,15 @@ export async function optimizeImage(file: File): Promise<File> {
         }, "image/jpeg", QUALITY);
       };
 
-      // PNG cu transparență → păstrează PNG (recomprimat)
+      // PNG: tot WebP (păstrează transparența, iar capturile de ecran se micșorează mult); dacă nu ajută, rămâne originalul
       if (file.type === "image/png") {
         canvas.toBlob((blob) => {
-          if (blob && blob.size < file.size) {
-            resolve(new File([blob], file.name, { type: "image/png" }));
+          if (blob && blob.type === "image/webp" && blob.size < file.size) {
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".webp"), { type: "image/webp" }));
           } else {
             resolve(file);
           }
-        }, "image/png");
+        }, "image/webp", QUALITY);
       } else {
         tryWebP();
       }

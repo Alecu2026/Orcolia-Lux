@@ -367,7 +367,6 @@ const en: Messages = {
     },
     map: {
       unavailable: "Map unavailable",
-      varNotSet: "is not configured.",
       noPins: "No projects with location",
       noPinsDesc: "Open a project and click on the map to set a location.",
       legend: "Legend",
@@ -375,7 +374,6 @@ const en: Messages = {
       onMap: "projects on map",
       details: "Details",
       inZone: "projects in this area",
-      missingToken: "NEXT_PUBLIC_MAPBOX_TOKEN not set — map unavailable.",
       pickerHint: "Click the map or drag the blue marker to set the location.",
       deleteLocation: "✕ Remove location",
       latPlaceholder: "Latitude",

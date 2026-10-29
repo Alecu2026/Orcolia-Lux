@@ -1,31 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { upload } from "@vercel/blob/client";
+import { useEffect, useRef, useState } from "react";
+import { optimizeImage } from "@/lib/image-optimize";
+import { uploadTaskFile } from "@/lib/upload-client";
+import { thumbUrl } from "@/lib/files-url";
 import {
   getTaskAttachments,
-  saveTaskAttachment,
   deleteTaskAttachment,
   type AttachmentRow,
 } from "@/app/actions/attachments";
 import { IconTrash } from "./icons";
-import { useMessages } from "@/lib/i18n/context";
+import { useMessages, useT } from "@/lib/i18n/context";
 
 // ── Helpers ──────────────────────────────────────────────
-
-function toFolder(projectName: string | null | undefined): string {
-  if (!projectName?.trim()) return "task-uri-generale";
-  const s = projectName
-    .toLowerCase()
-    .replace(/ă|â/g, "a")
-    .replace(/î/g, "i")
-    .replace(/ș|ş/g, "s")
-    .replace(/ț|ţ/g, "t")
-    .replace(/[^a-z0-9 -]/g, "")
-    .trim()
-    .replace(/\s+/g, "-");
-  return s || "task-uri-generale";
-}
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -41,19 +28,19 @@ function isImage(mimeType: string | null): boolean {
 
 export default function TaskAttachmentsPanel({
   taskId,
-  projectName,
 }: {
   taskId: string;
-  projectName: string | null;
+  /** neutilizat: fișierele se grupează după task, nu după proiect */
+  projectName?: string | null;
 }) {
   const m = useMessages();
+  const t = useT();
   const [attachments, setAttachments] = useState<AttachmentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -73,40 +60,17 @@ export default function TaskAttachmentsPanel({
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     setError(null);
-    const folder = toFolder(projectName);
-
-    for (const file of Array.from(files)) {
-      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const pathname = `tasks/${folder}/${Date.now()}_${safe}`;
-
+    for (const raw of Array.from(files)) {
+      const file = await optimizeImage(raw);
       setUploading(true);
       setProgress(0);
       try {
-        const blob = await upload(pathname, file, {
-          access: "public",
-          handleUploadUrl: "/api/upload/task-attachment",
-          onUploadProgress: ({ percentage }) => setProgress(percentage),
-        });
-
-        await new Promise<void>((resolve, reject) => {
-          startTransition(async () => {
-            try {
-              const row = await saveTaskAttachment({
-                taskId,
-                url: blob.url,
-                name: file.name,
-                size: file.size,
-                mimeType: file.type || null,
-              });
-              setAttachments((prev) => [...prev, row]);
-              resolve();
-            } catch (e) {
-              reject(e);
-            }
-          });
-        });
+        const res = await uploadTaskFile(taskId, file, setProgress);
+        if (!res.attachment) throw new Error(res.error ?? m.common.error);
+        const row = res.attachment;
+        setAttachments((prev) => [...prev, { ...row, createdAt: new Date(row.createdAt) }]);
       } catch (e) {
-        setError((e as Error).message ?? m.common.error);
+        setError(t((e as Error).message ?? m.common.error));
       } finally {
         setUploading(false);
         setProgress(0);
@@ -196,8 +160,10 @@ export default function TaskAttachmentsPanel({
                 {isImage(a.mimeType) ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={a.url}
+                    src={thumbUrl(a.url, 160)}
                     alt={a.name}
+                    loading="lazy"
+                    decoding="async"
                     className="h-16 w-16 rounded object-cover"
                   />
                 ) : (

@@ -86,7 +86,7 @@ export default async function TicketsPage({
         canEdit={can(user, "tasks.edit")}
         userId={user.id}
         userTeamIds={user.teamIds}
-        blobEnabled={env.blob.enabled}
+        uploadsEnabled={env.storage.enabled}
         canCreateProject={can(user, "projects.create")}
         initialCreate={can(user, "tasks.create") ? initialCreate : undefined}
         initialProjectId={can(user, "tasks.create") ? initialProjectId : undefined}

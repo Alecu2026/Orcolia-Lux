@@ -388,7 +388,7 @@ export default async function TaskDetailPage({
           currentUserId={user.id}
           canDelete={canDelete}
           canAdd={canWork}
-          blobEnabled={env.blob.enabled}
+          uploadsEnabled={env.storage.enabled}
         />
       </div>
 

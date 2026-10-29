@@ -90,7 +90,7 @@ export default async function TasksPage({
         userId={user.id}
         userTeamIds={user.teamIds}
         quietHoursEnabled={quietHoursSettings.quietHoursEnabled}
-        blobEnabled={env.blob.enabled}
+        uploadsEnabled={env.storage.enabled}
         canCreateProject={can(user, "projects.create")}
         initialCreate={can(user, "tasks.create") ? initialCreate : undefined}
         initialProjectId={can(user, "tasks.create") ? initialProjectId : undefined}

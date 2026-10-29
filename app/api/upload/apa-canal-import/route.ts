@@ -1,33 +1,33 @@
-import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
+import { storePrivateStream } from "@/lib/storage";
 
-// Exportul 1C poate ajunge ca .txt (Windows-1251) sau .json — browserul detectează tipul după
-// extensie, nu întotdeauna corect, deci acceptăm toate variantele plauzibile.
-const ALLOWED_TYPES = ["text/plain", "application/json", "application/octet-stream"];
+export const runtime = "nodejs";
 
+// Exportul lunar 1C are ~50 MB; limita de aici e marja. (Pe nginx: client_max_body_size cel puțin 160m pe această rută — vezi docs/SERVER-PROPRIU.md.)
+const MAX_IMPORT = 150 * 1024 * 1024;
+
+/**
+ * Încarcă exportul Apă-Canal (.json / .txt) în stocarea PRIVATĂ a serverului (nu se servește public); răspunde cu un identificator pentru /api/import/apa-canal-json.
+ * Corpul cererii e chiar fișierul (nu multipart), numele vine în antetul x-file-name; se scrie pe disc pe măsură ce sosește, deci cei ~50 MB nu ocupă memorie.
+ */
 export async function POST(request: Request): Promise<Response> {
-  const body = (await request.json()) as HandleUploadBody;
-
+  const user = await getCurrentUser();
+  if (!user) return Response.json({ error: "Autentificare necesară." }, { status: 401 });
+  if (!can(user, "invoices.create") || !can(user, "clients.create")) {
+    return Response.json({ error: "Nu ai permisiunea de a importa date Apă-Canal." }, { status: 403 });
+  }
+  const declared = Number(request.headers.get("content-length"));
+  if (declared > MAX_IMPORT) return Response.json({ error: "Fișierul depășește 150 MB." }, { status: 413 });
+  if (!request.body || declared === 0) return Response.json({ error: "Niciun fișier selectat." }, { status: 400 });
+  let name = "export.json";
+  try { name = decodeURIComponent(request.headers.get("x-file-name") ?? "") || name; } catch {}
   try {
-    const jsonResponse = await handleUpload({
-      body,
-      request,
-      onBeforeGenerateToken: async () => {
-        const user = await getCurrentUser();
-        if (!user) throw new Error("Autentificare necesară");
-        if (!can(user, "invoices.create") || !can(user, "clients.create")) {
-          throw new Error("Nu ai permisiunea de a importa date Apă-Canal.");
-        }
-        return {
-          allowedContentTypes: ALLOWED_TYPES,
-          maximumSizeInBytes: 150 * 1024 * 1024, // 150 MB — exportul lunar are ~50 MB
-          addRandomSuffix: true,
-        };
-      },
-    });
-    return Response.json(jsonResponse);
-  } catch (err) {
-    return Response.json({ error: (err as Error).message }, { status: 400 });
+    const res = await storePrivateStream("importuri", request.body, name, MAX_IMPORT);
+    if (res === "too-big") return Response.json({ error: "Fișierul depășește 150 MB." }, { status: 413 });
+    return Response.json({ fileId: res.id });
+  } catch (e) {
+    console.error("[apa-canal-import] salvarea pe disc a eșuat:", e);
+    return Response.json({ error: "Fișierul nu a putut fi salvat pe server." }, { status: 500 });
   }
 }

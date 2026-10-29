@@ -167,11 +167,10 @@ export const env = {
     },
   },
 
-  blob: {
-    token: optional("BLOB_READ_WRITE_TOKEN"),
-    get enabled() {
-      return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
-    },
+  // Fișierele (poze, atașamente) se salvează pe discul serverului, în UPLOAD_DIR (vezi lib/storage.ts).
+  storage: {
+    dir: optional("UPLOAD_DIR"),
+    enabled: true,
   },
 
   isProd: process.env.NODE_ENV === "production",

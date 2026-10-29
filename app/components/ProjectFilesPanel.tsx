@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { thumbUrl } from "@/lib/files-url";
 import {
   getProjectAttachments,
   deleteTaskAttachment,
@@ -73,7 +74,7 @@ export default function ProjectFilesPanel({ projectId }: { projectId: string }) 
               <a href={f.url} target="_blank" rel="noreferrer" title={f.name} className="block">
                 {isImage(f.mimeType) ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={f.url} alt={f.name} className="h-16 w-16 rounded object-cover" />
+                  <img src={thumbUrl(f.url, 160)} alt={f.name} loading="lazy" decoding="async" className="h-16 w-16 rounded object-cover" />
                 ) : (
                   <div className="flex h-16 w-16 flex-col items-center justify-center rounded bg-red-50 text-red-500">
                     <span className="text-2xl">📄</span>

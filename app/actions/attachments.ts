@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
 import { can, canViewTask, canViewTaskData } from "@/lib/permissions";
 import { canWorkOnTaskById } from "@/lib/services/task-access";
-import { del } from "@vercel/blob";
+import { deleteStored } from "@/lib/storage";
 
 export type AttachmentRow = {
   id: string;
@@ -55,66 +55,6 @@ export async function getTaskAttachments(taskId: string): Promise<AttachmentRow[
   }));
 }
 
-export async function saveTaskAttachment(data: {
-  taskId: string;
-  url: string;
-  name: string;
-  size: number;
-  mimeType: string | null;
-}): Promise<AttachmentRow> {
-  const user = await requireUser();
-  // Fișiere se atașează doar la task-urile la care lucrezi („Editare" sau implicat) și pe care ai voie să le vezi.
-  if (!canViewTaskData(user) || !(await canWorkOnTaskById(user, data.taskId))) throw new Error("Nu ai permisiunea să atașezi fișiere la acest task");
-
-  // Avoid duplicates if onUploadCompleted webhook already saved it
-  const existing = await prisma.taskAttachment.findFirst({
-    where: { url: data.url },
-    select: {
-      id: true,
-      name: true,
-      url: true,
-      size: true,
-      mimeType: true,
-      createdAt: true,
-      user: { select: { name: true } },
-    },
-  });
-  if (existing) {
-    return { ...existing, userName: existing.user.name };
-  }
-
-  const row = await prisma.taskAttachment.create({
-    data: {
-      taskId: data.taskId,
-      userId: user.id,
-      name: data.name,
-      url: data.url,
-      size: data.size,
-      mimeType: data.mimeType ?? null,
-    },
-    select: {
-      id: true,
-      name: true,
-      url: true,
-      size: true,
-      mimeType: true,
-      createdAt: true,
-      user: { select: { name: true } },
-    },
-  });
-
-  await prisma.taskActivity.create({
-    data: {
-      taskId: data.taskId,
-      userId: user.id,
-      action: "ATTACHMENT_ADDED",
-      meta: { name: data.name, size: data.size },
-    },
-  }).catch(() => {});
-
-  return { ...row, userName: row.user.name };
-}
-
 export async function deleteTaskAttachment(id: string): Promise<void> {
   const user = await requireUser();
 
@@ -128,7 +68,7 @@ export async function deleteTaskAttachment(id: string): Promise<void> {
     throw new Error("Nu ai permisiunea să ștergi acest fișier");
   }
 
-  await del(attachment.url).catch(() => {});
+  await deleteStored(attachment.url);
   await prisma.taskAttachment.delete({ where: { id } });
 
   await prisma.taskActivity.create({

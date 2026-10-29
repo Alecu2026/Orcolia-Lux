@@ -6,6 +6,9 @@ const nextConfig = {
   // care schimbă date (revalidatePath) golesc singure acest cache, deci nu apar date vechi după o modificare.
   experimental: {
     staleTimes: { dynamic: 30, static: 60 },
+    // pozele de contor trimise prin acțiuni de server pot depăși limita implicită de 1 MB (serverul le face WebP)
+    serverActions: { bodySizeLimit: "25mb" },
+    proxyClientMaxBodySize: "25mb",
   },
   // Portalul client: „tickets” → „cereri”. Linkurile vechi (din emailuri deja trimise) merg în continuare.
   async redirects() {

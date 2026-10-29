@@ -21,6 +21,7 @@ import {
 } from "@/lib/services/tasks";
 import { listTasks, taskHistory, taskViewFilter, type TaskHistoryRow, type TaskRow } from "@/lib/queries/tasks";
 import { logAudit } from "@/lib/services/audit";
+import { deleteStored } from "@/lib/storage";
 import { fromTaskChanges } from "@/lib/services/audit-diff";
 import { TASK_STATUS_RO } from "@/lib/telegram";
 import type { TaskStatus, TaskType, TaskPriority } from "@prisma/client";
@@ -514,50 +515,6 @@ export type AttachmentRow = {
   userId: string;
 };
 
-export async function addAttachmentAction(
-  taskId: string,
-  formData: FormData,
-): Promise<{ ok?: boolean; error?: string; attachment?: AttachmentRow }> {
-  const user = await requireUser();
-  if (!canViewTaskData(user) || !(await canWorkOnTaskById(user, taskId))) return { error: "Nu ai permisiunea." };
-  if (DEMO) return { error: "Mod demo." };
-
-  const file = formData.get("file") as File | null;
-  if (!file || !file.size) return { error: "Niciun fișier selectat." };
-  if (file.size > 20 * 1024 * 1024) return { error: "Fișierul depășește 20 MB." };
-
-  const { env } = await import("@/lib/env");
-  if (!env.blob.enabled) return { error: "Stocarea fișierelor nu este configurată (BLOB_READ_WRITE_TOKEN lipsă)." };
-
-  const { put } = await import("@vercel/blob");
-  const safeName = file.name.replace(/[^\w.\-]/g, "_");
-  const blob = await put(`tasks/${taskId}/${Date.now()}-${safeName}`, file, { access: "public" });
-
-  const att = await prisma.taskAttachment.create({
-    data: {
-      taskId,
-      userId: user.id,
-      name: file.name,
-      url: blob.url,
-      size: file.size,
-      mimeType: file.type || null,
-    },
-    select: {
-      id: true, name: true, url: true, size: true, mimeType: true, createdAt: true,
-      user: { select: { id: true, name: true } },
-    },
-  });
-
-  await prisma.taskActivity
-    .create({ data: { taskId, userId: user.id, action: "ATTACHMENT_ADDED", meta: { fileName: file.name, size: file.size } } })
-    .catch(() => {});
-
-  after(() => notifyAttachmentTelegram(taskId, blob.url, file.name, file.type || null));
-
-  revalidatePath(`/tasks/${taskId}`);
-  return { ok: true, attachment: { ...att, userName: att.user.name, userId: att.user.id } };
-}
-
 export async function deleteAttachmentAction(
   attachmentId: string,
   taskId: string,
@@ -574,11 +531,7 @@ export async function deleteAttachmentAction(
     return { error: "Nu poți șterge atașamentul altcuiva." };
   }
 
-  const { env } = await import("@/lib/env");
-  if (env.blob.enabled) {
-    const { del } = await import("@vercel/blob");
-    await del(att.url).catch(() => {});
-  }
+  await deleteStored(att.url);
   await prisma.taskAttachment.delete({ where: { id: attachmentId } });
   await prisma.taskActivity
     .create({ data: { taskId, userId: user.id, action: "ATTACHMENT_DELETED", meta: { fileName: att.name } } })
@@ -641,11 +594,14 @@ export async function deleteTask(id: string): Promise<void> {
   if (!can(user, "tasks.delete")) return;
   if (DEMO) return;
   const task = await prisma.task.findUnique({ where: { id }, select: { title: true, type: true } });
+  const files = await prisma.taskAttachment.findMany({ where: { taskId: id }, select: { url: true } });
   await prisma.taskActivity.deleteMany({ where: { taskId: id } });
   await prisma.taskComment.deleteMany({ where: { taskId: id } });
   // Notificările task-ului ar rămâne cu link spre o pagină care nu mai există.
   await prisma.notification.deleteMany({ where: { taskId: id } }).catch(() => {});
   await prisma.task.delete({ where: { id } }).catch(() => {});
+  // atașamentele de pe disc (și miniaturile lor) nu rămân orfane
+  if (task) await Promise.all(files.map((f) => deleteStored(f.url)));
   if (task) {
     await logAudit(
       { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },

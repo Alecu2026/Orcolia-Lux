@@ -134,7 +134,7 @@ export default function TasksTable({
   userTeamIds = [],
   canCreateProject = false,
   quietHoursEnabled = false,
-  blobEnabled = false,
+  uploadsEnabled = false,
   initialCreate,
   initialProjectId,
   initialClientId,
@@ -170,7 +170,7 @@ export default function TasksTable({
   userTeamIds?: string[];
   canCreateProject?: boolean;
   quietHoursEnabled?: boolean;
-  blobEnabled?: boolean;
+  uploadsEnabled?: boolean;
   initialCreate?: "TASK" | "TICKET" | "WORK_ORDER";
   initialProjectId?: string;
   initialClientId?: string;
@@ -754,7 +754,7 @@ export default function TasksTable({
           canCreateProject={canCreateProject}
           canAssign={canAssign}
           quietHoursEnabled={quietHoursEnabled}
-          blobEnabled={blobEnabled}
+          uploadsEnabled={uploadsEnabled}
           initialProjectId={initialProjectId}
           initialClientId={initialClientId}
           initialTitle={initialTitle}

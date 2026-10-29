@@ -48,3 +48,9 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# copiat din node_modules de scripts/copy-maplibre-worker.mjs
+public/maplibre-gl-worker.mjs
+
+# fișierele încărcate (poze, atașamente) — pe disc, nu în git
+/storage/

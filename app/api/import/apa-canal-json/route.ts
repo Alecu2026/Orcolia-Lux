@@ -2,16 +2,14 @@ import { revalidateTag } from "next/cache";
 import { rebuildPayerSnap } from "@/lib/services/payer-cache";
 import { rebuildInvoiceSnap } from "@/lib/services/invoice-cache";
 import { normalizeApaCanalDueDates } from "@/lib/services/apa-canal-due";
-import { del } from "@vercel/blob";
+import { deletePrivate, readPrivate } from "@/lib/storage";
 import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { logAudit } from "@/lib/services/audit";
 import { importApaCanalBuffer } from "@/lib/services/apa-canal-import";
 
-// Fișierul poate depăși cu mult limita de 4.5 MB pentru corpul unui request către o funcție
-// serverless Vercel — de-asta clientul îl urcă întâi direct în Vercel Blob (vezi
-// /api/upload/apa-canal-import + ApaCanalJsonImport.tsx) și trimite aici doar URL-ul rezultat;
-// noi îl descărcăm server-side (fără limita aceea) și abia apoi îl procesăm.
+// Clientul urcă întâi fișierul (~50 MB) în stocarea privată a serverului (/api/upload/apa-canal-import + ApaCanalJsonImport.tsx)
+// și trimite aici doar identificatorul lui; îl citim de pe disc, iar la confirmare îl ștergem.
 // Import complet (~18k documente) durează sub 2 minute local — alocăm marjă generoasă.
 export const maxDuration = 300;
 
@@ -22,27 +20,18 @@ export async function POST(req: Request) {
     return Response.json({ error: "Nu ai permisiunea de a importa date Apă-Canal." }, { status: 403 });
   }
 
-  let body: { blobUrl?: string; commit?: boolean };
+  let body: { fileId?: string; commit?: boolean };
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: "Cerere invalidă." }, { status: 400 });
   }
-  const blobUrl = body.blobUrl?.trim();
+  const fileId = body.fileId?.trim();
   const commit = body.commit === true;
-  if (!blobUrl) return Response.json({ error: "Lipsește fișierul (blobUrl)." }, { status: 400 });
+  if (!fileId) return Response.json({ error: "Lipsește fișierul încărcat." }, { status: 400 });
 
-  let buf: Buffer;
-  try {
-    const fileRes = await fetch(blobUrl);
-    if (!fileRes.ok) throw new Error(`status ${fileRes.status}`);
-    buf = Buffer.from(await fileRes.arrayBuffer());
-  } catch (e) {
-    return Response.json(
-      { error: `Nu s-a putut descărca fișierul urcat: ${e instanceof Error ? e.message : "eroare necunoscută"}.` },
-      { status: 400 },
-    );
-  }
+  const buf = await readPrivate(fileId, "importuri");
+  if (!buf) return Response.json({ error: "Fișierul urcat nu mai există pe server. Încarcă-l din nou." }, { status: 400 });
 
   let result: Awaited<ReturnType<typeof importApaCanalBuffer>>;
   try {
@@ -56,7 +45,7 @@ export async function POST(req: Request) {
     return Response.json({ dryRun: true, stats: plan.stats });
   }
 
-  await del(blobUrl).catch(() => {});
+  await deletePrivate(fileId);
   // expire:0 — invalidare imediată (import creează mii de clienți; stale-while-revalidate ar
   // ține lista veche până la următoarea vizită "max").
   revalidateTag("clients", { expire: 0 });

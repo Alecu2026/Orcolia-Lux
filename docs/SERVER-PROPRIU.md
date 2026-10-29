@@ -43,7 +43,7 @@ Fișier `.env` în rădăcina proiectului (model: `.env.example`). Cele esenția
 | `SMTP_*`, `IMAP_*`, `EMAIL_FROM` | email trimis / citit |
 | `INTERNAL_APP_URL` | **nou:** adresa la care serverul se apelează pe el însuși (ex. `http://127.0.0.1:3000`), pentru PDF-ul facturii |
 | `CHROME_PATH` | **nou:** opțional, calea spre Chrome/Chromium pentru PDF (vezi secțiunea 6) |
-| `BLOB_READ_WRITE_TOKEN` | atașamente și importuri mari (secțiunea 7) |
+| `UPLOAD_DIR` | folderul în care se salvează pozele și atașamentele (secțiunea 7); implicit `./storage` lângă aplicație |
 
 Numele acceptă litere mari sau mici pentru `sms_token`, `crm_token`, `pbx_api_key` etc.
 
@@ -133,11 +133,94 @@ Se generează cu un Chromium fără interfață. Pe Vercel e inclus; pe server p
 Și setezi `INTERNAL_APP_URL=http://127.0.0.1:3000`, ca serverul să-și poată deschide singur pagina facturii (adresa publică nu e
 mereu accesibilă din interior).
 
-## 7. Atașamente și importuri mari (Vercel Blob)
+## 7. Poze și atașamente (stocare pe disc)
 
-Fișierele atașate la task-uri și importul mare Apă-Canal se încarcă în **Vercel Blob** (serviciu extern; merge și dintr-un server propriu,
-cu `BLOB_READ_WRITE_TOKEN` dintr-un store Blob al contului Vercel). Cerințe: serverul public pe HTTPS (Blob apelează aplicația când
-încărcarea s-a terminat). Fără token, funcția apare dezactivată („BLOB_READ_WRITE_TOKEN nedefinit”), restul aplicației merge.
+Toate fișierele încărcate — pozele contoarelor (teren, portal, offline), atașamentele task-urilor / tichetelor, dovezile de finalizare — se salvează **pe discul serverului**,
+fără niciun serviciu extern. Nu mai există `BLOB_READ_WRITE_TOKEN` și nici limita de 1 GB a cloudului.
+
+**Unde:** în `UPLOAD_DIR` (implicit `./storage` lângă aplicație). Pune-l pe un disc/partiție cu loc și **cu backup**, de ex. `UPLOAD_DIR=/var/crm/uploads` (proprietar: utilizatorul cu care pornește aplicația).
+
+```
+UPLOAD_DIR/
+├── public/                                    → servite la https://<domeniu>/files/…
+│   ├── sarcini/
+│   │   ├── 012-sediu-nou/<cod>-<nume>         atașamentele sarcinilor din proiectul #012 (un folder pe PROIECT, nu pe task)
+│   │   └── fara-proiect/…                     sarcini fără proiect
+│   ├── cereri/
+│   │   ├── 012-sediu-nou/…                    atașamentele cererilor (tichete), aceeași structură
+│   │   └── fara-proiect/…
+│   └── contoare/
+│       └── 2026-10/<cod>-<contor>.webp        pozele citirilor, un folder pe lună
+├── private/importuri/                         exporturile 1C în curs de import — NU se servesc niciodată
+└── cache/<160|320|640>/…                      miniaturi generate la cerere; se pot șterge oricând, se refac singure
+```
+
+Folderele de bază (`sarcini`, `cereri`, `contoare`, `importuri`) se creează la pornirea aplicației; folderul unui proiect (sau al unei luni) se creează la **prima poză** din el, nu înainte.
+Codul proiectului e numărul lui (`012`): dacă îl redenumești, pozele noi continuă în același folder.
+
+- **Miniaturi:** listele de poze cer `…?w=160|320|640`; serverul face o singură dată o variantă WebP mică (de ~0,3–30 KB în loc de MB), o ține în `cache/` și o servește cu cache de 1 an. Listele se încarcă mult mai repede și consumă mult mai puțină bandă.
+- **Resurse:** cel mult `IMAGE_JOBS` (implicit 2) conversii de imagini rulează simultan, restul așteaptă la coadă; exportul 1C (~50 MB) se scrie pe disc în flux, fără să ocupe memorie.
+- **Poze → WebP:** orice JPEG / PNG mai mare de 100 KB se redimensionează (max 1920 px) și se salvează ca WebP — de obicei de 5–10 ori mai mic.
+  Se face și în browser (înainte de trimitere), și pe server (plasă de siguranță). PDF-urile și celelalte fișiere rămân neschimbate.
+- **Adresa nu poate fi ghicită** (cod aleator de 96 de biți), deci linkurile din Telegram / email merg fără autentificare, ca înainte. Dacă vrei fișiere doar pentru utilizatori
+  autentificați, spune — se adaugă o verificare de sesiune pe `/files`, dar atunci Telegram nu va mai putea prelua pozele prin link.
+- **Backup:** copiază `UPLOAD_DIR` odată cu baza de date (ex. `rsync -a --delete /var/crm/uploads/ /backup/uploads/` zilnic în crontab). Baza de date păstrează doar adresa fișierului;
+  fără folder, pozele dispar chiar dacă baza e intactă.
+- **Cu mai multe instanțe** ale aplicației (load-balancer), toate trebuie să vadă același `UPLOAD_DIR` (disc partajat / NFS).
+- **Mai rapid cu nginx (opțional):** nginx poate ține fișierele deja servite în cache propriu, ca Node să nu mai fie atins la a doua cerere (în `http { }`, apoi în `server { }`):
+
+  ```nginx
+  proxy_cache_path /var/cache/nginx/crm levels=1:2 keys_zone=crm_files:10m max_size=2g inactive=30d;
+
+  location ^~ /files/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_cache crm_files;
+    proxy_cache_valid 200 30d;
+    proxy_cache_key $uri$is_args$args;   # miniaturile (?w=…) se țin separat
+  }
+  ```
+
+  (Nu folosi `alias` direct spre `public/`: ar ignora `?w=` și ar servi pozele mari în loc de miniaturi.)
+
+- **Import Apă-Canal (~50 MB):** exportul se încarcă în `private/imports` și se șterge după import. În nginx, ruta lui are nevoie de o limită mai mare decât restul:
+
+  ```nginx
+  location = /api/upload/apa-canal-import {
+    client_max_body_size 160m;
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_request_buffering off;
+  }
+  ```
+
+  (Atașamentele și pozele au limita de `client_max_body_size 25m` din secțiunea 5.)
+
+### Curățenie (fișiere rămase fără rând în baza de date)
+
+La ștergerea unui task sau atașament, fișierul și miniaturile lui se șterg singure. Pentru ce ar rămâne totuși (încărcări întrerupte, ștergeri directe din baza de date):
+
+```bash
+node --env-file=.env scripts/cleanup-orphan-files.mjs            # raport
+node --env-file=.env scripts/cleanup-orphan-files.mjs --apply    # șterge (nu atinge fișierele mai noi de 24 h)
+```
+
+Poți pune varianta `--apply` în crontab, o dată pe săptămână.
+
+### Mutarea fișierelor vechi din Vercel Blob
+
+Pozele și atașamentele încărcate înainte de această schimbare au încă adrese `https://…blob.vercel-storage.com/…` în baza de date și continuă să se deschidă cât timp store-ul Blob există.
+Ca să le muți pe disc (și să le convertești în WebP), din folderul aplicației, cu aceleași variabile ca aplicația (`DATABASE_URL`, `UPLOAD_DIR`):
+
+```bash
+node --env-file=.env scripts/migrate-files-to-local.mjs            # raport: câte fișiere, câți MB (nu modifică nimic)
+node --env-file=.env scripts/migrate-files-to-local.mjs --apply    # descarcă, convertește, salvează local, actualizează baza de date
+```
+
+Se poate re-rula oricând (ce e deja local se sare, ce a eșuat se reia). **Nu șterge nimic din cloud** — după ce verifici că pozele se deschid, golești manual store-ul din Vercel.
+Fă întâi un backup al bazei de date.
 
 ## 8. Integrări care trebuie să ajungă la server
 

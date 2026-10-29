@@ -42,7 +42,7 @@ export default async function InvoicesPage({
         initial={{ items: res.items, page: res.page, total: res.total, totalPages: Math.max(1, Math.ceil(res.total / Math.min(perPage, 100))), perPage, status, q }}
         mode={res.mode}
         origin={env.appUrl}
-        canImportApaCanal={can(user, "invoices.create") && can(user, "clients.create") && env.blob.enabled}
+        canImportApaCanal={can(user, "invoices.create") && can(user, "clients.create") && env.storage.enabled}
         canCreate={can(user, "invoices.create")}
         canEdit={can(user, "invoices.edit")}
         canDelete={can(user, "invoices.delete")}

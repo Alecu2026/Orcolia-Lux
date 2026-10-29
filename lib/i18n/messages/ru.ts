@@ -367,7 +367,6 @@ const ru: Messages = {
     },
     map: {
       unavailable: "Карта недоступна",
-      varNotSet: "не настроена.",
       noPins: "Нет проектов с местоположением",
       noPinsDesc: "Откройте проект и нажмите на карту, чтобы задать местоположение.",
       legend: "Легенда",
@@ -375,7 +374,6 @@ const ru: Messages = {
       onMap: "проектов на карте",
       details: "Подробности",
       inZone: "проектов в этой зоне",
-      missingToken: "NEXT_PUBLIC_MAPBOX_TOKEN не настроен — карта недоступна.",
       pickerHint: "Нажмите на карту или перетащите синий маркер, чтобы задать местоположение.",
       deleteLocation: "✕ Удалить местоположение",
       latPlaceholder: "Широта",

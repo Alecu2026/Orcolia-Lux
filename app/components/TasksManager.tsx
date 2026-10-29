@@ -15,12 +15,12 @@ import {
   getTaskHistory,
   getTaskComments,
   addTaskCommentAction,
-  addAttachmentAction,
   listTasksAction,
   type TaskState,
 } from "@/app/actions/tasks";
 import { dateKeyOf, formatTime } from "@/lib/date";
 import { optimizeImage } from "@/lib/image-optimize";
+import { uploadTaskFile } from "@/lib/upload-client";
 import { useToast } from "./toast";
 import { IconTrash, IconX, IconChevronLeft, IconChevronRight, IconPencil } from "./icons";
 import CardActionsMenu from "./CardActionsMenu";
@@ -189,7 +189,7 @@ export default function TasksManager({
   userId,
   canCreateProject = false,
   quietHoursEnabled = false,
-  blobEnabled = false,
+  uploadsEnabled = false,
   initialCreate,
   initialProjectId,
   initialOpenId,
@@ -215,7 +215,7 @@ export default function TasksManager({
   userId?: string;
   canCreateProject?: boolean;
   quietHoursEnabled?: boolean;
-  blobEnabled?: boolean;
+  uploadsEnabled?: boolean;
   initialCreate?: "TASK" | "TICKET" | "WORK_ORDER";
   initialProjectId?: string;
   initialOpenId?: string;
@@ -834,7 +834,7 @@ export default function TasksManager({
           categories={categories}
           canCreateProject={canCreateProject}
           quietHoursEnabled={quietHoursEnabled}
-          blobEnabled={blobEnabled}
+          uploadsEnabled={uploadsEnabled}
           initialProjectId={initialProjectId}
           onClose={() => setCreateType(null)}
           onCreated={(id) => {
@@ -1238,7 +1238,7 @@ function fmtFileSize(bytes: number): string {
 }
 
 export function CreateDialog({
-  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, blobEnabled, initialProjectId, initialClientId, initialTitle, initialAddress, initialDescription, canAssign = true, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated,
+  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, uploadsEnabled, initialProjectId, initialClientId, initialTitle, initialAddress, initialDescription, canAssign = true, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated,
 }: {
   initialType: "TASK" | "TICKET" | "WORK_ORDER";
   users: Opt[];
@@ -1248,7 +1248,7 @@ export function CreateDialog({
   categories: CategoryLite[];
   canCreateProject: boolean;
   quietHoursEnabled?: boolean;
-  blobEnabled?: boolean;
+  uploadsEnabled?: boolean;
   initialProjectId?: string;
   /** Preîncărcări (ex. din popup-ul de apel): client, titlu, descriere. */
   initialClientId?: string;
@@ -1315,12 +1315,10 @@ export function CreateDialog({
         setFormError(result?.error ?? m.common.error);
         return;
       }
-      if (stagedFiles.length > 0 && blobEnabled) {
+      if (stagedFiles.length > 0 && uploadsEnabled) {
         for (let i = 0; i < stagedFiles.length; i++) {
           setProgress(`${m.tasks.fileLabel} ${i + 1} / ${stagedFiles.length}…`);
-          const afd = new FormData();
-          afd.append("file", stagedFiles[i]);
-          await addAttachmentAction(result.id, afd).catch(() => {});
+          await uploadTaskFile(result.id, stagedFiles[i]).catch(() => {});
         }
       }
       toast.success(m.common.success);
@@ -1415,7 +1413,7 @@ export function CreateDialog({
           )}
 
           {/* ── Atașamente ─────────────────────────────────── */}
-          {blobEnabled && (
+          {uploadsEnabled && (
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <span className="text-xs font-semibold text-ink-soft">

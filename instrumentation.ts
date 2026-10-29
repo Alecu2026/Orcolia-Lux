@@ -3,6 +3,8 @@
 // costă o singură interogare.
 export function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  // folderele pentru fișiere (sarcini / cereri / contoare) există pe disc încă de la pornire
+  import("./lib/storage").then((m) => m.ensureStorageDirs()).catch((e) => console.error("[startup] folderele de fișiere:", e));
   // Pe Vercel fiecare instanță nouă ar rula interogarea (cold start-uri dese, bază de date partajată): acolo scadențele le aduce la zi cron-ul zilnic.
   if (process.env.VERCEL) return;
   setTimeout(() => {

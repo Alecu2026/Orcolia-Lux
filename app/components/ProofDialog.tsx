@@ -1,21 +1,12 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import { upload } from "@vercel/blob/client";
-import { saveTaskAttachment } from "@/app/actions/attachments";
 import { optimizeImage } from "@/lib/image-optimize";
+import { uploadTaskFile } from "@/lib/upload-client";
 import { useT } from "@/lib/i18n/context";
 import { IconX } from "./icons";
 
 type Ask = { taskId: string; projectName?: string | null; retry: () => void };
-
-function folderOf(projectName: string | null | undefined): string {
-  const s = (projectName ?? "")
-    .toLowerCase()
-    .replace(/ă|â/g, "a").replace(/î/g, "i").replace(/ș|ş/g, "s").replace(/ț|ţ/g, "t")
-    .replace(/[^a-z0-9 -]/g, "").trim().replace(/\s+/g, "-");
-  return s || "task-uri-generale";
-}
 
 function ProofDialog({ ask, onClose }: { ask: Ask; onClose: () => void }) {
   const t = useT();
@@ -32,13 +23,8 @@ function ProofDialog({ ask, onClose }: { ask: Ask; onClose: () => void }) {
     setBusy(true);
     try {
       const file = await optimizeImage(raw);
-      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const blob = await upload(`tasks/${folderOf(ask.projectName)}/${Date.now()}_${safe}`, file, {
-        access: "public",
-        handleUploadUrl: "/api/upload/task-attachment",
-        onUploadProgress: ({ percentage }) => setPct(percentage),
-      });
-      await saveTaskAttachment({ taskId: ask.taskId, url: blob.url, name: file.name, size: file.size, mimeType: file.type || null });
+      const res = await uploadTaskFile(ask.taskId, file, setPct);
+      if (!res.attachment) throw new Error(res.error ?? "Eroare");
       onClose();
       ask.retry(); // fișierul e atașat: finalizarea se reia singură
     } catch (err) {

@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { addAttachmentAction, deleteAttachmentAction, type AttachmentRow } from "@/app/actions/tasks";
+import { deleteAttachmentAction, type AttachmentRow } from "@/app/actions/tasks";
 import { optimizeImage } from "@/lib/image-optimize";
+import { uploadTaskFile } from "@/lib/upload-client";
 import { useToast } from "./toast";
 import { IconTrash } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
@@ -34,7 +35,7 @@ export default function TaskAttachmentSection({
   currentUserId,
   canDelete,
   canAdd = true,
-  blobEnabled,
+  uploadsEnabled,
 }: {
   taskId: string;
   initialAttachments: AttachmentRow[];
@@ -42,7 +43,7 @@ export default function TaskAttachmentSection({
   canDelete: boolean;
   /** Fără „Editare" și fără să fii implicat în task nu poți atașa fișiere. */
   canAdd?: boolean;
-  blobEnabled: boolean;
+  uploadsEnabled: boolean;
 }) {
   const t = useT();
   const toast = useToast();
@@ -60,18 +61,15 @@ export default function TaskAttachmentSection({
     }
     setUploading(true);
     const file = await optimizeImage(raw);
-    const fd = new FormData();
-    fd.append("file", file);
     try {
-      const res = await addAttachmentAction(taskId, fd);
-      if (res.error) {
-        toast.error(t(res.error));
+      const res = await uploadTaskFile(taskId, file);
+      if (!res.attachment) {
+        toast.error(t(res.error ?? m.common.error));
         return;
       }
-      if (res.attachment) {
-        setAttachments((a) => [...a, res.attachment!]);
-        toast.success(m.tasks.attachmentUploaded);
-      }
+      const row = res.attachment;
+      setAttachments((a) => [...a, { ...row, createdAt: new Date(row.createdAt) }]);
+      toast.success(m.tasks.attachmentUploaded);
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -95,7 +93,7 @@ export default function TaskAttachmentSection({
     <div className="card p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-bold">📎 {m.tasks.attachments} {attachments.length > 0 && `(${attachments.length})`}</h2>
-        {!canAdd ? null : blobEnabled ? (
+        {!canAdd ? null : uploadsEnabled ? (
           <label className="tap cursor-pointer rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-strong">
             {uploading ? m.tasks.uploadingFile : m.tasks.addAttachment}
             <input
@@ -106,9 +104,7 @@ export default function TaskAttachmentSection({
               disabled={uploading}
             />
           </label>
-        ) : (
-          <span className="text-[11px] text-ink-soft">{t("BLOB_READ_WRITE_TOKEN nedefinit")}</span>
-        )}
+        ) : null}
       </div>
 
       {attachments.length === 0 ? (

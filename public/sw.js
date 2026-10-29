@@ -45,6 +45,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (url.origin !== self.location.origin) return;
+  // fișierele încărcate au adrese unice și cache HTTP propriu; nu le dublăm în cache-ul aplicației
+  if (url.pathname.startsWith("/files/")) return;
 
   if (
     url.pathname.startsWith("/api/") ||
