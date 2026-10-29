@@ -53,11 +53,12 @@ import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 
 const PRIO_RANK = { LOW: 1, MEDIUM: 2, HIGH: 3, URGENT: 4 } as const;
+/** Prioritatea ca etichetă colorată (se vede și pe rânduri colorate / cu zebră): urgent roșu, ridicată portocaliu, medie albastru, scăzută gri. */
 const PRIO_CLS: Record<Task["priority"], string> = {
-  LOW: "text-ink-soft",
-  MEDIUM: "text-ink",
-  HIGH: "font-semibold text-st-progress",
-  URGENT: "font-bold text-st-cancelled",
+  LOW: "inline-block rounded-full bg-[var(--color-surface-2)] px-2 py-px text-[10px] font-semibold text-ink-soft ring-1 ring-inset ring-[var(--color-line)]",
+  MEDIUM: "inline-block rounded-full bg-brand/15 px-2 py-px text-[10px] font-semibold text-brand",
+  HIGH: "inline-block rounded-full bg-st-progress/20 px-2 py-px text-[10px] font-bold text-st-progress",
+  URGENT: "inline-block rounded-full bg-st-cancelled/20 px-2 py-px text-[10px] font-bold text-st-cancelled",
 };
 const OPEN: Status[] = ["NEW", "ASSIGNED", "READ", "IN_PROGRESS", "ON_HOLD", "REVIEW"];
 const GROUPS: Record<string, Status[]> = {
@@ -140,6 +141,9 @@ export default function TasksTable({
   initialTitle,
   initialAddress,
   initialDescription,
+  initialTemplateId,
+  initialCallPhone,
+  initialCallAt,
   initialOpenId,
   scopeOptions,
   basePath = "/tasks",
@@ -174,6 +178,10 @@ export default function TasksTable({
   /** Adresa plătitorului din apel: completează câmpul „Adresă” la creare. */
   initialAddress?: string;
   initialDescription?: string;
+  /** Pornit din pop-up-ul „Apel primit”: șablonul ales, telefonul și momentul apelului (variabilele de plătitor se completează din plătitorul apelului). */
+  initialTemplateId?: string;
+  initialCallPhone?: string;
+  initialCallAt?: string;
   initialOpenId?: string;
   scopeOptions?: { key: string; label: string }[];
   basePath?: "/tasks" | "/tickets";
@@ -216,7 +224,7 @@ export default function TasksTable({
   const [tplManage, setTplManage] = useState(false);
   const [prefill, setPrefill] = useState<TemplatePrefill | null>(null);
   const prefillCreated = useRef(false);
-  async function startFromTemplate(id: string) {
+  async function startFromTemplate(id: string, pickedClientId?: string) {
     setTplMenu(false);
     setTplManage(false);
     if (prefill && !prefillCreated.current) {
@@ -225,7 +233,7 @@ export default function TasksTable({
       await releaseTaskTemplateCounterAction(old.templateId, old.reserved).catch(() => {});
       setTpls((cur) => cur.map((t) => (t.id === old.templateId && t.counter === old.reserved + 1 ? { ...t, counter: old.reserved } : t)));
     }
-    const res = await applyTaskTemplateAction(id).catch(() => null);
+    const res = await applyTaskTemplateAction(id, { clientId: pickedClientId || initialClientId || undefined, phone: initialCallPhone, callAt: initialCallAt }).catch(() => null);
     if (!res || !res.ok) return toast.error(res && !res.ok ? res.error : m.common.error);
     prefillCreated.current = false;
     setPrefill(res.prefill);
@@ -252,6 +260,14 @@ export default function TasksTable({
     }
     setPrefill(null);
   }
+  // pornit dintr-un apel cu șablon ales: aplică șablonul o singură dată, cu datele plătitorului
+  const templateAutoStarted = useRef(false);
+  useEffect(() => {
+    if (!initialTemplateId || templateAutoStarted.current) return;
+    templateAutoStarted.current = true;
+    void startFromTemplate(initialTemplateId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [openId, setOpenId] = useState<string | null>(initialOpenId ?? null);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [createType, setCreateType] = useState<"TASK" | "TICKET" | "WORK_ORDER" | null>(initialCreate ?? null);
@@ -361,7 +377,7 @@ export default function TasksTable({
     {
       key: "seq", label: "#", minW: 45, sort: (t) => t.seq,
       render: (t) => (
-        <button type="button" onClick={() => setOpenId(t.id)} title={tr("Deschide detaliile")} className="cursor-pointer rounded px-0.5 font-mono font-semibold text-brand hover:bg-brand-soft/60 hover:underline">
+        <button type="button" onClick={() => setOpenId(t.id)} title={tr("Deschide detaliile")} className="dt-ctl cursor-pointer rounded px-0.5 font-mono font-semibold text-brand hover:underline">
           {t.seq != null ? `#${t.seq}` : "↗"}
         </button>
       ),
@@ -478,7 +494,7 @@ export default function TasksTable({
       key: "progress", label: "%", minW: 50, right: true, sort: (t) => t.progress,
       render: (t) => (
         <div onClick={(e) => e.stopPropagation()}>
-          <select value={t.progress} disabled={!canWorkRow(t)} onChange={(e) => changeProgress(t.id, Number(e.target.value))} className="h-4 w-12 cursor-pointer rounded border-0 bg-transparent text-[11px] outline-none disabled:cursor-not-allowed disabled:opacity-60" aria-label={tr("Progres")}>
+          <select value={t.progress} disabled={!canWorkRow(t)} onChange={(e) => changeProgress(t.id, Number(e.target.value))} className="dt-ctl h-4 w-12 cursor-pointer rounded border-0 bg-transparent text-[11px] outline-none disabled:cursor-not-allowed disabled:opacity-60" aria-label={tr("Progres")}>
             {[0, 25, 50, 75, 100].map((p) => <option key={p} value={p}>{p}%</option>)}
           </select>
         </div>
@@ -727,7 +743,7 @@ export default function TasksTable({
           key={prefill ? `${prefill.templateId}:${prefill.reserved}` : "nou"}
           prefill={prefill ?? undefined}
           templates={tpls}
-          onPickTemplate={(id) => void startFromTemplate(id)}
+          onPickTemplate={(id, clientId) => void startFromTemplate(id, clientId)}
           onClearTemplate={() => void clearTemplate()}
           initialType={createType}
           users={users}

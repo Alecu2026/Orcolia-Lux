@@ -30,7 +30,7 @@ function tomorrowKey(): string {
  * Pentru programări (`startAt` dat, ISO) apare în plus „Înainte de începere”: mai multe praguri alese (ex. cu o zi, cu 3 ore și cu 30 de minute înainte), iar toate
  * celelalte programări se opresc la începerea programării.
  */
-export default function ReminderPicker({ interval, schedule, startAt }: { interval: number | null; schedule: string | null; startAt?: string | null }) {
+export default function ReminderPicker({ interval, schedule, startAt, noOnce = false }: { interval: number | null; schedule: string | null; startAt?: string | null; /** În șabloane: „o singură dată” (dată fixă) nu are sens. */ noOnce?: boolean }) {
   const appt = startAt !== undefined;
   const startDate0 = startAt ? new Date(startAt) : null;
   const t = useT();
@@ -127,12 +127,16 @@ export default function ReminderPicker({ interval, schedule, startAt }: { interv
           </optgroup>
         )}
         <optgroup label={t("Interval fix")}>
+          {/* la programări, reamintiri și mai dese (până la începere) */}
+          {appt && [1, 5].map((n) => (
+            <option key={n} value={`fixed:${n}`}>{n === 1 ? t("La fiecare minut") : t("La fiecare 5 min")}</option>
+          ))}
           {FIXED.map((n) => (
             <option key={n} value={`fixed:${n}`}>{fixedLabel[n]}</option>
           ))}
         </optgroup>
         <optgroup label={t("Programată (la o oră anume)")}>
-          <option value="once">{t("O singură dată (dată și oră)")}</option>
+          {!noOnce && <option value="once">{t("O singură dată (dată și oră)")}</option>}
           <option value="daily">{t("Zilnic, la o oră")}</option>
           <option value="weekly">{t("Săptămânal (zilele alese, la o oră)")}</option>
           <option value="monthly">{t("Lunar (într-o zi a lunii, la o oră)")}</option>

@@ -61,6 +61,7 @@ export default async function AppLayout({
       perms={perms}
       unread={unread}
       appointmentsLabel={company.appointmentsLabel}
+      bottomNav={user.bottomNav ?? []}
       messages={messages}
       locale={locale}
     >

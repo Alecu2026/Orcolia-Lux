@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { deleteTaskTemplateAction, saveTaskTemplateAction } from "@/app/actions/task-templates";
-import { TEMPLATE_MAX_NAME, TEMPLATE_MAX_TITLE, TEMPLATE_VARIABLES, type TaskTemplate, type TaskTemplateType } from "@/lib/task-template";
+import { PAYER_VARIABLES, TEMPLATE_MAX_NAME, TEMPLATE_MAX_TITLE, TEMPLATE_VARIABLES, type TaskTemplate, type TaskTemplateType } from "@/lib/task-template";
 import MultiAssignPicker from "./MultiAssignPicker";
 import AddressInput from "./AddressInput";
+import ReminderPicker from "./ReminderPicker";
 import { IconPencil, IconTrash, IconX } from "./icons";
 import { useToast } from "./toast";
 import { useMessages } from "@/lib/i18n/context";
@@ -19,7 +20,7 @@ const label = "mb-1 block text-xs font-semibold text-ink-soft";
 
 const EMPTY: Omit<TaskTemplate, "id" | "type"> = {
   name: "", title: "", description: "", priority: "MEDIUM", categoryId: "", projectId: "", clientId: "", address: "",
-  assigneeIds: [], teamIds: [], dueDays: null, reminderIntervalMinutes: 0, counter: 1,
+  assigneeIds: [], teamIds: [], dueDays: null, reminderIntervalMinutes: 0, reminderSchedule: "", counter: 1,
 };
 
 /**
@@ -56,6 +57,18 @@ export default function TaskTemplatesDialog({
   const m = useMessages();
   const [editing, setEditing] = useState<(Omit<TaskTemplate, "id" | "type"> & { id?: string }) | null>(null);
   const [saving, setSaving] = useState(false);
+  // Câmpurile titlu / descriere (necontrolate): butoanele de variabile inserează la cursorul ultimului câmp atins
+  const titleRef = useRef<HTMLInputElement>(null);
+  const descRef = useRef<HTMLTextAreaElement>(null);
+  const lastField = useRef<"title" | "description">("title");
+  function insertVar(v: string) {
+    const el = lastField.current === "description" ? descRef.current : titleRef.current;
+    if (!el) return;
+    const st = el.selectionStart ?? el.value.length;
+    const en = el.selectionEnd ?? el.value.length;
+    el.setRangeText(v, st, en, "end");
+    el.focus();
+  }
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY);
   const catName = (id: string) => categories.find((c) => c.id === id)?.name;
@@ -88,6 +101,7 @@ export default function TaskTemplatesDialog({
       teamIds: canAssign ? fd.getAll("teamIds").map(String).filter(Boolean) : form.teamIds,
       dueDays: dueRaw === "" ? null : Number(dueRaw),
       reminderIntervalMinutes: Number(fd.get("reminderIntervalMinutes") ?? 0) || 0,
+      reminderSchedule: String(fd.get("reminderSchedule") ?? ""),
       counter: Number(fd.get("counter") ?? 1) || 1,
     }).catch(() => null);
     setSaving(false);
@@ -154,15 +168,27 @@ export default function TaskTemplatesDialog({
             </div>
             <div>
               <label className={label}>{type === "TICKET" ? tr("Titlul cererii") : tr("Titlul sarcinii")} <span className="font-normal text-ink-soft">({tr("opțional")})</span></label>
-              <input name="title" defaultValue={form.title} maxLength={TEMPLATE_MAX_TITLE} placeholder={tr("ex. Verificare contor #{contor} — {luna}")} className={input} />
-              <p className="mt-1 text-[11px] text-ink-soft">
-                {tr("Variabile (se înlocuiesc la creare, în titlu și în descriere):")} {TEMPLATE_VARIABLES.map((v) => <code key={v} className="mx-0.5 rounded bg-[var(--color-surface-2)] px-1">{v}</code>)}
-                — {tr("{contor} crește cu 1 la fiecare creare din șablon.")}
-              </p>
+              <input ref={titleRef} onFocus={() => (lastField.current = "title")} name="title" defaultValue={form.title} maxLength={TEMPLATE_MAX_TITLE} placeholder={tr("ex. Verificare contor #{contor} — {luna}")} className={input} />
+              <div className="mt-1.5 flex flex-col gap-1.5 text-[11px] text-ink-soft">
+                <p>{tr("Apasă pe o variabilă ca să o inserezi în titlu sau în descriere (la cursor). Se înlocuiesc la creare:")}</p>
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="font-semibold">{tr("Șablon")}:</span>
+                  {TEMPLATE_VARIABLES.map((v) => (
+                    <button key={v} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => insertVar(v)} className="cursor-pointer rounded bg-[var(--color-surface-2)] px-1.5 py-0.5 font-mono hover:bg-brand-soft">{v}</button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="font-semibold">{tr("Plătitor / apel")}:</span>
+                  {PAYER_VARIABLES.map((v) => (
+                    <button key={v.key} type="button" title={tr(v.label)} onMouseDown={(e) => e.preventDefault()} onClick={() => insertVar(v.key)} className="cursor-pointer rounded bg-brand/10 px-1.5 py-0.5 font-mono text-brand hover:bg-brand/20">{v.key}</button>
+                  ))}
+                </div>
+                <p>{tr("{contor} crește cu 1 la fiecare creare din șablon. Variabilele de plătitor se completează automat din datele plătitorului: din pop-up-ul „Apel primit” sau când alegi plătitorul în fereastra de creare.")}</p>
+              </div>
             </div>
             <div>
               <label className={label}>{tr("Descriere")}</label>
-              <textarea name="description" defaultValue={form.description} rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-sm outline-none focus:border-brand" />
+              <textarea ref={descRef} onFocus={() => (lastField.current = "description")} name="description" defaultValue={form.description} rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-sm outline-none focus:border-brand" />
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <div>
@@ -210,17 +236,7 @@ export default function TaskTemplatesDialog({
               </div>
               <div>
                 <label className={label}>{m.tasks.reminderLabel}</label>
-                <select name="reminderIntervalMinutes" defaultValue={form.reminderIntervalMinutes} className={input}>
-                  <option value={0}>{m.tasks.reminderNever}</option>
-                  <option value={10}>{m.tasks.reminder10m}</option>
-                  <option value={30}>{m.tasks.reminder30m}</option>
-                  <option value={60}>{m.tasks.reminder1h}</option>
-                  <option value={180}>{m.tasks.reminder3h}</option>
-                  <option value={360}>{m.tasks.reminder6h}</option>
-                  <option value={720}>{m.tasks.reminder12h}</option>
-                  <option value={1440}>{m.tasks.reminder24h}</option>
-                  <option value={10080}>{m.tasks.reminder7d}</option>
-                </select>
+                <ReminderPicker interval={form.reminderIntervalMinutes || null} schedule={form.reminderSchedule || null} noOnce />
               </div>
               <div>
                 <label className={label}>{tr("Următorul {contor}")}</label>

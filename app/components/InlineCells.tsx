@@ -11,7 +11,7 @@ import { useT } from "@/lib/i18n/context";
  */
 
 const cellBtn =
-  "block w-full max-w-full cursor-pointer truncate rounded px-0.5 text-left hover:bg-brand-soft/60";
+  "dt-ctl block w-full max-w-full cursor-pointer truncate rounded px-0.5 text-left";
 const inputCls =
   "h-5 w-full min-w-0 rounded border border-brand bg-[var(--color-surface)] px-1 text-[11px] text-ink outline-none";
 
@@ -123,11 +123,14 @@ export function PopEditor({
   display,
   disabled,
   width = 260,
+  title,
   children,
 }: {
   display: ReactNode;
   disabled?: boolean;
   width?: number;
+  /** Sugestia de la hover (implicit „Click ca să modifici”). */
+  title?: string;
   children: (close: () => void) => ReactNode;
 }) {
   const tr = useT();
@@ -164,7 +167,7 @@ export function PopEditor({
         ref={btn}
         type="button"
         className={cellBtn}
-        title={tr("Click ca să modifici")}
+        title={title ?? tr("Click ca să modifici")}
         onClick={(e) => {
           e.stopPropagation();
           if (anchor) { setAnchor(null); return; }

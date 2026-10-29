@@ -16,6 +16,7 @@ export const NOTIFY_EVENTS = [
   { key: "task.edit", label: "Sarcină/cerere modificată" },
   { key: "task.reminder", label: "Reamintire sarcină (periodică)" },
   { key: "ticket.portal", label: "Cerere nouă din portalul clienților" },
+  { key: "meter.portal", label: "Neregulă de contor raportată din portal" },
   { key: "ticket.message", label: "Mesaj nou de la client pe o cerere" },
   { key: "ticket.email", label: "Cerere nouă din email" },
   { key: "project.created", label: "Proiect creat" },

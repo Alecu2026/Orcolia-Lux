@@ -124,6 +124,8 @@ export type RouteStat = {
   dueToday: number;
   /** contoare cu neregulă deschisă pe rută */
   issues: number;
+  /** momentul ultimei citiri din lună pe această rută (ms), sau null */
+  lastAt: number | null;
 };
 
 export type ReaderStat = {
@@ -157,6 +159,16 @@ export type RouteOptions = {
   sectors: { value: string; count: number }[];
   localities: { value: string; count: number }[];
   streets: string[];
+};
+
+/** Tot ce are nevoie pagina „Rute de citire”: raportul, toate rutele (și cele inactive), neregulile și utilizatorii (cititori). Se aduce dintr-o singură trecere pe server. */
+export type RoutesBundle = {
+  report: RouteReport;
+  routes: RouteDto[];
+  issues: import("./meter-issues").IssueDto[];
+  users: { id: string; name: string }[];
+  /** momentul calculării (ms) */
+  at: number;
 };
 
 /** Ce primește pagina „Citiri teren”: lista contoarelor + rutele active (pentru „Ruta mea”). */

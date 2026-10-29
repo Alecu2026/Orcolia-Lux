@@ -21,7 +21,7 @@ const SCOPE_KEYS = ["mine", "all", "created"] as const;
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; client?: string; title?: string; desc?: string }>;
+  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; client?: string; title?: string; desc?: string; template?: string; phone?: string; at?: string }>;
 }) {
   const user = await requirePermission("tasks.view");
   const sp = await searchParams;
@@ -98,6 +98,9 @@ export default async function TasksPage({
         initialTitle={sp.title?.slice(0, 200)}
         initialAddress={initialAddress}
         initialDescription={sp.desc?.slice(0, 1000)}
+        initialTemplateId={can(user, "tasks.create") && sp.template && /^[0-9a-f]{24}$/i.test(sp.template) ? sp.template : undefined}
+        initialCallPhone={sp.phone?.replace(/[^\d+]/g, "").slice(0, 20)}
+        initialCallAt={sp.at && !Number.isNaN(Date.parse(sp.at)) ? sp.at : undefined}
         initialOpenId={initialOpenId}
         scopeOptions={[...scopeOptions]}
         basePath="/tasks"

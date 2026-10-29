@@ -224,7 +224,9 @@ export default function DataTable<T extends { id: string }>({
   // Aspectul predefinit de administrator = valoarea implicită; „Personalizare tabele” (permisiune) = poate schimba singur (localStorage, peste preset).
   const { preset, canCustomize } = useTableLook();
   const { colors: presetColors, ...presetLook } = preset;
-  const BASE_LOOK: Look = { ...DEFAULT_LOOK, ...presetLook };
+  // „Lățime coloane” (înguste / late) a fost scoasă: lățimea se schimbă trăgând de marginea antetului; o valoare veche salvată se ignoră
+  // „Lățime coloane”, „Culoare antet” și „Culoare text” au fost scoase din meniu: orice valoare veche (salvată pe dispozitiv / în șablonul adminului) se ignoră
+  const BASE_LOOK: Look = { ...DEFAULT_LOOK, ...presetLook, width: 100, header: "default", text: "default" };
   const [look, setLook] = useState<Look>(BASE_LOOK);
   /** Lățimi proprii ale coloanelor (px) și culori proprii — salvate în localStorage împreună cu restul aspectului. */
   const [colW, setColW] = useState<Record<string, number>>({});
@@ -259,7 +261,7 @@ export default function DataTable<T extends { id: string }>({
     if (savedCols && canCustomize) {
       const ck = new Set(columns.map((c) => c.key));
       if (Array.isArray(savedCols.co)) setOrder(savedCols.co.filter((k) => ck.has(k)));
-      if (savedCols.lk) setLook({ ...BASE_LOOK, ...savedCols.lk });
+      if (savedCols.lk) setLook({ ...BASE_LOOK, ...savedCols.lk, width: 100, header: "default", text: "default" });
       if (savedCols.cw) setColW(Object.fromEntries(Object.entries(savedCols.cw).filter(([k, w]) => ck.has(k) && typeof w === "number" && w >= MIN_COL_W && w <= MAX_COL_W)));
       if (savedCols.cc) setColors(sanitizeColors(savedCols.cc));
       if (savedCols.cv) setVis(Object.fromEntries(Object.entries(savedCols.cv).filter(([k, b]) => ck.has(k) && typeof b === "boolean")));
@@ -638,9 +640,16 @@ export default function DataTable<T extends { id: string }>({
             ⚙ {t("Coloane")}
           </button>
           {colsOpen && (
-            <div className="absolute right-0 top-full z-50 mt-1 w-72 max-w-[calc(100vw-1.5rem)] rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-2 shadow-xl">
+            <>
+            {/* Telefon: foaie fixă în josul ecranului (derulabilă), cu fundal care se închide la atingere — meniul nu mai iese din ecran. De la sm în sus: dropdown sub buton. */}
+            <div className="fixed inset-0 z-40 bg-black/40 sm:hidden" onClick={() => setColsOpen(false)} aria-hidden />
+            <div className="fixed inset-x-2 bottom-2 z-50 max-h-[82dvh] overflow-y-auto overscroll-contain rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-2 shadow-xl sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:max-h-[min(75dvh,40rem)] sm:w-72 sm:max-w-[calc(100vw-1.5rem)]">
+              <div className="sticky -top-2 z-10 -mx-2 -mt-2 mb-1 flex items-center justify-between bg-[var(--color-surface)] px-3 py-2 sm:hidden">
+                <span className="text-sm font-bold">{t("Coloane")}</span>
+                <button type="button" onClick={() => setColsOpen(false)} className="tap h-8 cursor-pointer rounded-lg bg-brand px-3 text-xs font-semibold text-white">{t("Gata")}</button>
+              </div>
               <p className="mb-1 px-1 text-[10px] text-ink-soft">{t("Bifează ce vrei să vezi; mută cu ▲▼ sau trage antetele din tabel.")}</p>
-              <ul className="max-h-56 overflow-auto">
+              <ul className="max-h-56 overflow-auto sm:max-h-56">
                 {orderedLabeled.map((c, i) => (
                   <li key={c.key} className="flex items-center gap-1.5 rounded px-1 py-0.5 text-[12px] hover:bg-[var(--color-surface-2)]">
                     <input type="checkbox" checked={isVisible(c)} onChange={(e) => setVis((v) => ({ ...v, [c.key]: e.target.checked }))} className="size-3.5 cursor-pointer accent-[var(--color-brand)]" />
@@ -655,16 +664,13 @@ export default function DataTable<T extends { id: string }>({
                 <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 px-1 text-[11px]">
                   <LookSelect label={t("Rânduri")} value={look.density} onChange={(v) => setLook({ ...look, density: v })} options={[["compact", t("Compacte")], ["normal", t("Normale")], ["roomy", t("Spațioase")]]} />
                   <LookSelect label={t("Text")} value={String(look.font)} onChange={(v) => setLook({ ...look, font: Number(v) as Look["font"] })} options={[["10", t("Mic")], ["11", t("Normal")], ["13", t("Mare")], ["15", t("Foarte mare")]]} />
-                  <LookSelect label={t("Lățime coloane")} value={String(look.width)} onChange={(v) => setLook({ ...look, width: Number(v) as Look["width"] })} options={[["85", t("Înguste")], ["100", t("Normale")], ["125", t("Late")], ["150", t("Foarte late")]]} />
-                  <LookSelect label={t("Culoare antet")} value={look.header} onChange={(v) => setLook({ ...look, header: v })} options={[["default", t("Neutru")], ["brand", t("Turcoaz")], ["sky", t("Albastru")], ["emerald", t("Verde")], ["orange", t("Portocaliu")], ["violet", t("Violet")], ["slate", t("Gri închis")]]} />
-                  <LookSelect label={t("Culoare text")} value={look.text} onChange={(v) => setLook({ ...look, text: v })} options={[["default", t("Implicită")], ["brand", t("Turcoaz")], ["sky", t("Albastru")], ["emerald", t("Verde")], ["violet", t("Violet")], ["rose", t("Roz")]]} />
                   <label className="flex cursor-pointer items-end gap-1.5 pb-1">
                     <input type="checkbox" checked={look.zebra} onChange={(e) => setLook({ ...look, zebra: e.target.checked })} className="size-3.5 cursor-pointer accent-[var(--color-brand)]" />
                     {t("Rânduri alternate")}
                   </label>
                 </div>
                 <p className="mt-1.5 px-1 text-[10px] leading-snug text-ink-soft">
-                  {t("Lățimea se aplică tuturor coloanelor; textul care nu încape se taie cu „…”. La „Rânduri spațioase” textul se rupe pe până la 3 rânduri.")}
+                  {t("Lățimea unei coloane se schimbă trăgând de marginea antetului. Textul care nu încape se taie cu „…”; la „Rânduri spațioase” se rupe pe până la 3 rânduri.")}
                 </p>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-1.5">
@@ -679,6 +685,7 @@ export default function DataTable<T extends { id: string }>({
                 {t("Resetează coloanele și aspectul")}
               </button>
             </div>
+            </>
           )}
           {colorsOpen && <TableColorsDialog value={colors} onChange={setColors} onClose={() => setColorsOpen(false)} />}
         </div>
@@ -840,7 +847,8 @@ export default function DataTable<T extends { id: string }>({
                     className={`${fixed ? "overflow-hidden" : ""} border-b border-[var(--color-line)] ${look.zebra && ri % 2 === 1 ? ZEBRA_BG : "bg-[var(--dt-row,var(--color-surface))]"} ${DENSITY[look.density].px} ${DENSITY[look.density].cell} ${fixed && !roomy ? "whitespace-nowrap" : ""} ${c.right ? "text-right tabular-nums" : ""} ${c.sticky && ci <= 1 ? "sticky left-0 z-10 font-medium" : ""}`}
                   >
                     {/* Rânduri compacte/normale: o singură linie, textul lung se taie cu „…". Spațioase: textul se rupe pe până la 3 rânduri. */}
-                    {c.maxW || roomy ? <div className={roomy ? "line-clamp-3 break-words" : "truncate"}>{c.render(r)}</div> : c.render(r)}
+                    {/* coloanele de control (fără titlu: culoare, deschide, acțiuni) nu se taie și nu au clip: altfel inelul de hover / cercul de culoare se ciunt */}
+                    {(c.maxW || roomy) && c.label ? <div className={`${roomy ? "line-clamp-3 break-words" : "truncate"} -mx-0.5 -my-0.5 px-0.5 py-0.5`}>{c.render(r)}</div> : c.render(r)}
                   </td>
                 ))}
               </tr>

@@ -2,11 +2,12 @@ import "server-only";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import type { TaskTemplate, TaskTemplateType } from "../task-template";
+import { parseReminderSchedule } from "../reminder-schedule";
 
 type Row = {
   id: string; type: string; name: string; title: string; description: string | null; priority: string;
   categoryId: string | null; projectId: string | null; clientId: string | null; address: string | null; assigneeIds: string[]; teamIds: string[];
-  dueDays: number | null; reminderIntervalMinutes: number | null; counter: number;
+  dueDays: number | null; reminderIntervalMinutes: number | null; reminderSchedule?: unknown; counter: number;
 };
 
 export const toTaskTemplate = (r: Row): TaskTemplate => ({
@@ -24,12 +25,13 @@ export const toTaskTemplate = (r: Row): TaskTemplate => ({
   teamIds: r.teamIds ?? [],
   dueDays: r.dueDays ?? null,
   reminderIntervalMinutes: r.reminderIntervalMinutes ?? 0,
+  reminderSchedule: parseReminderSchedule(r.reminderSchedule) ? JSON.stringify(r.reminderSchedule) : "",
   counter: r.counter,
 });
 
 export const TEMPLATE_SELECT = {
   id: true, type: true, name: true, title: true, description: true, priority: true, categoryId: true, projectId: true, clientId: true, address: true,
-  assigneeIds: true, teamIds: true, dueDays: true, reminderIntervalMinutes: true, counter: true,
+  assigneeIds: true, teamIds: true, dueDays: true, reminderIntervalMinutes: true, reminderSchedule: true, counter: true,
 } as const;
 
 /** Șabloanele unui tip (task-uri sau tichete), în ordine alfabetică. */

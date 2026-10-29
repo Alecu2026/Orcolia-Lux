@@ -16,7 +16,7 @@ type Memo = { rows: FieldRow[]; tuples: FieldTuple[]; period: string; at: number
 let memo: Memo | null = null;
 
 /** Ce se schimbă pe un rând când se salvează o citire. */
-export type FieldPatch = { value: number; readAt: number; photo: boolean; by?: string | null; distanceM?: number | null; geo?: boolean; issue?: string | null; address?: string | null; lat?: number | null; lng?: number | null; addrField?: boolean; locAcc?: number | null };
+export type FieldPatch = { value: number; readAt: number; photo: boolean; by?: string | null; portal?: boolean; distanceM?: number | null; geo?: boolean; issue?: string | null; address?: string | null; lat?: number | null; lng?: number | null; addrField?: boolean; locAcc?: number | null };
 
 /**
  * Lista „Citiri teren” în memoria browserului: întâi din IndexedDB (instant, doar dacă e din luna curentă), apoi reîmprospătată de pe server în fundal
@@ -117,6 +117,7 @@ export function useFieldDataset() {
       readAt: patch.readAt ?? old.readAt,
       photo: patch.photo ?? old.photo,
       by: patch.by !== undefined ? patch.by : old.by,
+      portal: patch.portal !== undefined ? patch.portal : old.portal,
       distanceM: patch.distanceM !== undefined ? patch.distanceM : old.distanceM,
       consum: fieldConsum(value, old.lastIndex),
       geo: patch.geo ?? old.geo,

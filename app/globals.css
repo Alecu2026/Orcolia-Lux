@@ -162,6 +162,19 @@ body {
 .dt-root .dt-hover-sample > td {
   background-color: var(--dt-hover, color-mix(in srgb, var(--color-brand-soft) 45%, var(--color-surface)));
 }
+/* Controale în celule (text editabil, liste, chip-uri de status): hover vizibil peste ORICE fundal de rând (zebră, hover de rând, culoare de rând) — un inel + o tentă transparentă de brand */
+.dt-ctl,
+.dt-chip {
+  transition: box-shadow 0.12s ease, background-color 0.12s ease, filter 0.12s ease;
+}
+.dt-ctl:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-brand) 16%, transparent);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--color-brand) 55%, transparent);
+}
+.dt-chip:hover:not(:disabled) {
+  filter: brightness(0.94) saturate(1.15);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-brand) 55%, transparent);
+}
 /* mânerul de redimensionare a coloanelor */
 .dt-resize {
   touch-action: none;

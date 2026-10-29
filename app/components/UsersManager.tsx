@@ -8,7 +8,9 @@ import {
 } from "@/app/actions/users";
 import { useToast } from "./toast";
 import { IconPencil, IconTrash } from "./icons";
-import { USER_TYPES, effectivePermissionKeys, userTypeOf } from "@/lib/permissions";
+import { effectivePermissionKeys } from "@/lib/permissions";
+import { matchRoleTemplate, type RoleTemplate } from "@/lib/role-templates";
+import RoleTemplatesDialog from "./RoleTemplatesDialog";
 import UserDialog, { type UserRow, type Opt } from "./UserDialog";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
@@ -20,7 +22,9 @@ export default function UsersManager({
   viewerIsSuper = false,
   viewerId = "",
   viewerRole = "STAFF",
+  roleTemplates = [],
 }: {
+  roleTemplates?: RoleTemplate[];
   users: UserRow[];
   teams?: Opt[];
   viewerIsSuper?: boolean;
@@ -31,6 +35,9 @@ export default function UsersManager({
   const toast = useToast();
   const m = useMessages();
   const [rows, setRows] = useState(users);
+  const [tpls, setTpls] = useState<RoleTemplate[]>(roleTemplates);
+  useEffect(() => setTpls(roleTemplates), [roleTemplates]);
+  const [tplOpen, setTplOpen] = useState(false);
   useEffect(() => setRows(users), [users]);
   const [dialog, setDialog] = useState<{ open: boolean; user: UserRow | null }>({
     open: false,
@@ -92,12 +99,21 @@ export default function UsersManager({
 
   return (
     <>
-      <button
-        onClick={() => setDialog({ open: true, user: null })}
-        className="tap mb-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong"
-      >
-        {m.users.new}
-      </button>
+      <div className="mb-4 flex gap-2">
+        <button
+          onClick={() => setDialog({ open: true, user: null })}
+          className="tap flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-brand font-semibold text-white hover:bg-brand-strong"
+        >
+          {m.users.new}
+        </button>
+        <button
+          type="button"
+          onClick={() => setTplOpen(true)}
+          className="tap flex h-12 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-[var(--color-line)] px-4 text-sm font-semibold hover:bg-brand-soft"
+        >
+          🧩 {t("Șabloane de roluri")}
+        </button>
+      </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
@@ -141,7 +157,7 @@ export default function UsersManager({
                   {!u.isActive && <span className="ml-2 text-xs text-st-cancelled">{m.users.inactive}</span>}
                 </p>
                 <p className="truncate text-xs text-ink-soft">
-                  {u.email} · {u.role === "ADMIN" ? m.users.adminRole : userTypeOf(u.role, u.permissions) ? <b className="font-semibold text-brand">{t(USER_TYPES.find((x) => x.key === userTypeOf(u.role, u.permissions))?.label ?? "")}</b> : `${effectivePermissionKeys(u.permissions).length} ${m.users.permissionsCount}`}
+                  {u.email} · {u.role === "ADMIN" ? m.users.adminRole : matchRoleTemplate(tpls, u.role, u.permissions) ? <b className="font-semibold text-brand">{t(matchRoleTemplate(tpls, u.role, u.permissions)?.name ?? "")}</b> : `${effectivePermissionKeys(u.permissions).length} ${m.users.permissionsCount}`}
                   {u.telegramChatId ? ` ${m.users.telegramConnected}` : ""}
                 </p>
               </div>
@@ -194,8 +210,11 @@ export default function UsersManager({
       </div>
       )}
 
+      {tplOpen && <RoleTemplatesDialog templates={tpls} viewerIsAdmin={viewerRole === "ADMIN"} onChange={setTpls} onClose={() => setTplOpen(false)} />}
+
       {dialog.open && (
         <UserDialog
+          roleTemplates={tpls}
           user={dialog.user}
           allUsers={rows}
           teams={teams}

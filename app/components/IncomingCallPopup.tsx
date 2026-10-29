@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { savePbxCallNoteAction } from "@/app/actions/pbx";
+import { listTemplatesForCallAction } from "@/app/actions/task-templates";
 import type { CallerContext } from "@/lib/services/pbx";
 import { IconX } from "./icons";
 import { useToast } from "./toast";
@@ -134,6 +135,21 @@ function CallCard({ call: c, canEdit, canTask, canClient, onDismiss }: { call: A
     else toast.error(res && !res.ok ? res.error : "Nu am putut salva nota.");
   }
 
+  // Șabloane de cerere / sarcină: variabilele de plătitor ({nume}, {telefon}, {adresa}, …) se completează din plătitorul acestui apel
+  const [tplOpen, setTplOpen] = useState(false);
+  const [tpls, setTpls] = useState<{ id: string; type: "TASK" | "TICKET"; name: string }[] | null>(null);
+  async function openTemplates() {
+    setTplOpen((o) => !o);
+    if (tpls === null) {
+      const r = await listTemplatesForCallAction().catch(() => null);
+      setTpls(r && r.ok ? r.items : []);
+    }
+  }
+  const templateHref = (tpl: { id: string; type: "TASK" | "TICKET" }) => {
+    const sp = new URLSearchParams({ template: tpl.id, ...(ctx?.clientId ? { client: ctx.clientId } : {}), ...(c.phone ? { phone: c.phone } : {}), at: c.at });
+    return `/${tpl.type === "TICKET" ? "tickets" : "tasks"}?${sp.toString()}`;
+  };
+
   const btn = "tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft";
   return (
     <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-brand/40 bg-[var(--color-surface)] p-3 shadow-2xl ring-1 ring-brand/20">
@@ -190,7 +206,24 @@ function CallCard({ call: c, canEdit, canTask, canClient, onDismiss }: { call: A
         {!ctx && canClient && <Link href="/clients?create=1" className={btn}>{tr("+ Client nou")}</Link>}
         {canTask && <Link href={prefill("ticket")} className={btn}>{tr("🎫 Cerere")}</Link>}
         {canTask && <Link href={prefill("task")} className={btn}>{tr("✔ Sarcină")}</Link>}
+        {canTask && (
+          <button type="button" onClick={() => void openTemplates()} aria-expanded={tplOpen} className={btn}>
+            {tr("📋 Din șablon")} {tplOpen ? "▴" : "▾"}
+          </button>
+        )}
       </div>
+      {canTask && tplOpen && (
+        <div className="mb-2 max-h-48 overflow-auto rounded-lg border border-[var(--color-line)] text-[12px]" role="menu">
+          {tpls === null && <p className="px-2.5 py-2 text-ink-soft">{tr("Se încarcă…")}</p>}
+          {tpls !== null && tpls.length === 0 && <p className="px-2.5 py-2 text-ink-soft">{tr("Niciun șablon încă.")}</p>}
+          {tpls?.map((x) => (
+            <Link key={x.id} href={templateHref(x)} role="menuitem" className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 hover:bg-brand-soft">
+              <span aria-hidden>{x.type === "TICKET" ? "🎫" : "✔"}</span>
+              <span className="min-w-0 flex-1 truncate">{x.name}</span>
+            </Link>
+          ))}
+        </div>
+      )}
 
       {canEdit && (
         <div>

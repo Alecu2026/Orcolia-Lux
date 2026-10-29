@@ -53,7 +53,8 @@ export function parseIndex(raw: string): number | null {
  * 6 indexul citit luna aceasta (null = necitit), 7 când a fost citit (ms), 8 are poză (0/1), 9 cine a citit, 10 distanța (m) față de locația citirii anterioare, 11 citirea are locație GPS (0/1), 12–13 latitudine / longitudine a CONTORULUI (din teren), 14 adresa vine din teren (1C n-are una) (0/1), 15 precizia (m) a locației afișate.
  */
 /** 16 sector („Участок” din 1C), 17 neregula deschisă (cod, vezi lib/meter-issues.ts) sau null. */
-export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null, string | null, string | null];
+/** Ultimul element (1 = citirea lunii vine din portal, trimisă de plătitor) lipsește în listele salvate pe telefon mai vechi. */
+export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null, string | null, string | null, (0 | 1)?];
 
 export type FieldRow = {
   id: string;
@@ -67,6 +68,8 @@ export type FieldRow = {
   photo: boolean;
   /** Cine a făcut citirea (luna aceasta). */
   by: string | null;
+  /** Citirea lunii a fost trimisă de plătitor din portal (nu de un cititor). */
+  portal: boolean;
   /** Distanța (m) față de locația citirii anterioare — mare = de verificat. */
   distanceM: number | null;
   /** Consumul = indexul citit − ultimul index cunoscut (m³), sau null dacă lipsește unul dintre ele. */
@@ -119,6 +122,7 @@ export function decodeField(t: FieldTuple[]): FieldRow[] {
     readAt: x[7],
     photo: x[8] === 1,
     by: x[9] ?? null,
+    portal: x[18] === 1,
     distanceM: x[10] ?? null,
     consum: fieldConsum(x[6], x[4]),
     geo: x[11] === 1,
@@ -144,6 +148,8 @@ export type FieldFilters = {
   /** „unread” = necitite luna aceasta (implicit), „read” = citite, „all” = toate. */
   status: "unread" | "read" | "all";
   photo: "" | "yes" | "no";
+  /** Cine a făcut citirea: toți / plătitorul din portal / cititor (utilizator). */
+  source: "" | "portal" | "field";
   /** De verificat: consum negativ / neobișnuit de mare / zero, sau citit departe de locația anterioară. */
   check: "" | "lower" | "high" | "zero" | "far";
   /** Cine a citit (numele). */
@@ -171,7 +177,7 @@ export type FieldFilters = {
   sort: "" | "contor" | "name" | "readDesc" | "consumDesc" | "consumAsc" | "lastOld";
 };
 
-export const EMPTY_FIELD_FILTERS: FieldFilters = { q: "", street: "", status: "unread", photo: "", check: "", by: "", locality: "", from: "", to: "", lastIndex: "", consumMin: "", consumMax: "", geo: "", address: "", meterLoc: "", route: "", issue: "", sort: "" };
+export const EMPTY_FIELD_FILTERS: FieldFilters = { q: "", street: "", status: "unread", photo: "", check: "", by: "", locality: "", from: "", to: "", lastIndex: "", consumMin: "", consumMax: "", geo: "", address: "", meterLoc: "", route: "", issue: "", source: "", sort: "" };
 
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], dflt: T): T => (typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : dflt);
 
@@ -197,6 +203,7 @@ export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters
     meterLoc: oneOf(raw.meterLoc, ["", "yes", "no"] as const, ""),
     route: typeof raw.route === "string" && /^([0-9a-f]{24}|none|mine)$/i.test(raw.route) ? raw.route : "",
     issue: oneOf(raw.issue, ["", "any", "serious"] as const, ""),
+    source: oneOf(raw.source, ["", "portal", "field"] as const, ""),
     sort: oneOf(raw.sort, ["", "contor", "name", "readDesc", "consumDesc", "consumAsc", "lastOld"] as const, ""),
   };
 }
@@ -204,7 +211,7 @@ export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters
 /** Câte filtre sunt active (față de starea implicită: necitite, fără alte filtre). Sortarea nu se numără. */
 export function countActiveFieldFilters(f: FieldFilters): number {
   return (f.q ? 1 : 0) + (f.street ? 1 : 0) + (f.status !== "unread" ? 1 : 0) + (f.photo ? 1 : 0) + (f.check ? 1 : 0) + (f.by ? 1 : 0) +
-    (f.locality ? 1 : 0) + (f.from || f.to ? 1 : 0) + (f.lastIndex ? 1 : 0) + (f.consumMin || f.consumMax ? 1 : 0) + (f.geo ? 1 : 0) + (f.address ? 1 : 0) + (f.meterLoc ? 1 : 0) + (f.route ? 1 : 0) + (f.issue ? 1 : 0);
+    (f.locality ? 1 : 0) + (f.from || f.to ? 1 : 0) + (f.lastIndex ? 1 : 0) + (f.consumMin || f.consumMax ? 1 : 0) + (f.geo ? 1 : 0) + (f.address ? 1 : 0) + (f.meterLoc ? 1 : 0) + (f.route ? 1 : 0) + (f.issue ? 1 : 0) + (f.source ? 1 : 0);
 }
 
 export function fieldFiltersToParams(f: FieldFilters): URLSearchParams {
@@ -226,6 +233,7 @@ export function fieldFiltersToParams(f: FieldFilters): URLSearchParams {
   if (f.meterLoc) p.set("meterLoc", f.meterLoc);
   if (f.route) p.set("route", f.route);
   if (f.issue) p.set("issue", f.issue);
+  if (f.source) p.set("source", f.source);
   if (f.sort) p.set("sort", f.sort);
   return p;
 }
@@ -258,6 +266,7 @@ export function filterField(rows: FieldRow[], f: FieldFilters, mineRoutes?: Set<
     if (f.status === "unread" ? r.value != null : f.status === "read" ? r.value == null : false) return false;
     if (f.photo === "yes" ? !r.photo : f.photo === "no" ? r.photo : false) return false;
     if (f.by && r.by !== f.by) return false;
+    if (f.source === "portal" ? !(r.value != null && r.portal) : f.source === "field" ? !(r.value != null && !r.portal) : false) return false;
     if (f.locality && r.locality !== f.locality) return false;
     if (f.address === "has" ? !r.address : f.address === "none" ? !!r.address : false) return false;
     if (f.route) {

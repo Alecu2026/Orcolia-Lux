@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createUser, updateUser } from "@/app/actions/users";
 import TableColorsDialog from "./TableColorsDialog";
-import { LOOK_DENSITIES, LOOK_FONTS, LOOK_HEADERS, LOOK_TEXTS, LOOK_WIDTHS, hasPreset, sanitizePreset, type TableLookPreset } from "@/lib/table-look";
-import { ALL_PERMISSION_KEYS, PERMISSIONS_V2, PERMISSION_GROUPS, USER_TYPES, effectivePermissionKeys, userTypeOf } from "@/lib/permissions";
+import { LOOK_DENSITIES, LOOK_FONTS, hasPreset, sanitizePreset, type TableLookPreset } from "@/lib/table-look";
+import { ALL_PERMISSION_KEYS, PERMISSIONS_V2, PERMISSION_GROUPS, effectivePermissionKeys } from "@/lib/permissions";
+import { VIEW_OF, matchRoleTemplate, type RoleTemplate } from "@/lib/role-templates";
 import { NOTIFY_EVENTS } from "@/lib/notify-meta";
 import { useMessages, useT } from "@/lib/i18n/context";
 import { useToast } from "./toast";
@@ -39,18 +40,6 @@ const chip =
   "tap h-7 cursor-pointer rounded-full border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:border-brand hover:bg-brand-soft";
 
 const ALL_EVENT_KEYS = NOTIFY_EVENTS.map((e) => e.key as string);
-
-/** Orice permisiune dintr-un grup (creare/editare/…) cere „Vizualizare” din același grup: fără ea omul n-ar vedea ecranul pe care are voie să lucreze. */
-const VIEW_OF: Record<string, string> = (() => {
-  const out: Record<string, string> = {};
-  for (const g of PERMISSION_GROUPS) {
-    const view = g.items.find((i) => i.key.endsWith(".view"));
-    if (!view) continue;
-    const prefix = view.key.split(".")[0];
-    for (const i of g.items) if (i.key !== view.key && i.key.split(".")[0] === prefix) out[i.key] = view.key;
-  }
-  return out;
-})();
 
 function Toggle({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string; disabled?: boolean }) {
   return (
@@ -89,6 +78,7 @@ export default function UserDialog({
   viewerId,
   viewerIsSuper,
   viewerIsAdmin,
+  roleTemplates,
   onClose,
 }: {
   user: UserRow | null;
@@ -98,6 +88,8 @@ export default function UserDialog({
   viewerIsSuper: boolean;
   /** Spectatorul e administrator (rol ADMIN): doar el poate crea/promova administratori. */
   viewerIsAdmin: boolean;
+  /** Șabloanele de roluri (tipurile implicite + cele proprii) pentru „Tip de utilizator”. */
+  roleTemplates: RoleTemplate[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -143,7 +135,8 @@ export default function UserDialog({
   const staffOptions = useMemo(() => allUsers.filter((u) => u.id !== user?.id).map((u) => ({ id: u.id, name: u.name })), [allUsers, user?.id]);
   const isAdminRole = role === "ADMIN";
   const hasFullAccess = perms.has("admin");
-  const activeType = useMemo(() => userTypeOf("STAFF", [...perms, PERMISSIONS_V2]), [perms]);
+  const activeTemplate = useMemo(() => matchRoleTemplate(roleTemplates, role, role === "ADMIN" ? [] : [...perms, PERMISSIONS_V2]), [roleTemplates, role, perms]);
+  const activeType = activeTemplate?.key ?? null;
 
   /** Schimbă rolul. La un cont nou, „ce sarcini vede” urmează rolul (administrator = toate, angajat = doar ale lui) cât timp nu a fost ales explicit. */
   function changeRole(r: "ADMIN" | "STAFF") {
@@ -200,6 +193,20 @@ export default function UserDialog({
     setTouched(true);
     setPerms(new Set(keys));
   };
+  /** Aplică un șablon de rol: rolul (dacă ai voie), permisiunile și — dacă șablonul o cere — ce sarcini vede contul. */
+  function applyTemplate(tpl: RoleTemplate) {
+    setTouched(true);
+    if (tpl.role === "ADMIN") {
+      if (!roleLocked && !adminOptionLocked) changeRole("ADMIN");
+      return;
+    }
+    if (role === "ADMIN" && !roleLocked) changeRole("STAFF");
+    setPerms(new Set(tpl.permissions));
+    if (tpl.taskView) {
+      setViewTouched(true);
+      setViewMode(tpl.taskView);
+    }
+  }
 
   // ── Validare locală (aceleași reguli ca pe server) ──
   function validate(): string | null {
@@ -379,33 +386,35 @@ export default function UserDialog({
               <h3 className="text-xs font-bold uppercase tracking-wide text-ink-soft">2 · {m.users.permissionsLabel}</h3>
               {!isAdminRole && <span className="text-[11px] text-ink-soft">{hasFullAccess ? t("Acces total") : t("{n} permisiuni bifate", { n: permCount })}</span>}
             </div>
+              <div className={card}>
+                <p className="mb-1.5 text-[11px] font-semibold uppercase text-ink-soft">{t("Tip de utilizator")} <span className="font-normal normal-case">— {t("bifează singur permisiunile; le poți ajusta după")}</span></p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {roleTemplates.map((ut) => {
+                    const on = activeType === ut.key;
+                    const adminBlocked = (ut.role === "ADMIN" && (roleLocked || adminOptionLocked)) || (ut.role === "STAFF" && isAdminRole && roleLocked);
+                    return (
+                      <button
+                        key={ut.key}
+                        type="button"
+                        title={t(ut.description)}
+                        aria-pressed={on}
+                        disabled={adminBlocked}
+                        className={`${chip} ${on ? "!border-brand !bg-brand !text-white" : ""} ${adminBlocked ? "opacity-40" : ""}`}
+                        onClick={() => applyTemplate(ut)}
+                      >
+                        {t(ut.name)}
+                      </button>
+                    );
+                  })}
+                  {!isAdminRole && <button type="button" className={`${chip} ${perms.size === 0 ? "!border-brand !bg-brand-soft" : ""}`} onClick={() => applyPreset([])}>{t("Fără permisiuni")}</button>}
+                  {!activeType && !isAdminRole && perms.size > 0 && <span className="text-[11px] text-ink-soft">{t("Personalizat")}</span>}
+                </div>
+                {activeTemplate && <p className="mt-1.5 text-[11px] text-ink-soft">{t(activeTemplate.description)}</p>}
+              </div>
             {isAdminRole ? (
               <p className={`${card} bg-brand-soft/40 text-sm`}>{t("Administratorii au acces la tot. Permisiunile individuale se aplică doar angajaților.")}</p>
             ) : (
               <>
-                <div className={card}>
-                  <p className="mb-1.5 text-[11px] font-semibold uppercase text-ink-soft">{t("Tip de utilizator")} <span className="font-normal normal-case">— {t("bifează singur permisiunile; le poți ajusta după")}</span></p>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {USER_TYPES.map((ut) => {
-                      const on = activeType === ut.key;
-                      return (
-                        <button
-                          key={ut.key}
-                          type="button"
-                          title={t(ut.description)}
-                          aria-pressed={on}
-                          className={`${chip} ${on ? "!border-brand !bg-brand !text-white" : ""}`}
-                          onClick={() => applyPreset(ut.permissions as string[])}
-                        >
-                          {t(ut.label)}
-                        </button>
-                      );
-                    })}
-                    <button type="button" className={`${chip} ${perms.size === 0 ? "!border-brand !bg-brand-soft" : ""}`} onClick={() => applyPreset([])}>{t("Fără permisiuni")}</button>
-                    {!activeType && perms.size > 0 && <span className="text-[11px] text-ink-soft">{t("Personalizat")}</span>}
-                  </div>
-                  {activeType && <p className="mt-1.5 text-[11px] text-ink-soft">{t(USER_TYPES.find((x) => x.key === activeType)?.description ?? "")}</p>}
-                </div>
                 {hasFullAccess && (
                   <p className="rounded-lg bg-st-progress/10 px-3 py-2 text-xs text-st-progress">
                     ⚠ {t("„Acces administrativ (tot)” e bifat: angajatul poate face orice, indiferent de celelalte permisiuni.")}
@@ -463,21 +472,6 @@ export default function UserDialog({
                 <label className="flex flex-col gap-0.5">{t("Text")}
                   <select value={look.font ?? 11} onChange={(e) => { setTouched(true); setLook({ ...look, font: Number(e.target.value) as TableLookPreset["font"] }); }} className="h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5">
                     {LOOK_FONTS.map((f) => <option key={f} value={f}>{f === 10 ? t("Mic") : f === 11 ? t("Normal") : f === 13 ? t("Mare") : t("Foarte mare")}</option>)}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-0.5">{t("Lățime coloane")}
-                  <select value={look.width ?? 100} onChange={(e) => { setTouched(true); setLook({ ...look, width: Number(e.target.value) as TableLookPreset["width"] }); }} className="h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5">
-                    {LOOK_WIDTHS.map((w) => <option key={w} value={w}>{w === 85 ? t("Înguste") : w === 100 ? t("Normale") : w === 125 ? t("Late") : t("Foarte late")}</option>)}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-0.5">{t("Culoare antet")}
-                  <select value={look.header ?? "default"} onChange={(e) => { setTouched(true); setLook({ ...look, header: e.target.value as TableLookPreset["header"] }); }} className="h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5">
-                    {LOOK_HEADERS.map((h) => <option key={h} value={h}>{t(h === "default" ? "Neutru" : h === "brand" ? "Turcoaz" : h === "sky" ? "Albastru" : h === "emerald" ? "Verde" : h === "orange" ? "Portocaliu" : h === "violet" ? "Violet" : "Gri închis")}</option>)}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-0.5">{t("Culoare text")}
-                  <select value={look.text ?? "default"} onChange={(e) => { setTouched(true); setLook({ ...look, text: e.target.value as TableLookPreset["text"] }); }} className="h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5">
-                    {LOOK_TEXTS.map((x) => <option key={x} value={x}>{t(x === "default" ? "Implicită" : x === "brand" ? "Turcoaz" : x === "sky" ? "Albastru" : x === "emerald" ? "Verde" : x === "violet" ? "Violet" : "Roz")}</option>)}
                   </select>
                 </label>
                 <label className="flex items-end gap-1.5 pb-1.5">

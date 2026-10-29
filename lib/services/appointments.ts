@@ -6,6 +6,7 @@ import { findOrCreateClient } from "../queries/clients";
 import { findOverlapping, mineWhere } from "../queries/appointments";
 import { notifyUsers } from "./notifications";
 import { can } from "../permissions";
+import { MAX_ADDRESS_LEN, MAX_MAP_URL_LEN, isMapUrl, normalizeLatLng } from "../map-links";
 import { zonedToUtc, addDaysToKey, formatDate, formatTime, isValidDateKey, isValidTimeOfDay } from "../date";
 import { sanitizeReminderPresets, type ReminderPresetKey } from "../reminder-presets";
 import { APPT_REMINDER_STATUSES, nextApptReminderAt, parseReminderSchedule, type ReminderSchedule } from "../reminder-schedule";
@@ -66,6 +67,19 @@ async function notifyParties(a: {
   }
 }
 
+/** Locația din formular, curățată: adresă (text, max 300), coordonate valide (ambele sau niciuna), link de hartă doar de la serverele acceptate. */
+export type PlaceInput = { address?: string | null; lat?: number | null; lng?: number | null; mapUrl?: string | null };
+function cleanPlace(p: PlaceInput): { address: string | null; lat: number | null; lng: number | null; mapUrl: string | null } {
+  const ll = normalizeLatLng(p.lat ?? null, p.lng ?? null);
+  const url = (p.mapUrl ?? "").trim();
+  return {
+    address: (p.address ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_ADDRESS_LEN) || null,
+    lat: ll?.lat ?? null,
+    lng: ll?.lng ?? null,
+    mapUrl: url.length <= MAX_MAP_URL_LEN && isMapUrl(url) ? url : null,
+  };
+}
+
 const isReminderStatus = (s: string) => (APPT_REMINDER_STATUSES as readonly string[]).includes(s);
 
 export type CreateApptInput = {
@@ -94,6 +108,8 @@ export type CreateApptInput = {
   status?: "NEW" | "CONFIRMED";
   /** Pentru cine e programarea (ex. directorul): o vede și el, iar el și cel care o creează sunt notificați. */
   assigneeId?: string | null;
+  /** Locația programării (opțional). */
+  place?: PlaceInput;
 };
 
 export type CreateApptResult =
@@ -238,6 +254,7 @@ export async function createAppointment(
     data: {
       userId,
       ...(assignee ? { assigneeId: assignee.id } : {}),
+      ...cleanPlace(input.place ?? {}),
       clientId: client.id,
       categoryId: category?.id ?? null,
       title,
@@ -481,6 +498,8 @@ export type UpdateApptInput = {
   status?: "NEW" | "CONFIRMED";
   /** Pentru cine e programarea; gol / lipsă = fără asignat. */
   assigneeId?: string | null;
+  /** Locația programării; lipsă / goală = fără locație. */
+  place?: PlaceInput;
 };
 
 /**
@@ -539,6 +558,7 @@ export async function updateAppointment(userId: string, id: string, input: Updat
       clientId: client.id,
       clientNameSnapshot: client.name,
       assigneeId: assignee?.id ?? null,
+      ...cleanPlace(input.place ?? {}),
       categoryId: category?.id ?? null,
       categoryNameSnapshot: category?.name ?? null,
       categoryColorSnapshot: category?.color ?? null,

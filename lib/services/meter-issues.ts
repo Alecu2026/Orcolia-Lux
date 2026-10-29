@@ -5,11 +5,14 @@ import { DEMO } from "../demo";
 import { getMeterSnap } from "./meter-cache";
 import { logAudit } from "./audit";
 import type { AuditUser } from "./meter-readings";
+
+/** Cine raportează: un utilizator (cititor) sau un plătitor din portal (`id` lipsește, `source` = „PORTAL”). */
+export type IssueActor = { id: string | null; name: string; role?: string; isSuperAdmin?: boolean; source?: "PORTAL" };
 import { currentPeriod } from "../meter-readings";
 import { ISSUE_LABELS, MAX_ISSUE_NOTE, isIssueKind, type IssueDto, type IssueKind } from "../meter-issues";
 
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
-const actorOf = (u: AuditUser) => ({ id: u.id, name: u.name, role: u.role, isSuperAdmin: u.isSuperAdmin });
+const actorOf = (u: { id: string; name: string; role?: string; isSuperAdmin?: boolean }) => ({ id: u.id, name: u.name, role: u.role ?? "STAFF", isSuperAdmin: u.isSuperAdmin });
 
 export const toIssueDto = (i: MeterIssue): IssueDto => ({
   id: i.id,
@@ -31,7 +34,7 @@ export type ReportIssueInput = { meterId: string; kind: string; note?: string | 
  * Raportează o neregulă a contorului (de cititor, în teren). Dacă pentru același contor există deja o neregulă DESCHISĂ de același fel, nu se mai creează
  * alta (aceeași constatare retrimisă din coada offline sau găsită din nou luna viitoare): se returnează cea existentă.
  */
-export async function reportIssue(user: AuditUser, input: ReportIssueInput): Promise<{ ok: true; issue: IssueDto; existing: boolean } | { ok: false; error: string }> {
+export async function reportIssue(user: AuditUser | IssueActor, input: ReportIssueInput): Promise<{ ok: true; issue: IssueDto; existing: boolean } | { ok: false; error: string }> {
   if (DEMO) return { ok: false, error: "Mod demo." };
   if (!isIssueKind(input.kind)) return { ok: false, error: "Tip de neregulă invalid." };
   const note = (input.note ?? "").trim().slice(0, MAX_ISSUE_NOTE) || null;
@@ -48,9 +51,9 @@ export async function reportIssue(user: AuditUser, input: ReportIssueInput): Pro
   const readingId = input.readingId && OBJECT_ID.test(input.readingId) ? input.readingId : null;
   const issue = await prisma.meterIssue.create({
     // câmpurile de rezolvare se scriu explicit ca null: în MongoDB un câmp lipsă nu se potrivește cu filtrul „resolvedAt: null” (neregula deschisă)
-    data: { meterId: input.meterId, contor: row.contor, kind: input.kind, note, period: currentPeriod(at), readingId, reportedAt: at, userId: user.id, userName: user.name, resolvedAt: null, resolvedById: null, resolvedName: null, resolvedNote: null },
+    data: { meterId: input.meterId, contor: row.contor, kind: input.kind, note, period: currentPeriod(at), readingId, reportedAt: at, userId: user.id ?? null, userName: user.name, source: ("source" in user && user.source) || null, resolvedAt: null, resolvedById: null, resolvedName: null, resolvedNote: null },
   });
-  await logAudit(actorOf(user), {
+  if (user.id) await logAudit(actorOf({ ...user, id: user.id }), {
     action: "meter.issue",
     module: "Meters",
     objectId: input.meterId,

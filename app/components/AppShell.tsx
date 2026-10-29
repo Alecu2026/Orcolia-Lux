@@ -11,6 +11,7 @@ import LanguageSwitcher from "./LanguageSwitcher";
 import IncomingCallPopup from "./IncomingCallPopup";
 import { I18nProvider, useMessages, useT } from "@/lib/i18n/context";
 import type { Messages, Locale } from "@/lib/i18n";
+import { BOTTOM_NAV_MAX, NAV_META, sanitizeBottomNav } from "@/lib/nav-meta";
 
 /**
  * Navigare „optimistă": la click, elementul apăsat devine activ și titlul se schimbă pe loc (nu după ce vine răspunsul serverului), iar sus apare
@@ -45,30 +46,32 @@ function NavLink({ href, className, children, onClick }: { href: string; classNa
 
 type NavItem = { href: string; labelKey: keyof Messages["nav"]; icon: ReactNode; perm?: string };
 
-const NAV: NavItem[] = [
-  { href: "/dashboard",        labelKey: "dashboard",  icon: gridIcon(),      perm: "dashboard.view" },
-  { href: "/tasks",            labelKey: "tasks",       icon: checklistIcon(), perm: "tasks.view" },
-  { href: "/tickets",          labelKey: "tickets",     icon: ticketIcon(),    perm: "tickets.view" },
-  { href: "/appointments",     labelKey: "appointments", icon: apptIcon(),      perm: "appointments.view" },
-  { href: "/projects",         labelKey: "projects",    icon: folderIcon(),    perm: "projects.view" },
-  { href: "/kanban",           labelKey: "kanban",      icon: kanbanIcon(),    perm: "kanban.view" },
-  { href: "/calendar",         labelKey: "calendar",    icon: calIcon(),       perm: "calendar.view" },
-  { href: "/clients",          labelKey: "clients",     icon: usersIcon(),     perm: "clients.view" },
-  { href: "/platitori",        labelKey: "payers",      icon: invoiceIcon(),   perm: "payers.view" },
-  { href: "/notificari-platitori", labelKey: "payerNotify", icon: bellIcon(),  perm: "payers.view" },
-  { href: "/contoare",         labelKey: "meters",     icon: meterIcon(),     perm: "payers.view" },
-  { href: "/contoare/citiri",  labelKey: "fieldReadings", icon: pinIcon(),    perm: "meters.read" },
-  { href: "/pbx",              labelKey: "pbx",         icon: phoneIcon(),     perm: "pbx.view" },
-  { href: "/invoices",         labelKey: "invoices",    icon: invoiceIcon(),   perm: "invoices.view" },
-  { href: "/users",            labelKey: "users",       icon: userIcon(),      perm: "users.manage" },
-  { href: "/team",             labelKey: "team",        icon: usersIcon(),     perm: "teams.view" },
-  { href: "/harta",            labelKey: "map",         icon: mapIcon(),       perm: "map.view" },
-  { href: "/admin/audit-logs", labelKey: "auditLogs",   icon: shieldIcon(),    perm: "audit.view" },
-  { href: "/admin/jurnal-notificari", labelKey: "deliveryLogs", icon: bellIcon(), perm: "audit.view" },
-  { href: "/admin/rute-citiri", labelKey: "readingRoutes", icon: pinIcon(), perm: "meters.manage" },
-  { href: "/telegram",         labelKey: "telegram",    icon: sendIcon() },
-  { href: "/settings",         labelKey: "settings",    icon: gearIcon() },
-];
+/** Iconițele meniului, după adresă (restul datelor — vezi lib/nav-meta.ts). */
+const NAV_ICONS: Record<string, ReactNode> = {
+  "/dashboard": gridIcon(),
+  "/tasks": checklistIcon(),
+  "/tickets": ticketIcon(),
+  "/appointments": apptIcon(),
+  "/projects": folderIcon(),
+  "/kanban": kanbanIcon(),
+  "/calendar": calIcon(),
+  "/clients": usersIcon(),
+  "/platitori": invoiceIcon(),
+  "/notificari-platitori": bellIcon(),
+  "/contoare": meterIcon(),
+  "/contoare/citiri": pinIcon(),
+  "/pbx": phoneIcon(),
+  "/invoices": invoiceIcon(),
+  "/users": userIcon(),
+  "/team": usersIcon(),
+  "/harta": mapIcon(),
+  "/admin/audit-logs": shieldIcon(),
+  "/admin/jurnal-notificari": bellIcon(),
+  "/admin/rute-citiri": pinIcon(),
+  "/telegram": sendIcon(),
+  "/settings": gearIcon(),
+};
+const NAV: NavItem[] = NAV_META.map((n) => ({ ...n, icon: NAV_ICONS[n.href] }));
 
 /**
  * Încălzire: după ce pagina curentă s-a liniștit, aducem în avans (pe rând, cu pauză) paginile principale din meniu — conținutul lor complet, nu doar scheletul.
@@ -202,6 +205,7 @@ export default function AppShell({
   perms,
   unread = 0,
   appointmentsLabel,
+  bottomNav,
   messages,
   locale,
   children,
@@ -211,6 +215,8 @@ export default function AppShell({
   perms?: Record<string, boolean>;
   unread?: number;
   appointmentsLabel?: string;
+  /** Butoanele rapide alese de utilizator pentru bara de jos de pe telefon (adrese, în ordine); gol = primele 5 din meniu. */
+  bottomNav?: string[];
   messages: Messages;
   locale: Locale;
   children: ReactNode;
@@ -223,6 +229,7 @@ export default function AppShell({
         perms={perms}
         unread={unread}
         appointmentsLabel={appointmentsLabel}
+        bottomNav={bottomNav}
       >
         {children}
       </AppShellInner>
@@ -236,6 +243,7 @@ function AppShellInner({
   perms,
   unread = 0,
   appointmentsLabel,
+  bottomNav,
   children,
 }: {
   userName: string;
@@ -243,9 +251,28 @@ function AppShellInner({
   perms?: Record<string, boolean>;
   unread?: number;
   appointmentsLabel?: string;
+  bottomNav?: string[];
   children: ReactNode;
 }) {
   const [drawer, setDrawer] = useState(false);
+  // Clopoțelul „live”: numărul de necitite vine de la server la încărcare, apoi se reîmprospătează la ~30 s (doar cât tab-ul e vizibil) și când inbox-ul marchează notificări citite.
+  const [unreadLive, setUnreadLive] = useState(unread);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setUnreadLive(unread), [unread]);
+  useEffect(() => {
+    const poll = () => {
+      if (document.visibilityState !== "visible") return;
+      fetch("/api/notifications?count=1", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { unread?: number } | null) => { if (j && typeof j.unread === "number") setUnreadLive(j.unread); })
+        .catch(() => {});
+    };
+    const onEvt = (e: Event) => { const n = (e as CustomEvent<number>).detail; if (typeof n === "number") setUnreadLive(n); };
+    const id = setInterval(poll, 30_000);
+    document.addEventListener("visibilitychange", poll);
+    window.addEventListener("crm:unread", onEvt);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", poll); window.removeEventListener("crm:unread", onEvt); };
+  }, []);
   const realPath = usePathname();
   const [pending, setPending] = useState<Pending>(null);
   // Navigarea s-a terminat (ruta reală s-a schimbat): „pending” nu mai are rost. Fără asta rămânea setat și, când ajungeai din nou pe pagina
@@ -331,9 +358,9 @@ function AppShellInner({
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                 </svg>
-                {unread > 0 && (
+                {unreadLive > 0 && (
                   <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-st-cancelled px-1 text-[10px] font-bold text-white">
-                    {unread > 99 ? "99+" : unread}
+                    {unreadLive > 99 ? "99+" : unreadLive}
                   </span>
                 )}
               </Link>
@@ -356,18 +383,21 @@ function AppShellInner({
       {perms?.["pbx.view"] !== false && <IncomingCallPopup canEdit={perms?.["pbx.manage"] !== false} canTask={perms?.["tasks.create"] !== false} canClient={perms?.["clients.create"] !== false} />}
 
       {/* Bottom nav mobil */}
-      <BottomNav perms={perms} appointmentsLabel={appointmentsLabel} />
+      <BottomNav perms={perms} appointmentsLabel={appointmentsLabel} chosen={bottomNav} />
       </NavPending.Provider>
     </ToastProvider>
   );
 }
 
-function BottomNav({ perms, appointmentsLabel }: { perms?: Record<string, boolean>; appointmentsLabel?: string }) {
+function BottomNav({ perms, appointmentsLabel, chosen }: { perms?: Record<string, boolean>; appointmentsLabel?: string; chosen?: string[] }) {
   const realPath = usePathname();
   const { pending } = useContext(NavPending);
   const path = pending && pending.from === realPath ? pending.href : realPath;
   const m = useMessages();
-  const items = visibleNav(NAV, perms).slice(0, 5);
+  // butoanele alese din Setări (în ordinea aleasă; cele la care nu mai ai acces se sar); fără alegere — primele din meniu
+  const visible = visibleNav(NAV, perms);
+  const picked = sanitizeBottomNav(chosen).map((h) => visible.find((n) => n.href === h)).filter((n): n is NavItem => !!n);
+  const items = picked.length > 0 ? picked : visible.slice(0, BOTTOM_NAV_MAX);
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-30 flex items-stretch border-t border-[var(--color-line)] bg-[var(--color-surface)] pb-[env(safe-area-inset-bottom)] lg:hidden">
       {items.map((item) => {

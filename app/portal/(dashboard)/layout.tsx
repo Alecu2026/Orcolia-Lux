@@ -26,7 +26,7 @@ export default async function PortalDashboardLayout({
     <I18nProvider messages={messages} locale={locale}>
     <div className="min-h-dvh bg-[var(--color-app)]">
       <div className="h-1 bg-brand" />
-      <header className="border-b border-[var(--color-line)] bg-[var(--color-surface)]">
+      <header className="border-b border-[var(--color-line)] bg-[var(--color-surface)] print:hidden">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand text-white">

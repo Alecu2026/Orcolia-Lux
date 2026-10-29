@@ -176,6 +176,7 @@ export default function FieldReadings({
           readAt: new Date(rd.readAt).getTime(),
           photo: !!rd.photoUrl,
           by: rd.userName,
+          portal: false,
           distanceM: rd.distanceM,
           geo: rd.lat != null && rd.lng != null,
           // la o retrimitere (citire deja salvată) serverul nu știe adresa: nu o ștergem din rând
@@ -206,7 +207,7 @@ export default function FieldReadings({
       if (!it) return r;
       const issue = it.issueKind ?? r.issue;
       if (it.value == null) return { ...r, issue };
-      return { ...r, issue, value: it.value, readAt: it.readAt, photo: !!it.photo, by: t("Tu"), distanceM: null, consum: fieldConsum(it.value, r.lastIndex), geo: it.lat != null, pending: it.state === "error" ? "error" : "wait" };
+      return { ...r, issue, value: it.value, readAt: it.readAt, photo: !!it.photo, by: t("Tu"), portal: false, distanceM: null, consum: fieldConsum(it.value, r.lastIndex), geo: it.lat != null, pending: it.state === "error" ? "error" : "wait" };
     });
   }, [routed, q.items, t]);
 
@@ -468,6 +469,11 @@ export default function FieldReadings({
           <option value="high">{t("Consum neobișnuit de mare")}</option>
           <option value="zero">{t("Consum zero")}</option>
           <option value="far">{t("Citit departe de locația anterioară")}</option>
+        </select>
+        <select value={filters.source} onChange={(e) => setFilter({ source: e.target.value as FieldFilters["source"] })} className={fld(filters.source)} aria-label={t("Sursa citirii")}>
+          <option value="">{t("Sursa: toate")}</option>
+          <option value="portal">{t("🌐 Din portal (plătitor)")}</option>
+          <option value="field">{t("Cititor (în teren)")}</option>
         </select>
         <select value={filters.photo} onChange={(e) => setFilter({ photo: e.target.value as FieldFilters["photo"] })} className={fld(filters.photo)} aria-label={t("Poză")}>
           <option value="">{t("Poză: toate")}</option>
@@ -733,7 +739,7 @@ const FieldTr = memo(function FieldTr({ r, onOpen, compact }: { r: FieldRow; onO
           {r.consum != null ? `${sus === "lower" || sus === "high" ? "⚠ " : ""}${num(r.consum)} m³` : <Dash />}
         </div>
         <div role="cell" className={CELL}>{r.readAt ? dt(r.readAt) : <Dash />}</div>
-        <div role="cell" className={CELL} title={r.by ?? ""}>{r.by ?? <Dash />}</div>
+        <div role="cell" className={CELL} title={r.by ?? ""}>{r.by ? <>{r.portal && <span title={t("Trimisă de plătitor din portal")} className="mr-1 rounded bg-brand/15 px-1 text-[10px] font-semibold text-brand">🌐</span>}{r.by}</> : <Dash />}</div>
         <div role="cell" className={`${CELL} text-center`}>{r.photo ? "📷" : <Dash />}</div>
         <div role="cell" className={`${num_} ${sus === "far" ? "font-semibold text-st-cancelled" : "text-ink-soft"}`} title={sus === "far" ? suspectLabel("far", t) : undefined}>
           {r.distanceM != null ? `${sus === "far" ? "⚠ " : ""}${num(r.distanceM)} m` : <Dash />}
@@ -960,7 +966,7 @@ function ReadingDialog({
             <p className="text-xs text-ink-soft">{row.name}</p>
             {row.value != null && row.by && (
               <p className="mt-0.5 text-[11px] text-ink-soft">
-                {t("Citit de")} {row.by}
+                {t("Citit de")} {row.by}{row.portal ? ` · ${t("Trimisă de plătitor din portal")}` : ""}
                 {row.distanceM != null && row.distanceM > FAR_METERS ? ` · ⚠ ${t("Citit departe de locația anterioară")} (${row.distanceM} m)` : ""}
                 {row.consum != null && row.consum > JUMP_CONFIRM_M3 ? ` · ⚠ ${t("Consum neobișnuit de mare.")}` : ""}
               </p>

@@ -75,7 +75,7 @@ export function ApptStatusDropdown({
         disabled={pending}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={handleOpen}
-        className={`h-7 shrink-0 rounded-full px-2.5 text-[11px] font-semibold transition-opacity disabled:opacity-50 ${meta.badge}`}
+        className={`dt-chip cursor-pointer h-7 shrink-0 rounded-full px-2.5 text-[11px] font-semibold transition-opacity disabled:opacity-50 ${meta.badge}`}
       >
         {apptLabel(status, m)}
       </button>

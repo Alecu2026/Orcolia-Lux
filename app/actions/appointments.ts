@@ -16,6 +16,7 @@ import {
   updateAppointment,
 } from "@/lib/services/appointments";
 import { parseReminderSchedule, type ReminderSchedule } from "@/lib/reminder-schedule";
+import { MAX_MAP_URL_LEN, isMapUrl, parseCoordinates } from "@/lib/map-links";
 import { DEMO } from "@/lib/demo";
 import { sanitizeReminderPresets } from "@/lib/reminder-presets";
 import {
@@ -92,6 +93,7 @@ export async function createQuickAppointment(
       reminderIntervalMinutes: rem.interval,
       status: d.status,
       assigneeId: String(formData.get("assigneeId") ?? "") || undefined,
+      place: readPlace(formData),
     },
     "WEB",
   );
@@ -99,6 +101,45 @@ export async function createQuickAppointment(
   if (!result.ok) return { error: result.error };
   revalidateAll();
   return { ok: true, id: result.id };
+}
+
+/** Locația din formular (adresă, lat, lng, link); validarea finală se face în serviciu. */
+function readPlace(fd: FormData): { address: string; lat: number | null; lng: number | null; mapUrl: string } {
+  const n = (k: string) => {
+    const v = String(fd.get(k) ?? "").trim();
+    return v === "" ? null : Number(v);
+  };
+  return { address: String(fd.get("address") ?? ""), lat: n("lat"), lng: n("lng"), mapUrl: String(fd.get("mapUrl") ?? "") };
+}
+
+/**
+ * Coordonatele dintr-un link de hartă lipit de utilizator (inclusiv linkuri scurte: maps.app.goo.gl). Întâi se încearcă direct din text; altfel, doar pentru
+ * servere de hărți cunoscute, se urmărește redirectarea (fără alte adrese: nu se deschid linkuri arbitrare de pe server).
+ */
+export async function resolveMapLinkAction(input: string): Promise<{ ok: true; lat: number; lng: number; mapUrl: string | null } | { ok: false; error: string }> {
+  const user = await requireUser();
+  if (!can(user, "appointments.manage")) return { ok: false, error: "Fără permisiune." };
+  const text = String(input ?? "").trim().slice(0, MAX_MAP_URL_LEN);
+  if (!text) return { ok: false, error: "Lipește un link de hartă sau coordonate." };
+  const direct = parseCoordinates(text);
+  const isUrl = /^https?:\/\//i.test(text);
+  if (direct) return { ok: true, ...direct, mapUrl: isUrl && isMapUrl(text) ? text : null };
+  if (!isUrl || !isMapUrl(text)) return { ok: false, error: "Linkul trebuie să fie de la Google Maps, Apple Maps sau Waze (sau scrie coordonatele: 47.0245, 28.8322)." };
+  try {
+    const res = await fetch(text, { redirect: "follow", signal: AbortSignal.timeout(7000), headers: { "user-agent": "Mozilla/5.0 (compatible; CRM)", "accept-language": "en" } });
+    const finalUrl = res.url || text;
+    if (!isMapUrl(finalUrl) && !/consent\.google\./.test(finalUrl)) return { ok: false, error: "Linkul nu duce la o hartă cunoscută." };
+    let found = parseCoordinates(finalUrl);
+    if (!found) {
+      // pagina conține adesea coordonatele în conținut: primii ~300 KB
+      const body = (await res.text()).slice(0, 300_000);
+      found = parseCoordinates(body.match(/@-?\d{1,3}\.\d+,-?\d{1,3}\.\d+/)?.[0] ?? "") ?? parseCoordinates(body.match(/!3d-?\d{1,3}\.\d+!4d-?\d{1,3}\.\d+/)?.[0] ?? "") ?? parseCoordinates(body.match(/center=-?\d{1,3}\.\d+(?:%2C|,)-?\d{1,3}\.\d+/)?.[0]?.replace("center=", "?center=") ?? "");
+    }
+    if (!found) return { ok: false, error: "Nu am găsit coordonatele în link. Deschide locul în Google Maps și copiază coordonatele sau linkul lung." };
+    return { ok: true, ...found, mapUrl: isMapUrl(finalUrl) ? finalUrl : text };
+  } catch {
+    return { ok: false, error: "Nu am putut deschide linkul. Încearcă din nou sau scrie coordonatele." };
+  }
 }
 
 /** Reminderele din formular (ReminderPicker în mod programare): `remindersNew` marchează formularul nou; programarea e validată pe server. */
@@ -152,6 +193,7 @@ export async function updateAppointmentAction(_prev: ApptState, formData: FormDa
     reminderIntervalMinutes: rem.interval,
     status: d.status,
     assigneeId: String(formData.get("assigneeId") ?? "") || null,
+    place: readPlace(formData),
   });
   if (!res.ok) return { error: res.error };
   revalidateAll();

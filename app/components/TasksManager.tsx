@@ -35,7 +35,8 @@ import { useProofPrompt } from "./ProofDialog";
 import { quickCreateProject } from "@/app/actions/projects";
 import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
-import type { TemplatePrefill } from "@/lib/task-template";
+import { hasPayerVariables, type TemplatePrefill } from "@/lib/task-template";
+import { resolveTemplateTextAction } from "@/app/actions/task-templates";
 import { useT } from "@/lib/i18n/context";
 
 export type HistoryRow = {
@@ -927,7 +928,7 @@ export function StatusDropdown({
         disabled={pending || disabled}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={handleOpen}
-        className={`h-7 shrink-0 rounded-full px-2.5 text-[11px] font-semibold transition-opacity disabled:opacity-50 ${disabled ? "cursor-not-allowed" : ""} ${ST[status].badge}`}
+        className={`dt-chip h-7 shrink-0 rounded-full px-2.5 text-[11px] font-semibold transition-opacity disabled:opacity-50 ${disabled ? "cursor-not-allowed" : "cursor-pointer"} ${ST[status].badge}`}
       >
         {m.status[status]}
       </button>
@@ -1260,7 +1261,7 @@ export function CreateDialog({
   prefill?: TemplatePrefill;
   /** Șabloanele disponibile: apar ca listă mică în capul ferestrei (alegerea completează formularul). */
   templates?: { id: string; name: string }[];
-  onPickTemplate?: (id: string) => void;
+  onPickTemplate?: (id: string, clientId?: string) => void;
   /** Scoate șablonul ales: formularul revine gol, iar numărul {contor} rezervat se eliberează. */
   onClearTemplate?: () => void;
   onClose: () => void;
@@ -1270,6 +1271,19 @@ export function CreateDialog({
   const toast = useToast();
   const m = useMessages();
   const formRef = useRef<HTMLFormElement>(null);
+  /** După aplicarea unui șablon cu variabile de plătitor ({nume}, {telefon}, …): când alegi plătitorul în fereastră, variabilele rămase în titlu / descriere se completează din datele lui. */
+  async function fillPayerVariables(cid: string) {
+    const form = formRef.current;
+    if (!cid || !form) return;
+    const titleEl = form.elements.namedItem("title") as HTMLInputElement | null;
+    const descEl = form.elements.namedItem("description") as HTMLTextAreaElement | null;
+    if (!titleEl || !descEl || !(hasPayerVariables(titleEl.value) || hasPayerVariables(descEl.value))) return;
+    const r = await resolveTemplateTextAction({ clientId: cid, title: titleEl.value, description: descEl.value, phone: prefill?.callPhone, callAt: prefill?.callAt }).catch(() => null);
+    if (r && r.ok) {
+      titleEl.value = r.title;
+      descEl.value = r.description;
+    }
+  }
   const fileRef = useRef<HTMLInputElement>(null);
   const [categoryId, setCategoryId] = useState(prefill?.categoryId ?? "");
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
@@ -1329,7 +1343,7 @@ export function CreateDialog({
             {templates && templates.length > 0 && onPickTemplate && (
               <select
                 value={prefill?.templateId ?? ""}
-                onChange={(e) => (e.target.value ? onPickTemplate(e.target.value) : onClearTemplate?.())}
+                onChange={(e) => (e.target.value ? onPickTemplate(e.target.value, (formRef.current?.elements.namedItem("clientId") as HTMLSelectElement | null)?.value || undefined) : onClearTemplate?.())}
                 aria-label={t("Folosește un șablon")}
                 title={t("Folosește un șablon")}
                 className="h-8 max-w-[9.5rem] cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 text-[11px] text-ink-soft outline-none focus:border-brand"
@@ -1369,7 +1383,12 @@ export function CreateDialog({
             defaultValue={prefill?.projectId || (initialProjectId ?? "")}
           />
           {clients.length > 0 && (
-            <select name="clientId" defaultValue={prefill?.clientId || (initialClientId ?? "")} className={dlgInput}>
+            <select
+              name="clientId"
+              defaultValue={prefill?.clientId || (initialClientId ?? "")}
+              onChange={(e) => void fillPayerVariables(e.target.value)}
+              className={dlgInput}
+            >
               <option value="">{m.tasks.noClient}</option>
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -1386,7 +1405,7 @@ export function CreateDialog({
           <CategoryChips categories={categories} value={categoryId} onChange={setCategoryId} />
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.reminderLabel}</label>
-            <ReminderPicker interval={prefill?.reminderIntervalMinutes ?? null} schedule={null} />
+            <ReminderPicker interval={prefill?.reminderIntervalMinutes ?? null} schedule={prefill?.reminderSchedule || null} />
           </div>
           {quietHoursEnabled && (
             <label className="flex cursor-pointer items-center gap-2 text-sm">

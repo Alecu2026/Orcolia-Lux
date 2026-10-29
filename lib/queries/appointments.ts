@@ -27,6 +27,10 @@ export const LIST_SELECT = {
   reminderTelegramEnabled: true,
   userId: true,
   assigneeId: true,
+  address: true,
+  lat: true,
+  lng: true,
+  mapUrl: true,
   reminderOffsets: true,
   reminderSchedule: true,
   reminderIntervalMinutes: true,
@@ -53,6 +57,11 @@ export type AppointmentListItem = {
   /** Cine a creat programarea / pentru cine e (opțional). */
   userId?: string;
   assigneeId?: string | null;
+  /** Locația programării (opțional). */
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  mapUrl?: string | null;
   /** Pragurile fixe vechi (reminder-presets) — cât timp programarea nu are remindere noi. */
   reminderOffsets?: string[];
   /** Reminderele noi, ca la sarcini (JSON din reminder-schedule.ts) sau interval fix în minute. */

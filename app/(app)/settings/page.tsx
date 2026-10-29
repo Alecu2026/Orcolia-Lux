@@ -11,6 +11,9 @@ import CategoriesManager from "@/app/components/CategoriesManager";
 import CompanyDetailsForm from "@/app/components/CompanyDetailsForm";
 import QuietHoursForm from "@/app/components/QuietHoursForm";
 import PushToggle from "@/app/components/PushToggle";
+import BottomNavSettings from "@/app/components/BottomNavSettings";
+import { NAV_META, sanitizeBottomNav } from "@/lib/nav-meta";
+import { isSuper } from "@/lib/dal";
 import TicketStatusConfigEditor from "@/app/components/TicketStatusConfigEditor";
 import { IconChevronRight } from "@/app/components/icons";
 import { loadStatusConfigs } from "@/lib/queries/ticket-status-config";
@@ -38,6 +41,11 @@ export default async function SettingsPage() {
       <CategoriesManager categories={categories} canManage={user.role === "ADMIN"} />
       <QuietHoursForm config={quietHours} canEdit={user.isSuperAdmin} />
       <PushToggle />
+      <BottomNavSettings
+        // paginile la care utilizatorul are acces (aceleași reguli ca meniul)
+        available={NAV_META.filter((n) => !n.perm || (n.perm === "audit.view" ? isSuper(user) : can(user, n.perm as never))).map((n) => ({ href: n.href, labelKey: n.labelKey }))}
+        selected={sanitizeBottomNav(user.bottomNav)}
+      />
 
       {user.role === "ADMIN" && (
         <div className="card p-5 space-y-4">

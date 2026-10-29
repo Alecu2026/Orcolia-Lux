@@ -43,6 +43,11 @@ export type ApptVM = {
   remEmail: boolean;
   remTelegram: boolean;
   /** Cine a creat programarea și pentru cine e (opțional) — numele, pentru afișare; id-urile, pentru editare. */
+  /** Locația programării (opțional): adresă, coordonate, link Google Maps. */
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  mapUrl: string;
   creatorId: string;
   creatorName: string;
   assigneeId: string | null;
@@ -60,6 +65,10 @@ export type ApptVM = {
 };
 
 export type QuickPrefill = Partial<{
+  address: string;
+  lat: number;
+  lng: number;
+  mapUrl: string;
   assigneeId: string;
   /** Prezent ⇒ editarea programării existente (nu una nouă). */
   id: string;

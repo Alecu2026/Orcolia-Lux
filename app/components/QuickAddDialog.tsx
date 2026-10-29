@@ -11,6 +11,7 @@ import type { CategoryLite, QuickDefaults, QuickPrefill } from "./types";
 import ClientCombobox from "./ClientCombobox";
 import { IconCheck, IconMail, IconSend, IconX } from "./icons";
 import ReminderPicker from "./ReminderPicker";
+import AppointmentLocationField from "./AppointmentLocationField";
 import { DEFAULT_TZ, zonedToUtc } from "@/lib/date";
 import { presetsToMinutes } from "@/lib/reminder-presets";
 import { useMessages } from "@/lib/i18n/context";
@@ -237,6 +238,8 @@ export default function QuickAddDialog({
               </div>
             </div>
           </div>
+
+          <AppointmentLocationField initial={{ address: prefill?.address, lat: prefill?.lat ?? null, lng: prefill?.lng ?? null, mapUrl: prefill?.mapUrl }} />
 
           <input
             name="title"

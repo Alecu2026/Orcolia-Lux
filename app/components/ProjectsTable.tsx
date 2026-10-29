@@ -90,7 +90,7 @@ export default function ProjectsTable({
     {
       key: "seq", label: "#", minW: 45, sort: (p) => p.seq,
       render: (p) => (
-        <button type="button" onClick={() => setDetail(p)} title={tr("Deschide detaliile")} className="cursor-pointer rounded px-0.5 font-mono font-semibold text-brand hover:bg-brand-soft/60 hover:underline">
+        <button type="button" onClick={() => setDetail(p)} title={tr("Deschide detaliile")} className="cursor-pointer rounded px-0.5 font-mono font-semibold text-brand dt-ctl hover:underline">
           {p.seq != null ? `#${String(p.seq).padStart(3, "0")}` : "↗"}
         </button>
       ),

@@ -17,6 +17,8 @@ import { useToast } from "./toast";
 import { IconMail, IconPencil, IconSend, IconTrash, IconX } from "./icons";
 import { describeSchedule, parseReminderSchedule } from "@/lib/reminder-schedule";
 import { presetsToMinutes } from "@/lib/reminder-presets";
+import { hasPlace, placeLabel } from "@/lib/map-links";
+import MapOpenButtons from "./MapOpenButtons";
 import { humanDay } from "@/lib/date";
 import { useLocale, useMessages, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
@@ -33,6 +35,10 @@ const dmy = (key: string) => key.split("-").reverse().join(".");
 function prefillOf(a: ApptVM): QuickPrefill {
   return {
     id: a.id,
+    address: a.address,
+    lat: a.lat ?? undefined,
+    lng: a.lng ?? undefined,
+    mapUrl: a.mapUrl,
     assigneeId: a.assigneeId ?? undefined,
     clientId: a.clientId,
     clientName: a.clientName,
@@ -171,7 +177,7 @@ export default function AppointmentsTable({
     ...(canManage ? [{ key: "rc", label: "", minW: 28, render: (a: ApptVM) => <div onClick={(e) => e.stopPropagation()}><RowColorPicker value={a.color} onChange={(c) => setColor(a, c)} /></div> } satisfies Col<ApptVM>] : []),
     {
       key: "open", label: "", minW: 28,
-      render: (a) => <button type="button" onClick={() => setDetail(a.id)} title={t("Deschide detaliile")} className="cursor-pointer rounded px-0.5 font-semibold text-brand hover:bg-brand-soft/60">↗</button>,
+      render: (a) => <button type="button" onClick={() => setDetail(a.id)} title={t("Deschide detaliile")} className="dt-ctl cursor-pointer rounded px-0.5 font-semibold text-brand">↗</button>,
     },
     { key: "date", label: t("Data"), minW: 100, sticky: true, sort: (a) => `${a.dateKey} ${a.time}`, render: (a) => dateEditor(a, <span className={a.dateKey === today ? "font-semibold text-brand" : ""}>{dmy(a.dateKey)}</span>) },
     { key: "time", label: t("Ora"), minW: 95, sort: (a) => a.time, render: (a) => dateEditor(a, <span className="font-mono">{a.time}–{a.endTime}</span>) },
@@ -185,6 +191,20 @@ export default function AppointmentsTable({
       render: (a) => { const [h1, m1] = a.time.split(":").map(Number); const [h2, m2] = a.endTime.split(":").map(Number); return `${h2 * 60 + m2 - (h1 * 60 + m1)} ${t("min")}`; },
     },
     { key: "client", label: t("Client"), minW: 180, maxW: 240, sort: (a) => a.clientName, render: (a) => <span title={a.clientName}>{a.clientName}</span> },
+    {
+      key: "place", label: t("Locație"), minW: 150, maxW: 240, sort: (a) => placeLabel(a),
+      render: (a) =>
+        hasPlace(a) ? (
+          <PopEditor display={<span className="inline-flex items-center gap-1"><span aria-hidden>📍</span><span className="truncate">{placeLabel(a)}</span></span>} width={300} title={t("Deschide în hartă")}>
+            {() => (
+              <div className="flex flex-col gap-2">
+                <p className="text-[12px] font-medium">{placeLabel(a)}</p>
+                <MapOpenButtons place={a} />
+              </div>
+            )}
+          </PopEditor>
+        ) : dash,
+    },
     {
       key: "assignee", label: t("Pentru"), minW: 130, maxW: 200, sort: (a) => a.assigneeName ?? "",
       render: (a) => {
@@ -277,6 +297,11 @@ export default function AppointmentsTable({
             test: (a: ApptVM, v: string) => a.categoryName === v,
           }]
         : []),
+      {
+        kind: "select", key: "place", label: t("Locație: toate"),
+        options: [{ value: "has", label: t("Cu locație") }, { value: "none", label: t("Fără locație") }],
+        test: (a, v) => (v === "has" ? hasPlace(a) : !hasPlace(a)),
+      },
       { kind: "date", key: "from", label: t("De la data"), test: (a, v) => a.dateKey >= v },
       { kind: "date", key: "to", label: t("Până la data"), test: (a, v) => a.dateKey <= v },
       {
@@ -331,6 +356,13 @@ export default function AppointmentsTable({
             <div className="divide-y divide-[var(--color-line)] overflow-hidden rounded-lg border border-[var(--color-line)] text-sm">
               <Row label={t("Status")}><ApptStatusDropdown status={current.status} pending={busy === current.id || !canManage} onChange={(s) => change(current.id, s)} /></Row>
               <Row label={t("Categorie")}>{current.categoryName ?? "—"}</Row>
+              {hasPlace(current) && (
+                <div className="px-2.5 py-1.5">
+                  <p className="mb-0.5 text-[11px] text-ink-soft">{t("Locație")}</p>
+                  <p className="mb-1.5 text-[13px]">📍 {placeLabel(current)}</p>
+                  <MapOpenButtons place={current} size="sm" />
+                </div>
+              )}
               {current.assigneeId && <Row label={t("Pentru")}>{current.assigneeId === userId ? `${t("tu")} · ${t("de la")} ${current.creatorName}` : current.assigneeName ?? "—"}</Row>}
               <Row label={t("Remindere")}>{[remText(current, t, dateTag(locale)), current.remEmail ? "Email" : "", current.remTelegram ? "Telegram" : ""].filter(Boolean).join(" · ") || "—"}</Row>
               {current.title && <div className="px-2.5 py-1.5"><p className="mb-0.5 text-[11px] text-ink-soft">{t("Descriere")}</p><p className="whitespace-pre-wrap text-[13px]">{current.title}</p></div>}

@@ -131,6 +131,8 @@ model User {
   permissions  String[] @default([])
   // Aspectul tabelelor setat de administrator pentru acest utilizator (densitate, mărime text, lățime, culori — vezi lib/table-look.ts). Cine are „Personalizare tabele” îl poate schimba singur.
   tableLook    Json?
+  // Butoanele rapide din bara de jos de pe telefon, alese de utilizator în Setări (adrese din lib/nav-meta.ts, în ordine); gol = primele 5 din meniu.
+  bottomNav    String[] @default([])
   // Evenimente la care primește notificări „observator" (chei din lib/notify-meta.ts).
   // Listă vidă = toate evenimentele (când notifyScope permite).
   notifyEvents String[] @default([])
@@ -824,6 +826,12 @@ model Appointment {
   reminderIntervalMinutes Int?
   nextReminderAt          DateTime?
 
+  // Locația programării (opțional): adresa scrisă, coordonatele (GPS / dintr-un link de hartă) și linkul Google Maps lipit; se deschid în Google Maps / Apple Maps / Waze
+  address String?
+  lat     Float?
+  lng     Float?
+  mapUrl  String?
+
   createdFrom CreatedFrom @default(WEB)
 
   createdAt DateTime @default(now())
@@ -1108,6 +1116,8 @@ model TaskTemplate {
   /** Termen = azi + atâtea zile (null = fără termen). */
   dueDays     Int?
   reminderIntervalMinutes Int?
+  /// Reamintire programată (JSON din lib/reminder-schedule.ts: zilnic / săptămânal / lunar / la interval); când e setată, reminderIntervalMinutes e null. Fără dată fixă: „o singură dată” nu se salvează în șabloane.
+  reminderSchedule Json?
   counter     Int          @default(1)
   createdById String       @db.ObjectId
   createdAt   DateTime     @default(now())
@@ -1278,8 +1288,11 @@ model MeterReading {
   photoUrl     String?
   photoName    String?
   note         String?
-  userId       String   @db.ObjectId
+  /// cine a făcut citirea: un utilizator (cititor din teren) sau, la citirile din portal, lipsă (vezi `source`)
+  userId       String?  @db.ObjectId
   userName     String
+  /// „PORTAL” = trimisă de plătitor din portal (userName = numele plătitorului); lipsă = citire din teren
+  source       String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -1324,8 +1337,10 @@ model MeterIssue {
   readingId    String?   @db.ObjectId
   /// momentul real al constatării (la citirile offline, ora de pe telefon)
   reportedAt   DateTime
-  userId       String    @db.ObjectId
+  userId       String?   @db.ObjectId
   userName     String
+  /// „PORTAL” = raportată de plătitor din portal
+  source       String?
   createdAt    DateTime  @default(now())
   resolvedAt   DateTime?
   resolvedById String?   @db.ObjectId
@@ -1336,4 +1351,21 @@ model MeterIssue {
   @@index([resolvedAt, reportedAt])
   @@index([period])
   @@index([userId, period])
+}
+
+/// Șablon de rol / tip de utilizator: completează formularul de utilizator (rol, permisiuni, ce sarcini vede). `key` = cheia unui tip implicit (reader, operator, supervisor, viewer —
+/// atunci rândul e o MODIFICARE a tipului implicit; ștergerea lui readuce originalul) sau un id generat pentru un șablon creat de administrator.
+model RoleTemplate {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  key         String   @unique
+  name        String
+  description String?
+  /// ADMIN (acces la tot) sau STAFF (cu permisiunile de mai jos)
+  role        String   @default("STAFF")
+  permissions String[]
+  /// "ALL" / "OWN" / null = nu schimbă ce sarcini vede
+  taskView    String?
+  createdById String?  @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

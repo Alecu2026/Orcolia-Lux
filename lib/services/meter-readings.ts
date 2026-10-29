@@ -26,7 +26,8 @@ import {
  * sau datele din 1C — se păstrează doar în baza de date, cu locația și (opțional) poza contorului.
  */
 
-export type Actor = { id: string; name: string };
+/** `id` lipsește la plătitorul care trimite citirea din portal (nu e un utilizator al CRM-ului). */
+export type Actor = { id: string | null; name: string };
 
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -69,7 +70,7 @@ export async function getFieldList(): Promise<FieldList> {
     // luna aceasta + cele două dinainte: citirile din teren mai noi decât indexul din 1C
     prisma.meterReading.findMany({
       where: { period: { gte: shiftPeriod(period, 2) } },
-      select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, distanceM: true, lat: true, lng: true, accuracy: true },
+      select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, source: true, distanceM: true, lat: true, lng: true, accuracy: true },
     }),
     // adresa / locația contoarelor completate din teren (o înregistrare mică pe contor)
     prisma.meterLocation.findMany({ select: { meterId: true, address: true, lat: true, lng: true, accuracy: true } }),
@@ -111,6 +112,8 @@ export async function getFieldList(): Promise<FieldList> {
       geo?.lat ?? null, geo?.lng ?? null, fieldAddr ? 1 : 0, geo?.accuracy ?? null,
       // sectorul din 1C vine odată cu lista de contoare (aceeași versiune, mereu la zi)
       r.uch, issueBy.get(r.id) ?? null,
+      // citirea lunii a fost trimisă de plătitor din portal
+      cur?.source === "PORTAL" ? 1 : 0,
     ];
   });
   return { period, rows, routes: routes.filter((r) => r.active) };
@@ -130,6 +133,8 @@ export type SaveInput = {
   readAt?: Date | null;
   /** Vine din coada de pe telefon: o citire mai recentă deja salvată nu se suprascrie cu una mai veche. */
   fromQueue?: boolean;
+  /** „PORTAL”: citirea o trimite plătitorul din portal — nu suprascrie o citire făcută de cititor în aceeași lună. */
+  source?: "PORTAL";
 };
 
 /** O citire din coada offline nu poate avea ora în viitor și nici să fie mai veche de atât. */
@@ -189,6 +194,11 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     if (lastLoc?.lat != null && lastLoc.lng != null) distanceM = Math.round(distanceMeters(lat, lng, lastLoc.lat, lastLoc.lng));
   }
 
+  if (input.source === "PORTAL") {
+    // plătitorul își poate corecta propria citire din portal, dar nu o citire făcută de cititor / operator
+    const cur = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { source: true, value: true } });
+    if (cur && cur.source !== "PORTAL") return { ok: false, error: "Pentru luna aceasta citirea a fost deja înregistrată de cititor." };
+  }
   const data = {
     contor: row.contor,
     clientId: row.clientId,
@@ -201,6 +211,8 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     distanceM,
     userId: actor.id,
     userName: actor.name,
+    // o citire din teren care o înlocuiește pe cea din portal șterge marcajul „PORTAL”
+    source: input.source ?? null,
   };
   if (input.fromQueue) {
     const existing = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { readAt: true, value: true, userName: true } });
@@ -242,8 +254,8 @@ async function updateMeterLocation(
   if (Object.keys(data).length) {
     next = await prisma.meterLocation.upsert({
       where: { meterId: row.id },
-      create: { meterId: row.id, contor: row.contor, userId: actor.id, userName: actor.name, ...data },
-      update: { userId: actor.id, userName: actor.name, ...data },
+      create: { meterId: row.id, contor: row.contor, userId: actor.id ?? undefined, userName: actor.name, ...data },
+      update: { userId: actor.id ?? undefined, userName: actor.name, ...data },
     });
   }
   const fieldAddr = !row.address && next?.address ? next.address : null;

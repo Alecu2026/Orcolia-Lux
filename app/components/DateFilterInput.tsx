@@ -15,11 +15,12 @@ export default function DateFilterInput({
   ...rest
 }: { label: string; value: string } & Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "value">) {
   return (
-    <span className="relative inline-flex">
-      <input type="date" value={value} className={className} {...rest} />
+    // lățime minimă: data + iconița nativă de calendar trebuie să încapă (altfel iconița se taie)
+    <span className="relative inline-flex min-w-[10.75rem]">
+      <input type="date" value={value} className={`${className ?? ""} !h-8 w-full min-w-[10.75rem] pr-1.5 !text-xs`} {...rest} />
       {!value && (
-        <span aria-hidden className="pointer-events-none absolute inset-y-px left-px right-7 flex items-center gap-1 overflow-hidden rounded-l-lg bg-[var(--color-surface)] px-2 text-[12px] text-ink-soft">
-          <IconCalendar className="size-3.5 shrink-0" />
+        <span aria-hidden className="pointer-events-none absolute inset-y-px left-px right-8 flex items-center gap-1 overflow-hidden rounded-l-lg bg-[var(--color-surface)] px-2 text-xs text-ink-soft">
+          <IconCalendar className="size-4 shrink-0" />
           <span className="truncate">{label}</span>
         </span>
       )}

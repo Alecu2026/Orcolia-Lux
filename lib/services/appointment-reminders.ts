@@ -8,8 +8,17 @@ import { isQuietTime } from "../quiet-hours";
 import { formatDate, formatTime } from "../date";
 import { APPT_REMINDER_STATUSES, nextApptReminderAt, parseReminderSchedule } from "../reminder-schedule";
 import { notifyUsers } from "./notifications";
+import { googleMapsUrl, placeLabel } from "../map-links";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** Adresa + linkul Google Maps pentru mesajul către client (gol dacă programarea nu are locație). */
+function placeLink(a: { address: string | null; lat: number | null; lng: number | null; mapUrl: string | null }): string {
+  const url = googleMapsUrl(a);
+  const label = placeLabel(a);
+  if (!url || !label) return "";
+  return `\n📍 <a href="${url.replace(/"/g, "&quot;")}">${esc(label)}</a>`;
+}
 
 /** „în 3 ore”, „în 1 zi 2 ore”, „în 25 min”, „acum” — cât mai e până la începerea programării (rotunjit, ca să nu apară „29 min” la un prag de 30). */
 export function timeLeftText(ms: number): string {
@@ -42,6 +51,7 @@ export async function checkAppointmentReminders(): Promise<{ checked: number; no
       id: true, userId: true, assigneeId: true, title: true, message: true, status: true, startAt: true,
       clientNameSnapshot: true, categoryNameSnapshot: true,
       reminderEmailEnabled: true, reminderTelegramEnabled: true,
+      address: true, lat: true, lng: true, mapUrl: true,
       reminderSchedule: true, reminderIntervalMinutes: true, nextReminderAt: true,
       client: { select: { name: true, email: true, telegramChatId: true } },
     },
@@ -74,7 +84,7 @@ export async function checkAppointmentReminders(): Promise<{ checked: number; no
         a.assigneeId ? [a.userId, a.assigneeId] : [a.userId],
         {
           title: `🔔 ${a.clientNameSnapshot} – ${left}`,
-          body: `${service} · ${date} la ${time}${a.message?.trim() ? ` · ${a.message.trim()}` : ""}`,
+          body: `${service} · ${date} la ${time}${placeLabel(a) ? ` · 📍 ${placeLabel(a)}` : ""}${a.message?.trim() ? ` · ${a.message.trim()}` : ""}`,
           url: `/appointments?id=${a.id}`,
         },
         { telegram: true },
@@ -97,7 +107,7 @@ export async function checkAppointmentReminders(): Promise<{ checked: number; no
         if (a.reminderTelegramEnabled && a.client.telegramChatId) {
           await sendMessage(
             a.client.telegramChatId,
-            `🔔 <b>Reminder</b>\nBună, ${esc(a.client.name)}. Ai programare la <b>${esc(service)}</b> pe <b>${date}</b> la <b>${time}</b>.\nTe rugăm confirmă dacă poți ajunge.`,
+            `🔔 <b>Reminder</b>\nBună, ${esc(a.client.name)}. Ai programare la <b>${esc(service)}</b> pe <b>${date}</b> la <b>${time}</b>.\nTe rugăm confirmă dacă poți ajunge.${placeLink(a)}`,
           ).catch((e) => console.error("[appointments] Telegram reamintire client:", e));
         }
       }

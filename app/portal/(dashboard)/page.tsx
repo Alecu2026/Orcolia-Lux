@@ -6,6 +6,8 @@ import { getT } from "@/lib/i18n/server-t";
 import { listPortalTemplates } from "@/lib/queries/portal-templates";
 import PortalRequestPanel from "@/app/components/PortalRequestPanel";
 import { IconChevronDown } from "@/app/components/icons";
+import PortalMeters from "@/app/components/PortalMeters";
+import { listPortalMeters } from "@/lib/services/portal-meters";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,7 @@ export default async function PortalDashboardPage({
   const { status } = await searchParams;
   const statusFilter = INVOICE_STATUS_LIST.includes(status as InvoiceStatusKey) ? (status as InvoiceStatusKey) : undefined;
 
-  const templates = await listPortalTemplates();
+  const [templates, portalMeters] = await Promise.all([listPortalTemplates(), listPortalMeters(client.id).catch((e) => { console.error("[portal] contoarele plătitorului:", e); return { period: "", meters: [] }; })]);
   const allInvoices = await prisma.invoice.findMany({
     // DRAFT rămâne intern (nerevizuit încă de staff) — nu trebuie să apară în portal.
     where: { clientId: client.id, status: { not: "DRAFT" } },
@@ -52,6 +54,8 @@ export default async function PortalDashboardPage({
       </div>
 
       <PortalRequestPanel templates={templates} />
+
+      {portalMeters.meters.length > 0 && <PortalMeters meters={portalMeters.meters} period={portalMeters.period} />}
 
       {allInvoices.length > 0 && (
         <div className="card flex items-center justify-between p-4">
