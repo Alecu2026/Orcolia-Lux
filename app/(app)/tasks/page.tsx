@@ -85,6 +85,8 @@ export default async function TasksPage({
         clients={clients}
         categories={categories}
         canCreate={can(user, "tasks.create")}
+        canExport={can(user, "tasks.export")}
+        canImport={can(user, "tasks.import")}
         canDelete={can(user, "tasks.delete")}
         canEdit={can(user, "tasks.edit")}
         userId={user.id}

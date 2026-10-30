@@ -22,6 +22,7 @@ export default function UsersManager({
   viewerIsSuper = false,
   viewerId = "",
   viewerRole = "STAFF",
+  impersonable = [],
   roleTemplates = [],
 }: {
   roleTemplates?: RoleTemplate[];
@@ -30,6 +31,8 @@ export default function UsersManager({
   viewerIsSuper?: boolean;
   viewerId?: string;
   viewerRole?: "ADMIN" | "STAFF";
+  /** Conturile în care utilizatorul curent are voie să intre (simulare de login). */
+  impersonable?: string[];
 }) {
   const t = useT();
   const toast = useToast();
@@ -187,6 +190,14 @@ export default function UsersManager({
                 >
                   {u.isActive ? m.users.deactivate : m.users.activate}
                 </button>
+              )}
+              {impersonable.includes(u.id) && (
+                <form method="post" action="/api/simulare/user">
+                  <input type="hidden" name="userId" value={u.id} />
+                  <button type="submit" className="tap rounded-lg border border-[var(--color-line)] px-2.5 py-1.5 text-xs hover:bg-[var(--color-surface-2)]" title={t("Simulare de login (intri în contul unui subaltern sau în portalul unui client; expiră după 6 ore)")}>
+                    {t("Intră în cont")}
+                  </button>
+                </form>
               )}
               <button
                 onClick={() => setDialog({ open: true, user: u })}

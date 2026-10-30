@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearReadNotifications, markAllNotificationsRead, markNotificationsReadAction } from "@/app/actions/notifications";
-import { setTaskStatus } from "@/app/actions/tasks";
+import { setTaskProgress, setTaskStatus } from "@/app/actions/tasks";
 import { setStatus as setAppointmentStatus } from "@/app/actions/appointments";
 import { notificationDay, objectIdOfUrl, type NRow, type NotificationKind } from "@/lib/notification-kind";
 import { useLocale, useMessages, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
+import { DEFAULT_PER_PAGE, NOTIFY_PER_PAGE, normalizePerPageClient, perPageLabel } from "@/lib/payer-notify";
+import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useToast } from "./toast";
 import DateFilterInput from "./DateFilterInput";
 import { useNotificationDataset } from "./useNotificationDataset";
@@ -18,6 +20,21 @@ type Period = "all" | "today" | "yesterday" | "7d" | "30d" | "custom";
 type Filters = { kind: Kind; status: Status; period: Period; from: string; to: string; q: string; sort: "new" | "old"; actions: boolean };
 const EMPTY: Filters = { kind: "", status: "all", period: "all", from: "", to: "", q: "", sort: "new", actions: false };
 const LS_KEY = "notif-filters-v1";
+const LS_PER_PAGE = "notif-perpage-v1";
+
+/** Butoanele de paginare cu „…” pentru spații mari (aceeași logică ca la Plătitori / Citiri teren). */
+function buildPageButtons(current: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set<number>([1, total]);
+  for (let i = Math.max(2, current - 2); i <= Math.min(total - 1, current + 2); i++) pages.add(i);
+  const sorted = [...pages].sort((a, b) => a - b);
+  const out: (number | "…")[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) out.push("…");
+    out.push(sorted[i]);
+  }
+  return out;
+}
 
 const TZ = "Europe/Bucharest";
 const ICON: Record<NotificationKind, string> = { tasks: "✅", tickets: "🎫", appointments: "📅", meters: "💧", payers: "👥", invoices: "🧾", projects: "📁", clients: "🧑", calls: "📞" };
@@ -86,6 +103,9 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
   const [f, setF] = useState<Filters>(EMPTY);
   const [draftQ, setDraftQ] = useState("");
   const [ready, setReady] = useState(false);
+  const [perPage, setPerPageState] = useState<number>(DEFAULT_PER_PAGE);
+  /** Pagina curentă, legată de filtrele pentru care a fost aleasă: la orice schimbare de filtru / mărime se revine la pagina 1 (fără efecte). */
+  const [pg, setPg] = useState({ key: "", page: 1 });
   const [acts, setActs] = useState<Record<string, { busy?: boolean; done?: string; error?: string }>>({});
   /** Notificările necitite la deschidere / apărute cât timp pagina e deschisă: rămân evidențiate în această vizită chiar după ce sunt marcate citite. */
   const [fresh, setFresh] = useState<Set<string>>(new Set());
@@ -100,6 +120,9 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setF({ ...EMPTY, ...s, q: "" });
       }
+      const pp = localStorage.getItem(LS_PER_PAGE);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (pp) setPerPageState(normalizePerPageClient(pp));
     } catch {}
     setReady(true);
   }, []);
@@ -144,16 +167,26 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
     return c;
   }, [rows, f, canAppointments]);
 
+  // ── paginare: pagina curentă din lista filtrată ──────────────────────────────────────
+  const fkey = `${JSON.stringify(f)}|${perPage}`;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const curPage = Math.min(pg.key === fkey ? pg.page : 1, totalPages);
+  const setPage = useCallback((n: number) => { setPg({ key: fkey, page: n }); window.scrollTo({ top: 0 }); }, [fkey]);
+  const paged = useMemo(() => (filtered.length <= perPage ? filtered : filtered.slice((curPage - 1) * perPage, curPage * perPage)), [filtered, perPage, curPage]);
+  const from = filtered.length === 0 ? 0 : (curPage - 1) * perPage + 1;
+  const to = Math.min(curPage * perPage, filtered.length);
+  const pageButtons = buildPageButtons(curPage, totalPages);
+
   // ── intrări (antet de zi + notificare) ────────────────────────────────────────────────
   const entries = useMemo<Entry[]>(() => {
     const out: Entry[] = [];
     let last = "";
-    for (const r of filtered) {
+    for (const r of paged) {
       if (r.day !== last) { out.push({ key: `d:${r.day}`, kind: "day", day: r.day }); last = r.day; }
       out.push({ key: r.id, kind: "item", row: r });
     }
     return out;
-  }, [filtered]);
+  }, [paged]);
 
   // ── virtualizare (scroll-ul paginii): înălțimile se măsoară; până atunci se estimează ───────────
   const heights = useRef(new Map<string, number>());
@@ -255,7 +288,7 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
     root.querySelectorAll<HTMLElement>("[data-nid][data-unread='1']").forEach((el) => io.observe(el));
     const tm = timers.current;
     return () => { io.disconnect(); tm.forEach(clearTimeout); tm.clear(); };
-  }, [start, end, rows, markSoon]);
+  }, [start, end, rows, entries, markSoon]);
 
   function open(r: NRow) {
     if (!r.read) markSoon(r.id);
@@ -294,7 +327,7 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
 
   return (
     <div data-source={ds.source ?? ""} data-total={rows?.length ?? ""}>
-      <div className="sticky top-0 z-20 -mx-4 mb-3 border-b border-[var(--color-line)] bg-[var(--color-app)]/95 px-4 pb-2 pt-1 backdrop-blur lg:-mx-8 lg:px-8">
+      <div className="mb-3 border-b border-[var(--color-line)] pb-2">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-bold">{m.notifications.title}</h1>
@@ -350,6 +383,17 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
             <option value="new">{t("Cele mai noi întâi")}</option>
             <option value="old">{t("Cele mai vechi întâi")}</option>
           </select>
+          <label className="flex items-center gap-1.5 text-xs text-ink-soft">
+            {t("Afișează")}
+            <select
+              value={perPage}
+              onChange={(e) => { const n = normalizePerPageClient(e.target.value); setPerPageState(n); setPg({ key: `${JSON.stringify(f)}|${n}`, page: 1 }); try { localStorage.setItem(LS_PER_PAGE, String(n)); } catch {} }}
+              className={sel(perPage !== DEFAULT_PER_PAGE)}
+              aria-label={t("Rânduri pe pagină")}
+            >
+              {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
+            </select>
+          </label>
           <label className={`flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border px-2 text-xs ${f.actions ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)]"}`}>
             <input type="checkbox" checked={f.actions} onChange={(e) => setF({ ...f, actions: e.target.checked })} className="size-3.5 accent-[var(--color-brand)]" />
             {t("Cu acțiuni rapide")}
@@ -360,7 +404,7 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
             </button>
           )}
         </div>
-        {rows && <p className="mt-1 text-[11px] text-ink-soft">{t("{n} din {total} notificări", { n: filtered.length, total: rows.length })}{ds.total > rows.length ? ` · ${t("se păstrează ultimele {n}", { n: rows.length })}` : ""}</p>}
+        {rows && <p className="mt-1 text-[11px] text-ink-soft">{t("{n} din {total} notificări", { n: filtered.length, total: rows.length })}{totalPages > 1 ? ` · ${t("afișate {from}–{to}", { from, to })}` : ""}{ds.total > rows.length ? ` · ${t("se păstrează ultimele {n}", { n: rows.length })}` : ""}</p>}
       </div>
 
       {ds.error && !rows && <p className="rounded-xl bg-st-cancelled/10 p-3 text-sm text-st-cancelled">{t(ds.error)}</p>}
@@ -408,6 +452,15 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
                               <>
                                 <button type="button" disabled={a?.busy} onClick={() => act(r, t("În lucru"), () => setTaskStatus(oid!, "IN_PROGRESS"))} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50">▶ {t("În lucru")}</button>
                                 <button type="button" disabled={a?.busy} onClick={() => act(r, t("Finalizat"), () => setTaskStatus(oid!, "DONE"))} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50">✓ {t("Finalizat")}</button>
+                                {/* toate statusurile și progresul, ca în Telegram: listă derulantă (pe telefon se deschide selectorul nativ) */}
+                                <select aria-label={t("Alt status")} value="" disabled={a?.busy} onChange={(ev) => { const v = ev.target.value; if (v) void act(r, m.status[v as keyof typeof m.status], () => setTaskStatus(oid!, v)); }} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50">
+                                  <option value="">{t("Alt status")}…</option>
+                                  {(["READ", "IN_PROGRESS", "ON_HOLD", "REVIEW", "DONE", "CANCELLED", "ASSIGNED", "NEW"] as const).map((k) => <option key={k} value={k}>{m.status[k]}</option>)}
+                                </select>
+                                <select aria-label={t("Progres")} value="" disabled={a?.busy} onChange={(ev) => { const v = ev.target.value; if (v) void act(r, `${v}%`, () => setTaskProgress(oid!, Number(v))); }} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50">
+                                  <option value="">{t("Progres")}…</option>
+                                  {[0, 25, 50, 75, 100].map((p) => <option key={p} value={p}>{p}%</option>)}
+                                </select>
                               </>
                             )}
                             {showAppt && <button type="button" disabled={a?.busy} onClick={() => act(r, t("Confirmată"), () => setAppointmentStatus(oid!, "CONFIRMED"))} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50">✓ {t("Confirmă")}</button>}
@@ -425,6 +478,27 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── Paginare numerică ─────────────────────────────────────────────── */}
+      {rows && filtered.length > 0 && totalPages > 1 && (
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-1" role="navigation" aria-label={t("Paginare")}>
+          <button disabled={curPage <= 1} onClick={() => setPage(curPage - 1)} className="tap grid size-8 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label={t("Pagina anterioară")}>
+            <IconChevronLeft className="size-4" />
+          </button>
+          {pageButtons.map((b, i) =>
+            b === "…" ? (
+              <span key={`e${i}`} className="flex h-8 w-6 items-center justify-center text-sm text-ink-soft">…</span>
+            ) : (
+              <button key={b} onClick={() => setPage(b)} aria-current={b === curPage ? "page" : undefined} className={`tap h-8 min-w-[32px] rounded-lg px-2 text-xs font-medium ${b === curPage ? "bg-brand text-white" : "border border-[var(--color-line)] text-ink hover:bg-[var(--color-surface-2)]"}`}>
+                {b}
+              </button>
+            ),
+          )}
+          <button disabled={curPage >= totalPages} onClick={() => setPage(curPage + 1)} className="tap grid size-8 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label={t("Pagina următoare")}>
+            <IconChevronRight className="size-4" />
+          </button>
         </div>
       )}
     </div>

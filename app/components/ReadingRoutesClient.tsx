@@ -121,7 +121,7 @@ function cmp<T>(a: T, b: T, get: (x: T) => number | string | null, dir: Dir): nu
   return dir === "asc" ? r : -r;
 }
 
-export default function ReadingRoutesClient({ initial }: { initial: RoutesBundle }) {
+export default function ReadingRoutesClient({ initial, canExport = true }: { initial: RoutesBundle; canExport?: boolean }) {
   const t = useT();
   const tag = dateTag(useLocale());
   const { data, loading, refresh } = useRoutesBundle(initial);
@@ -160,7 +160,7 @@ export default function ReadingRoutesClient({ initial }: { initial: RoutesBundle
           <button type="button" className={btn} disabled={loading} onClick={() => void refresh(true)}>↻ {loading ? t("Se încarcă…") : t("Reîmprospătează")}</button>
         </div>
       </div>
-      {tab === "report" && <ReportTab data={data} tag={tag} />}
+      {tab === "report" && <ReportTab data={data} tag={tag} canExport={canExport} />}
       {tab === "routes" && <RoutesTab data={data} onChanged={() => refresh(true)} />}
       {tab === "issues" && <IssuesTab issues={issues} users={users} tag={tag} onChanged={() => refresh(true)} />}
     </div>
@@ -173,7 +173,7 @@ type ReportF = { q: string; reader: string; state: "" | WindowState; progress: "
 const EMPTY_REPORT_F: ReportF = { q: "", reader: "", state: "", progress: "", unread: false, behind: false, issues: false };
 const reportActive = (f: ReportF) => (f.q ? 1 : 0) + (f.reader ? 1 : 0) + (f.state ? 1 : 0) + (f.progress ? 1 : 0) + (f.unread ? 1 : 0) + (f.behind ? 1 : 0) + (f.issues ? 1 : 0);
 
-function ReportTab({ data, tag }: { data: RoutesBundle; tag: string }) {
+function ReportTab({ data, tag, canExport }: { data: RoutesBundle; tag: string; canExport: boolean }) {
   const t = useT();
   const { report, users } = data;
   const nf = (n: number) => n.toLocaleString(tag);
@@ -302,7 +302,7 @@ function ReportTab({ data, tag }: { data: RoutesBundle; tag: string }) {
       <div className="card overflow-hidden">
         <div className="flex items-center justify-between border-b border-[var(--color-line)] px-3 py-2">
           <h2 className="text-sm font-semibold">{t("Pe cititor")} <span className="font-normal text-ink-soft">({readers.length})</span></h2>
-          <button type="button" className={btn} onClick={exportCsv}>⬇ {t("Export CSV")}</button>
+          {canExport && <button type="button" className={btn} onClick={exportCsv}>⬇ {t("Export CSV")}</button>}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-sm">

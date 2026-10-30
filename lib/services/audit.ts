@@ -46,9 +46,19 @@ export async function logAudit(actor: AuditActor, input: AuditInput): Promise<vo
     // în afara unui request scope — ignorăm meta
   }
 
+  // Acțiune făcută printr-o simulare de login: în jurnal apare cine a făcut-o de fapt
+  let userName = actor.name;
+  try {
+    const { getCurrentUser } = await import("../dal");
+    const cu = await getCurrentUser();
+    if (cu?.impersonation && cu.id === actor.id) userName = `${actor.name} (simulat de ${cu.impersonation.byName})`;
+  } catch {
+    // în afara unui request — fără marcaj
+  }
+
   const data = {
     userId: actor.id,
-    userName: actor.name,
+    userName,
     userRole: actor.isSuperAdmin ? `${actor.role}·SUPER` : actor.role,
     action: input.action,
     module: input.module,

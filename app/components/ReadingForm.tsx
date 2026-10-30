@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { reportMeterIssueAction, saveMeterReadingAction, uploadMeterPhotoAction } from "@/app/actions/meter-readings";
+import { meterAverageAction, reportMeterIssueAction, saveMeterReadingAction, uploadMeterPhotoAction } from "@/app/actions/meter-readings";
 import { ISSUE_KINDS, ISSUE_LABELS, MAX_ISSUE_NOTE, isIssueKind } from "@/lib/meter-issues";
-import { JUMP_CONFIRM_M3, MAX_ADDRESS, MAX_LOC_ACCURACY, mapsUrl, parseIndex, type MeterLocationDto, type ReadingDto } from "@/lib/meter-readings";
+import { MAX_ADDRESS, MAX_LOC_ACCURACY, checkConsum, deviationPct, mapsUrl, parseIndex, type ConsumAvg, type MeterLocationDto, type ReadingDto } from "@/lib/meter-readings";
 import { optimizeImage } from "@/lib/image-optimize";
 import { thumbUrl } from "@/lib/files-url";
 import { useLocale, useT } from "@/lib/i18n/context";
@@ -24,6 +24,9 @@ const addrCls = "h-10 w-full rounded-xl border border-[var(--color-line)] bg-[va
 
 const inputCls = "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-lg font-semibold tabular-nums outline-none focus:border-brand";
 
+/** Media lunară a fiecărui contor deschis în această sesiune: ca la reluarea formularului (sau fără internet, după ce a fost descărcată) avertismentele să rămână cu medie. */
+const avgCache = new Map<string, ConsumAvg | null>();
+
 /**
  * Formularul citirii de luna aceasta pentru UN contor: index (m³), locația luată automat de la telefon (GPS) și poza contorului. Se folosește și în „Citiri teren”,
  * și în pop-up-ul contorului. Locația se pornește când apare formularul (nu înainte), deci telefonul cere permisiunea abia când ajungi la contor.
@@ -38,6 +41,7 @@ export default function ReadingForm({
   meterAcc = null,
   lastIndex,
   lastDate,
+  lastEstimated = false,
   initialValue,
   initialPhotoUrl = null,
   onSaved,
@@ -62,6 +66,8 @@ export default function ReadingForm({
   /** Ultimul index cunoscut (m³) și data lui — pentru consumul calculat pe loc. */
   lastIndex: number | null;
   lastDate: string | null;
+  /** Ultimul index e calculat (estimat), nu citit: se arată ca avertisment, cititorul îl verifică. */
+  lastEstimated?: boolean;
   /** Indexul deja citit luna aceasta (la corectare). */
   initialValue: number | null;
   initialPhotoUrl?: string | null;
@@ -153,9 +159,43 @@ export default function ReadingForm({
     return () => URL.revokeObjectURL(url);
   }, [photo]);
 
+  /** Consumul mediu lunar al contorului (din ultimele luni); null cât se încarcă, fără internet sau când istoricul e prea scurt. */
+  const [avg, setAvg] = useState<ConsumAvg | null>(() => avgCache.get(meterId) ?? null);
+  useEffect(() => {
+    if (avgCache.has(meterId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAvg(avgCache.get(meterId) ?? null);
+      return;
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    let alive = true;
+    meterAverageAction(meterId)
+      .then((a) => {
+        avgCache.set(meterId, a);
+        if (alive) setAvg(a);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [meterId]);
+
   const prev = lastIndex;
   const parsed = parseIndex(value);
   const consum = parsed != null && prev != null ? parsed - prev : null;
+  /** Abaterea consumului de acum față de medie, în % (semnată), și dacă e neobișnuită. */
+  const dev = consum != null && consum >= 0 && avg ? deviationPct(consum, avg.avg) : null;
+  const devWarn = checkConsum(consum, avg?.avg) != null;
+
+  /** Textul „Salvezi oricum?” pentru un consum neobișnuit; cu media contorului arată și cu cât se abate (în %). */
+  function consumWarning(kind: "high" | "low", c: number, a: ConsumAvg | null, pct: number | null): string {
+    if (a && pct != null) {
+      return kind === "high"
+        ? t("Consumul ar fi de {c} m³ — cu {p}% peste media lunară a contorului ({a} m³). Salvezi oricum?", { c: nf(c), p: nf(Math.abs(pct)), a: nf(a.avg) })
+        : t("Consumul ar fi de {c} m³ — cu {p}% sub media lunară a contorului ({a} m³). Salvezi oricum?", { c: nf(c), p: nf(Math.abs(pct)), a: nf(a.avg) });
+    }
+    return t("Consumul ar fi de {c} m³ într-o lună — neobișnuit de mare. Salvezi oricum?", { c: nf(c) });
+  }
 
   async function uploadPhoto(readingId: string, file: File, reading: ReadingDto) {
     const small = await optimizeImage(file);
@@ -183,9 +223,14 @@ export default function ReadingForm({
       if (parsed < prev) {
         if (!window.confirm(t("Indexul scris ({v} m³) este MAI MIC decât cel anterior ({p} m³). Salvezi oricum (de ex. contor înlocuit)?", { v: nf(parsed), p: nf(prev) }))) return;
         conf = true;
-      } else if (parsed - prev > JUMP_CONFIRM_M3) {
-        if (!window.confirm(t("Consumul ar fi de {c} m³ într-o lună — neobișnuit de mare. Salvezi oricum?", { c: nf(parsed - prev) }))) return;
-        conf = true;
+      } else {
+        // aceeași regulă ca pe server: față de media contorului (dacă a fost descărcată), altfel față de pragul fix
+        const c = parsed - prev;
+        const chk = checkConsum(c, avg?.avg);
+        if (chk) {
+          if (!window.confirm(consumWarning(chk.kind, c, avg, chk.pct))) return;
+          conf = true;
+        }
       }
     }
     setBusy(true);
@@ -286,7 +331,7 @@ export default function ReadingForm({
           const msg =
             res.confirm === "lower"
               ? t("Indexul scris ({v} m³) este MAI MIC decât cel anterior ({p} m³). Salvezi oricum (de ex. contor înlocuit)?", { v: nf(parsed), p: nf(prev ?? 0) })
-              : t("Consumul ar fi de {c} m³ într-o lună — neobișnuit de mare. Salvezi oricum?", { c: nf(consum ?? 0) });
+              : consumWarning(res.confirm, consum ?? 0, res.avg ?? avg, res.pct ?? null);
           if (window.confirm(msg)) {
             setBusy(false);
             await save(true);
@@ -380,11 +425,19 @@ export default function ReadingForm({
           <p className="text-[11px] text-ink-soft">{t("Index anterior")}</p>
           <p className="font-bold tabular-nums">{prev != null ? `${nf(prev)} m³` : "—"}</p>
           {lastDate && <p className="text-[11px] text-ink-soft">{lastDate.split("-").reverse().join(".")}</p>}
+          {lastEstimated && <p className="text-[11px] font-semibold text-st-progress">≈ {t("Index estimat (calculat)")}</p>}
         </div>
         <div className="rounded-xl bg-[var(--color-surface-2)] px-3 py-2">
           <p className="text-[11px] text-ink-soft">{t("Consum")}</p>
-          <p className={`font-bold tabular-nums ${consum != null && consum < 0 ? "text-st-cancelled" : ""}`}>{consum != null ? `${nf(consum)} m³` : "—"}</p>
+          <p className={`font-bold tabular-nums ${(consum != null && consum < 0) || devWarn ? "text-st-cancelled" : ""}`}>{consum != null ? `${devWarn ? "⚠ " : ""}${nf(consum)} m³` : "—"}</p>
+          {dev != null && <p className={`text-[11px] font-semibold tabular-nums ${devWarn ? "text-st-cancelled" : "text-ink-soft"}`}>{dev > 0 ? "+" : ""}{nf(dev)}% {t("față de medie")}</p>}
         </div>
+        {avg && (
+          <div className="col-span-2 rounded-xl bg-[var(--color-surface-2)] px-3 py-2">
+            <p className="text-[11px] text-ink-soft">{t("Consum mediu lunar")}</p>
+            <p className="font-bold tabular-nums">{t("{v} m³ (din ultimele {n} citiri)", { v: nf(avg.avg), n: avg.count })}</p>
+          </div>
+        )}
       </div>
 
       <label className="mb-1 block text-xs font-semibold text-ink-soft" htmlFor={idxId}>

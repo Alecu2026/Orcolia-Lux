@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/dal";
+import { blockedInImpersonation, getCurrentUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +7,8 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Neautentificat" }, { status: 401 });
+  const blocked = blockedInImpersonation(user);
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 409 });
 
   const sub = await req.json().catch(() => null);
   const endpoint = sub?.endpoint;
@@ -27,6 +29,8 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Neautentificat" }, { status: 401 });
+  const blocked = blockedInImpersonation(user);
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 409 });
 
   const { endpoint } = (await req.json().catch(() => ({}))) as { endpoint?: string };
   if (endpoint) {

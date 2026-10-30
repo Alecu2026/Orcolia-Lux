@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createUser, updateUser } from "@/app/actions/users";
 import TableColorsDialog from "./TableColorsDialog";
 import { LOOK_DENSITIES, LOOK_FONTS, hasPreset, sanitizePreset, type TableLookPreset } from "@/lib/table-look";
-import { ALL_PERMISSION_KEYS, PERMISSIONS_V2, PERMISSION_GROUPS, effectivePermissionKeys } from "@/lib/permissions";
+import { ALL_PERMISSION_KEYS, PERMISSIONS_V2, PERMISSIONS_V3, PERMISSION_GROUPS, effectivePermissionKeys } from "@/lib/permissions";
 import { VIEW_OF, matchRoleTemplate, type RoleTemplate } from "@/lib/role-templates";
 import { NOTIFY_EVENTS } from "@/lib/notify-meta";
 import { useMessages, useT } from "@/lib/i18n/context";
@@ -135,7 +135,7 @@ export default function UserDialog({
   const staffOptions = useMemo(() => allUsers.filter((u) => u.id !== user?.id).map((u) => ({ id: u.id, name: u.name })), [allUsers, user?.id]);
   const isAdminRole = role === "ADMIN";
   const hasFullAccess = perms.has("admin");
-  const activeTemplate = useMemo(() => matchRoleTemplate(roleTemplates, role, role === "ADMIN" ? [] : [...perms, PERMISSIONS_V2]), [roleTemplates, role, perms]);
+  const activeTemplate = useMemo(() => matchRoleTemplate(roleTemplates, role, role === "ADMIN" ? [] : [...perms, PERMISSIONS_V2, PERMISSIONS_V3]), [roleTemplates, role, perms]);
   const activeType = activeTemplate?.key ?? null;
 
   /** Schimbă rolul. La un cont nou, „ce sarcini vede” urmează rolul (administrator = toate, angajat = doar ale lui) cât timp nu a fost ales explicit. */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { updatePayer, deletePayer, resetPayerPortalAccess, type PayerState } from "@/app/actions/payers";
 import { useToast } from "./toast";
@@ -15,7 +15,7 @@ export default function PayerActions({
   canDelete,
   canAdmin,
 }: {
-  payer: { id: string; name: string; phone: string | null; email: string | null; notes: string | null };
+  payer: { id: string; name: string; phone: string | null; email: string | null; notes: string | null; contractExpiresAt: string | null };
   canEdit: boolean;
   canDelete: boolean;
   canAdmin: boolean;
@@ -26,6 +26,14 @@ export default function PayerActions({
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState<PayerState, FormData>(updatePayer, undefined);
   const [busy, setBusy] = useState<"delete" | "reset" | null>(null);
+
+  // după o salvare reușită formularul se închide (înainte rămânea deschis, fără nicio confirmare)
+  useEffect(() => {
+    if (!state?.ok) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEditing(false);
+    toast.success(t("Plătitor salvat."));
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onDelete() {
     if (!confirm(t("Ștergi definitiv „{name}”? Se șterg și toate facturile lui.", { name: payer.name }))) return;
@@ -55,6 +63,11 @@ export default function PayerActions({
         <input name="name" defaultValue={payer.name} placeholder={t("Nume")} required className={input} />
         <input name="phone" defaultValue={payer.phone ?? ""} placeholder={t("Telefon")} className={input} />
         <input name="email" defaultValue={payer.email ?? ""} placeholder={t("Email")} type="email" className={input} />
+        <label className="text-xs font-semibold text-ink-soft">
+          {t("Contract expiră la")}
+          <input name="contractExpiresAt" type="date" defaultValue={payer.contractExpiresAt ?? ""} className={`${input} mt-1 font-normal`} />
+          <span className="mt-0.5 block text-[11px] font-normal">{t("Plătitorul și personalul sunt notificați cu 30 și cu 10 zile înainte.")}</span>
+        </label>
         <textarea name="notes" defaultValue={payer.notes ?? ""} placeholder={t("Notițe")} rows={2} className={input} />
         {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
         <div className="flex gap-2">

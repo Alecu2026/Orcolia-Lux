@@ -51,6 +51,8 @@ export default async function AppointmentsPage({
       today={today}
       tz={tz}
       canManage={can(user, "appointments.manage")}
+      canExport={can(user, "appointments.export")}
+      canImport={can(user, "appointments.import")}
       userId={user.id}
     />
   );

@@ -5,16 +5,20 @@ import { DEMO } from "../demo";
 import { getMeterSnap } from "./meter-cache";
 import { logAudit } from "./audit";
 import { listRoutes } from "./meter-route-data";
+import { getMeterDetail } from "../queries/meters";
+import { isEstimatedSource } from "../meters";
 import type { FieldList } from "../meter-routes";
 import {
+  AVG_MIN_READINGS,
   FAR_METERS,
-  JUMP_CONFIRM_M3,
   MAX_ADDRESS,
   MAX_LOC_ACCURACY,
   MAX_INDEX,
+  checkConsum,
   currentPeriod,
   distanceMeters,
   shiftPeriod,
+  type ConsumAvg,
   type FieldTuple,
   type MeterLocationDto,
   type ReadingDto,
@@ -48,7 +52,44 @@ export function toReadingDto(r: MeterReading): ReadingDto {
     distanceM: r.distanceM,
     photoUrl: r.photoUrl,
     userName: r.userName,
+    avgConsum: r.avgConsum,
   };
+}
+
+/** Cât istoric intră în medie: ultimele 12 luni cu consum real. */
+const AVG_MONTHS = 12;
+
+/**
+ * Consumul mediu lunar al unui contor, din ultimele luni cu consum REAL: istoricul din 1C (fără consumul estimat/calculat) plus citirile din teren
+ * (consum = index − indexul anterior cunoscut). O singură valoare pe lună (citirea din teren completează lunile pe care 1C nu le are încă);
+ * luna `exceptPeriod` (cea în care se citește acum) nu intră — altfel o citire greșită și-ar strica singură media. Null dacă sunt mai puțin de AVG_MIN_READINGS luni.
+ */
+export async function getMeterAverage(meterId: string, exceptPeriod: string = currentPeriod()): Promise<ConsumAvg | null> {
+  if (DEMO) return null;
+  const [detail, field] = await Promise.all([
+    getMeterDetail(meterId, { historyLimit: 40 }).catch(() => null),
+    prisma.meterReading.findMany({
+      where: { meterId, prevValue: { not: null }, period: { not: exceptPeriod } },
+      orderBy: { period: "desc" },
+      take: AVG_MONTHS + 2,
+      select: { period: true, value: true, prevValue: true },
+    }),
+  ]);
+  const byMonth = new Map<string, number>();
+  for (const h of detail?.history ?? []) {
+    const month = (h.currDate ?? h.docDate ?? "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month) || month === exceptPeriod || byMonth.has(month)) continue;
+    if (h.consum == null || !Number.isFinite(h.consum) || h.consum < 0) continue;
+    if (h.sursa && /расч|estimat/i.test(h.sursa)) continue; // consum calculat, nu citit: nu arată consumul real
+    byMonth.set(month, h.consum);
+  }
+  for (const f of field) {
+    if (byMonth.has(f.period) || f.prevValue == null || f.value < f.prevValue) continue;
+    byMonth.set(f.period, round3(f.value - f.prevValue));
+  }
+  const last = [...byMonth].sort((a, b) => b[0].localeCompare(a[0])).slice(0, AVG_MONTHS).map((e) => e[1]);
+  if (last.length < AVG_MIN_READINGS) return null;
+  return { avg: round3(last.reduce((s, c) => s + c, 0) / last.length), count: last.length };
 }
 
 /** Citirile din teren ale unui contor (cele mai noi primele). */
@@ -70,7 +111,7 @@ export async function getFieldList(): Promise<FieldList> {
     // luna aceasta + cele două dinainte: citirile din teren mai noi decât indexul din 1C
     prisma.meterReading.findMany({
       where: { period: { gte: shiftPeriod(period, 2) } },
-      select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, source: true, distanceM: true, lat: true, lng: true, accuracy: true },
+      select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, source: true, distanceM: true, lat: true, lng: true, accuracy: true, avgConsum: true },
     }),
     // adresa / locația contoarelor completate din teren (o înregistrare mică pe contor)
     prisma.meterLocation.findMany({ select: { meterId: true, address: true, lat: true, lng: true, accuracy: true } }),
@@ -114,6 +155,10 @@ export async function getFieldList(): Promise<FieldList> {
       r.uch, issueBy.get(r.id) ?? null,
       // citirea lunii a fost trimisă de plătitor din portal
       cur?.source === "PORTAL" ? 1 : 0,
+      // consumul mediu lunar al contorului la citire (verificarea „peste / sub medie”)
+      cur?.avgConsum ?? null,
+      // ultimul index cunoscut e calculat (estimat) în 1C și nu a fost înlocuit de o citire din teren mai nouă
+      !useField && isEstimatedSource(r.sursa) ? 1 : 0,
     ];
   });
   return { period, rows, routes: routes.filter((r) => r.active) };
@@ -175,9 +220,14 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     }
   }
   const v = round3(value);
+  // media lunară a contorului: baza verificării „peste / sub medie” și se păstrează pe citire (pentru semnalarea ei în liste)
+  const avg = prev != null ? await getMeterAverage(input.meterId, period).catch(() => null) : null;
   if (!input.confirmed && prev != null) {
     if (v < prev) return { ok: false, error: "Indexul este mai mic decât cel anterior.", confirm: "lower" };
-    if (v - prev > JUMP_CONFIRM_M3) return { ok: false, error: "Consum neobișnuit de mare.", confirm: "high" };
+    const chk = checkConsum(round3(v - prev), avg?.avg);
+    // „Prea mic” e doar un semnal (casă nelocuită, plecați): nu blochează citirea din portal sau din coada offline, unde nu e nimeni să confirme; rămâne semnalată în liste
+    if (chk?.kind === "high") return { ok: false, error: "Consum neobișnuit de mare.", confirm: "high", ...(avg && chk.pct != null ? { avg, pct: chk.pct } : {}) };
+    if (chk?.kind === "low" && !input.fromQueue && input.source !== "PORTAL") return { ok: false, error: "Consum neobișnuit de mic față de medie.", confirm: "low", ...(avg && chk.pct != null ? { avg, pct: chk.pct } : {}) };
   }
 
   const okGeo = input.lat != null && input.lng != null && Math.abs(input.lat) <= 90 && Math.abs(input.lng) <= 180;
@@ -213,6 +263,7 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     userName: actor.name,
     // o citire din teren care o înlocuiește pe cea din portal șterge marcajul „PORTAL”
     source: input.source ?? null,
+    avgConsum: avg ? avg.avg : null,
   };
   if (input.fromQueue) {
     const existing = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { readAt: true, value: true, userName: true } });

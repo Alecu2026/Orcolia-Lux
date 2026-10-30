@@ -43,12 +43,16 @@ export default function ProjectsTable({
   canCreate = true,
   canDelete = true,
   canCreateTask = true,
+  canExport = true,
+  canImport = true,
 }: {
   canEdit?: boolean;
   canCreate?: boolean;
   canDelete?: boolean;
   /** „Sarcini – Creare": butonul „+" de pe rând (sarcină nouă în proiect). */
   canCreateTask?: boolean;
+  canExport?: boolean;
+  canImport?: boolean;
   projects: Project[];
   users: Opt[];
   teams: Opt[];
@@ -201,17 +205,17 @@ export default function ProjectsTable({
         filters={filters}
         noun="proiecte"
         emptyText={m.projects.noProjects}
-        toolbar={
+        toolbar={(view) => (
           <>
-            <ExportButton entity="projects" className={topBtn} />
-            {canCreate && <ImportButton entity="projects" className={topBtn} />}
+            {canExport && <ExportButton entity="projects" filtered={view.filtered} getIds={view.getIds} count={view.count} className={topBtn} />}
+            {canCreate && canImport && <ImportButton entity="projects" className={topBtn} />}
             {canCreate && (
               <button type="button" onClick={() => setDialog({ open: true, project: null })} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">
                 {m.projects.new}
               </button>
             )}
           </>
-        }
+        )}
       />
       {detail && (
         <ProjectDetailDialog

@@ -1,6 +1,6 @@
 import { getCurrentUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
-import { parseWorkbook, parseJsonRows, parseRoDateKey, parseTime, ImportResult } from "@/lib/import-utils";
+import { parseWorkbook, parseJsonRows, parseRoDateKey, parseTime, mapLabel, ImportResult } from "@/lib/import-utils";
 import { can } from "@/lib/permissions";
 import {
   RO_TO_TASK_STATUS,
@@ -13,6 +13,7 @@ import { createTask } from "@/lib/services/tasks";
 import { createAppointment } from "@/lib/services/appointments";
 import { invalidatePayers } from "@/lib/services/payer-cache";
 import { DEFAULT_TZ, zonedToUtc } from "@/lib/date";
+import { cleanContractDate, contractDate, contractKey } from "@/lib/contract-expiry";
 import type { Prisma } from "@prisma/client";
 
 const TZ = DEFAULT_TZ;
@@ -58,21 +59,26 @@ export async function POST(req: Request) {
 
   // ─── TASKS / TICHETE ──────────────────────────────────────────────────────
   if (entity === "tasks" || entity === "tickets") {
-    if (!can(user, "tasks.create")) return Response.json({ error: "Fără permisiune pentru import de sarcini." }, { status: 403 });
+    if (!can(user, "tasks.create") || !can(user, entity === "tickets" ? "tickets.import" : "tasks.import")) return Response.json({ error: "Fără permisiune pentru import de sarcini." }, { status: 403 });
     // Pre-fetch lookup tables
     const [allUsers, allTeams, allProjects, allCategories, allClients] = await Promise.all([
       prisma.user.findMany({ select: { id: true, name: true } }),
       prisma.team.findMany({ select: { id: true, name: true } }),
       prisma.project.findMany({ select: { id: true, name: true } }),
       prisma.category.findMany({ select: { id: true, name: true } }),
-      prisma.client.findMany({ where: { userId: user.id }, select: { id: true, name: true } }),
+      // Clienții sunt comuni pentru organizație: altfel un client creat de altcineva ar fi dublat la import. Clienții obișnuiți au prioritate față de plătitori.
+      prisma.client.findMany({ select: { id: true, name: true, meterSeries: true } }),
     ]);
 
     const userByName = new Map(allUsers.map((u) => [u.name.trim().toLowerCase(), u.id]));
     const teamByName = new Map(allTeams.map((t) => [t.name.trim().toLowerCase(), t.id]));
     const projectByName = new Map(allProjects.map((p) => [p.name.trim().toLowerCase(), p.id]));
     const categoryByName = new Map(allCategories.map((c) => [c.name.trim().toLowerCase(), c.id]));
-    const clientByName = new Map(allClients.map((c) => [c.name.trim().toLowerCase(), c.id]));
+    const clientByName = new Map<string, string>();
+    for (const c of [...allClients].sort((a, b) => Number(!!a.meterSeries) - Number(!!b.meterSeries))) {
+      const k = c.name.trim().toLowerCase();
+      if (!clientByName.has(k)) clientByName.set(k, c.id);
+    }
 
     const result: ImportResult = { imported: 0, total: rows.length, failed: [] };
 
@@ -88,7 +94,7 @@ export async function POST(req: Request) {
 
       let typeVal: import("@prisma/client").TaskType = entity === "tickets" ? "TICKET" : "TASK";
       if (r["Tip"]) {
-        const mapped = RO_TO_TASK_TYPE[r["Tip"]];
+        const mapped = mapLabel(RO_TO_TASK_TYPE, r["Tip"]);
         if (!mapped) {
           result.failed.push({
             row: rowNum,
@@ -101,7 +107,7 @@ export async function POST(req: Request) {
 
       let statusVal: import("@prisma/client").TaskStatus | undefined;
       if (r["Status"]) {
-        const mapped = RO_TO_TASK_STATUS[r["Status"]];
+        const mapped = mapLabel(RO_TO_TASK_STATUS, r["Status"]);
         if (!mapped) {
           result.failed.push({
             row: rowNum,
@@ -114,7 +120,7 @@ export async function POST(req: Request) {
 
       let priorityVal: import("@prisma/client").TaskPriority | undefined;
       if (r["Prioritate"]) {
-        const mapped = RO_TO_TASK_PRIORITY[r["Prioritate"]];
+        const mapped = mapLabel(RO_TO_TASK_PRIORITY, r["Prioritate"]);
         if (!mapped) {
           result.failed.push({
             row: rowNum,
@@ -230,6 +236,7 @@ export async function POST(req: Request) {
           teamId: teamId ?? null,
           projectId: projectId ?? null,
           categoryId: categoryId ?? null,
+          address: r["Adresă"]?.trim() || null,
         });
 
         // Aplică status și/sau client dacă diferă de default
@@ -254,7 +261,7 @@ export async function POST(req: Request) {
 
   // ─── PROJECTS ─────────────────────────────────────────────────────────────
   if (entity === "projects") {
-    if (!can(user, "projects.create")) return Response.json({ error: "Fără permisiune pentru import de proiecte." }, { status: 403 });
+    if (!can(user, "projects.create") || !can(user, "projects.import")) return Response.json({ error: "Fără permisiune pentru import de proiecte." }, { status: 403 });
     const [allUsers, allTeams, allClients, existingProjects] = await Promise.all([
       prisma.user.findMany({ select: { id: true, name: true } }),
       prisma.team.findMany({ select: { id: true, name: true } }),
@@ -292,12 +299,15 @@ export async function POST(req: Request) {
         continue;
       }
 
-      // Skip duplicate
-      if (projectByName.has(name.toLowerCase())) continue;
+      // Un proiect cu același nume există deja: se omite, dar rândul apare în raport (înainte dispărea fără nicio explicație)
+      if (projectByName.has(name.toLowerCase())) {
+        result.failed.push({ row: rowNum, error: `Proiectul '${name}' există deja — omis.` });
+        continue;
+      }
 
       // Status
       const statusRaw = col(r, "Status", "Project Status", "ProjectStatus");
-      const statusVal = (STATUS_MAP[statusRaw] ?? "ACTIVE") as import("@prisma/client").ProjectStatus;
+      const statusVal = (mapLabel(STATUS_MAP, statusRaw) ?? "ACTIVE") as import("@prisma/client").ProjectStatus;
 
       // Client — creat automat dacă nu există
       let clientId: string | undefined;
@@ -356,8 +366,11 @@ export async function POST(req: Request) {
 
   // ─── CLIENTS ──────────────────────────────────────────────────────────────
   if (entity === "clients") {
-    if (!can(user, "clients.create")) return Response.json({ error: "Fără permisiune pentru import de clienți." }, { status: 403 });
+    if (!can(user, "clients.create") || !can(user, "clients.import")) return Response.json({ error: "Fără permisiune pentru import de clienți." }, { status: 403 });
     const result: ImportResult = { imported: 0, total: rows.length, failed: [] };
+    // Clienții obișnuiți existenți (fără plătitori): cheia = nume + telefon (doar cifre). Același fișier importat de două ori nu mai creează dubluri.
+    const digits = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
+    const seen = new Set((await prisma.client.findMany({ where: { OR: [{ meterSeries: null }, { meterSeries: { isSet: false } }] }, select: { name: true, phone: true } })).map((c) => `${c.name.trim().toLowerCase()}|${digits(c.phone)}`));
 
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
@@ -368,6 +381,12 @@ export async function POST(req: Request) {
         result.failed.push({ row: rowNum, error: "Câmpul 'Nume' este obligatoriu." });
         continue;
       }
+      const dupKey = `${name.toLowerCase()}|${digits(r["Telefon"])}`;
+      if (seen.has(dupKey)) {
+        result.failed.push({ row: rowNum, error: `Clientul '${name}'${r["Telefon"] ? ` (${r["Telefon"]})` : ""} există deja — omis.` });
+        continue;
+      }
+      seen.add(dupKey);
 
       try {
         await prisma.client.create({
@@ -393,7 +412,9 @@ export async function POST(req: Request) {
 
   // ─── APPOINTMENTS ─────────────────────────────────────────────────────────
   if (entity === "appointments") {
-    if (!can(user, "appointments.manage")) return Response.json({ error: "Fără permisiune pentru import de programări." }, { status: 403 });
+    if (!can(user, "appointments.manage") || !can(user, "appointments.import")) return Response.json({ error: "Fără permisiune pentru import de programări." }, { status: 403 });
+    const allUsersAppt = await prisma.user.findMany({ where: { isActive: true }, select: { id: true, name: true, role: true, permissions: true } });
+    const userByNameAppt = new Map(allUsersAppt.map((u) => [u.name.trim().toLowerCase(), u]));
     const [allClients, allCategories] = await Promise.all([
       // Clienții sunt comuni pentru organizație: altfel un angajat ar crea duplicate ale clienților adăugați de altcineva.
       prisma.client.findMany({
@@ -475,9 +496,25 @@ export async function POST(req: Request) {
         categoryId = id;
       }
 
+      // „Pentru” (cine e programarea): doar un utilizator existent; altfel rândul e respins cu mesaj
+      let assigneeAppt: string | undefined;
+      if (r["Pentru"]?.trim()) {
+        const forUser = userByNameAppt.get(r["Pentru"].trim().toLowerCase());
+        if (!forUser) {
+          result.failed.push({ row: rowNum, error: `Utilizatorul '${r["Pentru"]}' (coloana 'Pentru') nu există sau e dezactivat.` });
+          continue;
+        }
+        if (!can(forUser, "appointments.view")) {
+          result.failed.push({ row: rowNum, error: `Utilizatorul '${r["Pentru"]}' nu are acces la Programări.` });
+          continue;
+        }
+        // „Pentru” = chiar cel care importă: programarea e a lui, fără asignat
+        assigneeAppt = forUser.id === user.id ? undefined : forUser.id;
+      }
+
       let statusVal: "NEW" | "CONFIRMED" = "NEW";
       if (r["Status"]) {
-        const mapped = RO_TO_APPT_STATUS[r["Status"]];
+        const mapped = mapLabel(RO_TO_APPT_STATUS, r["Status"]);
         if (!mapped) {
           result.failed.push({
             row: rowNum,
@@ -502,6 +539,8 @@ export async function POST(req: Request) {
           status: statusVal,
           reminderEmail: false,
           reminderTelegram: false,
+          ...(assigneeAppt ? { assigneeId: assigneeAppt } : {}),
+          ...(r["Adresă"]?.trim() ? { place: { address: r["Adresă"].trim() } } : {}),
         },
         "WEB",
       );
@@ -510,7 +549,7 @@ export async function POST(req: Request) {
         result.failed.push({ row: rowNum, error: apptResult.error });
       } else {
         // Apply full status if it's not NEW/CONFIRMED (createAppointment only accepts those two)
-        const fullStatus = r["Status"] ? RO_TO_APPT_STATUS[r["Status"]] : undefined;
+        const fullStatus = r["Status"] ? mapLabel(RO_TO_APPT_STATUS, r["Status"]) : undefined;
         if (fullStatus && fullStatus !== "NEW" && fullStatus !== "CONFIRMED") {
           await prisma.appointment.update({
             where: { id: apptResult.id },
@@ -530,7 +569,7 @@ export async function POST(req: Request) {
   // rămân neatinse); serie nouă -> plătitor nou. Aceleași coloane ca la export, deci un export
   // poate fi modificat și reimportat direct.
   if (entity === "payers") {
-    if (!can(user, "clients.create") || !can(user, "clients.edit")) {
+    if (!can(user, "clients.create") || !can(user, "clients.edit") || !can(user, "payers.import")) {
       return Response.json({ error: "Fără permisiune pentru import plătitori." }, { status: 403 });
     }
 
@@ -542,9 +581,10 @@ export async function POST(req: Request) {
 
     const existing = await prisma.client.findMany({
       where: { meterSeries: { not: null } },
-      select: { id: true, meterSeries: true },
+      select: { id: true, meterSeries: true, contractExpiresAt: true },
     });
     const idBySeries = new Map(existing.map((c) => [c.meterSeries as string, c.id]));
+    const contractBySeries = new Map(existing.map((c) => [c.meterSeries as string, contractKey(c.contractExpiresAt)]));
 
     const result: ImportResult = { imported: 0, total: rows.length, failed: [] };
 
@@ -564,6 +604,12 @@ export async function POST(req: Request) {
       const meterNumber = col(r, "Nr. contor", "meterNumber");
       const consumAddress = col(r, "Adresa consum", "Adresă consum", "consumAddress");
       const readingRaw = col(r, "Indice curent", "meterCurrReading");
+      const contractRaw = col(r, "Contract expiră la", "Data expirării contractului", "contractExpiresAt");
+      const contractNew = contractRaw ? cleanContractDate(contractRaw) : null;
+      if (contractRaw && !contractNew) {
+        result.failed.push({ row: rowNum, error: `Data expirării contractului '${contractRaw}' nu este validă (ZZ.LL.AAAA).` });
+        continue;
+      }
 
       if (email && !EMAIL_RE.test(email)) {
         result.failed.push({ row: rowNum, error: `Emailul '${email}' nu este valid.` });
@@ -592,6 +638,8 @@ export async function POST(req: Request) {
         ...(meterNumber ? { meterNumber } : {}),
         ...(consumAddress ? { consumAddress } : {}),
         ...(reading !== undefined ? { meterCurrReading: reading, meterReadingEstimated: false } : {}),
+        // coloana goală nu șterge data existentă; o dată schimbată reia notificările „expiră în 30 / 10 zile”
+        ...(contractNew && contractNew !== contractBySeries.get(series) ? { contractExpiresAt: contractDate(contractNew), contractNotified: [] } : {}),
       };
 
       try {

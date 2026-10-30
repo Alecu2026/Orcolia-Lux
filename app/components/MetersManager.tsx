@@ -79,6 +79,7 @@ export default function MetersManager({
   canTask = false,
   canEditInvoices = false,
   canRead = false,
+  canExport = true,
 }: {
   initial: { filters: MeterFilters; page: number; perPage: number; items: MeterRowBase[]; total: number };
   /** Prima listă n-a putut fi citită pe server — arătăm eroarea cu „Reîncearcă" până sosește lista completă în browser. */
@@ -91,6 +92,7 @@ export default function MetersManager({
   canEditInvoices?: boolean;
   /** Are „Citiri contoare”: în pop-up poate introduce citirea din teren. */
   canRead?: boolean;
+  canExport?: boolean;
 }) {
   const t = useT();
   const toast = useToast();
@@ -391,6 +393,11 @@ export default function MetersManager({
           {sources.map((s) => <option key={s} value={s}>{enumLabel(s, t)}</option>)}
           {filters.sursa && !sources.includes(filters.sursa) && <option value={filters.sursa}>{enumLabel(filters.sursa, t)}</option>}
         </select>
+        <select value={filters.estimated} onChange={(e) => setFilter({ estimated: e.target.value as MeterFilters["estimated"] })} className={fld(filters.estimated)} aria-label={t("Citire estimată")}>
+          <option value="">{t("Estimare: toate")}</option>
+          <option value="yes">{t("Citire estimată (calculată)")}</option>
+          <option value="no">{t("Citire reală (nu estimată)")}</option>
+        </select>
         <select value={filters.source} onChange={(e) => setFilter({ source: e.target.value as MeterFilters["source"] })} className={fld(filters.source)} aria-label={t("Sursa datelor")}>
           <option value="">{t("Date: 1C și Axioma")}</option>
           <option value="1c">{t("Doar 1C")}</option>
@@ -462,7 +469,7 @@ export default function MetersManager({
         ) : ds.loading ? (
           <span className="text-ink-soft">{t("se încarcă lista completă…")}</span>
         ) : null}
-        <button
+        {canExport && <button
           type="button"
           onClick={exportCsv}
           disabled={!localList || localList.length === 0}
@@ -470,7 +477,7 @@ export default function MetersManager({
           className="tap ml-auto inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40"
         >
           ⬇ {t("Export (cu filtrele)")}
-        </button>
+        </button>}
         <button
           type="button"
           onClick={toggleCards}

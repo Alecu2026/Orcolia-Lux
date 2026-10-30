@@ -1,4 +1,5 @@
 import { requirePermission } from "@/lib/dal";
+import { can } from "@/lib/permissions";
 import { getRoutesBundle } from "@/lib/services/meter-routes";
 import ReadingRoutesClient from "@/app/components/ReadingRoutesClient";
 import { getT } from "@/lib/i18n/server-t";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function ReadingRoutesPage() {
   const t = await getT();
-  await requirePermission("meters.manage");
+  const user = await requirePermission("meters.manage");
   // o singură trecere pe server (lista de teren o dată, nu de două ori); valorile pentru reguli (străzi, localități) se cer abia la deschiderea ferestrei unei rute
   // la deschidere mereu proaspăt (memoria de 15 s e pentru reîmprospătările din pagină)
   const bundle = await getRoutesBundle({ fresh: true });
@@ -21,7 +22,7 @@ export default async function ReadingRoutesPage() {
         <h1 className="text-lg font-bold">{t("Rute de citire")}</h1>
         <p className="text-xs text-ink-soft">{t("Cine citește ce, în ce zile, și cât s-a citit față de plan; plus neregulile găsite la contoare în teren.")}</p>
       </div>
-      <ReadingRoutesClient initial={bundle} />
+      <ReadingRoutesClient initial={bundle} canExport={can(user, "meters.export")} />
     </div>
   );
 }

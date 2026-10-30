@@ -8,6 +8,8 @@ import { env } from "./env";
 // poată accesa vreodată rutele de staff și invers. Nu are nevoie de env var propriu: e fix,
 // la fel ca TTL-ul (180 zile, ca la staff).
 const COOKIE = "client_session";
+/** Marcaj (httpOnly) pus doar când sesiunea de client e o SIMULARE pornită din staff: la expirare te duce înapoi în staff, nu la autentificarea clienților. */
+export const PORTAL_IMP_COOKIE = "client_imp";
 const TTL_MS = 180 * 24 * 60 * 60 * 1000;
 
 /** Hash-ul tokenului (sha256) — în DB salvăm DOAR acest hash, niciodată tokenul brut. */
@@ -48,6 +50,8 @@ export async function createClientSession(
     expires: expiresAt,
     path: "/",
   });
+  // o autentificare reală a clientului încheie orice marcaj de simulare rămas
+  store.delete(PORTAL_IMP_COOKIE);
 }
 
 export async function getClientSessionToken(): Promise<string | null> {
@@ -65,6 +69,7 @@ export async function destroyClientSession(): Promise<void> {
       .catch(() => {});
   }
   store.delete(COOKIE);
+  store.delete(PORTAL_IMP_COOKIE);
 }
 
 export const CLIENT_SESSION_COOKIE = COOKIE;

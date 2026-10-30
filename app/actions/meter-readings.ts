@@ -3,8 +3,8 @@
 import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
-import { parseIndex, type PhotoResult, type SaveReadingResult } from "@/lib/meter-readings";
-import { getReading, saveReadingLogged } from "@/lib/services/meter-readings";
+import { parseIndex, type ConsumAvg, type PhotoResult, type SaveReadingResult } from "@/lib/meter-readings";
+import { getMeterAverage, getReading, saveReadingLogged } from "@/lib/services/meter-readings";
 import { uploadReadingPhoto } from "@/lib/services/meter-photo";
 import { reportIssue } from "@/lib/services/meter-issues";
 import type { IssueDto } from "@/lib/meter-issues";
@@ -44,6 +44,14 @@ export async function saveMeterReadingAction(formData: FormData): Promise<SaveRe
     return r.ok ? { ...res, issue: r.issue } : { ...res, issueError: r.error };
   }
   return res;
+}
+
+/** Consumul mediu lunar al contorului (din ultimele luni), arătat în formular și folosit la avertismentele „peste / sub medie”; null = istoric insuficient. */
+export async function meterAverageAction(meterId: string): Promise<ConsumAvg | null> {
+  const user = await requireUser();
+  if (!can(user, "meters.read")) return null;
+  if (!meterId || meterId.length > 300) return null;
+  return getMeterAverage(meterId).catch(() => null);
 }
 
 /** Doar neregula, fără index (contor inaccesibil, defect găsit fără citire). */

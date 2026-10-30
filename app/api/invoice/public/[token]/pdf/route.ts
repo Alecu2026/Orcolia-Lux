@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getInvoiceByToken } from "@/lib/queries/invoices";
-import { env } from "@/lib/env";
+import { selfBaseUrl } from "@/lib/self-url";
 import { launchBrowser } from "@/lib/pdf-browser";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET(
   try {
     session = await launchBrowser();
     const page = await session.newPage();
-    await page.goto(`${(env.internalAppUrl || env.appUrl).replace(/\/$/, "")}/invoice/public/${token}`, { waitUntil: "networkidle" });
+    await page.goto(`${await selfBaseUrl(_req.url)}/invoice/public/${token}`, { waitUntil: "networkidle" });
     const pdfBuffer = await page.pdf({
       format: "A4",
       landscape: invoice.kind === "APA_CANAL",

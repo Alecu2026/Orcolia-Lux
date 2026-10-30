@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/dal";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
 import { listClients } from "@/lib/queries/clients";
+import { mineWhere } from "@/lib/queries/appointments";
 import { buildPayerWhere, matchesMonthInvoice, monthRange, parsePayerMonth, parseInstalledFrom } from "@/lib/queries/payers";
 import { clientNamesFor } from "@/lib/queries/client-names";
 import { filtersToListOptsAsync } from "@/lib/queries/payer-notify";
@@ -17,7 +18,7 @@ const TZ = DEFAULT_TZ;
 
 const STATUS_RO: Record<string, string> = {
   NEW: "Nou", ASSIGNED: "Asignat", READ: "Citit", IN_PROGRESS: "În lucru",
-  ON_HOLD: "În așteptare", REVIEW: "Review", DONE: "Finalizat", CANCELLED: "Anulat",
+  ON_HOLD: "În așteptare", REVIEW: "Verificare", DONE: "Finalizat", CANCELLED: "Anulat",
   CONFIRMED: "Confirmat", NO_SHOW: "Absent",
   ACTIVE: "Activ", ARCHIVED: "Arhivat",
 };
@@ -39,10 +40,38 @@ function today(): string {
 }
 
 export async function GET(req: Request) {
+  return handle(new URL(req.url).searchParams, null);
+}
+
+/**
+ * Export al rândurilor rămase în tabel după filtrele din browser: { entity, format, ids: [...], ...parametri }.
+ * Filtrele nu se mai refac pe server (pot fi diferite de cele de pe ecran): contează exact rândurile din listă, în ordinea din tabel;
+ * permisiunile și plafonul de vizibilitate rămân aplicate pe server.
+ */
+export async function POST(req: Request) {
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return new Response("Cerere invalidă.", { status: 400 });
+  }
+  const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string" && /^[0-9a-f]{24}$/i.test(x)).slice(0, 20000) : null;
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(body)) if (k !== "ids" && typeof v === "string") sp.set(k, v);
+  return handle(sp, ids);
+}
+
+/** Rândurile în ordinea id-urilor din tabel (dacă s-au dat id-uri). */
+function inTableOrder<T extends { id: string }>(rows: T[], ids: string[] | null): T[] {
+  if (!ids) return rows;
+  const pos = new Map(ids.map((id, i) => [id, i]));
+  return [...rows].sort((a, b) => (pos.get(a.id) ?? 0) - (pos.get(b.id) ?? 0));
+}
+
+async function handle(sp: URLSearchParams, ids: string[] | null) {
   const user = await getCurrentUser();
   if (!user) return new Response("Autentificare necesară.", { status: 401 });
 
-  const sp = new URL(req.url).searchParams;
   const entity = sp.get("entity") ?? "";
   const format = (sp.get("format") ?? "csv") as "csv" | "xlsx" | "json";
   const isXLSX = format === "xlsx";
@@ -68,28 +97,33 @@ export async function GET(req: Request) {
 
   // ─── TASKS ────────────────────────────────────────────────────────
   if (entity === "tasks" || entity === "tickets") {
-    if (!can(user, entity === "tickets" ? "tickets.view" : "tasks.view")) return new Response("Fără permisiune.", { status: 403 });
+    if (!can(user, entity === "tickets" ? "tickets.view" : "tasks.view") || !can(user, entity === "tickets" ? "tickets.export" : "tasks.export")) return new Response("Fără permisiune de export.", { status: 403 });
     const type: TaskType[] = entity === "tickets" ? ["TICKET"] : ["TASK"];
-    const { items } = await listTasks({
+    const { items: found } = await listTasks({
       userId: user.id,
       teamIds: user.teamIds,
       ...taskViewFilter(user),
-      scope: (sp.get("scope") as "all" | "mine" | "created") || "all",
-      status: (sp.get("status") as TaskStatus) || undefined,
       types: type,
-      priority: (sp.get("prio") as TaskPriority) || undefined,
-      projectId: sp.get("proj") || undefined,
-      clientId: sp.get("client") || undefined,
-      categoryId: sp.get("category") || undefined,
-      assigneeId: sp.get("assignee") || undefined,
-      teamId: sp.get("team") || undefined,
-      dueRange: (sp.get("due") as "overdue" | "today" | "tomorrow" | "week" | "month") || undefined,
-      search: sp.get("q") || undefined,
-      sort: (sp.get("sort") as "default" | "dueAsc" | "dueDesc") || undefined,
-      page: 1,
-      pageSize: 5000,
+      ...(ids
+        ? { scope: "all" as const, ids, page: 1, pageSize: Math.max(1, ids.length) }
+        : {
+            scope: (sp.get("scope") as "all" | "mine" | "created") || "all",
+            status: (sp.get("status") as TaskStatus) || undefined,
+            priority: (sp.get("prio") as TaskPriority) || undefined,
+            projectId: sp.get("proj") || undefined,
+            clientId: sp.get("client") || undefined,
+            categoryId: sp.get("category") || undefined,
+            assigneeId: sp.get("assignee") || undefined,
+            teamId: sp.get("team") || undefined,
+            dueRange: (sp.get("due") as "overdue" | "today" | "tomorrow" | "week" | "month") || undefined,
+            search: sp.get("q") || undefined,
+            sort: (sp.get("sort") as "default" | "dueAsc" | "dueDesc") || undefined,
+            page: 1,
+            pageSize: 5000,
+          }),
     });
 
+    const items = inTableOrder(found, ids);
     // Batch-resolve client names (clientId is denormalized on task)
     const clientIds = [...new Set(items.map((t) => t.clientId).filter(Boolean) as string[])];
     const clientNameMap = await clientNamesFor(clientIds); // id-in cu mii de id-uri e lent: pentru liste mari se citește harta numelor
@@ -119,16 +153,18 @@ export async function GET(req: Request) {
 
   // ─── PROJECTS ─────────────────────────────────────────────────────
   if (entity === "projects") {
-    if (!can(user, "projects.view")) return new Response("Fără permisiune.", { status: 403 });
+    if (!can(user, "projects.view") || !can(user, "projects.export")) return new Response("Fără permisiune de export.", { status: 403 });
     const where: import("@prisma/client").Prisma.ProjectWhereInput = {};
     const statusParam = sp.get("status") as ProjectStatus | null;
-    if (statusParam) where.status = statusParam;
-    const q = sp.get("q")?.trim();
+    if (ids) where.id = { in: ids };
+    if (!ids && statusParam) where.status = statusParam;
+    const q = ids ? undefined : sp.get("q")?.trim();
     if (q) where.OR = [{ name: { contains: q, mode: "insensitive" } }, { description: { contains: q, mode: "insensitive" } }];
 
-    const rows = await prisma.project.findMany({
+    const found = await prisma.project.findMany({
       where,
       select: {
+        id: true,
         name: true,
         description: true,
         status: true,
@@ -141,8 +177,9 @@ export async function GET(req: Request) {
         createdAt: true,
       },
       orderBy: { createdAt: "desc" },
-      take: 5000,
+      take: ids ? ids.length : 5000,
     });
+    const rows = inTableOrder(found, ids);
 
     // Resolve assignee names in one batch query
     const assigneeIds = [...new Set(rows.map((r) => r.assigneeId).filter(Boolean) as string[])];
@@ -171,12 +208,14 @@ export async function GET(req: Request) {
 
   // ─── CLIENTS ──────────────────────────────────────────────────────
   if (entity === "clients") {
-    if (!can(user, "clients.view")) return new Response("Fără permisiune.", { status: 403 });
-    const { items } = await listClients(user.id, {
-      search: sp.get("q") || undefined,
+    if (!can(user, "clients.view") || !can(user, "clients.export")) return new Response("Fără permisiune de export.", { status: 403 });
+    const { items: found } = await listClients(user.id, {
+      search: ids ? undefined : sp.get("q") || undefined,
+      ids: ids ?? undefined,
       page: 1,
-      pageSize: 10000,
+      pageSize: ids ? Math.max(1, ids.length) : 10000,
     });
+    const items = inTableOrder(found, ids);
 
     const HEADERS = ["Nume", "Telefon", "Email", "Note", "Nr. neprezentări", "Ultima programare"];
     const rows = items.map((c) => ({
@@ -193,7 +232,7 @@ export async function GET(req: Request) {
 
   // ─── PAYERS (plătitori Apă-Canal) ─────────────────────────────────
   if (entity === "payers") {
-    if (!can(user, "payers.view")) return new Response("Fără permisiune.", { status: 403 });
+    if (!can(user, "payers.view") || !can(user, "payers.export")) return new Response("Fără permisiune de export.", { status: 403 });
 
     // Aceleași filtre ca pagina /platitori (vezi buildPayerWhere) — altfel un export lansat
     // cu un filtru activ pe ecran (sector, sold, stradă...) ar întoarce toți plătitorii, nu
@@ -227,6 +266,7 @@ export async function GET(req: Request) {
         meterCurrReading: true,
         consumAddress: true,
         portalPasswordHash: true,
+        contractExpiresAt: true,
         _count: { select: { invoices: true } },
       },
     });
@@ -277,7 +317,7 @@ export async function GET(req: Request) {
       "Serie contor", "Nume", "Telefon", "Email", "Note", "Nr. contor", "Adresa consum", "Indice curent", "Cont portal", "Nr. facturi",
       "Nr. contract", "IDNO / ИНН", "Sector", "Nr. factură", "Data facturii", "Perioadă", "Status factură",
       "Citire anterioară", "Citire curentă (factură)", "Calculat", "Datorii / avans", "Recalculări", "Penalități", "Total de plată", "Valută",
-      "Zonă presiune", "Nr. sigiliu", "Data instalării contor", "UID 1C",
+      "Zonă presiune", "Nr. sigiliu", "Data instalării contor", "UID 1C", "Contract expiră la",
     ];
     const rows = payers.map((p) => {
       const inv = lastInvoice.get(p.id);
@@ -312,6 +352,7 @@ export async function GET(req: Request) {
         "Nr. sigiliu": c1?.sigiliu ?? "",
         "Data instalării contor": c1?.dataInstalare ?? "",
         "UID 1C": c1?.uid ?? "",
+        "Contract expiră la": p.contractExpiresAt ? p.contractExpiresAt.toISOString().slice(0, 10).split("-").reverse().join(".") : "",
       };
     });
 
@@ -326,7 +367,7 @@ export async function GET(req: Request) {
   // recalculări, total de plată, indice anterior/curent și consumul apă/canal. Asta e suficient pentru
   // reconcilierea de totaluri pe care o fac ei — un rând per perioadă, plus un rând TOTAL.
   if (entity === "payer-statement") {
-    if (!can(user, "payers.view")) return new Response("Fără permisiune.", { status: 403 });
+    if (!can(user, "payers.view") || !can(user, "payers.export")) return new Response("Fără permisiune de export.", { status: 403 });
     const statement = await getPayerStatement(sp.get("id") ?? "");
     if (!statement) return new Response("Plătitor inexistent.", { status: 404 });
     const { client, rows: stRows, totals } = statement;
@@ -382,7 +423,7 @@ export async function GET(req: Request) {
 
   // ─── APPOINTMENTS ─────────────────────────────────────────────────
   if (entity === "appointments") {
-    if (!can(user, "appointments.view")) return new Response("Fără permisiune.", { status: 403 });
+    if (!can(user, "appointments.view") || !can(user, "appointments.export")) return new Response("Fără permisiune de export.", { status: 403 });
     const view = sp.get("view") ?? "lista";
     const q = sp.get("q")?.trim();
     const statusParam = sp.get("status") as AppointmentStatus | null;
@@ -405,33 +446,40 @@ export async function GET(req: Request) {
       dateFilter = {};
     }
 
-    const where: import("@prisma/client").Prisma.AppointmentWhereInput = {
-      userId: user.id,
-      ...dateFilter,
-      ...(statusParam ? { status: statusParam } : {}),
-      ...(categoryId ? { categoryId } : {}),
-      ...(q ? { clientNameSnapshot: { contains: q, mode: "insensitive" } } : {}),
-    };
+    // Aceeași regulă ca tabelul din pagină: programările create de utilizator SAU în care e „pentru” (asignat).
+    const where: import("@prisma/client").Prisma.AppointmentWhereInput = ids
+      ? { AND: [mineWhere(user.id), { id: { in: ids } }] }
+      : {
+          AND: [mineWhere(user.id)],
+          ...dateFilter,
+          ...(statusParam ? { status: statusParam } : {}),
+          ...(categoryId ? { categoryId } : {}),
+          ...(q ? { clientNameSnapshot: { contains: q, mode: "insensitive" } } : {}),
+        };
 
-    const appts = await prisma.appointment.findMany({
+    const apptsFound = await prisma.appointment.findMany({
       where,
       select: {
+        id: true,
         startAt: true,
         endAt: true,
         title: true,
         status: true,
         clientNameSnapshot: true,
         categoryNameSnapshot: true,
+        address: true,
+        assignee: { select: { name: true } },
       },
       orderBy: { startAt: "asc" },
-      take: 10000,
+      take: ids ? ids.length : 10000,
     });
+    const appts = inTableOrder(apptsFound, ids);
 
     const APPT_STATUS_RO: Record<string, string> = {
       NEW: "Nou", CONFIRMED: "Confirmat", IN_PROGRESS: "În lucru",
       DONE: "Finalizat", CANCELLED: "Anulat", NO_SHOW: "Absent",
     };
-    const HEADERS = ["Data", "Ora start", "Ora sfârșit", "Client", "Titlu", "Status", "Categorie"];
+    const HEADERS = ["Data", "Ora start", "Ora sfârșit", "Client", "Titlu", "Status", "Categorie", "Pentru", "Adresă"];
     const rows = appts.map((a) => ({
       "Data": fmtDate(a.startAt),
       "Ora start": formatTime(a.startAt, TZ),
@@ -440,6 +488,8 @@ export async function GET(req: Request) {
       "Titlu": a.title,
       "Status": APPT_STATUS_RO[a.status] ?? a.status,
       "Categorie": a.categoryNameSnapshot ?? "",
+      "Pentru": a.assignee?.name ?? "",
+      "Adresă": a.address ?? "",
     }));
 
     return makeResponse(HEADERS, rows, "programari");

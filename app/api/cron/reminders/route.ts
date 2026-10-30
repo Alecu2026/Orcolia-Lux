@@ -2,6 +2,7 @@ import { env } from "@/lib/env";
 import { processDueReminders } from "@/lib/services/reminders";
 import { checkTaskReminders } from "@/lib/services/tasks";
 import { checkAppointmentReminders } from "@/lib/services/appointment-reminders";
+import { checkContractExpiry } from "@/lib/services/contract-expiry";
 import { withDeliveryMeta } from "@/lib/delivery-log";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ async function run(req: Request) {
     return new Response("forbidden", { status: 401 });
   }
 
-  const [reminders, taskReminders, appointmentReminders] = await withDeliveryMeta({ source: "cron:reminders" }, () =>
+  const [reminders, taskReminders, appointmentReminders, contractExpiry] = await withDeliveryMeta({ source: "cron:reminders" }, () =>
     Promise.all([
       processDueReminders(),
       checkTaskReminders().catch((e) => {
@@ -33,9 +34,13 @@ async function run(req: Request) {
         console.error("[cron/reminders] reamintirile programărilor:", e);
         return { checked: 0, notified: 0 };
       }),
+      checkContractExpiry().catch((e) => {
+        console.error("[cron/reminders] expirarea contractelor:", e);
+        return { due: 0, notified: 0 };
+      }),
     ]),
   );
-  return Response.json({ ok: true, reminders, taskReminders, appointmentReminders });
+  return Response.json({ ok: true, reminders, taskReminders, appointmentReminders, contractExpiry });
 }
 
 export async function GET(req: Request) {

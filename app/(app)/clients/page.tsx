@@ -29,7 +29,7 @@ export default async function ClientsPage({
 
   return (
     <div className="w-full">
-      <ClientsTable items={rows} openCreate={create === "1"} canEdit={can(user, "clients.edit")} canCreate={can(user, "clients.create")} canDelete={can(user, "clients.delete")} />
+      <ClientsTable canExport={can(user, "clients.export")} canImport={can(user, "clients.import")} items={rows} openCreate={create === "1"} canEdit={can(user, "clients.edit")} canCreate={can(user, "clients.create")} canDelete={can(user, "clients.delete")} />
     </div>
   );
 }

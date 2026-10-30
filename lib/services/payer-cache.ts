@@ -54,7 +54,7 @@ export type PayerSnap = {
   nameFixCount: number;
 };
 
-type Artifact = { v: 2; at: number; sorted: true; rows: SnapTuple[]; months: { month: string; count: number }[] };
+type Artifact = { v: 4; at: number; sorted: true; rows: SnapTuple[]; months: { month: string; count: number }[] };
 
 let l1: PayerSnap | null = null;
 let l1CheckedAt = 0;
@@ -80,7 +80,7 @@ async function loadFromDb(): Promise<PayerSnap | null> {
   try {
     const gz = Buffer.from(row.gz);
     const art = JSON.parse(gunzipSync(gz).toString("utf8")) as Artifact;
-    if (art.v !== 2 || !Array.isArray(art.rows)) return null;
+    if (art.v !== 4 || !Array.isArray(art.rows)) return null;
     return toSnap(art, gz, row.version);
   } catch (e) {
     console.error("[payer-cache] rândul din baza de date e ilizibil, îl reconstruiesc:", e);
@@ -95,7 +95,7 @@ export function rebuildPayerSnap(reason = "manual"): Promise<PayerSnap> {
     const t0 = Date.now();
     const startedAt = new Date(); // „datele sunt cel târziu de la acest moment": o modificare ulterioară rămâne marcată ca depășită
     const [tuples, months] = await Promise.all([getPayerSnapshot(), loadPayerMonths()]);
-    const art: Artifact = { v: 2, at: startedAt.getTime(), sorted: true, rows: sortTuplesByName(tuples), months };
+    const art: Artifact = { v: 4, at: startedAt.getTime(), sorted: true, rows: sortTuplesByName(tuples), months };
     const gz = gzipSync(Buffer.from(JSON.stringify(art), "utf8"), { level: 6 });
     const version = createHash("sha1").update(gz).digest("hex").slice(0, 16);
     try {
@@ -243,7 +243,7 @@ export async function getMonthSlice(month: string): Promise<{ gz: Buffer; tuples
 function toPayerRow(r: SnapRow): PayerRow {
   return {
     id: r.id, name: r.name, meterSeries: r.meterSeries, contract: r.contract, email: r.email, phone: r.phone, activated: r.activated,
-    invoiceCount: r.invoiceCount, latestInvoice: r.latestInvoice, consumAddress: r.consumAddress, lastNotifiedAt: r.lastNotifiedAt, installedAt: r.installedAt,
+    invoiceCount: r.invoiceCount, latestInvoice: r.latestInvoice, consumAddress: r.consumAddress, lastNotifiedAt: r.lastNotifiedAt, installedAt: r.installedAt, contractExpiresAt: r.contractExpiresAt,
   };
 }
 

@@ -4,7 +4,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isSuper, type CurrentUser } from "@/lib/dal";
-import { can, ALL_PERMISSION_KEYS, PERMISSIONS_V2 } from "@/lib/permissions";
+import { can, ALL_PERMISSION_KEYS, PERMISSIONS_V2, PERMISSIONS_V3 } from "@/lib/permissions";
 import { sanitizePreset } from "@/lib/table-look";
 import { hashPassword } from "@/lib/password";
 import { DEMO } from "@/lib/demo";
@@ -30,7 +30,7 @@ function parsePerms(formData: FormData): string[] {
     .map(String)
     .filter((p) => (ALL_PERMISSION_KEYS as string[]).includes(p));
   // Marcajul spune că lista e cea nouă (pe pagini): de acum permisiunile sunt explicite, fără deducții din cele vechi.
-  return [...new Set(perms), PERMISSIONS_V2];
+  return [...new Set(perms), PERMISSIONS_V2, PERMISSIONS_V3];
 }
 
 function parseNotifyEvents(formData: FormData): string[] {
@@ -42,6 +42,14 @@ function parseNotifyEvents(formData: FormData): string[] {
 
 /** Administrator în sens larg: rol ADMIN sau permisiunea „admin”. Doar ei pot crea/promova administratori (altfel un angajat cu „Gestionare utilizatori” și-ar putea acorda singur acces total). */
 const isAdminLevel = (u: { role: string; permissions: string[] }) => u.role === "ADMIN" || u.permissions.includes("admin");
+
+/** „Simulare de login” (intrarea în conturile altora) o acordă și o retrage doar un administrator; ceilalți (cu „Gestionare utilizatori”) nu o pot schimba nici pentru ei, nici pentru alții. */
+function guardImpersonatePerm(actor: { role: string; permissions: string[] }, perms: string[], before: string[] | null): string[] {
+  if (isAdminLevel(actor)) return perms;
+  const out = perms.filter((p) => p !== "users.impersonate");
+  if (before?.includes("users.impersonate")) out.push("users.impersonate");
+  return out;
+}
 
 /** Telegram chat ID: număr (grupurile au id negativ). Gol = fără Telegram. */
 function parseTelegram(formData: FormData): { value: string | null; error?: string } {
@@ -111,7 +119,7 @@ export async function createUser(
       passwordHash: await hashPassword(password),
       role,
       isActive,
-      permissions: role === "ADMIN" ? [] : parsePerms(formData),
+      permissions: role === "ADMIN" ? [] : guardImpersonatePerm(user, parsePerms(formData), null),
       notifyEvents: parseNotifyEvents(formData),
       telegramChatId: telegram.value,
       notifyScope: parseNotifyScope(formData),
@@ -192,7 +200,7 @@ export async function updateUser(
     return { error: "Nu poți modifica rolul unui alt administrator." };
   }
 
-  const newPerms = role === "ADMIN" ? [] : parsePerms(formData);
+  const newPerms = role === "ADMIN" ? [] : guardImpersonatePerm(admin, parsePerms(formData), before.permissions);
   const newNotify = parseNotifyEvents(formData);
 
   try {

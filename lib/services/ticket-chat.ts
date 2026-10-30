@@ -89,6 +89,9 @@ export function chatState(access: Extract<ChatAccess, { ok: true }>, messages: C
 /** Marchează conversația ca citită de cel care o deschide (doar dacă ultimul mesaj e al celeilalte părți și nu era deja citit). */
 export async function markChatRead(access: Extract<ChatAccess, { ok: true }>): Promise<void> {
   const { viewer, task } = access;
+  // Într-o simulare de login confirmarea „citit” ar fi falsă (n-a citit nimeni de fapt): nu se marchează.
+  const imp = viewer.kind === "staff" ? (await (await import("../dal")).getCurrentUser())?.impersonation : (await (await import("../client-dal")).getCurrentClient())?.impersonation;
+  if (imp) return;
   const lastAt = task.chatLastMsgAt;
   if (!lastAt) return;
   if (viewer.kind === "staff") {

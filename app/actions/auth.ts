@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { CLIENT_SESSION_COOKIE, PORTAL_IMP_COOKIE } from "@/lib/client-session";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, destroySession } from "@/lib/session";
@@ -10,6 +11,7 @@ import { ensureDefaultCategories } from "@/lib/queries/categories";
 import { getSettings } from "@/lib/queries/settings";
 import { seedDemoData } from "@/lib/services/demo-seed";
 import { getCurrentUser } from "@/lib/dal";
+import { exitUserImpersonation } from "@/lib/services/impersonation";
 import { logAudit } from "@/lib/services/audit";
 import { DEMO } from "@/lib/demo";
 import { createVerificationCode, consumeVerificationCode } from "@/lib/services/verification-codes";
@@ -172,11 +174,23 @@ export async function resetPasswordWithCode(
 export async function logout(): Promise<void> {
   if (DEMO) redirect("/dashboard");
   const current = await getCurrentUser();
+  // În simulare, „Deconectare” înseamnă ieșirea din simulare (te întorci în contul tău), nu delogarea contului simulat.
+  if (current?.impersonation) {
+    const r = await exitUserImpersonation();
+    redirect(r.ok ? r.to : "/login");
+  }
   if (current) {
     await logAudit(
       { id: current.id, name: current.name, role: current.role, isSuperAdmin: current.isSuperAdmin },
       { action: "auth.logout", module: "Auth" },
     );
+    // simulările de portal pornite de acest utilizator se încheie odată cu delogarea lui
+    await prisma.clientSession.deleteMany({ where: { impersonatedById: current.id } }).catch(() => {});
+    const store = await cookies();
+    if (store.get(PORTAL_IMP_COOKIE)) {
+      store.delete(CLIENT_SESSION_COOKIE);
+      store.delete(PORTAL_IMP_COOKIE);
+    }
   }
   await destroySession();
   redirect("/login");

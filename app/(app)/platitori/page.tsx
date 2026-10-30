@@ -26,7 +26,7 @@ export default async function PayersPage({
 }) {
   const t = await getT();
   const user = await requirePermission("payers.view");
-  const canImport = can(user, "clients.create") && can(user, "clients.edit");
+  const canImport = can(user, "clients.create") && can(user, "clients.edit") && can(user, "payers.import");
   // Sincronizarea din API creează și facturi, deci cere și permisiunea de creare facturi.
   const canSyncApi = canImport && can(user, "invoices.create");
   const sp = await searchParams;
@@ -69,6 +69,7 @@ export default async function PayersPage({
       <PayerNotifyManager
         basePath="/platitori"
         browseOnly
+        canExport={can(user, "payers.export")}
         canTask={can(user, "tasks.create")}
         nameFixCount={nameFixCount}
         initial={{ filters, page, perPage, items, total }}

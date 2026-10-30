@@ -1,7 +1,7 @@
 import "server-only";
 import { DEMO } from "../demo";
 import { getFieldList } from "./meter-readings";
-import { fieldConsum, FAR_METERS, JUMP_CONFIRM_M3 } from "../meter-readings";
+import { checkConsum, fieldConsum, FAR_METERS } from "../meter-readings";
 import { prepareRoutes, routeOf } from "../meter-routes";
 import type { MeterPinsResponse, MeterPinTuple } from "../map-meters";
 
@@ -24,7 +24,8 @@ export async function getMeterPins(): Promise<MeterPinsResponse> {
     if (lat == null || lng == null) continue;
     const consum = fieldConsum(t[6], t[4]);
     const dist = t[10];
-    const suspect = consum != null && consum < 0 ? 1 : consum != null && consum > JUMP_CONFIRM_M3 ? 2 : dist != null && dist > FAR_METERS ? 3 : 0;
+    const chk = checkConsum(consum, t[19]);
+    const suspect = consum != null && consum < 0 ? 1 : chk?.kind === "high" ? 2 : dist != null && dist > FAR_METERS ? 3 : chk?.kind === "low" ? 4 : 0;
     pins.push([t[0], t[1], t[2], t[3], lat, lng, t[15], t[6], t[7], t[16], t[17], routeOf({ sector: t[16], address: t[3] }, prepared), t[9], t[18] === 1 ? 1 : 0, suspect]);
   }
   const value: MeterPinsResponse = { period: list.period, pins, routes: list.routes.map((r) => ({ id: r.id, name: r.name })), total: list.rows.length };

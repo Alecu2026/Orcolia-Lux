@@ -8,6 +8,7 @@ import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
 import { I18nProvider } from "@/lib/i18n/context";
 import LanguageSwitcher from "@/app/components/LanguageSwitcher";
+import ImpersonationBanner from "@/app/components/ImpersonationBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export default async function PortalDashboardLayout({
   return (
     <I18nProvider messages={messages} locale={locale}>
     <div className="min-h-dvh bg-[var(--color-app)]">
+      {client.impersonation && <ImpersonationBanner who={client.name} by={client.impersonation.byName} expiresAt={client.impersonation.expiresAt} serverNow={Date.now()} exitAction="/api/simulare/portal-exit" className="sticky top-0" />}
       <div className="h-1 bg-brand" />
       <header className="border-b border-[var(--color-line)] bg-[var(--color-surface)] print:hidden">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">

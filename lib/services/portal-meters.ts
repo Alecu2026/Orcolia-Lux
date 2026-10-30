@@ -64,6 +64,7 @@ export async function listPortalMeters(clientId: string): Promise<{ period: stri
         id: r.id,
         contor: r.contor,
         address: r.address,
+        consumer: r.consumator,
         lastIndex: useField ? fb.value : r.curr,
         lastDate: useField ? fbDate : r.currDate,
         thisMonth: cur ? dto(cur) : null,
@@ -91,7 +92,7 @@ export async function submitPortalReading(client: Client, input: PortalReadingIn
 
   const actor = { id: null, name: `${client.name} · portal` };
   const res = await saveReading(actor, { meterId: input.meterId, value: input.value, lat: null, lng: null, accuracy: null, confirmed: input.confirmed, source: "PORTAL" });
-  if (!res.ok) return { ok: false, error: res.error, ...(res.confirm ? { confirm: res.confirm } : {}) };
+  if (!res.ok) return { ok: false, error: res.error, ...(res.confirm && res.confirm !== "low" ? { confirm: res.confirm, ...(res.avg ? { avg: res.avg } : {}), ...(res.pct != null ? { pct: res.pct } : {}) } : {}) };
   const r = res.reading;
   const consum = r.prevValue != null ? Math.round((r.value - r.prevValue) * 1000) / 1000 : null;
 

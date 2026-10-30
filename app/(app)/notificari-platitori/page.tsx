@@ -95,6 +95,7 @@ export default async function PayerNotificationsPage({
         months={months}
         initialTemplates={templates}
         canSend={can(user, "payers.notify")}
+        canExport={can(user, "payers.export")}
         canTask={can(user, "tasks.create")}
         emailEnabled={env.smtp.enabled}
         smsEnabled={env.sms.enabled}

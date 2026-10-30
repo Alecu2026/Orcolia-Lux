@@ -5,6 +5,8 @@ import { prisma } from "./prisma";
 import { env } from "./env";
 
 const COOKIE = env.sessionCookieName;
+/** Pe durata unei simulări, tokenul sesiunii proprii a celui care simulează stă aici (httpOnly); la ieșire se pune înapoi în cookie-ul principal. */
+export const ORIG_SESSION_COOKIE = `${COOKIE}_orig`;
 const TTL_MS = env.sessionTtlDays * 24 * 60 * 60 * 1000;
 
 /** Hash-ul tokenului (sha256) — în DB salvăm DOAR acest hash, niciodată tokenul brut. */
@@ -45,6 +47,8 @@ export async function createSession(
     expires: expiresAt,
     path: "/",
   });
+  // o autentificare nouă încheie orice simulare rămasă
+  store.delete(ORIG_SESSION_COOKIE);
 }
 
 export async function getSessionToken(): Promise<string | null> {
@@ -62,6 +66,7 @@ export async function destroySession(): Promise<void> {
       .catch(() => {});
   }
   store.delete(COOKIE);
+  store.delete(ORIG_SESSION_COOKIE);
 }
 
 export const SESSION_COOKIE = COOKIE;

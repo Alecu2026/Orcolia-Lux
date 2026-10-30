@@ -6,6 +6,8 @@
 
 import { addressLocality, cleanSectorList, effectiveSector, parseSectorFilter } from "./sector-filter";
 import type { PayerRow } from "./queries/payers";
+import { matchesContractFilter, type ContractExpFilter } from "./contract-expiry";
+import { todayKey } from "./date";
 
 // ── Filtre ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -45,11 +47,15 @@ export type NotifyFilters = {
   nameFix: "" | "1";
   /** "none" = plătitori fără nicio factură (de ex. conturi de test de curățat). */
   invoices: "" | "none";
+  /** "yes" = plătitori la care ultima citire a contorului e calculată (estimată), nu citită; "no" = cu citire reală. */
+  estimated: "" | "yes" | "no";
+  /** Contractul plătitorului: fără dată / expirat / expiră în 10 sau 30 de zile. */
+  contractExp: ContractExpFilter;
 };
 
 export const EMPTY_FILTERS: NotifyFilters = {
   q: "", street: "", month: "", account: "", sector: "", usector: "", uloc: "", invoiceStatus: "", debt: "",
-  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", sort: "", nameFix: "", invoices: "",
+  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", sort: "", nameFix: "", invoices: "", estimated: "", contractExp: "",
 };
 
 /** „Toate" = o pagină cât toată lista (plafon de siguranță; sunt ~19.000 de plătitori). */
@@ -155,6 +161,8 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     sort: ONE_OF(get(src, "sort"), ["debtDesc", "debtAsc", "installDesc", "installAsc"] as const),
     nameFix: ONE_OF(get(src, "nameFix"), ["1"] as const),
     invoices: ONE_OF(get(src, "invoices"), ["none"] as const),
+    estimated: ONE_OF(get(src, "estimated"), ["yes", "no"] as const),
+    contractExp: ONE_OF(get(src, "contractExp"), ["none", "expired", "10d", "30d"] as const),
   };
 }
 
@@ -380,7 +388,7 @@ export type SnapInvoice = NonNullable<PayerRow["latestInvoice"]>;
  * trecere simplă prin 19.000 de rânduri cu comparații pe numere (fără parsare de date, fără șiruri): _h = text de căutare, _he/_hp = are email /
  * telefon, _nm = ultima notificare (ms, 0 = niciodată), _st = sector (0 necunoscut, 1 privat, 2 comunal), _dk = soldul facturii afișate (NaN = fără factură).
  */
-export type SnapRow = PayerRow & { sector: string | null; /** sectorul din 1C („Участок”) */ uch: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number };
+export type SnapRow = PayerRow & { sector: string | null; /** sectorul din 1C („Участок”) */ uch: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number; /** ultima citire a contorului e calculată (estimată) */ estimated: boolean };
 
 const SECTOR_CODE = (s: string | null): 0 | 1 | 2 => (s === "Sector privat" ? 1 : s === "Sector comunal" ? 2 : 0);
 
@@ -403,6 +411,10 @@ export type SnapTuple = [
   address: string | null, notifiedMs: number | null, installed: string | null, sector: string | null,
   /** sectorul din 1C („Участок”) — lipsește în listele salvate înainte de această versiune */
   uch?: string | null,
+  /** ultima citire e calculată / estimată (1 = da) — lipsește în listele salvate înainte de această versiune */
+  estimated?: 0 | 1,
+  /** „YYYY-MM-DD” — data expirării contractului (lipsește în listele salvate înainte de această versiune) */
+  contractExp?: string | null,
 ];
 /** Factura unei luni: [clientId, număr, status, total, valută, scadență ms]. */
 export type MonthTuple = [clientId: string, number: string, status: string, total: number, currency: string, dueMs: number | null];
@@ -438,6 +450,8 @@ export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[
     _nm: t[14] ?? 0,
     _st: SECTOR_CODE(t[16]),
     _dk: t[8] == null ? NaN : (t[10] ?? 0),
+    estimated: t[18] === 1,
+    contractExpiresAt: t[19] ?? null,
   }));
   if (!presorted) rows.sort((a, b) => collatorRo.compare(a.name, b.name)); // o singură dată; filtrarea păstrează ordinea
   return rows;
@@ -520,6 +534,7 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
   const max = f.maxDebt === "" ? NaN : Number(f.maxDebt);
   const hasMin = !Number.isNaN(min), hasMax = !Number.isNaN(max);
   const now = Date.now();
+  const today = todayKey();
   const d7 = now - 7 * 86_400_000;
   const d30 = now - 30 * 86_400_000;
   const sectorCode = f.sector === "privat" ? 1 : f.sector === "comunal" ? 2 : 0;
@@ -563,6 +578,8 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
 
     if (f.installedFrom && !(r.installedAt && r.installedAt >= f.installedFrom)) continue;
     if (f.invoices === "none" && r.latestInvoice) continue;
+    if (f.estimated === "yes" ? !r.estimated : f.estimated === "no" ? r.estimated : false) continue;
+    if (f.contractExp && !matchesContractFilter(r.contractExpiresAt, f.contractExp, today)) continue;
 
     if (money) {
       const inv = r.latestInvoice;

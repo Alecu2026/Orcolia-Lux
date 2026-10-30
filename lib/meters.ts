@@ -23,6 +23,8 @@ export type MeterFilters = {
   consum: "" | "positive" | "zero";
   /** Sursa citirii, exact ca în date (1C: „Источник"; Axioma). */
   sursa: string;
+  /** "yes" = doar contoarele a căror ultimă citire e calculată (estimată), nu citită; "no" = doar cele citite. */
+  estimated: "" | "yes" | "no";
   /** "address" = adrese la care sunt mai multe contoare active; "subscriber" = abonați cu mai multe contoare active. */
   shared: "" | "address" | "subscriber";
   kind: "" | "person" | "company";
@@ -43,7 +45,7 @@ export type MeterFilters = {
 };
 
 export const EMPTY_METER_FILTERS: MeterFilters = {
-  q: "", street: "", status: "", reading: "", consum: "", sursa: "", shared: "", kind: "", sector: "", usector: "", uloc: "", account: "", debt: "",
+  q: "", street: "", status: "", reading: "", consum: "", sursa: "", estimated: "", shared: "", kind: "", sector: "", usector: "", uloc: "", account: "", debt: "",
   invoiceStatus: "", installedFrom: "", installedTo: "", source: "", sort: "",
 };
 
@@ -70,6 +72,7 @@ export function sanitizeMeterFilters(src: Source): MeterFilters {
     reading: ONE_OF(get(src, "reading"), ["has", "none"] as const),
     consum: ONE_OF(get(src, "consum"), ["positive", "zero"] as const),
     sursa: txt(get(src, "sursa"), 60),
+    estimated: ONE_OF(get(src, "estimated"), ["yes", "no"] as const),
     shared: ONE_OF(get(src, "shared"), ["address", "subscriber"] as const),
     kind: ONE_OF(get(src, "kind"), ["person", "company"] as const),
     sector: ONE_OF(get(src, "sector"), ["privat", "comunal"] as const),
@@ -290,6 +293,9 @@ function orderFor(rows: MeterRow[], sort: Exclude<MeterSort, "">): Uint32Array {
   return ord;
 }
 
+/** Citirea e calculată (estimată), nu făcută de controlor? „Расчетный” din 1C sau „Axioma (estimat)”. */
+export const isEstimatedSource = (s: string | null | undefined): boolean => !!s && /расч|estimat/i.test(s);
+
 /** O singură trecere cu comparații pe câmpuri pre-calculate: milisecunde la ~25.000 de rânduri. */
 export function filterMeters(allRows: MeterRow[], f: MeterFilters): MeterRow[] {
   const tokens = f.q.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
@@ -313,6 +319,7 @@ export function filterMeters(allRows: MeterRow[], f: MeterFilters): MeterRow[] {
     if (f.reading === "has" ? r.curr == null : f.reading === "none" ? r.curr != null : false) continue;
     if (f.consum === "positive" ? !(r._ct > 0) : f.consum === "zero" ? r._ct !== 0 : false) continue;
     if (sursa && (r.sursa ?? "").toLowerCase() !== sursa) continue;
+    if (f.estimated === "yes" ? !isEstimatedSource(r.sursa) : f.estimated === "no" ? r.curr == null || isEstimatedSource(r.sursa) : false) continue;
     if (f.shared === "address" ? r._ac < 2 : f.shared === "subscriber" ? r.meterCount < 2 : false) continue;
     if (f.kind === "person" ? !r.person : f.kind === "company" ? r.person : false) continue;
     if (sectorCode && r._st !== sectorCode) continue;

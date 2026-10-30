@@ -10,6 +10,7 @@ import { logAudit } from "@/lib/services/audit";
 import { CLIENT_SPEC, diffFields } from "@/lib/services/audit-diff";
 import { invalidatePayers } from "@/lib/services/payer-cache";
 import { invalidateInvoices } from "@/lib/services/invoice-cache";
+import { cleanContractDate, contractDate, contractKey } from "@/lib/contract-expiry";
 
 export type PayerState = { ok?: boolean; error?: string } | undefined;
 
@@ -24,8 +25,18 @@ export async function updatePayer(
   if (DEMO) return { error: "Mod demo: conectează o bază de date." };
 
   const id = String(formData.get("id") ?? "");
-  const existing = await prisma.client.findFirst({ where: { id, OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] }, select: { id: true, name: true, phone: true, email: true, notes: true } });
+  const existing = await prisma.client.findFirst({ where: { id, OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] }, select: { id: true, name: true, phone: true, email: true, notes: true, contractExpiresAt: true } });
   if (!existing) return { error: "Plătitor inexistent." };
+
+  // data expirării contractului: câmpul gol o șterge; o dată invalidă nu se salvează în tăcere
+  let contractKeyNew: string | null | undefined; // undefined = formularul nu trimite câmpul (rămâne neatins)
+  if (formData.has("contractExpiresAt")) {
+    const raw = String(formData.get("contractExpiresAt") ?? "").trim();
+    contractKeyNew = raw ? cleanContractDate(raw) : null;
+    if (raw && !contractKeyNew) return { error: "Data expirării contractului e invalidă (ZZ.LL.AAAA)." };
+  }
+  const contractOld = contractKey(existing.contractExpiresAt);
+  const contractChanged = contractKeyNew !== undefined && contractKeyNew !== contractOld;
 
   const parsed = clientSchema.safeParse({
     name: formData.get("name"),
@@ -45,6 +56,8 @@ export async function updatePayer(
       email: d.email || null,
       // formularul din popup nu trimite câmpul „notes" — atunci notița veche din fișă rămâne neatinsă
       ...(formData.has("notes") ? { notes: d.notes || null } : {}),
+      // o dată nouă = notificările „expiră în 30 / 10 zile” pornesc de la capăt pentru ea
+      ...(contractChanged ? { contractExpiresAt: contractKeyNew ? contractDate(contractKeyNew) : null, contractNotified: [] } : {}),
     },
   });
   // consumerName e o copie denormalizată, înghețată pe fiecare factură la creare — corectarea
@@ -60,8 +73,8 @@ export async function updatePayer(
     objectName: d.name,
     details: {
       changes: diffFields(
-        existing,
-        { name: d.name, phone: d.phone || null, email: d.email || null, ...(formData.has("notes") ? { notes: d.notes || null } : {}) },
+        { ...existing, contractExpiresAt: contractOld },
+        { name: d.name, phone: d.phone || null, email: d.email || null, ...(formData.has("notes") ? { notes: d.notes || null } : {}), ...(contractKeyNew !== undefined ? { contractExpiresAt: contractKeyNew } : {}) },
         CLIENT_SPEC,
       ),
     },

@@ -62,6 +62,10 @@ export const RO_TO_TASK_STATUS: Record<string, string> = {
   "În așteptare": "ON_HOLD",
   "In asteptare": "ON_HOLD",
   "Review": "REVIEW",
+  // etichetele din aplicație (și din Telegram) pentru același status
+  "Verificare": "REVIEW",
+  "În verificare": "REVIEW",
+  "La verificare": "REVIEW",
   "Finalizat": "DONE",
   "Anulat": "CANCELLED",
 };
@@ -69,11 +73,13 @@ export const RO_TO_TASK_STATUS: Record<string, string> = {
 export const RO_TO_TASK_PRIORITY: Record<string, string> = {
   "Scăzută": "LOW",
   "Scazuta": "LOW",
+  "Scăzut": "LOW",
   "Medie": "MEDIUM",
   "Ridicată": "HIGH",
   "Ridicata": "HIGH",
   "Urgentă": "URGENT",
   "Urgenta": "URGENT",
+  "Urgent": "URGENT", // eticheta din aplicație
 };
 
 export const RO_TO_TASK_TYPE: Record<string, string> = {
@@ -100,6 +106,12 @@ export const RO_TO_APPT_STATUS: Record<string, string> = {
   "Finalizat": "DONE",
   "Anulat": "CANCELLED",
   "Absent": "NO_SHOW",
+  // formele din aplicație (la feminin: „programare”)
+  "Nouă": "NEW",
+  "Confirmată": "CONFIRMED",
+  "Finalizată": "DONE",
+  "Anulată": "CANCELLED",
+  "Absentă": "NO_SHOW",
 };
 
 /**
@@ -138,3 +150,15 @@ export type ImportResult = {
   total: number;
   failed: { row: number; error: string }[];
 };
+
+const norm = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+/** Caută o etichetă într-o hartă fără să conteze majusculele, diacriticele și spațiile din capete („in lucru”, „URGENTA”, „ în lucru ”). */
+export function mapLabel<T extends string>(map: Record<string, T>, raw: string | undefined | null): T | undefined {
+  const v = (raw ?? "").trim();
+  if (!v) return undefined;
+  if (map[v] !== undefined) return map[v];
+  const n = norm(v);
+  for (const [k, val] of Object.entries(map)) if (norm(k) === n) return val;
+  return undefined;
+}

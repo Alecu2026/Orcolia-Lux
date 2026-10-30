@@ -37,7 +37,9 @@ const topBtn =
   "tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]";
 
 /** Clienți (CRM) — același tabel dens, cu filtre locale, ca la Plătitori. Click pe rând = editare. */
-export default function ClientsTable({ items, openCreate, canEdit = true, canCreate = true, canDelete = true }: { items: ClientRow[]; openCreate?: boolean; canEdit?: boolean; canCreate?: boolean; canDelete?: boolean }) {
+export default function ClientsTable({ items, openCreate, canEdit = true, canCreate = true, canDelete = true, canExport = true, canImport = true }: {
+  canExport?: boolean;
+  canImport?: boolean; items: ClientRow[]; openCreate?: boolean; canEdit?: boolean; canCreate?: boolean; canDelete?: boolean }) {
   const t = useT();
   const toast = useToast();
   const m = useMessages();
@@ -149,17 +151,17 @@ export default function ClientsTable({ items, openCreate, canEdit = true, canCre
         defaultSort={{ key: "last", dir: "desc" }}
         noun={t("clienți")}
         emptyText={m.clients.noClients}
-        toolbar={
+        toolbar={(view) => (
           <>
-            <ExportButton entity="clients" className={topBtn} />
-            {canCreate && <ImportButton entity="clients" className={topBtn} />}
+            {canExport && <ExportButton entity="clients" filtered={view.filtered} getIds={view.getIds} count={view.count} className={topBtn} />}
+            {canCreate && canImport && <ImportButton entity="clients" className={topBtn} />}
             {canCreate && (
               <button type="button" onClick={() => setDialog({ open: true, client: null })} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">
                 {m.clients.new}
               </button>
             )}
           </>
-        }
+        )}
       />
       {dialog.open && <ClientDialog client={dialog.client} onClose={() => setDialog({ open: false, client: null })} />}
     </>

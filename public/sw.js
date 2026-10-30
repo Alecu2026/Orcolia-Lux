@@ -93,7 +93,7 @@ self.addEventListener("fetch", (event) => {
           const preloaded = await event.preloadResponse;
           const res = preloaded || (await fetch(request));
           // doar răspunsurile normale (nu redirecturile la autentificare) se păstrează, o singură copie pe pagină (fără parametri)
-          if (keep && res.ok && !res.redirected) {
+          if (keep && res.ok && !res.redirected && !res.headers.has("x-imp")) {
             const copy = res.clone();
             caches.open(CACHE).then((c) => c.put(url.pathname, copy)).catch(() => {});
           }

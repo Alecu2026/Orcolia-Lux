@@ -24,6 +24,7 @@ const ru: Messages = {
     readingRoutes: "Маршруты обходов",
     telegram: "Telegram",
     settings: "Настройки",
+    impersonate: "Вход от имени",
   },
   common: {
     save: "Сохранить",

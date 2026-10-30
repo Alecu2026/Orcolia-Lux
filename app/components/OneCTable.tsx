@@ -48,7 +48,7 @@ function fmt(col: OneCColumn, v: string | number | null | undefined) {
 const inputCls =
   "h-7 w-full min-w-0 rounded-md border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-xs font-normal outline-none focus:border-brand";
 
-export default function OneCTable() {
+export default function OneCTable({ canExport = true }: { canExport?: boolean } = {}) {
   const tr = useT();
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [applied, setApplied] = useState<Record<string, string>>({});
@@ -146,7 +146,7 @@ export default function OneCTable() {
           <button type="button" onClick={() => { appliedRef.current = {}; setFilters({}); setApplied({}); setOnlyDiff(false); setPage(1); }} className="tap h-9 rounded-lg border border-[var(--color-line)] px-3 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">
             {tr("Resetează filtrele ({activeFilters})", { activeFilters })}</button>
         )}
-        <details className="relative ml-auto">
+        {canExport && <details className="relative ml-auto">
           <summary className="tap inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-semibold text-white hover:bg-brand-strong">
             {tr("📊 Descarcă Excel ▾")}
           </summary>
@@ -164,7 +164,7 @@ export default function OneCTable() {
               <a key={k} href={exportUrl(k)} download onClick={(e) => e.currentTarget.closest("details")?.removeAttribute("open")} className="block rounded-lg px-3 py-2 text-sm hover:bg-[var(--color-surface-2)]">{tr(l)}</a>
             ))}
           </div>
-        </details>
+        </details>}
       </div>
 
       <p className="mb-2 text-xs text-ink-soft">

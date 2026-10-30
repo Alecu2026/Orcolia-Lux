@@ -648,6 +648,8 @@ model Session {
   lastUsedAt DateTime @default(now())
   userAgent  String?
   ip         String?
+  /// Simulare de login: cine a intrat în acest cont (sesiunea expiră fix la 6 ore, fără prelungire); null = autentificare obișnuită.
+  impersonatorId String? @db.ObjectId
 
   @@index([userId])
   @@index([expiresAt])
@@ -683,6 +685,11 @@ model Client {
   meterReadingEstimated  Boolean @default(false)
   consumAddress          String?
 
+  /// Data expirării contractului plătitorului (introdusă manual; doar data, la 00:00 UTC): baza notificărilor „expiră în 30 / 10 zile” către plătitor și către personal.
+  contractExpiresAt DateTime?
+  /// Etapele deja notificate pentru data curentă, ex. "2026-12-31:30"; schimbarea datei le face irelevante (notificările pornesc de la capăt).
+  contractNotified  String[]
+
   // Instantaneu al ULTIMEI facturi (după issueDate) — MongoDB/Prisma nu poate sorta/filtra
   // clienți după un câmp dintr-o relație (Invoice), așa că duplicăm aici ce ne trebuie pentru
   // filtrele din /platitori (sold, status, sector), reîmprospătat la fiecare creare/modificare
@@ -714,6 +721,7 @@ model Client {
   @@index([userId, lastInvoiceStatus])
   @@index([userId, lastInvoiceSectorNr])
   @@index([lastNotifiedAt])
+  @@index([contractExpiresAt])
 }
 
 // Jurnal al notificărilor trimise plătitorilor (email/SMS) — fără relație la Client/User intenționat
@@ -731,7 +739,8 @@ model PayerNotificationLog {
   error      String?
   subject    String?
   body       String
-  userId     String   @db.ObjectId
+  /// lipsește la notificările automate (ex. expirarea contractului)
+  userId     String?  @db.ObjectId
   userName   String
   createdAt  DateTime @default(now())
 
@@ -752,6 +761,8 @@ model ClientSession {
   lastUsedAt DateTime @default(now())
   userAgent  String?
   ip         String?
+  /// Simulare de login în portal: utilizatorul (staff) care a intrat în contul clientului (expiră fix la 6 ore); null = client real.
+  impersonatedById String? @db.ObjectId
 
   @@index([clientId])
   @@index([expiresAt])
@@ -1293,6 +1304,8 @@ model MeterReading {
   userName     String
   /// „PORTAL” = trimisă de plătitor din portal (userName = numele plătitorului); lipsă = citire din teren
   source       String?
+  /// consumul mediu lunar al contorului (m³) în momentul citirii — baza verificării „peste / sub medie”; lipsă = istoric insuficient
+  avgConsum    Float?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

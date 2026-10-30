@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/actions/auth";
@@ -10,6 +10,7 @@ import VoiceTaskButton from "./VoiceTaskButton";
 import LanguageSwitcher from "./LanguageSwitcher";
 import IncomingCallPopup from "./IncomingCallPopup";
 import { I18nProvider, useMessages, useT } from "@/lib/i18n/context";
+import ImpersonationBanner from "./ImpersonationBanner";
 import type { Messages, Locale } from "@/lib/i18n";
 import { BOTTOM_NAV_MAX, NAV_META, sanitizeBottomNav } from "@/lib/nav-meta";
 
@@ -63,6 +64,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
   "/pbx": phoneIcon(),
   "/invoices": invoiceIcon(),
   "/users": userIcon(),
+  "/simulare": userIcon(),
   "/team": usersIcon(),
   "/harta": mapIcon(),
   "/admin/audit-logs": shieldIcon(),
@@ -199,6 +201,8 @@ function ThemeToggle() {
   );
 }
 
+export type ShellImpersonation = { who: string; by: string; expiresAt: number; serverNow: number };
+
 export default function AppShell({
   userName,
   demo = false,
@@ -208,6 +212,7 @@ export default function AppShell({
   bottomNav,
   messages,
   locale,
+  impersonation,
   children,
 }: {
   userName: string;
@@ -219,6 +224,8 @@ export default function AppShell({
   bottomNav?: string[];
   messages: Messages;
   locale: Locale;
+  /** Simulare de login activă: contul în care ești, cine a pornit-o și când expiră (banda de sus + butonul de ieșire). */
+  impersonation?: ShellImpersonation;
   children: ReactNode;
 }) {
   return (
@@ -230,6 +237,7 @@ export default function AppShell({
         unread={unread}
         appointmentsLabel={appointmentsLabel}
         bottomNav={bottomNav}
+        impersonation={impersonation}
       >
         {children}
       </AppShellInner>
@@ -244,6 +252,7 @@ function AppShellInner({
   unread = 0,
   appointmentsLabel,
   bottomNav,
+  impersonation,
   children,
 }: {
   userName: string;
@@ -252,6 +261,7 @@ function AppShellInner({
   unread?: number;
   appointmentsLabel?: string;
   bottomNav?: string[];
+  impersonation?: ShellImpersonation;
   children: ReactNode;
 }) {
   const [drawer, setDrawer] = useState(false);
@@ -334,9 +344,10 @@ function AppShellInner({
           </div>
         )}
 
-        <div className="flex min-h-dvh min-w-0 flex-col">
+        <div className="flex min-h-dvh min-w-0 flex-col" style={impersonation ? ({ "--imp-h": "2.25rem" } as CSSProperties) : undefined}>
+          {impersonation && <ImpersonationBanner who={impersonation.who} by={impersonation.by} expiresAt={impersonation.expiresAt} serverNow={impersonation.serverNow} exitAction="/api/simulare/exit" className="sticky top-0" />}
           {/* Header */}
-          <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-app)]/80 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
+          <header className="sticky top-[var(--imp-h,0px)] z-30 flex items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-app)]/80 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
             <button
               onClick={() => setDrawer(true)}
               className="tap grid size-10 place-items-center rounded-xl bg-[var(--color-surface-2)] lg:hidden"

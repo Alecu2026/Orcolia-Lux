@@ -26,6 +26,9 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
   // secțiunea se deschide singură cât timp mai sunt contoare necitite, dar nu se mai închide de la sine după ce trimiți o citire
   const [open, setOpen] = useState(() => meters.some((x) => !x.thisMonth));
   const m = useMemo(() => meters.find((x) => x.id === sel) ?? meters[0], [meters, sel]);
+  const multi = meters.length > 1;
+  /** Următorul contor fără citire în luna aceasta (altul decât cel ales). */
+  const nextUnread = meters.find((x) => !x.thisMonth && x.id !== (meters.find((y) => y.id === sel) ?? meters[0])?.id) ?? null;
 
   const [value, setValue] = useState("");
   const [kind, setKind] = useState("");
@@ -33,6 +36,8 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
   const [photo, setPhoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<null | "lower" | "high">(null);
+  /** Media lunară a contorului și abaterea în % — explică avertismentul „prea mare”, când există destul istoric. */
+  const [confirmAvg, setConfirmAvg] = useState<{ avg: number; pct: number } | null>(null);
   const [pending, setPending] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -65,8 +70,10 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
       fd.set("issueNote", note);
       const res = await submitPortalReadingAction(fd);
       if (!res.ok) {
-        if (res.confirm) setConfirm(res.confirm);
-        else setMsg({ ok: false, text: t(res.error) });
+        if (res.confirm) {
+          setConfirm(res.confirm);
+          setConfirmAvg(res.avg && res.pct != null ? { avg: res.avg.avg, pct: res.pct } : null);
+        } else setMsg({ ok: false, text: t(res.error) });
         return;
       }
       setConfirm(null);
@@ -82,7 +89,7 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
       }
       if (res.issueError) { ok = false; text += ` ${t("Starea contorului nu s-a salvat: {error}", { error: t(res.issueError) })}`; }
       else if (res.issueSaved) text += ` ${t("Starea contorului a fost transmisă.")}`;
-      setMsg({ ok, text });
+      setMsg({ ok, text: multi ? `${t("Contor")} ${m.contor}: ${text}` : text });
       router.refresh();
     } catch {
       setMsg({ ok: false, text: t("A apărut o eroare. Încearcă din nou.") });
@@ -102,16 +109,44 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
       </summary>
 
       <div className="flex flex-col gap-3 border-t border-[var(--color-line)] p-4">
-        <label className="text-xs font-semibold text-ink-soft">
-          {t("Alege contorul")}
-          <select value={m.id} onChange={(e) => setSel(e.target.value)} className={`${inp} mt-1`}>
-            {meters.map((x) => (
-              <option key={x.id} value={x.id}>
-                {t("Contor")} {x.contor}{x.address ? ` — ${x.address}` : ""}{x.thisMonth ? " ✓" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+        {multi && (
+          <div role="radiogroup" aria-label={t("Alege contorul")} className="flex flex-col gap-2">
+            <p className="text-xs font-semibold text-ink-soft">{t("Ai {n} contoare — alege contorul pentru care trimiți indexul", { n: meters.length })}</p>
+            {meters.map((x, i) => {
+              const on = x.id === m.id;
+              return (
+                <button
+                  key={x.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => setSel(x.id)}
+                  className={`tap flex w-full cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-left ${on ? "border-brand bg-brand-soft/60 ring-1 ring-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] hover:bg-brand-soft/30"}`}
+                >
+                  <span className={`grid size-5 shrink-0 place-items-center rounded-full border-2 ${on ? "border-brand" : "border-[var(--color-line)]"}`} aria-hidden>
+                    {on && <span className="size-2.5 rounded-full bg-brand" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold">{t("Contor")} {x.contor} <span className="text-xs font-normal text-ink-soft">({i + 1}/{meters.length})</span></span>
+                    {x.address && <span className="block truncate text-xs text-ink-soft">🏠 {x.address}</span>}
+                    {x.consumer && <span className="block truncate text-[11px] text-ink-soft">{x.consumer}</span>}
+                  </span>
+                  {x.thisMonth ? (
+                    <span className="shrink-0 rounded-full bg-st-done/15 px-2 py-0.5 text-[11px] font-semibold text-st-done">✓ {nf(x.thisMonth.value)} m³</span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-st-progress/15 px-2 py-0.5 text-[11px] font-semibold text-st-progress">{t("de citit")}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div className="rounded-xl border border-brand/40 bg-brand-soft/30 px-3 py-2" data-selected-meter="">
+          <p className="text-[11px] text-ink-soft">{multi ? t("Contorul ales ({i} din {n})", { i: meters.findIndex((x) => x.id === m.id) + 1, n: meters.length }) : t("Contor")}</p>
+          <p className="text-base font-bold">{m.contor}</p>
+          {m.address && <p className="text-xs text-ink-soft">🏠 {m.address}</p>}
+          {m.consumer && <p className="text-[11px] text-ink-soft">{m.consumer}</p>}
+        </div>
 
         <div className="grid gap-2 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)]/50 p-3 text-sm sm:grid-cols-2">
           <div>
@@ -148,7 +183,7 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
             className="flex flex-col gap-3"
           >
             <label className="text-xs font-semibold text-ink-soft">
-              {t("Indexul contorului (m³)")}
+              {multi ? t("Indexul contorului {contor} (m³)", { contor: m.contor }) : t("Indexul contorului (m³)")}
               <input
                 value={value}
                 onChange={(e) => { setValue(e.target.value); setConfirm(null); }}
@@ -199,7 +234,9 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
                 <p className="font-semibold">
                   {confirm === "lower"
                     ? t("Indexul e mai mic decât cel anterior ({last} m³).", { last: nf(m.lastIndex ?? 0) })
-                    : t("Consumul pare neobișnuit de mare (peste {n} m³).", { n: JUMP_CONFIRM_M3 })}
+                    : confirmAvg
+                      ? t("Consumul pare neobișnuit de mare: cu {p}% peste media lunară a contorului ({a} m³).", { p: nf(confirmAvg.pct), a: nf(confirmAvg.avg) })
+                      : t("Consumul pare neobișnuit de mare (peste {n} m³).", { n: JUMP_CONFIRM_M3 })}
                 </p>
                 <p className="mt-0.5 text-xs text-ink-soft">{t("Verifică cifrele. Dacă indexul e corect (ex. contor înlocuit), confirmă.")}</p>
                 <button type="button" disabled={pending} onClick={() => void submit(true)} className="tap mt-2 h-10 cursor-pointer rounded-xl bg-st-progress px-4 text-sm font-semibold text-white disabled:opacity-50">
@@ -209,9 +246,14 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
             )}
 
             {msg && <p className={`rounded-xl px-3 py-2 text-sm ${msg.ok ? "bg-brand-soft/60 text-ink" : "bg-st-cancelled/10 text-st-cancelled"}`}>{msg.text}</p>}
+            {multi && msg?.ok && nextUnread && (
+              <button type="button" onClick={() => setSel(nextUnread.id)} className="tap h-10 cursor-pointer rounded-xl border border-brand px-4 text-sm font-semibold text-brand hover:bg-brand-soft">
+                {t("Următorul contor de citit: {contor} →", { contor: nextUnread.contor })}
+              </button>
+            )}
 
             <button type="submit" disabled={pending || !value.trim()} className="tap h-12 cursor-pointer rounded-xl bg-brand text-base font-semibold text-white hover:bg-brand-strong disabled:opacity-50">
-              {pending ? t("Se trimite…") : m.thisMonth ? t("Actualizează citirea") : t("Trimite citirea")}
+              {pending ? t("Se trimite…") : m.thisMonth ? (multi ? t("Actualizează citirea contorului {contor}", { contor: m.contor }) : t("Actualizează citirea")) : multi ? t("Trimite citirea contorului {contor}", { contor: m.contor }) : t("Trimite citirea")}
             </button>
           </form>
         )}

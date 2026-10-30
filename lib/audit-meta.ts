@@ -34,6 +34,11 @@ export const MODULE_LABELS: Record<string, string> = {
 export const ACTION_LABELS: Record<string, string> = {
   "auth.login": "Autentificare",
   "auth.logout": "Delogare",
+  "auth.impersonate_start": "Simulare login — intrare în cont",
+  "auth.impersonate_end": "Simulare login — ieșire",
+  "auth.impersonate_portal_start": "Simulare login — intrare în portal client",
+  "auth.impersonate_portal_end": "Simulare login — ieșire din portal client",
+  "auth.impersonate_portal_action": "Simulare login — acțiune în numele clientului",
 
   "task.create": "Creare sarcină",
   "task.update": "Editare sarcină",
@@ -94,6 +99,11 @@ export const ACTION_LABELS: Record<string, string> = {
 const SHORT_LABELS: Record<string, string> = {
   "auth.login": "Autentificare",
   "auth.logout": "Delogare",
+  "auth.impersonate_start": "Intrat în contul altcuiva",
+  "auth.impersonate_end": "Ieșit din simulare",
+  "auth.impersonate_portal_start": "Intrat în portal client",
+  "auth.impersonate_portal_end": "Ieșit din portal client",
+  "auth.impersonate_portal_action": "Acțiune în numele clientului",
   "task.create": "Sarcină creată",
   "task.update": "Sarcină editată",
   "task.edit": "Sarcină editată",

@@ -28,7 +28,7 @@ export async function setWebhookAction(): Promise<TgState> {
 
 export async function unlinkTelegram(): Promise<void> {
   const user = await requireUser();
-  if (DEMO) return;
+  if (DEMO || user.impersonation) return; // în simulare de login nu se modifică Telegram-ul contului simulat
   await prisma.telegramAccount.deleteMany({ where: { userId: user.id } });
   revalidatePath("/telegram");
 }

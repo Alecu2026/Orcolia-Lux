@@ -24,6 +24,7 @@ const en: Messages = {
     readingRoutes: "Reading routes",
     telegram: "Telegram",
     settings: "Settings",
+    impersonate: "Login simulation",
   },
   common: {
     save: "Save",

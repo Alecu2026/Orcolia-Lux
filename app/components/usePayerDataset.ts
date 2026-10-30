@@ -13,23 +13,25 @@ import {
 
 const IDB_NAME = "payers-cache";
 import { PAYERS_V_COOKIE } from "@/lib/payer-prefs";
+import { idbName } from "@/lib/cache-scope";
 
 const IDB_KEY = "snapshot-v2";
 const FRESH_MS = 20_000; // sub 20 s de la ultima verificare nu mai întrebăm serverul (altfel o cerere condiționată: 304 dacă nu s-a schimbat nimic)
 const STALE_REFRESH_MS = 5 * 60_000; // la revenirea în filă, dacă datele sunt mai vechi de 5 minute, le reîmprospătăm discret
 
 // ── IndexedDB (cache local, ca la următoarea deschidere lista să apară instant) ──
-function openDb(): Promise<IDBDatabase> {
+function openDb(scoped = true): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1);
+    const req = indexedDB.open(scoped ? idbName(IDB_NAME) : IDB_NAME, 1);
     req.onupgradeneeded = () => req.result.createObjectStore("kv");
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
-export async function idbGet<T>(key: string): Promise<T | undefined> {
+/** `scoped=false`: baza comună a browserului (doar coada citirilor offline, care își ține singură evidența conturilor). */
+export async function idbGet<T>(key: string, scoped = true): Promise<T | undefined> {
   try {
-    const db = await openDb();
+    const db = await openDb(scoped);
     return await new Promise<T | undefined>((resolve, reject) => {
       const r = db.transaction("kv").objectStore("kv").get(key);
       r.onsuccess = () => resolve(r.result as T | undefined);
@@ -39,9 +41,9 @@ export async function idbGet<T>(key: string): Promise<T | undefined> {
     return undefined;
   }
 }
-export async function idbSet(key: string, value: unknown): Promise<void> {
+export async function idbSet(key: string, value: unknown, scoped = true): Promise<void> {
   try {
-    const db = await openDb();
+    const db = await openDb(scoped);
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction("kv", "readwrite");
       tx.objectStore("kv").put(value, key);
@@ -253,7 +255,7 @@ export function usePayerDataset(enabled: boolean, warmMonths: string[] = []) {
   }, []);
 
   /** Nume/telefon/email schimbate local (după „Editează" din popup) — și textul de căutare se recalculează. */
-  const patchRow = useCallback((id: string, patch: Partial<Pick<SnapRow, "name" | "phone" | "email">>) => {
+  const patchRow = useCallback((id: string, patch: Partial<Pick<SnapRow, "name" | "phone" | "email" | "contractExpiresAt">>) => {
     const rows = rowsRef.current;
     if (!rows) return;
     const next = rows.map((r) => {

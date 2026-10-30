@@ -129,6 +129,8 @@ export default function TasksTable({
   categories = [],
   canCreate,
   canDelete,
+  canExport = true,
+  canImport = true,
   canEdit = false,
   userId,
   userTeamIds = [],
@@ -164,6 +166,9 @@ export default function TasksTable({
   categories?: CategoryLite[];
   canCreate: boolean;
   canDelete: boolean;
+  /** Permisiunile „Export” / „Import” ale paginii (separate de Vizualizare / Creare). */
+  canExport?: boolean;
+  canImport?: boolean;
   canEdit?: boolean;
   userId?: string;
   /** Echipele utilizatorului: cine e într-o echipă asignată poate lucra pe task (status, progres). */
@@ -666,10 +671,10 @@ export default function TasksTable({
         noun={ticketMode ? tr("cereri") : tr("sarcini")}
         emptyText={m.tasks.noTasks}
         rowClassName={(t) => (overdue(t) ? "bg-st-cancelled/5" : "")}
-        toolbar={
+        toolbar={(view) => (
           <>
-            <ExportButton entity={ticketMode ? "tickets" : "tasks"} params={{ scope: scope !== "mine" ? scope : undefined }} className={topBtn} />
-            <ImportButton entity={ticketMode ? "tickets" : "tasks"} className={topBtn} />
+            {canExport && <ExportButton entity={ticketMode ? "tickets" : "tasks"} params={{ scope }} filtered={view.filtered} getIds={view.getIds} count={view.count} className={topBtn} />}
+            {canImport && canCreate && <ImportButton entity={ticketMode ? "tickets" : "tasks"} className={topBtn} />}
             {canCreate && (
               <div className="relative">
                 <button type="button" onClick={() => setTplMenu((o) => !o)} aria-expanded={tplMenu} className={topBtn} title={tr("Creează dintr-un șablon")}>
@@ -702,7 +707,7 @@ export default function TasksTable({
               </button>
             )}
           </>
-        }
+        )}
       />
 
       {current && (

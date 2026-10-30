@@ -54,9 +54,25 @@ export type PermissionKey =
   // Administrare
   | "reports.view"
   | "users.manage"
+  // Simulare de login: intri în contul unui subaltern sau în portalul unui client, cu aceleași drepturi ca ei (expiră la 6 ore)
+  | "users.impersonate"
   | "notifications.receive"
   // Personalizarea tabelelor de către utilizator: lățimea coloanelor, culori, mărimea textului, celule spațioase, ordinea coloanelor
   | "tables.customize"
+  // Export / import, separat pe pagini (înainte: export = „Vizualizare”, import = „Creare”)
+  | "tasks.export"
+  | "tasks.import"
+  | "tickets.export"
+  | "tickets.import"
+  | "projects.export"
+  | "projects.import"
+  | "clients.export"
+  | "clients.import"
+  | "appointments.export"
+  | "appointments.import"
+  | "payers.export"
+  | "payers.import"
+  | "meters.export"
   | "admin";
 
 export const PERMISSION_GROUPS: {
@@ -72,6 +88,10 @@ export const PERMISSION_GROUPS: {
       { key: "tasks.delete", label: "Ștergere" },
       { key: "tasks.assign", label: "Asignare" },
       { key: "tasks.close", label: "Închidere / finalizare" },
+      { key: "tasks.export", label: "Export sarcini (Excel / CSV / JSON)" },
+      { key: "tasks.import", label: "Import sarcini din fișier" },
+      { key: "tickets.export", label: "Export cereri (Excel / CSV / JSON)" },
+      { key: "tickets.import", label: "Import cereri din fișier" },
     ],
   },
   {
@@ -81,6 +101,8 @@ export const PERMISSION_GROUPS: {
       { key: "projects.create", label: "Creare" },
       { key: "projects.edit", label: "Editare" },
       { key: "projects.delete", label: "Ștergere" },
+      { key: "projects.export", label: "Export (Excel / CSV / JSON)" },
+      { key: "projects.import", label: "Import din fișier" },
     ],
   },
   {
@@ -90,6 +112,8 @@ export const PERMISSION_GROUPS: {
       { key: "clients.create", label: "Creare" },
       { key: "clients.edit", label: "Editare" },
       { key: "clients.delete", label: "Ștergere" },
+      { key: "clients.export", label: "Export (Excel / CSV / JSON)" },
+      { key: "clients.import", label: "Import din fișier" },
     ],
   },
   {
@@ -106,6 +130,8 @@ export const PERMISSION_GROUPS: {
     items: [
       { key: "appointments.view", label: "Vizualizare" },
       { key: "appointments.manage", label: "Gestionare (creare/editare)" },
+      { key: "appointments.export", label: "Export (Excel / CSV / JSON)" },
+      { key: "appointments.import", label: "Import din fișier" },
     ],
   },
   {
@@ -124,6 +150,9 @@ export const PERMISSION_GROUPS: {
       { key: "payers.delete", label: "Ștergere" },
       { key: "meters.read", label: "Citiri contoare (introducere index lunar, locație, poză) — pagina Citiri teren" },
       { key: "meters.manage", label: "Rute de citire, planificat vs citit pe cititor, nereguli contoare (administrare)" },
+      { key: "payers.export", label: "Export plătitori (lista cu filtre, Notificări, Tabel 1C, decontare)" },
+      { key: "payers.import", label: "Import plătitori din fișier" },
+      { key: "meters.export", label: "Export contoare și citiri teren (CSV)" },
     ],
   },
   {
@@ -147,6 +176,7 @@ export const PERMISSION_GROUPS: {
     group: "Administrare",
     items: [
       { key: "users.manage", label: "Gestionare utilizatori" },
+      { key: "users.impersonate", label: "Simulare de login (intri în contul unui subaltern sau în portalul unui client; expiră după 6 ore)" },
       { key: "tables.customize", label: "Personalizare tabele (lățimi coloane, culori, mărime text, celule spațioase)" },
       { key: "admin", label: "Acces administrativ (tot)" },
     ],
@@ -168,6 +198,29 @@ export type PermissionSubject = {
  * din fereastra de utilizator, permisiunile devin explicite și apare marcajul.
  */
 export const PERMISSIONS_V2 = "perm.v2";
+
+/**
+ * Al doilea marcaj: conturile salvate cu lista care are și „Export / Import” pe pagini. Conturile FĂRĂ acest marcaj le primesc deduse din ce aveau înainte
+ * (export = „Vizualizare”, import = „Creare” / „Gestionare”), deci nimeni nu pierde exportul / importul la actualizare; la prima salvare din fereastra
+ * de utilizator devin explicite, iar administratorul le poate retrage pe fiecare pagină.
+ */
+export const PERMISSIONS_V3 = "perm.v3";
+
+const EXPORT_IMPORT_FALLBACK: Partial<Record<PermissionKey, PermissionKey[]>> = {
+  "tasks.export": ["tasks.view"],
+  "tasks.import": ["tasks.create"],
+  "tickets.export": ["tickets.view"],
+  "tickets.import": ["tasks.create"],
+  "projects.export": ["projects.view"],
+  "projects.import": ["projects.create"],
+  "clients.export": ["clients.view"],
+  "clients.import": ["clients.create"],
+  "appointments.export": ["appointments.view"],
+  "appointments.import": ["appointments.manage"],
+  "payers.export": ["payers.view"],
+  "payers.import": ["clients.create"],
+  "meters.export": ["meters.read", "payers.view"],
+};
 
 /** Permisiune nouă → de ce depindea înainte: cheile vechi (oricare) sau "ANY" (avea oricine). */
 export const LEGACY_FALLBACK: Partial<Record<PermissionKey, PermissionKey[] | "ANY">> = {
@@ -195,14 +248,25 @@ export function can(user: PermissionSubject, key: PermissionKey): boolean {
   if (legacy && !user.permissions.includes(PERMISSIONS_V2)) {
     return legacy === "ANY" || legacy.some((k) => user.permissions.includes(k));
   }
+  const ei = EXPORT_IMPORT_FALLBACK[key];
+  if (ei && !user.permissions.includes(PERMISSIONS_V3)) {
+    // importul plătitorilor cerea „Creare” ȘI „Editare” la clienți
+    if (key === "payers.import") return can(user, "clients.create") && can(user, "clients.edit");
+    return ei.some((k) => can(user, k));
+  }
   return false;
 }
 
 /** Permisiunile EFECTIVE ale unui cont (cele deduse din vechile chei, pentru conturile fără marcaj) — le arată fereastra de utilizator. */
 export function effectivePermissionKeys(permissions: string[]): string[] {
-  const out = new Set(permissions.filter((p) => p !== PERMISSIONS_V2));
+  const out = new Set(permissions.filter((p) => p !== PERMISSIONS_V2 && p !== PERMISSIONS_V3));
   if (!permissions.includes(PERMISSIONS_V2)) {
     for (const [k] of Object.entries(LEGACY_FALLBACK)) {
+      if (can({ role: "STAFF", permissions }, k as PermissionKey)) out.add(k);
+    }
+  }
+  if (!permissions.includes(PERMISSIONS_V3)) {
+    for (const [k] of Object.entries(EXPORT_IMPORT_FALLBACK)) {
       if (can({ role: "STAFF", permissions }, k as PermissionKey)) out.add(k);
     }
   }
@@ -236,7 +300,7 @@ export const USER_TYPES: { key: UserTypeKey; label: string; description: string;
     key: "reader",
     label: "Cititor",
     description: "Doar pagina Citiri teren: introduce indexuri, poze, locația și neregulile contoarelor din rutele atribuite lui.",
-    permissions: ["meters.read"],
+    permissions: ["meters.read", "meters.export"],
   },
   {
     key: "operator",
@@ -248,19 +312,21 @@ export const USER_TYPES: { key: UserTypeKey; label: string; description: string;
       "projects.view", "clients.view", "clients.create", "clients.edit",
       "payers.view", "payers.notify", "invoices.view", "appointments.view", "appointments.manage", "teams.view",
       "pbx.view",
+      "tasks.export", "tasks.import", "tickets.export", "tickets.import", "projects.export", "clients.export", "clients.import", "appointments.export", "appointments.import", "payers.export", "meters.export",
     ],
   },
   {
     key: "supervisor",
     label: "Responsabil citiri",
     description: "Cititor + administrarea rutelor de citire, planificat vs citit și neregulile contoarelor; vede plătitorii și contoarele.",
-    permissions: ["meters.read", "meters.manage", "payers.view"],
+    permissions: ["meters.read", "meters.manage", "payers.view", "payers.export", "meters.export"],
   },
   {
     key: "viewer",
     label: "Doar vizualizare",
     description: "Poate vedea toate paginile, fără să modifice nimic.",
-    permissions: ALL_PERMISSION_KEYS.filter((k) => k.endsWith(".view")),
+    // poate vedea tot și exporta ce vede (fără import: nu modifică nimic)
+    permissions: ALL_PERMISSION_KEYS.filter((k) => k.endsWith(".view") || k.endsWith(".export")),
   },
 ];
 

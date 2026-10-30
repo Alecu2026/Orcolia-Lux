@@ -4,6 +4,7 @@ import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireClient } from "@/lib/client-dal";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "@/lib/services/notifications";
+import { auditPortalAction } from "@/lib/services/impersonation";
 
 export type PortalTicketState = { ok?: boolean; error?: string } | undefined;
 
@@ -73,5 +74,6 @@ export async function createPortalTicket(
     }
   });
 
+  await auditPortalAction(`cerere nouă „${title}”`, ticket.id);
   return { ok: true };
 }

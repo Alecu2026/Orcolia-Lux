@@ -1,5 +1,7 @@
 // Starea contorului și neregulile: ce poate raporta cititorul în teren + indicatorii deduși din datele 1C (cod partajat server / browser).
 
+import { isEstimatedSource } from "./meters";
+
 export const ISSUE_KINDS = ["DEFECT", "REVERSE", "FRAUD", "SEAL", "LEAK", "UNREADABLE", "INACCESSIBLE", "OTHER"] as const;
 export type IssueKind = (typeof ISSUE_KINDS)[number];
 
@@ -68,7 +70,7 @@ export function onecIndicators(d: { months: MonthLike[]; sigiliu: string | null;
       else break;
     }
     if (zeros >= 3) out.push({ code: "ZERO", label: "Consum zero {n} luni la rând (contor blocat sau imobil nelocuit)", detail: String(zeros), serious: false });
-    if (last.sursa && /расч/i.test(last.sursa)) out.push({ code: "ESTIMATED", label: "Ultimul consum e calculat (estimat), nu citit", detail: last.month, serious: false });
+    if (isEstimatedSource(last.sursa)) out.push({ code: "ESTIMATED", label: "Ultimul consum e calculat (estimat), nu citit", detail: last.month, serious: false });
     const prevMonths = m.slice(1, 13).map((x) => x.consum).filter((c): c is number => c != null && c >= 0);
     if (last.consum != null && last.consum > 0 && prevMonths.length >= 3) {
       const avg = prevMonths.reduce((s, c) => s + c, 0) / prevMonths.length;

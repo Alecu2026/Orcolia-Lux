@@ -5,6 +5,7 @@ import { prisma } from "./prisma";
 import { getSessionToken, hashToken } from "./session";
 import { can, homePath, type PermissionKey } from "./permissions";
 import { ensureSuperAdminExists } from "./services/super-admin";
+import { canImpersonateUser, type ImpersonationInfo } from "./impersonation";
 
 export type CurrentUser = {
   id: string;
@@ -21,6 +22,8 @@ export type CurrentUser = {
   /** Aspectul tabelelor setat de administrator (vezi lib/table-look.ts); gol = implicit. */
   tableLook?: unknown;
   bottomNav?: string[];
+  /** Setat doar în timpul unei simulări de login: cine a intrat în acest cont și până când (fix 6 ore). */
+  impersonation?: ImpersonationInfo;
 };
 
 /** Super-admin: acces la Audit Logs + gestionarea celorlalți super-admini. */
@@ -66,6 +69,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
       id: true,
       expiresAt: true,
       lastUsedAt: true,
+      impersonatorId: true,
       user: {
         select: {
           id: true,
@@ -96,6 +100,21 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   // Utilizator dezactivat ⇒ tratat ca neautentificat
   if (!session.user.isActive) return null;
 
+  // Simulare de login: de la fiecare cerere se verifică din nou că cel care simulează e încă activ și mai are dreptul asupra acestui cont
+  // (i s-a luat permisiunea, a fost dezactivat, contul simulat a primit drepturi mai mari) — altfel simularea se încheie pe loc.
+  let impersonation: ImpersonationInfo | undefined;
+  if (session.impersonatorId) {
+    const by = await prisma.user.findUnique({
+      where: { id: session.impersonatorId },
+      select: { id: true, name: true, role: true, permissions: true, isActive: true, isSuperAdmin: true, taskViewScope: true, taskViewTeamIds: true, taskViewMemberIds: true },
+    });
+    if (!by || !by.isActive || !canImpersonateUser(by, session.user).ok) {
+      await prisma.session.delete({ where: { id: session.id } }).catch(() => {});
+      return null;
+    }
+    impersonation = { byId: by.id, byName: by.name, expiresAt: session.expiresAt.getTime() };
+  }
+
   if (Date.now() - session.lastUsedAt.getTime() > ONE_DAY) {
     await prisma.session
       .update({ where: { id: session.id }, data: { lastUsedAt: new Date() } })
@@ -104,7 +123,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 
   // Plasă de siguranță: dacă sistemul a rămas fără super-admin activ, cel mai vechi administrator
   // devine super-admin. Pentru cine e deja super e un simplu skip (verificarea e memorată 60 s).
-  const current = session.user as CurrentUser;
+  const current = (impersonation ? { ...session.user, impersonation } : session.user) as CurrentUser;
   if (!current.isSuperAdmin) {
     const healed = await ensureSuperAdminExists().catch(() => null);
     if (healed?.promotedId === current.id) return { ...current, isSuperAdmin: true, role: "ADMIN" };
@@ -141,4 +160,9 @@ export async function requireSuperAdmin(): Promise<CurrentUser> {
   const user = await requireUser();
   if (!isSuper(user)) redirect("/dashboard");
   return user;
+}
+
+/** Acțiunile de securitate ale contului (parolă, email, notificări push, Telegram) nu se fac prin simulare: ar modifica contul real al altcuiva. Întoarce mesajul de refuz sau null. */
+export function blockedInImpersonation(user: CurrentUser): string | null {
+  return user.impersonation ? "Indisponibil în modul simulare de login." : null;
 }

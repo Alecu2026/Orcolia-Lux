@@ -36,6 +36,13 @@ function proxyPortal(req: NextRequest) {
 }
 
 export function proxy(req: NextRequest) {
+  const res = proxyInner(req);
+  // simulare de login activă (cookie-ul sesiunii „de origine”): service worker-ul nu păstrează pagina pentru offline (ar conține datele contului simulat)
+  if (req.cookies.has(`${COOKIE}_orig`)) res.headers.set("x-imp", "1");
+  return res;
+}
+
+function proxyInner(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (pathname === "/portal" || pathname.startsWith("/portal/")) {

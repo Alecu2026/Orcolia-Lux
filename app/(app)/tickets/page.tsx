@@ -82,6 +82,8 @@ export default async function TicketsPage({
         clients={clients}
         categories={categories}
         canCreate={can(user, "tasks.create")}
+        canExport={can(user, "tickets.export")}
+        canImport={can(user, "tickets.import")}
         canDelete={can(user, "tasks.delete")}
         canEdit={can(user, "tasks.edit")}
         userId={user.id}

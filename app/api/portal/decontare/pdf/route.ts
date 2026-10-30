@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { getCurrentClient } from "@/lib/client-dal";
 import { launchBrowser } from "@/lib/pdf-browser";
 import { LOCALE_COOKIE } from "@/lib/i18n/locale-cookie";
-import { env } from "@/lib/env";
+import { selfBaseUrl } from "@/lib/self-url";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,14 +13,14 @@ export const maxDuration = 60;
  * Decontarea clientului din portal, ca PDF: aceeași pagină de tipărire (/portal/print/decontare) deschisă într-un Chromium headless cu sesiunea
  * și limba clientului. Un client primește DOAR propria decontare (pagina o citește din sesiune, nu dintr-un parametru).
  */
-export async function GET() {
+export async function GET(req: Request) {
   const client = await getCurrentClient();
   if (!client) return NextResponse.json({ error: "Neautentificat." }, { status: 401 });
 
   const jar = await cookies();
   const session = jar.get("client_session")?.value;
   if (!session) return NextResponse.json({ error: "Neautentificat." }, { status: 401 });
-  const base = (env.internalAppUrl || env.appUrl).replace(/\/$/, "");
+  const base = await selfBaseUrl(req.url);
   const locale = jar.get(LOCALE_COOKIE)?.value;
   const pass = [{ name: "client_session", value: session }, ...(locale ? [{ name: LOCALE_COOKIE, value: locale }] : [])];
 

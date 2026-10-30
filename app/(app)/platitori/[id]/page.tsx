@@ -7,6 +7,7 @@ import { getPayer, getPayerInvoices, getPayerTickets } from "@/lib/queries/payer
 import { money, fmtDate, INVOICE_STATUS, type InvoiceStatusKey } from "@/app/components/invoice-meta";
 import { TASK_STATUS_RO } from "@/lib/telegram";
 import PayerActions from "@/app/components/PayerActions";
+import ContractExpiry from "@/app/components/ContractExpiry";
 import PayerNotes from "@/app/components/PayerNotes";
 import InvoiceViewButton from "@/app/components/InvoiceViewButton";
 import CollapsibleSection from "@/app/components/CollapsibleSection";
@@ -81,6 +82,10 @@ export default async function PayerDetailPage({
                 <dt className="text-[11px] text-ink-soft">{tr("Telefon")}</dt>
                 <dd className="font-medium">{payer.phone || "—"}</dd>
               </div>
+              <div className="col-span-2">
+                <dt className="text-[11px] text-ink-soft">{tr("Contract expiră la")}</dt>
+                <dd className="font-medium"><ContractExpiry date={payer.contractExpiresAt} /></dd>
+              </div>
               <div>
                 <dt className="text-[11px] text-ink-soft">{tr("Activat la")}</dt>
                 <dd className="font-medium">{payer.portalActivatedAt ? fmtDate(payer.portalActivatedAt) : "—"}</dd>
@@ -110,7 +115,7 @@ export default async function PayerDetailPage({
             </div>
             <div className="mt-1.5">
               <PayerActions
-                payer={{ id: payer.id, name: payer.name, phone: payer.phone, email: payer.email, notes: payer.notes }}
+                payer={{ id: payer.id, name: payer.name, phone: payer.phone, email: payer.email, notes: payer.notes, contractExpiresAt: payer.contractExpiresAt }}
                 canEdit={can(user, "payers.edit")}
                 canDelete={can(user, "payers.delete")}
                 canAdmin={can(user, "admin")}

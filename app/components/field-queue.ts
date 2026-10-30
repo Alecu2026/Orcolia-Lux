@@ -4,6 +4,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import type { ReadingDto, MeterLocationDto } from "@/lib/meter-readings";
 import type { IssueDto } from "@/lib/meter-issues";
 import { idbGet, idbSet } from "./usePayerDataset";
+import { cacheScope } from "@/lib/cache-scope";
 
 /**
  * Coada citirilor făcute FĂRĂ internet. O citire se salvează întâi pe telefon (IndexedDB, cu poza ei) și pleacă la server când există conexiune:
@@ -38,6 +39,8 @@ export type QueueItem = {
   state: "wait" | "error";
   error: string | null;
   tries: number;
+  /** contul (id utilizator) în care a fost făcută citirea: se trimite doar din acel cont — nu din altul (simulare de login, alt utilizator pe același telefon) */
+  uid?: string;
 };
 
 type Snap = { items: QueueItem[]; syncing: boolean; online: boolean; loaded: boolean };
@@ -51,6 +54,10 @@ let snap: Snap = { items, syncing: false, online: true, loaded: false };
 let syncing = false;
 let loaded = false;
 let started = false;
+/** Citirile altor conturi din același browser: rămân neatinse în baza locală până revine acel cont. */
+let others: QueueItem[] = [];
+let loadedScope: string | null = null;
+let ready: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
 const syncedCbs = new Set<(item: QueueItem, res: SyncResult) => void>();
 
@@ -60,23 +67,43 @@ function emit() {
 }
 
 async function persist() {
-  await idbSet(KEY, items);
+  await ready;
+  await idbSet(KEY, [...others, ...items], false);
+}
+
+/** Citește coada contului curent; citirile vechi (fără cont) trec la contul curent, cele ale altor conturi rămân deoparte. */
+function load() {
+  const scope = cacheScope();
+  loadedScope = scope;
+  items = [];
+  others = [];
+  loaded = false;
+  emit();
+  ready = idbGet<QueueItem[]>(KEY, false).then((stored) => {
+    if (loadedScope !== scope) return; // între timp s-a schimbat contul
+    if (Array.isArray(stored) && stored.length) {
+      const mine = stored.filter((s) => !s.uid || s.uid === scope).map((s) => (s.uid ? s : { ...s, uid: scope }));
+      others = stored.filter((s) => s.uid && s.uid !== scope);
+      // citirile adăugate între timp (înainte să se termine citirea) se păstrează și ele
+      const have = new Set(items.map((i) => i.cid));
+      items = [...mine.filter((s) => !have.has(s.cid)), ...items];
+    }
+    loaded = true;
+    emit();
+    void syncNow();
+  });
+}
+
+/** Contul s-a schimbat de când a fost citită coada (ex. simulare de login, alt utilizator pe același telefon): o reîncarcă pentru contul curent. */
+function ensureScope() {
+  if (started && loadedScope !== cacheScope()) load();
 }
 
 /** Pornește coada (o singură dată): citește ce a rămas din sesiunea trecută și ascultă conexiunea. */
 function start() {
   if (started || typeof window === "undefined") return;
   started = true;
-  void idbGet<QueueItem[]>(KEY).then((stored) => {
-    if (Array.isArray(stored) && stored.length) {
-      // citirile adăugate între timp (înainte să se termine citirea) se păstrează și ele
-      const have = new Set(items.map((i) => i.cid));
-      items = [...stored.filter((s) => !have.has(s.cid)), ...items];
-    }
-    loaded = true;
-    emit();
-    void syncNow();
-  });
+  load();
   window.addEventListener("online", () => {
     emit();
     void syncNow();
@@ -98,8 +125,9 @@ export function onQueueSynced(cb: (item: QueueItem, res: SyncResult) => void): (
 /** Pune o citire în coadă (se salvează pe telefon) și încearcă să o trimită dacă există conexiune. */
 export async function enqueueReading(item: Omit<QueueItem, "cid" | "state" | "error" | "tries" | "readAt">): Promise<QueueItem> {
   start();
+  ensureScope();
   // momentul citirii = acum, pe ceasul telefonului (serverul acceptă maxim 40 de zile în urmă)
-  const full: QueueItem = { ...item, readAt: Date.now(), cid: crypto.randomUUID(), state: "wait", error: null, tries: 0 };
+  const full: QueueItem = { ...item, readAt: Date.now(), cid: crypto.randomUUID(), state: "wait", error: null, tries: 0, uid: cacheScope() };
   // aceeași citire corectată înainte de trimitere: o singură intrare pe contor (cea mai nouă); indexul și neregula se păstrează una pe cealaltă
   const old = items.find((i) => i.meterId === full.meterId);
   if (old) {
@@ -114,6 +142,7 @@ export async function enqueueReading(item: Omit<QueueItem, "cid" | "state" | "er
 }
 
 export async function removeQueued(cid: string) {
+  ensureScope();
   items = items.filter((i) => i.cid !== cid);
   emit();
   await persist();
@@ -121,6 +150,7 @@ export async function removeQueued(cid: string) {
 
 /** O citire respinsă se poate retrimite (ex. după ce s-a corectat ceva). */
 export async function retryQueued(cid: string) {
+  ensureScope();
   items = items.map((i) => (i.cid === cid ? { ...i, state: "wait", error: null } : i));
   emit();
   await persist();
@@ -128,6 +158,7 @@ export async function retryQueued(cid: string) {
 }
 
 export async function syncNow(): Promise<void> {
+  ensureScope();
   if (syncing || typeof navigator === "undefined" || !navigator.onLine) return;
   if (!items.some((i) => i.state === "wait")) return;
   syncing = true;

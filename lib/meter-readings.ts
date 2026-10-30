@@ -30,6 +30,36 @@ export const JUMP_CONFIRM_M3 = 200;
 /** Peste această distanță față de locația ultimei citiri, citirea e semnalată pentru verificare. */
 export const FAR_METERS = 150;
 
+// Verificarea față de consumul mediu lunar al contorului (procentele sunt față de medie). Fără medie se folosește pragul fix JUMP_CONFIRM_M3.
+/** Cât PESTE medie cere confirmare: 200 % peste medie = de 3 ori media (aceeași regulă ca indicatorul „Consum de N× peste media” din datele 1C). */
+export const HIGH_OVER_AVG_PCT = 200;
+/** Cât SUB medie cere confirmare: 75 % sub medie = doar un sfert din medie (contor blocat, scurgere pe la altcineva, index greșit). */
+export const LOW_UNDER_AVG_PCT = 75;
+/** Media se socotește doar din cel puțin atâtea citiri; mai puține = prea puțin ca să judecăm. */
+export const AVG_MIN_READINGS = 3;
+/** Un consum mic nu e suspect la contoarele cu media sub această valoare (m³/lună): pentru ele 1 m³ față de 3 m³ e normal. */
+export const LOW_CHECK_MIN_AVG_M3 = 8;
+/** Un consum sub această valoare (m³) nu e „prea mare”, oricât de mică ar fi media. */
+export const HIGH_CHECK_MIN_M3 = 5;
+
+/** Consumul mediu lunar al unui contor și din câte citiri a fost calculat. */
+export type ConsumAvg = { avg: number; count: number };
+
+/** Rezultatul verificării unui consum: „high” (peste medie) / „low” (sub medie) și abaterea în % față de medie (semnată; null = verificare cu pragul fix, fără medie). */
+export type ConsumCheck = { kind: "high" | "low"; pct: number | null } | null;
+
+/** Abaterea consumului față de medie, în % (semnată: +240 = de 3,4 ori media, −80 = doar o cincime din medie). */
+export const deviationPct = (consum: number, avg: number): number => Math.round((consum / avg - 1) * 100);
+
+/** Consumul e neobișnuit față de media contorului (sau, fără medie, față de pragul fix)? Consumul negativ nu intră aici (e „index mai mic”). */
+export function checkConsum(consum: number | null, avg: number | null | undefined): ConsumCheck {
+  if (consum == null || !Number.isFinite(consum) || consum < 0) return null;
+  if (avg == null || !(avg > 0)) return consum > JUMP_CONFIRM_M3 ? { kind: "high", pct: null } : null;
+  if (consum > Math.max(HIGH_CHECK_MIN_M3, avg * (1 + HIGH_OVER_AVG_PCT / 100))) return { kind: "high", pct: deviationPct(consum, avg) };
+  if (avg >= LOW_CHECK_MIN_AVG_M3 && consum < avg * (1 - LOW_UNDER_AVG_PCT / 100)) return { kind: "low", pct: deviationPct(consum, avg) };
+  return null;
+}
+
 /** Distanța dintre două puncte GPS, în metri (haversine). */
 export function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6_371_000;
@@ -53,8 +83,8 @@ export function parseIndex(raw: string): number | null {
  * 6 indexul citit luna aceasta (null = necitit), 7 când a fost citit (ms), 8 are poză (0/1), 9 cine a citit, 10 distanța (m) față de locația citirii anterioare, 11 citirea are locație GPS (0/1), 12–13 latitudine / longitudine a CONTORULUI (din teren), 14 adresa vine din teren (1C n-are una) (0/1), 15 precizia (m) a locației afișate.
  */
 /** 16 sector („Участок” din 1C), 17 neregula deschisă (cod, vezi lib/meter-issues.ts) sau null. */
-/** Ultimul element (1 = citirea lunii vine din portal, trimisă de plătitor) lipsește în listele salvate pe telefon mai vechi. */
-export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null, string | null, string | null, (0 | 1)?];
+/** 18 (1 = citirea lunii vine din portal, trimisă de plătitor) 19 (consumul mediu lunar al contorului la citire, m³) și 20 (1 = ultimul index cunoscut e calculat / estimat, nu citit) lipsesc în listele salvate pe telefon mai vechi. */
+export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null, string | null, string | null, (0 | 1)?, (number | null)?, (0 | 1)?];
 
 export type FieldRow = {
   id: string;
@@ -74,6 +104,10 @@ export type FieldRow = {
   distanceM: number | null;
   /** Consumul = indexul citit − ultimul index cunoscut (m³), sau null dacă lipsește unul dintre ele. */
   consum: number | null;
+  /** Consumul mediu lunar al contorului la momentul citirii (m³), sau null dacă nu era destul istoric. */
+  avg: number | null;
+  /** Ultimul index cunoscut e calculat (estimat), nu citit de un controlor — contorul merită citit și verificat. */
+  estimated: boolean;
   /** Citirea de luna aceasta are locație GPS. */
   geo: boolean;
   /** Locația GPS a contorului (luată de la telefon la o citire), sau null dacă n-a fost salvată încă. */
@@ -125,6 +159,8 @@ export function decodeField(t: FieldTuple[]): FieldRow[] {
     portal: x[18] === 1,
     distanceM: x[10] ?? null,
     consum: fieldConsum(x[6], x[4]),
+    avg: x[19] ?? null,
+    estimated: x[20] === 1,
     geo: x[11] === 1,
     lat: x[12] ?? null,
     lng: x[13] ?? null,
@@ -150,8 +186,8 @@ export type FieldFilters = {
   photo: "" | "yes" | "no";
   /** Cine a făcut citirea: toți / plătitorul din portal / cititor (utilizator). */
   source: "" | "portal" | "field";
-  /** De verificat: consum negativ / neobișnuit de mare / zero, sau citit departe de locația anterioară. */
-  check: "" | "lower" | "high" | "zero" | "far";
+  /** De verificat: consum negativ / neobișnuit de mare sau de mic față de medie / zero, sau citit departe de locația anterioară. */
+  check: "" | "lower" | "high" | "low" | "zero" | "far";
   /** Cine a citit (numele). */
   by: string;
   /** Localitatea (din adresă). */
@@ -174,10 +210,12 @@ export type FieldFilters = {
   route: string;
   /** Contoare cu neregulă deschisă: oricare / doar cele grave. */
   issue: "" | "any" | "serious";
+  /** Contoare al căror ultim index e calculat (estimat), nu citit: de citit și verificat în teren. */
+  estimated: "" | "yes" | "no";
   sort: "" | "contor" | "name" | "readDesc" | "consumDesc" | "consumAsc" | "lastOld";
 };
 
-export const EMPTY_FIELD_FILTERS: FieldFilters = { q: "", street: "", status: "unread", photo: "", check: "", by: "", locality: "", from: "", to: "", lastIndex: "", consumMin: "", consumMax: "", geo: "", address: "", meterLoc: "", route: "", issue: "", source: "", sort: "" };
+export const EMPTY_FIELD_FILTERS: FieldFilters = { q: "", street: "", status: "unread", photo: "", check: "", by: "", locality: "", from: "", to: "", lastIndex: "", consumMin: "", consumMax: "", geo: "", address: "", meterLoc: "", route: "", issue: "", estimated: "", source: "", sort: "" };
 
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], dflt: T): T => (typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : dflt);
 
@@ -190,7 +228,7 @@ export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters
     street: txt(raw.street),
     status: oneOf(raw.status, ["unread", "read", "all"] as const, "unread"),
     photo: oneOf(raw.photo, ["", "yes", "no"] as const, ""),
-    check: oneOf(raw.check, ["", "lower", "high", "zero", "far"] as const, ""),
+    check: oneOf(raw.check, ["", "lower", "high", "low", "zero", "far"] as const, ""),
     by: txt(raw.by),
     locality: txt(raw.locality),
     from: day(raw.from),
@@ -203,6 +241,7 @@ export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters
     meterLoc: oneOf(raw.meterLoc, ["", "yes", "no"] as const, ""),
     route: typeof raw.route === "string" && /^([0-9a-f]{24}|none|mine)$/i.test(raw.route) ? raw.route : "",
     issue: oneOf(raw.issue, ["", "any", "serious"] as const, ""),
+    estimated: oneOf(raw.estimated, ["", "yes", "no"] as const, ""),
     source: oneOf(raw.source, ["", "portal", "field"] as const, ""),
     sort: oneOf(raw.sort, ["", "contor", "name", "readDesc", "consumDesc", "consumAsc", "lastOld"] as const, ""),
   };
@@ -211,7 +250,7 @@ export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters
 /** Câte filtre sunt active (față de starea implicită: necitite, fără alte filtre). Sortarea nu se numără. */
 export function countActiveFieldFilters(f: FieldFilters): number {
   return (f.q ? 1 : 0) + (f.street ? 1 : 0) + (f.status !== "unread" ? 1 : 0) + (f.photo ? 1 : 0) + (f.check ? 1 : 0) + (f.by ? 1 : 0) +
-    (f.locality ? 1 : 0) + (f.from || f.to ? 1 : 0) + (f.lastIndex ? 1 : 0) + (f.consumMin || f.consumMax ? 1 : 0) + (f.geo ? 1 : 0) + (f.address ? 1 : 0) + (f.meterLoc ? 1 : 0) + (f.route ? 1 : 0) + (f.issue ? 1 : 0) + (f.source ? 1 : 0);
+    (f.locality ? 1 : 0) + (f.from || f.to ? 1 : 0) + (f.lastIndex ? 1 : 0) + (f.consumMin || f.consumMax ? 1 : 0) + (f.geo ? 1 : 0) + (f.address ? 1 : 0) + (f.meterLoc ? 1 : 0) + (f.route ? 1 : 0) + (f.issue ? 1 : 0) + (f.estimated ? 1 : 0) + (f.source ? 1 : 0);
 }
 
 export function fieldFiltersToParams(f: FieldFilters): URLSearchParams {
@@ -233,6 +272,7 @@ export function fieldFiltersToParams(f: FieldFilters): URLSearchParams {
   if (f.meterLoc) p.set("meterLoc", f.meterLoc);
   if (f.route) p.set("route", f.route);
   if (f.issue) p.set("issue", f.issue);
+  if (f.estimated) p.set("estimated", f.estimated);
   if (f.source) p.set("source", f.source);
   if (f.sort) p.set("sort", f.sort);
   return p;
@@ -241,9 +281,9 @@ export function fieldFiltersToParams(f: FieldFilters): URLSearchParams {
 const collator = new Intl.Collator("ro", { numeric: true });
 const SERIOUS = new Set<string>(SERIOUS_ISSUES);
 
-/** Rândul e „de verificat”? (consum negativ, salt mare sau citit departe de locația anterioară) */
-export const fieldSuspect = (r: FieldRow): "lower" | "high" | "far" | null =>
-  r.consum != null && r.consum < 0 ? "lower" : r.consum != null && r.consum > JUMP_CONFIRM_M3 ? "high" : r.distanceM != null && r.distanceM > FAR_METERS ? "far" : null;
+/** Rândul e „de verificat”? (consum negativ, peste / sub media contorului — sau peste pragul fix, fără medie — ori citit departe de locația anterioară) */
+export const fieldSuspect = (r: FieldRow): "lower" | "high" | "low" | "far" | null =>
+  r.consum != null && r.consum < 0 ? "lower" : (checkConsum(r.consum, r.avg)?.kind ?? (r.distanceM != null && r.distanceM > FAR_METERS ? "far" : null));
 
 /** Filtrează și sortează lista completă. Fără sortare explicită păstrează ordinea adreselor (cea de pe server). */
 export function filterField(rows: FieldRow[], f: FieldFilters, mineRoutes?: Set<string>): FieldRow[] {
@@ -277,6 +317,7 @@ export function filterField(rows: FieldRow[], f: FieldFilters, mineRoutes?: Set<
         if (mineRoutes && mineRoutes.size && !(r.route && mineRoutes.has(r.route))) return false;
       } else if (r.route !== f.route) return false;
     }
+    if (f.estimated === "yes" ? !r.estimated : f.estimated === "no" ? r.estimated : false) return false;
     if (f.issue === "any" ? !r.issue : f.issue === "serious" ? !(r.issue && SERIOUS.has(r.issue)) : false) return false;
     if (f.meterLoc === "yes" ? r.lat == null : f.meterLoc === "no" ? r.lat != null : false) return false;
     if (f.from && !(r._day && r._day >= f.from)) return false;
@@ -291,7 +332,7 @@ export function filterField(rows: FieldRow[], f: FieldFilters, mineRoutes?: Set<
       if (r.value == null) return false;
       const ok =
         f.check === "lower" ? r.consum != null && r.consum < 0
-        : f.check === "high" ? r.consum != null && r.consum > JUMP_CONFIRM_M3
+        : f.check === "high" || f.check === "low" ? checkConsum(r.consum, r.avg)?.kind === f.check
         : f.check === "zero" ? r.consum === 0
         : r.distanceM != null && r.distanceM > FAR_METERS;
       if (!ok) return false;
@@ -324,6 +365,8 @@ export type ReadingDto = {
   distanceM: number | null;
   photoUrl: string | null;
   userName: string;
+  /** Consumul mediu lunar al contorului în momentul citirii (m³), sau null dacă nu era destul istoric. */
+  avgConsum: number | null;
 };
 
 /** Adresa (din 1C sau din teren) și locația GPS a contorului, după o salvare. */
@@ -337,8 +380,8 @@ export const MAX_ADDRESS = 200;
 
 export type SaveReadingResult =
   | { ok: true; reading: ReadingDto; location: MeterLocationDto; /** neregula raportată odată cu citirea (sau motivul pentru care n-a putut fi salvată) */ issue?: IssueDto | null; issueError?: string | null }
-  /** `confirm`: citirea pare greșită (mai mică decât cea anterioară / un salt mare) — se salvează abia după confirmare. */
-  | { ok: false; error: string; confirm?: "lower" | "high" };
+  /** `confirm`: citirea pare greșită (mai mică decât cea anterioară / peste sau sub media contorului) — se salvează abia după confirmare. `avg` și `pct` (abaterea în %) însoțesc avertismentele față de medie. */
+  | { ok: false; error: string; confirm?: "lower" | "high" | "low"; avg?: ConsumAvg; pct?: number };
 
 export type PhotoResult = { ok: true; photoUrl: string } | { ok: false; error: string };
 

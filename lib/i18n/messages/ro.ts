@@ -22,6 +22,7 @@
     readingRoutes: "Rute de citire",
     telegram: "Telegram",
     settings: "Setări",
+    impersonate: "Simulare login",
   },
   common: {
     save: "Salvează",

@@ -87,9 +87,13 @@ export default function AppointmentsTable({
   today,
   tz,
   canManage = true,
+  canExport = true,
+  canImport = true,
   userId,
 }: {
   canManage?: boolean;
+  canExport?: boolean;
+  canImport?: boolean;
   userId?: string;
   items: ApptVM[];
   categories: CategoryLite[];
@@ -328,13 +332,13 @@ export default function AppointmentsTable({
         cardAvatar={(a) => a.clientName.trim().charAt(0).toUpperCase()}
         noun={t("programări")}
         emptyText={m.appts.noAppts}
-        toolbar={
+        toolbar={(view) => (
           <>
-            <ExportButton entity="appointments" className={topBtn} />
-            {canManage && <ImportButton entity="appointments" className={topBtn} />}
+            {canExport && <ExportButton entity="appointments" filtered={view.filtered} getIds={view.getIds} count={view.count} className={topBtn} />}
+            {canManage && canImport && <ImportButton entity="appointments" className={topBtn} />}
             {canManage && <OpenQuickAddButton className="tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong" />}
           </>
-        }
+        )}
       />
       {current && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && setDetail(null)}>

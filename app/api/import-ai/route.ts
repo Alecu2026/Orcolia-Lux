@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
+import { can } from "@/lib/permissions";
 import { parseWorkbook } from "@/lib/import-utils";
 import { createTask } from "@/lib/services/tasks";
 import { createAppointment } from "@/lib/services/appointments";
@@ -66,6 +67,15 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Autentificare necesară." }, { status: 401 });
   const userId = user.id;
+  // înainte de a plăti apelul AI: cel puțin un import trebuie să fie permis (pe entitate se verifică după ce AI-ul recunoaște tipul)
+  const importPerm: Record<string, boolean> = {
+    tasks: can(user, "tasks.create") && can(user, "tasks.import"),
+    tickets: can(user, "tasks.create") && can(user, "tickets.import"),
+    projects: can(user, "projects.create") && can(user, "projects.import"),
+    clients: can(user, "clients.create") && can(user, "clients.import"),
+    appointments: can(user, "appointments.manage") && can(user, "appointments.import"),
+  };
+  if (!Object.values(importPerm).some(Boolean)) return Response.json({ error: "Fără permisiune de import." }, { status: 403 });
 
   if (!env.ai.enabled) {
     return Response.json({ error: "AI nu este configurat (lipsește OPENAI_API_KEY)." }, { status: 503 });
@@ -106,6 +116,7 @@ export async function POST(req: Request) {
   if (!entity || !Array.isArray(aiRows)) {
     return Response.json({ error: "Răspuns AI invalid." }, { status: 500 });
   }
+  if (!importPerm[entity]) return Response.json({ error: `Fără permisiune de import pentru „${entity}”.` }, { status: 403 });
 
   // Reutilizăm aceeași logică de import ca la endpoint-ul normal
   // Fetch lookups
@@ -114,7 +125,7 @@ export async function POST(req: Request) {
     prisma.team.findMany({ select: { id: true, name: true } }),
     prisma.project.findMany({ select: { id: true, name: true } }),
     prisma.category.findMany({ select: { id: true, name: true } }),
-    prisma.client.findMany({ where: { userId: userId }, select: { id: true, name: true } }),
+    prisma.client.findMany({ select: { id: true, name: true } }), // clienții sunt comuni pentru organizație
     prisma.project.findMany({ select: { id: true, name: true } }),
   ]);
 
@@ -131,6 +142,7 @@ export async function POST(req: Request) {
     if (!name || name === "-") return null;
     const key = name.trim().toLowerCase();
     let id = clientByName.get(key);
+    if (!id && !can(user!, "clients.create")) return null;
     if (!id) {
       const nc = await prisma.client.create({ data: { userId: userId, name: name.trim() }, select: { id: true } });
       clientByName.set(key, nc.id);
@@ -143,6 +155,7 @@ export async function POST(req: Request) {
     if (!name) return null;
     const key = name.trim().toLowerCase();
     let id = projectByName.get(key);
+    if (!id && !can(user!, "projects.create")) return null;
     if (!id) {
       const np = await prisma.project.create({ data: { name: name.trim(), ownerId: userId }, select: { id: true } });
       projectByName.set(key, np.id);

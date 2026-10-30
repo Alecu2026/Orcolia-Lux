@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { decodeTasks, type DecodedTask, type TaskDatasetPayload } from "@/lib/task-dataset";
 
+import { idbName } from "@/lib/cache-scope";
+
 const IDB_NAME = "tasks-cache";
 const REFRESH_AFTER_MS = 60_000; // la revenirea în filă, dacă ultima verificare e mai veche, întrebăm serverul (304 = ieftin)
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1);
+    const req = indexedDB.open(idbName(IDB_NAME), 1);
     req.onupgradeneeded = () => req.result.createObjectStore("kv");
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);

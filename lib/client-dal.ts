@@ -3,12 +3,15 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { prisma } from "./prisma";
 import { getClientSessionToken, hashClientToken } from "./client-session";
+import { canImpersonatePortal, type ImpersonationInfo } from "./impersonation";
 
 export type CurrentClient = {
   id: string;
   name: string;
   email: string | null;
   meterSeries: string | null;
+  /** Setat doar în timpul unei simulări de login din staff (fix 6 ore). */
+  impersonation?: ImpersonationInfo;
 };
 
 const ONE_DAY = 24 * 60 * 60 * 1000;
@@ -28,6 +31,7 @@ export const getCurrentClient = cache(async (): Promise<CurrentClient | null> =>
       id: true,
       expiresAt: true,
       lastUsedAt: true,
+      impersonatedById: true,
       client: {
         select: { id: true, name: true, email: true, meterSeries: true, portalPasswordHash: true },
       },
@@ -44,6 +48,20 @@ export const getCurrentClient = cache(async (): Promise<CurrentClient | null> =>
   // Cont neactivat (fără parolă setată încă) ⇒ tratat ca neautentificat.
   if (!session.client.portalPasswordHash) return null;
 
+  // Simulare din staff: la fiecare cerere se verifică că utilizatorul e încă activ și mai are permisiunea; altfel simularea se încheie.
+  let impersonation: ImpersonationInfo | undefined;
+  if (session.impersonatedById) {
+    const by = await prisma.user.findUnique({
+      where: { id: session.impersonatedById },
+      select: { id: true, name: true, role: true, permissions: true, isActive: true, isSuperAdmin: true },
+    });
+    if (!by || !by.isActive || !canImpersonatePortal(by)) {
+      await prisma.clientSession.delete({ where: { id: session.id } }).catch(() => {});
+      return null;
+    }
+    impersonation = { byId: by.id, byName: by.name, expiresAt: session.expiresAt.getTime() };
+  }
+
   if (Date.now() - session.lastUsedAt.getTime() > ONE_DAY) {
     await prisma.clientSession
       .update({ where: { id: session.id }, data: { lastUsedAt: new Date() } })
@@ -55,6 +73,7 @@ export const getCurrentClient = cache(async (): Promise<CurrentClient | null> =>
     name: session.client.name,
     email: session.client.email,
     meterSeries: session.client.meterSeries,
+    ...(impersonation ? { impersonation } : {}),
   };
 });
 

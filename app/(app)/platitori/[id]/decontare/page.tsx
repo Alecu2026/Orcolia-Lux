@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/dal";
+import { can } from "@/lib/permissions";
 import { getPayerStatement } from "@/lib/services/payer-statement";
 import { INVOICE_STATUS, fmtDate, type InvoiceStatusKey } from "@/app/components/invoice-meta";
 import { IconChevronLeft } from "@/app/components/icons";
@@ -21,7 +22,8 @@ const vol = (n: number | null) => (n == null ? "—" : n.toLocaleString("ro-RO",
  */
 export default async function PayerStatementPage({ params }: { params: Promise<{ id: string }> }) {
   const t = await getT();
-  await requirePermission("payers.view");
+  const user = await requirePermission("payers.view");
+  const canExport = can(user, "payers.export");
   const { id } = await params;
   const statement = await getPayerStatement(id);
   if (!statement) notFound();
@@ -59,7 +61,7 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
 
       <PayerStatementView statement={statement} />
 
-      <div className="flex flex-wrap items-center gap-2">
+      {canExport && <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-ink-soft">{t("Descarcă:")}</span>
         {(["xlsx", "csv", "json"] as const).map((fmt) => (
           <a
@@ -71,7 +73,7 @@ export default async function PayerStatementPage({ params }: { params: Promise<{
             {fmt === "xlsx" ? "Excel (.xlsx)" : fmt.toUpperCase()}
           </a>
         ))}
-      </div>
+      </div>}
       <p className="text-[11px] text-ink-soft">
         {t("Nu avem un jurnal de plăți individuale (dată/sumă/loc încasare), ca în raportul 1C — doar soldul net al fiecărei perioade.")}
       </p>

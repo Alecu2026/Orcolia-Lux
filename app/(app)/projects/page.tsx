@@ -27,7 +27,7 @@ export default async function ProjectsPage({
   ]);
   return (
     <div className="w-full">
-      <ProjectsTable projects={result.items} users={users} teams={teams} clients={clients} openCreate={sp.create === "1"} canEdit={can(user, "projects.edit")} canCreate={can(user, "projects.create")} canDelete={can(user, "projects.delete")} canCreateTask={can(user, "tasks.create")} />
+      <ProjectsTable canExport={can(user, "projects.export")} canImport={can(user, "projects.import")} projects={result.items} users={users} teams={teams} clients={clients} openCreate={sp.create === "1"} canEdit={can(user, "projects.edit")} canCreate={can(user, "projects.create")} canDelete={can(user, "projects.delete")} canCreateTask={can(user, "tasks.create")} />
     </div>
   );
 }

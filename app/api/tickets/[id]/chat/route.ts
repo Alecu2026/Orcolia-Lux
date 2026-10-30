@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { isRateLimited } from "@/lib/rate-limit";
 import { CHAT_MAX_BODY } from "@/lib/ticket-chat-shared";
 import { chatState, listChatMessages, markChatRead, notifyChatMessage, postChatMessage, resolveChatAccess } from "@/lib/services/ticket-chat";
+import { auditPortalAction } from "@/lib/services/impersonation";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -48,6 +49,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (body.length > CHAT_MAX_BODY) return Response.json({ error: `Mesajul depășește ${CHAT_MAX_BODY} de caractere.` }, { status: 400, headers: noStore });
 
   const message = await postChatMessage(access, body);
+  if (access.viewer.kind === "client") await auditPortalAction("mesaj în conversația unei cereri", id);
   after(() => notifyChatMessage(access, message));
   return Response.json({ message }, { headers: noStore });
 }

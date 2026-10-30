@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { PayerRow } from "@/lib/queries/payers";
 import { updatePayer } from "@/app/actions/payers";
+import ContractExpiry from "./ContractExpiry";
 import { agoLabel, type PayerNoteItem } from "@/lib/payer-notify";
 import PayerNotes from "./PayerNotes";
 import InvoiceViewButton from "./InvoiceViewButton";
@@ -26,7 +27,7 @@ type Detail = {
   notifications: { id: string; channel: string; status: string; error: string | null; subject: string | null; body: string; userName: string; createdAt: string }[];
 };
 
-export type PayerPatch = { name: string; phone: string | null; email: string | null };
+export type PayerPatch = { name: string; phone: string | null; email: string | null; contractExpiresAt: string | null };
 
 const dayIn = (tag: string, iso: string) =>
   new Date(iso).toLocaleDateString(tag, { timeZone: "Europe/Bucharest", day: "2-digit", month: "2-digit", year: "numeric" });
@@ -77,7 +78,7 @@ export default function PayerDetailDialog({
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", email: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", contractExpiresAt: "" });
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -104,7 +105,7 @@ export default function PayerDetailDialog({
   }, [onClose, editing]);
 
   function startEdit() {
-    setForm({ name: row.name, phone: row.phone ?? "", email: row.email ?? "" });
+    setForm({ name: row.name, phone: row.phone ?? "", email: row.email ?? "", contractExpiresAt: row.contractExpiresAt ?? "" });
     setFormError(null);
     setEditing(true);
   }
@@ -113,8 +114,8 @@ export default function PayerDetailDialog({
     e.preventDefault();
     const name = form.name.trim();
     if (!name) return setFormError(t("Numele nu poate fi gol."));
-    const patch: PayerPatch = { name, phone: form.phone.trim() || null, email: form.email.trim() || null };
-    const old: PayerPatch = { name: row.name, phone: row.phone, email: row.email };
+    const patch: PayerPatch = { name, phone: form.phone.trim() || null, email: form.email.trim() || null, contractExpiresAt: form.contractExpiresAt || null };
+    const old: PayerPatch = { name: row.name, phone: row.phone, email: row.email, contractExpiresAt: row.contractExpiresAt };
     setEditing(false);
     onUpdated(row.id, patch); // optimist
     const fd = new FormData();
@@ -122,6 +123,7 @@ export default function PayerDetailDialog({
     fd.set("name", patch.name);
     fd.set("phone", patch.phone ?? "");
     fd.set("email", patch.email ?? "");
+    fd.set("contractExpiresAt", patch.contractExpiresAt ?? "");
     // fără câmpul „notes": notița veche din fișă rămâne neatinsă
     updatePayer(undefined, fd)
       .then((res) => {
@@ -200,6 +202,11 @@ export default function PayerDetailDialog({
                   <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} type="email" className={`${inputCls} mt-0.5 font-normal`} />
                 </label>
               </div>
+              <label className="text-[11px] font-semibold text-ink-soft">
+                {t("Contract expiră la")}
+                <input value={form.contractExpiresAt} onChange={(e) => setForm({ ...form, contractExpiresAt: e.target.value })} type="date" className={`${inputCls} mt-0.5 font-normal`} />
+                <span className="mt-0.5 block text-[10px] font-normal">{t("Plătitorul și personalul sunt notificați cu 30 și cu 10 zile înainte.")}</span>
+              </label>
               {formError && <p className="text-xs text-st-cancelled">{formError}</p>}
               <div className="flex justify-end gap-1.5">
                 <button type="button" onClick={() => setEditing(false)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs hover:bg-[var(--color-surface-2)]">
@@ -216,6 +223,7 @@ export default function PayerDetailDialog({
             <Item label={t("Email")} value={row.email} />
             <Item label={t("Telefon")} value={row.phone} />
             <Item label={t("Adresă")} value={row.consumAddress} />
+            <Item label={t("Contract expiră la")} value={row.contractExpiresAt ? <ContractExpiry date={row.contractExpiresAt} /> : null} />
           </Section>
         )}
 

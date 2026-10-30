@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { decodeInvoices, type InvRow, type InvTuple } from "@/lib/invoice-list";
 import { INVOICES_V_COOKIE } from "@/lib/payer-prefs";
+import { idbName } from "@/lib/cache-scope";
 
 const IDB_NAME = "payers-cache"; // aceeași bază IndexedDB ca la plătitori (un singur depozit „kv"), alt cheie
 const IDB_KEY = "invoices-v1";
@@ -10,7 +11,7 @@ const FRESH_MS = 20_000;
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1);
+    const req = indexedDB.open(idbName(IDB_NAME), 1);
     req.onupgradeneeded = () => req.result.createObjectStore("kv");
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);

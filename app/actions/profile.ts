@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser, type CurrentUser } from "@/lib/dal";
+import { blockedInImpersonation, requireUser, type CurrentUser } from "@/lib/dal";
 import { hashPassword } from "@/lib/password";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
@@ -20,6 +20,8 @@ export async function updateMyProfile(
   formData: FormData,
 ): Promise<ProfileState> {
   const user = await requireUser();
+  const blocked = blockedInImpersonation(user);
+  if (blocked) return { error: blocked };
   if (DEMO) return { error: "Mod demo: conectează o bază de date." };
 
   const name = String(formData.get("name") ?? "").trim();
@@ -51,6 +53,8 @@ export async function updateMyProfile(
 /** Pasul 1: trimite un cod de 6 cifre pe emailul propriu, pentru confirmarea schimbării parolei. */
 export async function requestMyPasswordChangeCode(): Promise<ProfileState> {
   const user = await requireUser();
+  const blocked = blockedInImpersonation(user);
+  if (blocked) return { error: blocked };
   if (DEMO) return { error: "Mod demo: conectează o bază de date." };
 
   const code = await createVerificationCode(user.id, "PASSWORD_CHANGE");
@@ -74,6 +78,8 @@ export async function confirmMyPasswordChange(
   formData: FormData,
 ): Promise<ProfileState> {
   const user = await requireUser();
+  const blocked = blockedInImpersonation(user);
+  if (blocked) return { error: blocked };
   if (DEMO) return { error: "Mod demo." };
 
   const code = String(formData.get("code") ?? "").trim();

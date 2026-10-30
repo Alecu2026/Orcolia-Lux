@@ -6,8 +6,8 @@ import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useSta
 import {
   EMPTY_FIELD_FILTERS,
   FAR_METERS,
-  JUMP_CONFIRM_M3,
   countActiveFieldFilters,
+  deviationPct,
   fieldConsum,
   fieldFiltersToParams,
   fieldSuspect,
@@ -145,11 +145,13 @@ function QueueBanner({ q, loadedAt, tag }: { q: ReturnType<typeof useFieldQueue>
 export default function FieldReadings({
   openId,
   canViewMeter,
+  canExport = true,
   initialQuery,
   meId,
 }: {
   openId: string | null;
   canViewMeter: boolean;
+  canExport?: boolean;
   /** Utilizatorul curent: „Rutele mele” = rutele atribuite lui. */
   meId: string;
   /** Parametrii din adresă (?q=…&status=…): link de partajat. */
@@ -178,6 +180,7 @@ export default function FieldReadings({
           by: rd.userName,
           portal: false,
           distanceM: rd.distanceM,
+          avg: rd.avgConsum,
           geo: rd.lat != null && rd.lng != null,
           // la o retrimitere (citire deja salvată) serverul nu știe adresa: nu o ștergem din rând
           ...(loc.address != null ? { address: loc.address, addrField: loc.addrField } : {}),
@@ -372,7 +375,7 @@ export default function FieldReadings({
       const s = v == null ? "" : typeof v === "number" ? String(v).replace(".", ",") : v;
       return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const head = ["Nr. contor", "Abonat", "Adresă", "Index anterior (m³)", "Data indexului anterior", "Index curent (m³)", "Consum (m³)", "Citit la", "Citit de", "Poză", "Distanță față de citirea anterioară (m)", "Latitudine contor", "Longitudine contor", "Stare", "Sector 1C", "Rută", "Neregulă"].map((h) => esc(t(h)));
+    const head = ["Nr. contor", "Abonat", "Adresă", "Index anterior (m³)", "Data indexului anterior", "Index curent (m³)", "Consum (m³)", "Citit la", "Citit de", "Poză", "Distanță față de citirea anterioară (m)", "Latitudine contor", "Longitudine contor", "Stare", "Sector 1C", "Rută", "Neregulă", "Consum mediu lunar (m³)", "Abatere față de medie (%)"].map((h) => esc(t(h)));
     const lines = [head.join(";")];
     for (const r of list) {
       lines.push(
@@ -381,6 +384,7 @@ export default function FieldReadings({
           r.readAt ? new Date(r.readAt).toLocaleString(tag) : "", r.by, r.photo ? t("da") : "", r.distanceM, r.lat, r.lng,
           r.value == null ? "" : r.pending === "wait" ? t("În așteptare (pe telefon)") : r.pending === "error" ? t("Respinsă") : t("Trimis"),
           r.sector, routes.find((x) => x.id === r.route)?.name ?? "", r.issue && isIssueKind(r.issue) ? t(ISSUE_LABELS[r.issue]) : "",
+          r.avg, r.avg != null && r.consum != null ? deviationPct(r.consum, r.avg) : "",
         ].map(esc).join(";"),
       );
     }
@@ -397,8 +401,8 @@ export default function FieldReadings({
   }
 
   const onSaved = useCallback(
-    (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean, loc?: MeterLocationDto) => {
-      ds.patchRow(id, { ...patch, by, distanceM, geo, ...(loc ? { address: loc.address, lat: loc.lat, lng: loc.lng, addrField: loc.addrField, locAcc: loc.accuracy } : {}) });
+    (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean, loc?: MeterLocationDto, avg?: number | null) => {
+      ds.patchRow(id, { ...patch, by, distanceM, geo, ...(avg !== undefined ? { avg } : {}), ...(loc ? { address: loc.address, lat: loc.lat, lng: loc.lng, addrField: loc.addrField, locAcc: loc.accuracy } : {}) });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ds.patchRow],
@@ -428,7 +432,7 @@ export default function FieldReadings({
         </div>
         {stats.flagged > 0 && (
           <p className="mt-1.5 text-xs text-ink-soft">
-            ⚠ {t("{n} citiri de verificat (consum negativ sau neobișnuit de mare, ori citite departe de locația anterioară).", { n: nf(stats.flagged) })}
+            ⚠ {t("{n} citiri de verificat (consum negativ, peste sau sub media contorului, ori citite departe de locația anterioară).", { n: nf(stats.flagged) })}
           </p>
         )}
       </div>
@@ -467,8 +471,14 @@ export default function FieldReadings({
           <option value="">{t("Verificare: toate")}</option>
           <option value="lower">{t("Index mai mic decât cel anterior")}</option>
           <option value="high">{t("Consum neobișnuit de mare")}</option>
+          <option value="low">{t("Consum neobișnuit de mic față de medie")}</option>
           <option value="zero">{t("Consum zero")}</option>
           <option value="far">{t("Citit departe de locația anterioară")}</option>
+        </select>
+        <select value={filters.estimated} onChange={(e) => setFilter({ estimated: e.target.value as FieldFilters["estimated"] })} className={fld(filters.estimated)} aria-label={t("Citire estimată")}>
+          <option value="">{t("Estimare: toate")}</option>
+          <option value="yes">{t("Index estimat (calculat) — de verificat")}</option>
+          <option value="no">{t("Index citit (nu estimat)")}</option>
         </select>
         <select value={filters.source} onChange={(e) => setFilter({ source: e.target.value as FieldFilters["source"] })} className={fld(filters.source)} aria-label={t("Sursa citirii")}>
           <option value="">{t("Sursa: toate")}</option>
@@ -602,7 +612,7 @@ export default function FieldReadings({
         ) : ds.loading ? (
           <span className="text-ink-soft">{t("se încarcă lista completă…")}</span>
         ) : null}
-        <button
+        {canExport && <button
           type="button"
           onClick={exportCsv}
           disabled={list.length === 0}
@@ -610,7 +620,7 @@ export default function FieldReadings({
           className="tap ml-auto inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[12px] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40"
         >
           ⬇ {t("Export (cu filtrele)")}
-        </button>
+        </button>}
         <button
           type="button"
           onClick={toggleCards}
@@ -706,9 +716,13 @@ export default function FieldReadings({
   );
 }
 
-/** Starea unui rând, pe scurt: neobișnuit (consum negativ / mare) sau citit departe. */
-function suspectLabel(s: "lower" | "high" | "far", t: (k: string, v?: Record<string, string | number>) => string): string {
-  return s === "lower" ? t("Indexul este mai mic decât cel anterior.") : s === "high" ? t("Consum neobișnuit de mare.") : t("Citit departe de locația anterioară");
+/** Starea unui rând, pe scurt: neobișnuit (consum negativ / peste sau sub medie) sau citit departe; la avertismentele față de medie, abaterea în % și media. */
+function suspectLabel(s: "lower" | "high" | "low" | "far", t: (k: string, v?: Record<string, string | number>) => string, r?: FieldRow, num?: (n: number) => string): string {
+  if (s === "lower") return t("Indexul este mai mic decât cel anterior.");
+  if (s === "far") return t("Citit departe de locația anterioară");
+  const base = s === "high" ? t("Consum neobișnuit de mare.") : t("Consum neobișnuit de mic față de medie.");
+  const pct = r && r.avg != null && r.consum != null ? deviationPct(r.consum, r.avg) : null;
+  return pct != null && r?.avg != null && num ? `${base} ${t("{p}% față de media lunară ({a} m³)", { p: `${pct > 0 ? "+" : ""}${pct}`, a: num(r.avg) })}` : base;
 }
 
 /** Un rând al tabelului (grilă CSS, layout izolat: `contain`). Memoizat: la derulare se desenează doar rândurile care intră în fereastră. */
@@ -730,13 +744,13 @@ const FieldTr = memo(function FieldTr({ r, onOpen, compact }: { r: FieldRow; onO
       <div role="cell" className={`${CELL} sticky left-0 z-10 bg-[var(--color-surface)] font-mono font-medium`}>{r.issue && isIssueKind(r.issue) && <span className={`mr-0.5 ${SERIOUS_ISSUES.includes(r.issue) ? "text-st-cancelled" : "text-st-progress"}`} title={t(ISSUE_LABELS[r.issue])}>⚑</span>}{r.contor}</div>
       <div role="cell" className={CELL} title={r.name}>{r.name}</div>
       <div role="cell" className={CELL} title={r.addrField ? `${r.address} · ${t("adresă scrisă din teren")}` : (r.address ?? "")}>{r.address ? <>{r.address}{r.addrField && <span className="ml-1 text-ink-soft" aria-hidden>✎</span>}</> : <Dash />}</div>
-      <div role="cell" className={num_}>{r.lastIndex != null ? num(r.lastIndex) : <Dash />}</div>
+      <div role="cell" className={num_} title={r.estimated ? t("Index estimat (calculat), nu citit — merită citit și verificat") : undefined}>{r.lastIndex != null ? <>{r.estimated && <span className="mr-0.5 font-semibold text-st-progress" aria-hidden>≈</span>}{num(r.lastIndex)}</> : <Dash />}</div>
       <div role="cell" className={CELL}>{r.lastDate ? dmy(r.lastDate) : <Dash />}</div>
       {!compact && (
         <>
         <div role="cell" className={`${num_} ${r.value != null ? "font-bold text-st-done" : ""}`}>{r.value != null ? `${r.pending === "wait" ? "⏳" : r.pending === "error" ? "⚠" : "✓"} ${num(r.value)}` : <Dash />}</div>
-        <div role="cell" className={`${num_} ${sus === "lower" || sus === "high" ? "font-semibold text-st-cancelled" : r.consum != null && r.consum > 0 ? "font-semibold" : "text-ink-soft"}`} title={sus === "lower" || sus === "high" ? suspectLabel(sus, t) : undefined}>
-          {r.consum != null ? `${sus === "lower" || sus === "high" ? "⚠ " : ""}${num(r.consum)} m³` : <Dash />}
+        <div role="cell" className={`${num_} ${sus === "lower" || sus === "high" || sus === "low" ? "font-semibold text-st-cancelled" : r.consum != null && r.consum > 0 ? "font-semibold" : "text-ink-soft"}`} title={sus === "lower" || sus === "high" || sus === "low" ? suspectLabel(sus, t, r, num) : r.avg != null ? t("Media lunară: {a} m³", { a: num(r.avg) }) : undefined}>
+          {r.consum != null ? `${sus === "lower" || sus === "high" || sus === "low" ? "⚠ " : ""}${num(r.consum)} m³` : <Dash />}
         </div>
         <div role="cell" className={CELL}>{r.readAt ? dt(r.readAt) : <Dash />}</div>
         <div role="cell" className={CELL} title={r.by ?? ""}>{r.by ? <>{r.portal && <span title={t("Trimisă de plătitor din portal")} className="mr-1 rounded bg-brand/15 px-1 text-[10px] font-semibold text-brand">🌐</span>}{r.by}</> : <Dash />}</div>
@@ -923,7 +937,7 @@ function FieldCards({ rows, onOpen, resetKey }: { rows: FieldRow[]; onOpen: (r: 
           ) : (
             <>
               <span className="block text-ink-soft">{t("Anterior")}</span>
-              <span className="block font-semibold tabular-nums">{r.lastIndex != null ? `${num(r.lastIndex)} m³` : "—"}</span>
+              <span className="block font-semibold tabular-nums" title={r.estimated ? t("Index estimat (calculat), nu citit — merită citit și verificat") : undefined}>{r.lastIndex != null ? `${r.estimated ? "≈ " : ""}${num(r.lastIndex)} m³` : "—"}</span>
             </>
           )}
         </span>
@@ -947,10 +961,11 @@ function ReadingDialog({
   onIssue: (kind: string) => void;
   canViewMeter: boolean;
   onClose: () => void;
-  onSaved: (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean, loc?: MeterLocationDto) => void;
+  onSaved: (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean, loc?: MeterLocationDto, avg?: number | null) => void;
   onNext: () => void;
 }) {
   const t = useT();
+  const locale = useLocale();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -968,7 +983,10 @@ function ReadingDialog({
               <p className="mt-0.5 text-[11px] text-ink-soft">
                 {t("Citit de")} {row.by}{row.portal ? ` · ${t("Trimisă de plătitor din portal")}` : ""}
                 {row.distanceM != null && row.distanceM > FAR_METERS ? ` · ⚠ ${t("Citit departe de locația anterioară")} (${row.distanceM} m)` : ""}
-                {row.consum != null && row.consum > JUMP_CONFIRM_M3 ? ` · ⚠ ${t("Consum neobișnuit de mare.")}` : ""}
+                {(() => {
+                  const s = fieldSuspect(row);
+                  return s === "high" || s === "low" ? ` · ⚠ ${suspectLabel(s, t, row, (n) => n.toLocaleString(dateTag(locale), { maximumFractionDigits: 3 }))}` : "";
+                })()}
               </p>
             )}
           </div>
@@ -987,8 +1005,9 @@ function ReadingDialog({
           meterAcc={row.locAcc}
           lastIndex={row.lastIndex}
           lastDate={row.lastDate}
+          lastEstimated={row.estimated}
           initialValue={row.value}
-          onSaved={(patch, reading, loc) => onSaved(row.id, patch, reading.userName, reading.distanceM, reading.lat != null && reading.lng != null, loc)}
+          onSaved={(patch, reading, loc) => onSaved(row.id, patch, reading.userName, reading.distanceM, reading.lat != null && reading.lng != null, loc, reading.avgConsum)}
           onNext={onNext}
           onClose={onClose}
           openIssue={row.issue}

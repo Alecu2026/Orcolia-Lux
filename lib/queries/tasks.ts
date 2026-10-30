@@ -204,6 +204,8 @@ export type TaskFilter = {
   dueBefore?: Date;
   /** Un singur task (pentru reîmprospătarea unui rând după editare). */
   id?: string;
+  /** Doar aceste task-uri (de ex. rândurile rămase în tabel după filtrele din browser); plafonul de vizibilitate rămâne aplicat. */
+  ids?: string[];
   dueRange?: "overdue" | "today" | "tomorrow" | "week" | "month";
   sort?: "default" | "dueAsc" | "dueDesc" | "newest";
   search?: string;
@@ -284,6 +286,7 @@ function buildWhere(filter: TaskFilter): Prisma.TaskWhereInput {
   }
 
   if (filter.id) where.id = filter.id;
+  else if (filter.ids) where.id = { in: filter.ids };
   if (filter.teamId) where.teamId = filter.teamId;
   if (filter.statuses?.length) where.status = { in: filter.statuses };
   else if (filter.status) where.status = filter.status;

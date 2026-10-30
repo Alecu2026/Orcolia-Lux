@@ -22,6 +22,7 @@ export const NOTIFY_EVENTS = [
   { key: "project.created", label: "Proiect creat" },
   { key: "invoice.created", label: "Factură creată" },
   { key: "invoice.status", label: "Status factură schimbat" },
+  { key: "payer.contract", label: "Contract plătitor care expiră (30 / 10 zile)" },
 ] as const;
 
 export type NotifyEventKey = (typeof NOTIFY_EVENTS)[number]["key"];

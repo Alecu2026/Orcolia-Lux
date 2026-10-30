@@ -19,7 +19,7 @@ export default async function FieldReadingsPage({ searchParams }: { searchParams
         <h1 className="text-xl font-bold">{t("Citiri teren")}</h1>
         <p className="mt-0.5 text-sm text-ink-soft">{t("Alege contorul, scrie indexul (m³) de luna aceasta — locația se ia automat — și, dacă vrei, fă o poză contorului.")}</p>
       </div>
-      <FieldReadings openId={sp.meter ?? null} canViewMeter={can(user, "payers.view")} initialQuery={sp} meId={user.id} />
+      <FieldReadings openId={sp.meter ?? null} canViewMeter={can(user, "payers.view")} canExport={can(user, "meters.export")} initialQuery={sp} meId={user.id} />
     </div>
   );
 }

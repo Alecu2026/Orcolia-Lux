@@ -4,6 +4,7 @@ import { DEMO } from "../demo";
 import type { InvoiceStatus, Prisma } from "@prisma/client";
 import { PER_PAGE_ALL, type MonthTuple, type SnapTuple } from "../payer-notify";
 import { cachedAsync } from "../ttl-cache";
+import { contractDate, contractFilterBounds, contractKey, type ContractExpFilter } from "../contract-expiry";
 
 const PAGE_SIZE = 50;
 /** Câți plătitori pe pagină alege utilizatorul (?perPage=) — plafonat ca să nu încărcăm mii de rânduri odată. */
@@ -31,6 +32,8 @@ export type PayerRow = {
   /** "YYYY-MM-DD" instalării contorului activ (din 1C) — completat doar când sortarea/filtrarea
    * cerută îl folosește (vezi installDateMap); altfel rămâne null, fără cost suplimentar. */
   installedAt: string | null;
+  /** „YYYY-MM-DD” — data expirării contractului, introdusă manual (null = necompletată). */
+  contractExpiresAt: string | null;
 };
 
 export type PayerSector = "privat" | "comunal";
@@ -72,6 +75,10 @@ export type ListPayersOpts = {
   notified?: "never" | "7d" | "30d" | "not7d" | "not30d";
   /** Doar plătitorii fără nicio factură (snapshot-ul ultimei facturi e gol). */
   noInvoices?: boolean;
+  /** "yes" = ultima citire a contorului e calculată (estimată); "no" = citită. */
+  estimated?: "yes" | "no";
+  /** Contractul: fără dată / expirat / expiră în 10 sau 30 de zile. */
+  contractExp?: ContractExpFilter;
   /** Restricții pe id-uri (ex. „notificați prin SMS în perioada…", calculate din jurnalul de trimiteri). */
   idsIn?: string[];
   idsNotIn?: string[];
@@ -162,6 +169,16 @@ async function findClientIdsNeedingNameFix(): Promise<string[]> {
  * Aceleași filtre ca listPayers — extras separat ca export/route.ts să poată exporta exact
  * ce vede staff-ul pe ecran (aceleași filtre active), nu întreaga listă de plătitori.
  */
+/** Filtrul „Contract” ca interogare (datele sunt stocate la 00:00 UTC); „fără dată” prinde și documentele la care câmpul lipsește. */
+function contractWhere(f: ContractExpFilter | undefined): Prisma.ClientWhereInput[] {
+  if (!f) return [];
+  if (f === "none") return [{ OR: [{ contractExpiresAt: null }, { contractExpiresAt: { isSet: false } }] }];
+  const b = contractFilterBounds(f);
+  if (!b) return [];
+  // `not: null`: pe MongoDB filtrul `lt` / `lte` al lui Prisma potrivește și documentele cu câmpul null (data ștearsă din fișă)
+  return [{ contractExpiresAt: { not: null, ...(b.gte ? { gte: contractDate(b.gte) } : {}), ...(b.lte ? { lte: contractDate(b.lte) } : {}), ...(b.lt ? { lt: contractDate(b.lt) } : {}) } }];
+}
+
 export async function buildPayerWhere(opts: ListPayersOpts = {}): Promise<Prisma.ClientWhereInput> {
   const search = opts.search?.trim();
   const street = opts.street?.trim();
@@ -221,15 +238,20 @@ export async function buildPayerWhere(opts: ListPayersOpts = {}): Promise<Prisma
       ...contact,
       ...notified,
       ...(opts.noInvoices ? [{ lastInvoiceStatus: null }, { lastInvoiceGrandTotal: null }] : []),
+      // „not: true” prinde și plătitorii la care câmpul lipsește (creați înainte de el)
+      ...contractWhere(opts.contractExp),
+      ...(opts.estimated === "yes" ? [{ meterReadingEstimated: true }] : opts.estimated === "no" ? [{ meterReadingEstimated: { not: true } }] : []),
       ...(opts.idsIn ? [{ id: { in: opts.idsIn } }] : []),
       ...(opts.idsNotIn?.length ? [{ id: { notIn: opts.idsNotIn } }] : []),
     ],
     ...(nameFixIds ? { id: { in: nameFixIds } } : {}),
     ...(opts.status === "activated" ? { portalPasswordHash: { not: null } } : {}),
-    ...(opts.status === "pending" ? { portalPasswordHash: null } : {}),
+    // „null” nu prinde plătitorii la care câmpul lipsește complet din document (creați înainte de câmp)
+    ...(opts.status === "pending" ? { OR: [{ portalPasswordHash: null }, { portalPasswordHash: { isSet: false } }] } : {}),
     ...(opts.sector ? { lastInvoiceSectorNr: SECTOR_VALUE[opts.sector] } : {}),
     ...(opts.invoiceStatus ? { lastInvoiceStatus: opts.invoiceStatus } : {}),
-    ...(Object.keys(total).length ? { lastInvoiceGrandTotal: total } : {}),
+    // Orice filtru de sold cere o factură: plătitorul fără factură nu e nici „fără datorie”, nici într-un interval (ca pe ecran)
+    ...(Object.keys(total).length ? { lastInvoiceGrandTotal: { ...total, not: null } } : {}),
     ...(street ? { consumAddress: { contains: street, mode: "insensitive" as const } } : {}),
   };
 }
@@ -290,7 +312,7 @@ function sortByInstall<T extends { id: string; name: string }>(
 
 const PAYER_SELECT = {
   id: true, name: true, meterSeries: true, apaCanalContract: true, email: true, phone: true,
-  portalPasswordHash: true, consumAddress: true, lastNotifiedAt: true,
+  portalPasswordHash: true, consumAddress: true, lastNotifiedAt: true, contractExpiresAt: true,
 } as const;
 const INVOICE_SELECT = { clientId: true, number: true, status: true, grandTotal: true, currency: true, dueDate: true, issueDate: true } as const;
 
@@ -322,6 +344,7 @@ function toPayerRow(c: PayerClient, latest: PayerInvoice | undefined, invoiceCou
     consumAddress: c.consumAddress,
     lastNotifiedAt: c.lastNotifiedAt ? c.lastNotifiedAt.toISOString() : null,
     installedAt,
+    contractExpiresAt: contractKey(c.contractExpiresAt),
   };
 }
 
@@ -565,6 +588,8 @@ export type PayerDetail = {
   meterNumber: string | null;
   meterCurrReading: number | null;
   consumAddress: string | null;
+  /** „YYYY-MM-DD” — data expirării contractului (introdusă manual). */
+  contractExpiresAt: string | null;
 };
 
 export async function getPayer(id: string): Promise<PayerDetail | null> {
@@ -585,6 +610,7 @@ export async function getPayer(id: string): Promise<PayerDetail | null> {
       meterNumber: true,
       meterCurrReading: true,
       consumAddress: true,
+      contractExpiresAt: true,
     },
   });
   if (!c || (!c.meterSeries && !c.apaCanalContract)) return null;
@@ -602,6 +628,7 @@ export async function getPayer(id: string): Promise<PayerDetail | null> {
     meterNumber: c.meterNumber,
     meterCurrReading: c.meterCurrReading,
     consumAddress: c.consumAddress,
+    contractExpiresAt: contractKey(c.contractExpiresAt),
   };
 }
 
@@ -732,7 +759,7 @@ async function latestInvoiceStatsFromRows(): Promise<{ latest: Map<string, Lates
 export async function getPayerSnapshot(): Promise<SnapTuple[]> {
   if (DEMO) return [];
   const [clients, stats, installBy, sectorBy] = await Promise.all([
-    prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true } }),
+    prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true, meterReadingEstimated: true } }),
     latestInvoiceStats(),
     installDateMap(),
     payerSectorMap(true),
@@ -745,7 +772,7 @@ export async function getPayerSnapshot(): Promise<SnapTuple[]> {
       c.portalPasswordHash ? 1 : 0, count.get(c.id) ?? 0,
       inv?.number ?? null, inv?.status ?? null, inv?.grandTotal ?? null, inv?.currency ?? null, inv?.dueDate ? inv.dueDate.getTime() : null,
       c.consumAddress, c.lastNotifiedAt ? c.lastNotifiedAt.getTime() : null, installBy.get(c.id) ?? null, c.lastInvoiceSectorNr,
-      sectorBy.get(c.id) ?? null,
+      sectorBy.get(c.id) ?? null, c.meterReadingEstimated ? 1 : 0, contractKey(c.contractExpiresAt),
     ];
   });
 }

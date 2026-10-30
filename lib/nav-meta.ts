@@ -21,6 +21,7 @@ export const NAV_META: NavMeta[] = [
   { href: "/pbx", labelKey: "pbx", perm: "pbx.view" },
   { href: "/invoices", labelKey: "invoices", perm: "invoices.view" },
   { href: "/users", labelKey: "users", perm: "users.manage" },
+  { href: "/simulare", labelKey: "impersonate", perm: "users.impersonate" },
   { href: "/team", labelKey: "team", perm: "teams.view" },
   { href: "/harta", labelKey: "map", perm: "map.view" },
   { href: "/admin/audit-logs", labelKey: "auditLogs", perm: "audit.view" },

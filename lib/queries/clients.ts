@@ -44,7 +44,7 @@ const CRM_CLIENT_WHERE: Prisma.ClientWhereInput = {
 /** Listare paginată + search (nume/telefon), select minimal. */
 export async function listClients(
   _userId: string,
-  opts: { search?: string; page?: number; pageSize?: number } = {},
+  opts: { search?: string; ids?: string[]; page?: number; pageSize?: number } = {},
 ) {
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = opts.pageSize ?? PAGE_SIZE;
@@ -65,6 +65,7 @@ export async function listClients(
   // — nu aglomerează lista obișnuită de clienți (programări).
   const where = {
     ...CRM_CLIENT_WHERE,
+    ...(opts.ids ? { id: { in: opts.ids } } : {}),
     ...(search
       ? {
           OR: [

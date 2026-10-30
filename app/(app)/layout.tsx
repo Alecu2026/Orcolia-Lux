@@ -8,6 +8,7 @@ import PWARegister from "@/app/components/PWARegister";
 import { TableLookProvider } from "@/app/components/TableLookContext";
 import { sanitizePreset } from "@/lib/table-look";
 import OpenInApp from "@/app/components/OpenInApp";
+import CacheScope from "@/app/components/CacheScope";
 import PayersPrefetch from "@/app/components/PayersPrefetch";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
@@ -50,11 +51,13 @@ export default async function AppLayout({
     "pbx.manage": can(user, "pbx.manage"),
     "appointments.view": can(user, "appointments.view"),
     "users.manage": can(user, "users.manage"),
+    "users.impersonate": can(user, "users.impersonate") && !user.impersonation,
     "audit.view": isSuper(user),
   };
 
   return (
     <TableLookProvider preset={sanitizePreset(user.tableLook)} canCustomize={can(user, "tables.customize")}>
+    <CacheScope uid={user.id} />
     <AppShell
       userName={user.name}
       demo={DEMO}
@@ -64,6 +67,7 @@ export default async function AppLayout({
       bottomNav={user.bottomNav ?? []}
       messages={messages}
       locale={locale}
+      impersonation={user.impersonation ? { who: user.name, by: user.impersonation.byName, expiresAt: user.impersonation.expiresAt, serverNow: Date.now() } : undefined}
     >
       {children}
       <PWARegister unread={unread} />

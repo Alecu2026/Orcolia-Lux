@@ -12,6 +12,7 @@ import { prewarmPayers } from "@/lib/services/payer-cache";
 import { prewarmMeters } from "@/lib/services/meter-cache";
 import { normalizeApaCanalDueDates } from "@/lib/services/apa-canal-due";
 import { prewarmInvoices } from "@/lib/services/invoice-cache";
+import { checkContractExpiry } from "@/lib/services/contract-expiry";
 import { TASK_STATUS_RO, TASK_TYPE_RO } from "@/lib/telegram";
 import { formatTime, DEFAULT_TZ } from "@/lib/date";
 import type { TaskStatus } from "@prisma/client";
@@ -61,6 +62,7 @@ async function run() {
     prewarmPayers().catch((e) => console.error("[cron] pre-încălzirea listei de plătitori:", e)),
     prewarmMeters().catch((e) => console.error("[cron] pre-încălzirea listei de contoare:", e)),
     prewarmInvoices().catch((e) => console.error("[cron] pre-încălzirea listei de facturi:", e)),
+    checkContractExpiry({ force: true }).catch((e) => console.error("[cron] expirarea contractelor:", e)),
   ]);
 
   const processed =

@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createClientSession, destroyClientSession } from "@/lib/client-session";
 import { getCurrentClient } from "@/lib/client-dal";
+import { exitPortalImpersonation } from "@/lib/services/impersonation";
 import {
   createClientVerificationCode,
   consumeClientVerificationCode,
@@ -190,6 +191,11 @@ export async function resetClientPasswordWithCode(
 
 export async function clientLogout(): Promise<void> {
   const current = await getCurrentClient();
+  // În simulare din staff, „Deconectare” = ieșirea din simulare (înapoi în staff), nu logout pentru client.
+  if (current?.impersonation) {
+    const r = await exitPortalImpersonation();
+    redirect(r.ok ? r.to : "/login");
+  }
   if (current) {
     await destroyClientSession();
   }

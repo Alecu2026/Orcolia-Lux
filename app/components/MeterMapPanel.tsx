@@ -129,6 +129,7 @@ export default function MeterMapPanel({
                 <option value="any">{t("Orice avertisment")}</option>
                 <option value="lower">{t("Index mai mic decât cel anterior")}</option>
                 <option value="high">{t("Consum neobișnuit de mare")}</option>
+                <option value="low">{t("Consum neobișnuit de mic față de medie")}</option>
                 <option value="far">{t("Citit departe de locația anterioară")}</option>
               </select>
 

@@ -116,7 +116,7 @@ export default function ProjectsMapView({ pins, meters = false }: { pins: Projec
     const acc = p.acc as number | null;
     const readLine = p.value != null ? String(p.value).replace(".", ",") + " m³" + (p.readAt ? " · " + new Date(p.readAt as number).toLocaleDateString("ro-RO", { timeZone: "Europe/Bucharest" }) : "") + (p.by ? " · " + p.by : "") + (p.portal ? " 🌐" : "") : "";
     const sus = Number(p.suspect);
-    const susLabel = sus === 1 ? t("Index mai mic decât cel anterior") : sus === 2 ? t("Consum neobișnuit de mare") : sus === 3 ? t("Citit departe de locația anterioară") : "";
+    const susLabel = sus === 1 ? t("Index mai mic decât cel anterior") : sus === 2 ? t("Consum neobișnuit de mare") : sus === 3 ? t("Citit departe de locația anterioară") : sus === 4 ? t("Consum neobișnuit de mic față de medie") : "";
     const pills: [string, string][] = [[stLabel, PIN_COLOR[st]]];
     if (p.issue) pills.push([isIssueKind(p.issue) ? t(ISSUE_LABELS[p.issue]) : String(p.issue), "#dc2626"]);
     if (susLabel) pills.push([susLabel, "#b45309"]);

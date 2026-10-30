@@ -21,6 +21,8 @@ export type PortalMeterDto = {
   id: string;
   contor: string;
   address: string | null;
+  /** Consumatorul / sub-abonatul de la acest contor (din 1C), când ajută la deosebirea contoarelor. */
+  consumer: string | null;
   /** Ultimul index cunoscut (1C sau o citire anterioară) și data lui. */
   lastIndex: number | null;
   lastDate: string | null;
@@ -34,4 +36,5 @@ export type PortalMeterDto = {
 
 export type PortalReadingResult =
   | { ok: true; readingId: string; value: number; consum: number | null; issueSaved: boolean; issueError?: string }
-  | { ok: false; error: string; confirm?: "lower" | "high" };
+  /** Plătitorul nu primește avertismentul „prea mic” (lipsa de consum e normală: plecat, casă nelocuită), doar „prea mare”; `avg`/`pct` explică avertismentul față de medie. */
+  | { ok: false; error: string; confirm?: "lower" | "high"; avg?: { avg: number; count: number }; pct?: number };
