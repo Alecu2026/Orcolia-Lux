@@ -30,7 +30,7 @@ export default async function PortalTicketPage({ params }: { params: Promise<{ i
 
   const t = await prisma.task.findFirst({
     where: { id, clientId: client.id, type: "TICKET" },
-    select: { id: true, seq: true, title: true, description: true, status: true, createdAt: true },
+    select: { id: true, seq: true, title: true, description: true, status: true, createdAt: true, address: true, consumerName: true, executedAt: true },
   });
   if (!t) notFound();
 
@@ -51,6 +51,29 @@ export default async function PortalTicketPage({ params }: { params: Promise<{ i
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CLS[t.status] ?? "bg-[var(--color-surface-2)] text-ink-soft"}`}>
           {TASK_STATUS_RO[t.status] ?? t.status}
         </span>
+      </div>
+
+      <div className="card grid grid-cols-2 gap-x-4 gap-y-2 p-3 text-sm">
+        {t.address && (
+          <div className="col-span-2 min-w-0">
+            <p className="text-[11px] text-ink-soft">{tr("Adresa")}</p>
+            <p className="font-medium">{t.address}</p>
+          </div>
+        )}
+        {t.consumerName && (
+          <div className="col-span-2 min-w-0">
+            <p className="text-[11px] text-ink-soft">{tr("Nume consumator")}</p>
+            <p className="font-medium">{t.consumerName}</p>
+          </div>
+        )}
+        <div>
+          <p className="text-[11px] text-ink-soft">{tr("Data depunerii")}</p>
+          <p className="font-medium">{fmtDate(t.createdAt)}</p>
+        </div>
+        <div>
+          <p className="text-[11px] text-ink-soft">{tr("Data executării")}</p>
+          <p className={`font-medium ${t.executedAt ? "text-st-done" : "text-ink-soft"}`}>{t.executedAt ? fmtDate(t.executedAt) : tr("încă neexecutată")}</p>
+        </div>
       </div>
 
       {t.description && (

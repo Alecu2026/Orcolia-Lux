@@ -35,6 +35,8 @@ export type TaskTuple = [
   string, // 23 adresa (text) sau ""
   string | null, // 24 reminderSchedule (JSON) — lipsește în listele salvate înainte de această versiune
   string | null, // 25 culoarea rândului (hex) — lipsește în listele salvate înainte de această versiune
+  string | null, // 26 numele consumatorului (cererile din portal) — lipsește în listele salvate înainte de această versiune
+  string | null, // 27 data executării „YYYY-MM-DD” sau gol — lipsește în listele salvate înainte de această versiune
 ];
 
 export type TaskNames = {
@@ -74,6 +76,10 @@ export type DecodedTask = {
   categoryName: string | null;
   categoryColor: string | null;
   address: string | null;
+  /** Numele consumatorului pentru care s-a depus cererea. */
+  consumerName: string | null;
+  /** Data executării cererii („YYYY-MM-DD”). */
+  executedOn: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -119,6 +125,8 @@ export function decodeTasks(tuples: TaskTuple[], names: TaskNames): DecodedTask[
       categoryName: category?.[0] ?? null,
       categoryColor: category?.[1] ?? null,
       address: r[23] || null,
+      consumerName: r[26] || null,
+      executedOn: r[27] || null,
       extraAssigneeIds: r[16],
       extraTeamIds: r[17],
       assignmentSettingsJson: r[18],

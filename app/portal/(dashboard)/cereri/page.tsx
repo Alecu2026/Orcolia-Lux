@@ -30,7 +30,7 @@ export default async function PortalTicketsPage({ searchParams }: { searchParams
   const rows = await prisma.task.findMany({
     where: { clientId: client.id, type: "TICKET" },
     select: {
-      id: true, seq: true, title: true, description: true, status: true, createdAt: true,
+      id: true, seq: true, title: true, description: true, status: true, createdAt: true, address: true, executedAt: true,
       chatLastMsgAt: true, chatLastSender: true, chatClientReadAt: true,
     },
   });
@@ -49,7 +49,7 @@ export default async function PortalTicketsPage({ searchParams }: { searchParams
           <IconTicket className="size-4 text-brand" />
           {tr("Creează o cerere nouă")}
         </h2>
-        <PortalNewTicketForm key={sablon ?? "nou"} templates={templates} initialTemplateId={sablon ?? ""} />
+        <PortalNewTicketForm key={sablon ?? "nou"} templates={templates} initialTemplateId={sablon ?? ""} defaults={{ address: client.address, consumerName: client.name }} />
       </div>
 
       {tickets.length === 0 ? (
@@ -67,9 +67,10 @@ export default async function PortalTicketsPage({ searchParams }: { searchParams
                   {TASK_STATUS_RO[t.status] ?? t.status}
                 </span>
               </div>
-              {t.description && <p className="mt-1.5 whitespace-pre-wrap text-sm text-ink-soft">{t.description}</p>}
+              {t.address && <p className="mt-1 text-xs text-ink-soft">🏠 {t.address}</p>}
+              {t.description && <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-sm text-ink-soft">{t.description}</p>}
               <div className="mt-2 flex items-center justify-between gap-2 text-xs text-ink-soft">
-                <span>{fmtDate(t.createdAt)}</span>
+                <span>{tr("Depusă:")} {fmtDate(t.createdAt)}{t.executedAt ? ` · ${tr("Executată:")} ${fmtDate(t.executedAt)}` : ""}</span>
                 {t.chatLastSender === "STAFF" && (!t.chatClientReadAt || (t.chatLastMsgAt && t.chatClientReadAt < t.chatLastMsgAt)) ? (
                   <span className="rounded-full bg-brand px-2 py-0.5 font-semibold text-white">{tr("● Mesaj nou")}</span>
                 ) : (

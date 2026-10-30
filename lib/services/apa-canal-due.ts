@@ -51,6 +51,7 @@ export async function normalizeApaCanalDueDates(): Promise<number> {
     // listele de plătitori și de facturi arată scadența: se reconstruiesc
     const [{ invalidatePayers }, { invalidateInvoices }] = await Promise.all([import("./payer-cache"), import("./invoice-cache")]);
     await Promise.allSettled([invalidatePayers(), invalidateInvoices()]);
+    (await import("../portal-cache")).bumpPortalEpoch(); // scadențele se văd și în portal
   }
   return changed;
 }

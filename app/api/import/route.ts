@@ -225,6 +225,15 @@ export async function POST(req: Request) {
         dueAt = zonedToUtc(dateKey, "00:00", TZ);
       }
 
+      // „Data executării” (cereri): aceeași validare de dată calendaristică ca la expirarea contractului; coloanele goale lasă câmpurile necompletate
+      const executedRaw = (r["Data executării"] ?? "").trim();
+      const executedKey = executedRaw ? cleanContractDate(executedRaw) : null;
+      if (executedRaw && !executedKey) {
+        result.failed.push({ row: rowNum, error: `Data executării '${executedRaw}' nu este validă. Format acceptat: ZZ.LL.AAAA.` });
+        continue;
+      }
+      const consumerName = (r["Nume consumator"] ?? "").replace(/\s+/g, " ").trim().slice(0, 150);
+
       try {
         const created = await createTask(user.id, {
           title,
@@ -243,6 +252,8 @@ export async function POST(req: Request) {
         const postUpdates: Prisma.TaskUpdateInput = {};
         if (statusVal && statusVal !== "NEW") postUpdates.status = statusVal;
         if (taskClientId) postUpdates.clientId = taskClientId;
+        if (consumerName) postUpdates.consumerName = consumerName;
+        if (executedKey) postUpdates.executedAt = contractDate(executedKey);
         if (Object.keys(postUpdates).length > 0) {
           await prisma.task.update({ where: { id: created.id }, data: postUpdates });
         }

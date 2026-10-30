@@ -8,6 +8,7 @@ import PortalAccountsTable, { type PortalAccountRow } from "@/app/components/Por
 import { getT } from "@/lib/i18n/server-t";
 import { listPortalTemplates } from "@/lib/queries/portal-templates";
 import PortalTemplatesManager from "@/app/components/PortalTemplatesManager";
+import { teamOptions } from "@/lib/queries/teams";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export default async function PortalAccountsPage() {
           {t("Plătitorii care au cont personal sau contract și pot deschide cont în portal. Alege câte rânduri vrei pe pagină și filtrează după orice criteriu.")}
         </p>
       </div>
-      <PortalTemplatesManager initial={templates} />
+      <PortalTemplatesManager initial={templates} teams={await teamOptions()} />
       <PortalAccountsTable rows={rows} />
     </div>
   );

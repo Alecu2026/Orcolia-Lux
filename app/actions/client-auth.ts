@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createClientSession, destroyClientSession } from "@/lib/client-session";
 import { getCurrentClient } from "@/lib/client-dal";
+import { evictClientSessions } from "@/lib/portal-cache";
 import { exitPortalImpersonation } from "@/lib/services/impersonation";
 import {
   createClientVerificationCode,
@@ -185,6 +186,7 @@ export async function resetClientPasswordWithCode(
   await prisma.client.update({ where: { id: client.id }, data: { portalPasswordHash } });
   await invalidatePayers();
   await prisma.clientSession.deleteMany({ where: { clientId: client.id } }); // deloghează toate dispozitivele
+  evictClientSessions(client.id);
 
   redirect("/portal/login?reset=1");
 }

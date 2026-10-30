@@ -11,6 +11,7 @@ import {
   setTaskStatus,
   setTaskProgress,
   updateTaskFieldAction,
+  setTaskExecutionDateAction,
   type TaskFieldPatch,
   deleteTask,
   getTaskHistory,
@@ -77,7 +78,7 @@ function derivedOf(t: Task): Derived {
   let d = derivedCache.get(t);
   if (!d) {
     d = {
-      hay: [t.title, t.description, t.address, t.projectName, t.clientName, t.assigneeName, t.teamName, t.creatorName].map((x) => (x ?? "").toLowerCase()).join("\n"),
+      hay: [t.title, t.description, t.address, t.consumerName, t.projectName, t.clientName, t.assigneeName, t.teamName, t.creatorName].map((x) => (x ?? "").toLowerCase()).join("\n"),
       due: t.dueAt ? dateKeyOf(new Date(t.dueAt), TZ) : null,
     };
     derivedCache.set(t, d);
@@ -363,6 +364,18 @@ export default function TasksTable({
       .finally(() => { inflight.current--; });
   }
 
+  /** „Data executării” din listă: optimist în rând, salvată prin aceeași acțiune ca în pagina cererii. */
+  function setExecuted(t: Task, date: string | null) {
+    const prev = rows;
+    inflight.current++;
+    touch(t.id);
+    setRows((cur) => cur.map((x) => (x.id === t.id ? { ...x, executedOn: date } : x)));
+    setTaskExecutionDateAction(t.id, date)
+      .then((res) => { if (res?.error) { setRows(prev); toast.error(tr(res.error)); } })
+      .catch(() => { setRows(prev); toast.error(tr(m.common.error)); })
+      .finally(() => { inflight.current--; });
+  }
+
   const nameIn = (list: Opt[], id: string) => list.find((o) => o.id === id)?.name ?? null;
   const dash = <span className="text-ink-soft/60">—</span>;
   const now = new Date();
@@ -432,6 +445,30 @@ export default function TasksTable({
         <EditableText value={t.address ?? ""} allowEmpty disabled={!canEditRow(t)} onSave={(v) => patchTask(t, { address: v || null }, { address: v || null })} display={t.address ? <span title={t.address}>{t.address}</span> : undefined} />
       ),
     },
+    ...(ticketMode
+      ? [
+          {
+            key: "consumer", label: "Nume consumator", minW: 130, maxW: 190, sort: (t: Task) => t.consumerName ?? null,
+            render: (t: Task) => (t.consumerName ? <span title={t.consumerName}>{t.consumerName}</span> : dash),
+          },
+          {
+            key: "executed", label: "Data executării", minW: 110, sort: (t: Task) => t.executedOn ?? null,
+            render: (t: Task) => (
+              <PopEditor display={t.executedOn ? <span className="font-medium text-st-done">{t.executedOn.split("-").reverse().join(".")}</span> : dash} disabled={!canEditRow(t)} width={240}>
+                {(close) => (
+                  <DateTimePick
+                    date={t.executedOn ?? ""}
+                    time=""
+                    withTime={false}
+                    onCancel={close}
+                    onSave={(d) => { close(); setExecuted(t, d || null); }}
+                  />
+                )}
+              </PopEditor>
+            ),
+          },
+        ]
+      : []),
     {
       key: "client", label: "Client", minW: 130, maxW: 180, sort: (t) => t.clientName,
       render: (t) => (
@@ -593,6 +630,15 @@ export default function TasksTable({
         ],
         test: (t, v) => (v in GROUPS ? GROUPS[v].includes(t.status) : t.status === v),
       },
+      ...(ticketMode
+        ? [
+            {
+              kind: "select" as const, key: "executed", label: "Executare",
+              options: [{ value: "yes", label: "Executate (cu data executării)" }, { value: "no", label: "Neexecutate (fără dată)" }],
+              test: (t: Task, v: string) => (v === "yes" ? !!t.executedOn : !t.executedOn),
+            },
+          ]
+        : []),
       {
         kind: "select", key: "prio", label: m.tasks.filterPriority,
         options: (["URGENT", "HIGH", "MEDIUM", "LOW"] as const).map((p) => ({ value: p, label: m.priority[p] })),

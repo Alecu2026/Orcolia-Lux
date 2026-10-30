@@ -11,7 +11,7 @@ import { useT } from "@/lib/i18n/context";
  * Butonul „Creează cerere” din cabinetul personal: se deschide chiar pe pagină un formular în care alegi un șablon din listă
  * sau scrii singur cererea (titlu + descriere).
  */
-export default function PortalRequestPanel({ templates }: { templates: PortalTemplate[] }) {
+export default function PortalRequestPanel({ templates, defaults }: { templates: PortalTemplate[]; defaults?: { address: string | null; consumerName: string } }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [sent, setSent] = useState(false);
@@ -48,7 +48,7 @@ export default function PortalRequestPanel({ templates }: { templates: PortalTem
               {t("Închide")}
             </button>
           </div>
-          <PortalNewTicketForm templates={templates} onSent={() => { setOpen(false); setSent(true); }} />
+          <PortalNewTicketForm templates={templates} defaults={defaults} onSent={() => { setOpen(false); setSent(true); }} />
         </div>
       )}
     </div>

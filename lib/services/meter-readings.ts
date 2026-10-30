@@ -6,6 +6,7 @@ import { getMeterSnap } from "./meter-cache";
 import { logAudit } from "./audit";
 import { listRoutes } from "./meter-route-data";
 import { getMeterDetail } from "../queries/meters";
+import { invalidatePortalClient } from "../portal-cache";
 import { isEstimatedSource } from "../meters";
 import type { FieldList } from "../meter-routes";
 import {
@@ -277,6 +278,7 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     update: data,
   });
   const location = await updateMeterLocation(actor, row, { address: input.address ?? null, lat, lng, accuracy });
+  invalidatePortalClient(row.clientId); // plătitorul vede imediat citirea în portal
   return { ok: true, reading: toReadingDto(saved), location };
 }
 

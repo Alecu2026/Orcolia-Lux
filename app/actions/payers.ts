@@ -10,6 +10,7 @@ import { logAudit } from "@/lib/services/audit";
 import { CLIENT_SPEC, diffFields } from "@/lib/services/audit-diff";
 import { invalidatePayers } from "@/lib/services/payer-cache";
 import { invalidateInvoices } from "@/lib/services/invoice-cache";
+import { evictClientSessions } from "@/lib/portal-cache";
 import { cleanContractDate, contractDate, contractKey } from "@/lib/contract-expiry";
 
 export type PayerState = { ok?: boolean; error?: string } | undefined;
@@ -179,6 +180,7 @@ export async function resetPayerPortalAccess(id: string): Promise<void> {
     data: { portalPasswordHash: null, portalActivatedAt: null, portalLastLoginAt: null },
   });
   await prisma.clientSession.deleteMany({ where: { clientId: id } });
+  evictClientSessions(id);
   await logAudit(actor(user), { action: "client.portal_reset", module: "Payers", objectId: id, objectName: c.name });
   revalidatePath(`/platitori/${id}`);
   await invalidatePayers();

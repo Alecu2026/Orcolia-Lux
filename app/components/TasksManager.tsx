@@ -84,6 +84,10 @@ export type Task = {
   categoryColor: string | null;
   /** Adresa locului intervenției. */
   address?: string | null;
+  /** Numele consumatorului (cererile din portal). */
+  consumerName?: string | null;
+  /** Data executării cererii („YYYY-MM-DD”). */
+  executedOn?: string | null;
   assigneeName: string | null;
   teamName: string | null;
   projectName: string | null;

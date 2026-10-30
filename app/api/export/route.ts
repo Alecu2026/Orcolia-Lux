@@ -128,7 +128,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
     const clientIds = [...new Set(items.map((t) => t.clientId).filter(Boolean) as string[])];
     const clientNameMap = await clientNamesFor(clientIds); // id-in cu mii de id-uri e lent: pentru liste mari se citește harta numelor
 
-    const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Proiect", "Client", "Adresă", "Categorie", "Scadent", "Progres (%)", "Creat la", "Creat de", "Descriere"];
+    const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Proiect", "Client", "Adresă", "Nume consumator", "Categorie", "Scadent", "Data executării", "Progres (%)", "Creat la", "Creat de", "Descriere"];
     const rows = items.map((t) => ({
       "#": t.seq ?? "",
       "Titlu": t.title,
@@ -140,8 +140,10 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
       "Proiect": t.projectName ?? "",
       "Client": t.clientId ? (clientNameMap.get(t.clientId) ?? "") : "",
       "Adresă": t.address ?? "",
+      "Nume consumator": t.consumerName ?? "",
       "Categorie": t.categoryName ?? "",
       "Scadent": fmtDate(t.dueAt),
+      "Data executării": t.executedOn ? t.executedOn.split("-").reverse().join(".") : "",
       "Progres (%)": t.progress,
       "Creat la": fmtDateTime(t.createdAt),
       "Creat de": t.creatorName,

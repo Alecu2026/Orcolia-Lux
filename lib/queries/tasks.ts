@@ -29,6 +29,9 @@ export type TaskRow = {
   categoryName: string | null;
   categoryColor: string | null;
   address: string | null;
+  consumerName: string | null;
+  /** „YYYY-MM-DD” */
+  executedOn: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -67,6 +70,8 @@ const TASK_SELECT = {
   createdAt: true,
   categoryId: true,
   address: true,
+  consumerName: true,
+  executedAt: true,
   extraAssigneeIds: true,
   extraTeamIds: true,
   assignmentSettingsJson: true,
@@ -172,6 +177,8 @@ function toRow(t: TaskDbRow, l: Lookups): TaskRow {
     categoryName: category?.name ?? null,
     categoryColor: category?.color ?? null,
     address: t.address ?? null,
+    consumerName: t.consumerName ?? null,
+    executedOn: t.executedAt ? t.executedAt.toISOString().slice(0, 10) : null,
     extraAssigneeIds: t.extraAssigneeIds ?? [],
     extraTeamIds: t.extraTeamIds ?? [],
     assignmentSettingsJson: t.assignmentSettingsJson ?? null,
@@ -488,6 +495,8 @@ function toTuple(t: TaskDbRow): TaskTuple {
     t.address ?? "",
     t.reminderSchedule ? JSON.stringify(t.reminderSchedule) : null,
     t.color ?? null,
+    t.consumerName ?? null,
+    t.executedAt ? t.executedAt.toISOString().slice(0, 10) : null,
   ];
 }
 
@@ -645,6 +654,8 @@ export async function getTask(id: string) {
       creator: { select: { name: true } },
       project: { select: { name: true, clientId: true, lat: true, lng: true, address: true, client: { select: { name: true } } } },
       description: true,
+      consumerName: true,
+      executedAt: true,
       createdFrom: true,
       activities: {
         select: {

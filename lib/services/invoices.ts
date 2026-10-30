@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { getCompanySettings } from "../queries/company";
+import { invalidatePortalClient } from "../portal-cache";
 import type { InvoiceStatus, InvoiceKind } from "@prisma/client";
 
 export type InvoiceItemInput = {
@@ -134,6 +135,7 @@ function apaCanalData(input: InvoiceInput, subtotal: number) {
  */
 export async function refreshClientInvoiceSnapshot(clientId: string | null | undefined): Promise<void> {
   if (!clientId) return;
+  invalidatePortalClient(clientId); // portalul își ține facturile câteva secunde în memorie
   try {
     const latest = await prisma.invoice.findFirst({
       where: { clientId },

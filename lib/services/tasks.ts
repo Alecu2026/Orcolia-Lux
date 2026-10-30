@@ -13,7 +13,7 @@ import {
   TASK_TYPE_RO,
   TASK_PRIORITY_RO,
 } from "../telegram";
-import { formatTime, formatDate, DEFAULT_TZ } from "../date";
+import { formatTime, formatDate, DEFAULT_TZ, todayKey } from "../date";
 import { can } from "../permissions";
 import { env } from "../env";
 import { absoluteUrl } from "../storage";
@@ -548,6 +548,7 @@ export async function changeTaskStatus(
       description: true,
       type: true,
       status: true,
+      executedAt: true,
       creatorId: true,
       assigneeId: true,
       teamId: true,
@@ -607,7 +608,12 @@ export async function changeTaskStatus(
       : null;
   await prisma.task.update({
     where: { id: taskId },
-    data: { status: newStatus, ...(closed ? { nextReminderAt: null } : restartReminderAt ? { nextReminderAt: restartReminderAt } : {}) },
+    data: {
+      status: newStatus,
+      ...(closed ? { nextReminderAt: null } : restartReminderAt ? { nextReminderAt: restartReminderAt } : {}),
+      // cerere finalizată: „Data executării” = azi, dacă echipa n-a setat-o deja (se poate corecta oricând)
+      ...(newStatus === "DONE" && task.type === "TICKET" && !task.executedAt ? { executedAt: new Date(`${todayKey(DEFAULT_TZ)}T00:00:00Z`) } : {}),
+    },
   });
   await prisma.taskActivity
     .create({ data: { taskId, userId: actorId, action: "STATUS_CHANGED", fromStatus: task.status, toStatus: newStatus } })

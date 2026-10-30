@@ -333,6 +333,10 @@ model Task {
 
   // Adresa locului intervenției (sugerată din adresele plătitorilor la creare; text liber permis).
   address    String?
+  /// Numele consumatorului pentru care se depune cererea (la cererile din portal: completat de client, implicit numele lui).
+  consumerName String?
+  /// Data executării cererii (doar data, 00:00 UTC): completată de echipă; la finalizarea unei cereri rămâne data zilei dacă nu e deja setată.
+  executedAt DateTime?
 
   dueAt       DateTime?
   createdFrom CreatedFrom @default(WEB)
@@ -1144,6 +1148,8 @@ model PortalRequestTemplate {
   name        String
   title       String
   description String   @default("")
+  /// Secția (echipa) care se ocupă de acest tip de cerere: tichetul i se atribuie și doar membrii ei sunt notificați; gol = administratorii
+  teamId      String?  @db.ObjectId
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

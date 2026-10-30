@@ -1,5 +1,5 @@
 /** Șablon de cerere pentru clienții din cabinetul personal (creat de administrator). Cod comun server + browser. */
-export type PortalTemplate = { id: string; name: string; title: string; description: string };
+export type PortalTemplate = { id: string; name: string; title: string; description: string; /** secția (echipa) responsabilă; null = administratorii */ teamId: string | null };
 
 export const PORTAL_TEMPLATE_MAX = 50;
 export const PORTAL_TEMPLATE_MAX_NAME = 80;

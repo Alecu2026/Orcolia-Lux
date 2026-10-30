@@ -837,6 +837,7 @@ export async function importApaCanalBuffer(buf: Buffer, opts: { ownerId: string;
   if (!opts.commit) return { data, plan, applied: null as ApaCanalApplyResult | null };
 
   const applied = await applyApaCanalPlan(prisma, plan);
+  (await import("../portal-cache")).bumpPortalEpoch(); // facturile și contoarele tuturor clienților s-au putut schimba: portalul le citește din nou
   try {
     await syncOneCRecords(prisma, data);
     // Lista de contoare (/contoare) se construiește din aceste înregistrări: o reconstruim în fundal.

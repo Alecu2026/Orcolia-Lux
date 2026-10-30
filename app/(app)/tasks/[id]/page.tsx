@@ -18,6 +18,7 @@ import TicketChat from "@/app/components/TicketChat";
 import { prisma } from "@/lib/prisma";
 import type { TaskStatus } from "@prisma/client";
 import CloseTicketButton from "@/app/components/CloseTicketButton";
+import ExecutionDateField from "@/app/components/ExecutionDateField";
 import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
@@ -346,6 +347,14 @@ export default async function TaskDetailPage({
           )}
           <MetaRow label={tr("Creat")} value={fmtDateTime(task.createdAt)} />
           <MetaRow label={tr("Creat de")} value={ticketCreatorName(task)} />
+          {task.type === "TICKET" && task.address && <MetaRow label={tr("Adresă")} value={task.address} />}
+          {task.type === "TICKET" && task.consumerName && <MetaRow label={tr("Nume consumator")} value={task.consumerName} />}
+          {task.type === "TICKET" && (
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Data executării")}</p>
+              <ExecutionDateField taskId={id} value={task.executedAt ? task.executedAt.toISOString().slice(0, 10) : null} canEdit={canEditTask(user)} />
+            </div>
+          )}
         </div>
 
         <div className="mt-4 border-t border-[var(--color-line)] pt-4 flex flex-col gap-3">

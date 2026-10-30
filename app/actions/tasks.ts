@@ -8,6 +8,7 @@ import { canWorkOnTaskById } from "@/lib/services/task-access";
 import { can, canAny, canUseAllScope, canEditTask, canViewTask, canViewTaskData } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { zonedToUtc } from "@/lib/date";
+import { cleanContractDate, contractDate, contractKey } from "@/lib/contract-expiry";
 import { parseReminderSchedule, type ReminderSchedule } from "@/lib/reminder-schedule";
 import {
   createTask,
@@ -609,4 +610,40 @@ export async function deleteTask(id: string): Promise<void> {
     );
   }
   revalidateTasks();
+}
+
+/** „Data executării” a unei cereri (o dată calendaristică; gol = ștearsă). Cu „Editare”; se vede și în portalul clientului. */
+export async function setTaskExecutionDateAction(id: string, date: string | null): Promise<TaskState> {
+  try {
+    const user = await requireUser();
+    if (DEMO) return { error: "Mod demo: conectează o bază de date." };
+    if (!OBJECT_ID.test(id ?? "")) return { error: "ID sarcină invalidă." };
+    if (!canEditTask(user)) return { error: "Nu ai permisiunea de editare." };
+    if (!(await canSeeTaskById(user, id))) return { error: "Nu ai acces la această sarcină." };
+    const raw = String(date ?? "").trim();
+    const key = raw ? cleanContractDate(raw) : null; // aceeași validare de dată calendaristică ca la expirarea contractului
+    if (raw && !key) return { error: "Data executării e invalidă." };
+    const before = await prisma.task.findUnique({ where: { id }, select: { title: true, type: true, executedAt: true } });
+    if (!before) return { error: "Sarcină inexistentă." };
+    await prisma.task.update({ where: { id }, data: { executedAt: key ? contractDate(key) : null } });
+    await logAudit(
+      { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
+      {
+        action: `${prefixForType(before.type)}.edit`,
+        module: moduleForType(before.type),
+        objectId: id,
+        objectName: before.title,
+        oldValue: contractKey(before.executedAt),
+        newValue: key,
+        details: { extra: [{ label: "Data executării", value: key ? key.split("-").reverse().join(".") : "ștearsă" }] },
+      },
+    );
+    revalidateTasks();
+    revalidatePath(`/tasks/${id}`);
+    revalidatePath(`/tickets/${id}`);
+    return { ok: true, id };
+  } catch (e) {
+    console.error("[tasks.action] setTaskExecutionDateAction: eșuat", e);
+    return { error: "Eroare la salvare. Încearcă din nou." };
+  }
 }

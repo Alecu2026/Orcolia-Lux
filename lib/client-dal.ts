@@ -4,12 +4,15 @@ import { redirect } from "next/navigation";
 import { prisma } from "./prisma";
 import { getClientSessionToken, hashClientToken } from "./client-session";
 import { canImpersonatePortal, type ImpersonationInfo } from "./impersonation";
+import { getCachedSession, putCachedSession } from "./portal-cache";
 
 export type CurrentClient = {
   id: string;
   name: string;
   email: string | null;
   meterSeries: string | null;
+  /** Adresa de consum (din 1C), folosită ca valoare implicită la cererile din portal. */
+  address: string | null;
   /** Setat doar în timpul unei simulări de login din staff (fix 6 ore). */
   impersonation?: ImpersonationInfo;
 };
@@ -25,15 +28,20 @@ export const getCurrentClient = cache(async (): Promise<CurrentClient | null> =>
   const token = await getClientSessionToken();
   if (!token) return null;
 
+  // cache scurt în memorie (vezi lib/portal-cache.ts): navigarea între paginile portalului nu mai caută sesiunea în baza de date de fiecare dată
+  const tokenHash = hashClientToken(token);
+  const cached = getCachedSession<CurrentClient>(tokenHash);
+  if (cached) return cached;
+
   const session = await prisma.clientSession.findUnique({
-    where: { tokenHash: hashClientToken(token) },
+    where: { tokenHash },
     select: {
       id: true,
       expiresAt: true,
       lastUsedAt: true,
       impersonatedById: true,
       client: {
-        select: { id: true, name: true, email: true, meterSeries: true, portalPasswordHash: true },
+        select: { id: true, name: true, email: true, meterSeries: true, consumAddress: true, portalPasswordHash: true },
       },
     },
   });
@@ -68,13 +76,17 @@ export const getCurrentClient = cache(async (): Promise<CurrentClient | null> =>
       .catch(() => {});
   }
 
-  return {
+  const out: CurrentClient = {
     id: session.client.id,
     name: session.client.name,
     email: session.client.email,
     meterSeries: session.client.meterSeries,
+    address: session.client.consumAddress,
     ...(impersonation ? { impersonation } : {}),
   };
+  // o simulare din staff se reverifică la fiecare cerere (activ + permisiune): nu se ține în cache
+  if (!impersonation) putCachedSession(tokenHash, out.id, out, session.expiresAt.getTime());
+  return out;
 });
 
 /** Pentru pagini/acțiuni ale portalului: întoarce clientul sau redirect la /portal/login. */

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "./prisma";
 import { env } from "./env";
+import { evictCachedSession } from "./portal-cache";
 
 // Cookie separat de cel al staff-ului (`pr_session`) — un client autentificat nu trebuie să
 // poată accesa vreodată rutele de staff și invers. Nu are nevoie de env var propriu: e fix,
@@ -67,6 +68,7 @@ export async function destroyClientSession(): Promise<void> {
     await prisma.clientSession
       .deleteMany({ where: { tokenHash: hashClientToken(token) } })
       .catch(() => {});
+    evictCachedSession(hashClientToken(token));
   }
   store.delete(COOKIE);
   store.delete(PORTAL_IMP_COOKIE);

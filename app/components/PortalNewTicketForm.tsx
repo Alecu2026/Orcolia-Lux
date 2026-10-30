@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createPortalTicket, type PortalTicketState } from "@/app/actions/portal";
 import { useT } from "@/lib/i18n/context";
 import type { PortalTemplate } from "@/lib/portal-template";
+import { isPetitionName } from "@/lib/portal-default-templates";
 
 const input =
   "w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
@@ -18,12 +19,15 @@ const CUSTOM = "_custom";
 export default function PortalNewTicketForm({
   templates = [],
   initialTemplateId = "",
+  defaults,
   onSent,
 }: {
   /** Șabloanele create de administrator. */
   templates?: PortalTemplate[];
   /** Șablonul deja ales (ex. din link): sare peste pasul cu lista. */
   initialTemplateId?: string;
+  /** Valorile implicite ale datelor cererii: adresa de consum și numele clientului (editabile). */
+  defaults?: { address: string | null; consumerName: string };
   /** Apelat după ce cererea a plecat (panoul din pagina cu facturi se închide). */
   onSent?: () => void;
 }) {
@@ -34,6 +38,9 @@ export default function PortalNewTicketForm({
   const [chosen, setChosen] = useState<string | null>(first ? first.id : templates.length === 0 ? CUSTOM : null);
   const [title, setTitle] = useState(first?.title ?? "");
   const [description, setDescription] = useState(first?.description ?? "");
+  const [address, setAddress] = useState(defaults?.address ?? "");
+  const [consumerName, setConsumerName] = useState(defaults?.consumerName ?? "");
+  const today = new Date().toLocaleDateString("ro-RO", { timeZone: "Europe/Bucharest" });
   const [state, formAction, pending] = useActionState<PortalTicketState, FormData>(async (prev, fd) => {
     const res = await createPortalTicket(prev, fd);
     if (res?.ok) { setChosen(templates.length === 0 ? CUSTOM : null); setTitle(""); setDescription(""); onSent?.(); } // cererea a plecat: formularul revine la început
@@ -51,6 +58,7 @@ export default function PortalNewTicketForm({
     if (s.ok) router.refresh();
   });
 
+  const isPetition = chosen !== CUSTOM && isPetitionName(templates.find((x) => x.id === chosen)?.name);
   const chosenName = chosen === CUSTOM ? t("✍ Altă cerere (scriu eu)") : templates.find((x) => x.id === chosen)?.name;
 
   if (chosen === null) {
@@ -94,8 +102,23 @@ export default function PortalNewTicketForm({
           </button>
         </div>
       )}
+      <input type="hidden" name="templateId" value={chosen && chosen !== CUSTOM ? chosen : ""} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs font-semibold text-ink-soft">
+          {t("Adresa")} *
+          <input name="address" value={address} onChange={(e) => setAddress(e.target.value)} required maxLength={300} placeholder={t("Localitate, strada, nr.")} className={`${input} mt-1 font-normal`} />
+        </label>
+        <label className="text-xs font-semibold text-ink-soft">
+          {t("Nume consumator")} *
+          <input name="consumerName" value={consumerName} onChange={(e) => setConsumerName(e.target.value)} required maxLength={150} className={`${input} mt-1 font-normal`} />
+        </label>
+      </div>
+      <div className="grid gap-1 rounded-xl bg-[var(--color-surface-2)] px-3 py-2 text-xs text-ink-soft sm:grid-cols-2">
+        <p>{t("Data depunerii")}: <b className="text-ink">{today}</b> <span>({t("automat")})</span></p>
+        <p>{t("Data executării")}: <span>{t("o stabilește echipa")}</span></p>
+      </div>
       <input name="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("Subiect (ex: Scurgere la contor)")} required autoFocus={chosen === CUSTOM} className={input} />
-      <textarea name="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t("Descriere (opțional)")} rows={4} className={input} />
+      <textarea name="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={isPetition ? t("Textul petiției") : t("Descriere (opțional)")} required={isPetition} rows={isPetition ? 8 : 4} className={input} />
 
       {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
       {state?.ok && <p className="text-sm text-brand-strong">{t("Cerere trimisă cu succes.")}</p>}

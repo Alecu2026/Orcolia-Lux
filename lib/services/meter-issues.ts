@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { getMeterSnap } from "./meter-cache";
 import { logAudit } from "./audit";
+import { invalidatePortalClient } from "../portal-cache";
 import type { AuditUser } from "./meter-readings";
 
 /** Cine raportează: un utilizator (cititor) sau un plătitor din portal (`id` lipsește, `source` = „PORTAL”). */
@@ -61,6 +62,7 @@ export async function reportIssue(user: AuditUser | IssueActor, input: ReportIss
     newValue: ISSUE_LABELS[input.kind as IssueKind],
     details: { extra: [{ label: "Neregulă", value: ISSUE_LABELS[input.kind as IssueKind] }, ...(note ? [{ label: "Observații", value: note }] : [])] },
   });
+  invalidatePortalClient(row.clientId);
   return { ok: true, issue: toIssueDto(issue), existing: false };
 }
 
@@ -72,6 +74,7 @@ export async function resolveIssue(user: AuditUser, id: string, note: string | n
   if (row.resolvedAt) return { ok: true };
   const resolvedNote = (note ?? "").trim().slice(0, MAX_ISSUE_NOTE) || null;
   await prisma.meterIssue.update({ where: { id }, data: { resolvedAt: new Date(), resolvedById: user.id, resolvedName: user.name, resolvedNote } });
+  invalidatePortalClient((await getMeterSnap()).rows.find((r) => r.id === row.meterId)?.clientId);
   await logAudit(actorOf(user), {
     action: "meter.issue_resolve",
     module: "Meters",
