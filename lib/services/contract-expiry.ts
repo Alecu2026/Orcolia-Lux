@@ -12,6 +12,7 @@ import { isEmail, normalizePhone, stripLatinDiacritics } from "../payer-notify";
 import { can } from "../permissions";
 import { contractDate, contractKey, contractStage, daysUntil, stageKey, type ContractStage } from "../contract-expiry";
 import { filteredAdminRecipients, notifyUsers } from "./notifications";
+import { autoChannels } from "./auto-notify";
 
 /**
  * Notificările de expirare a contractului plătitorilor (data o introduce personalul, în fișa plătitorului): cu 30 și cu 10 zile înainte, atât către plătitor
@@ -86,6 +87,7 @@ export async function checkContractExpiry(opts: { force?: boolean } = {}): Promi
   if (isQuietTime(now, await getQuietHoursSettings())) return { due: due.length, notified: 0 };
 
   const company = (await prisma.companySettings.findUnique({ where: { singleton: "main" }, select: { companyName: true } }))?.companyName ?? "";
+  const chan = await autoChannels("contract"); // din Setări: pornit / oprit, email, SMS
   const sent: Sent[] = [];
   const logs: { campaignId: string; clientId: string; clientName: string; channel: string; to: string; status: string; error: string | null; subject: string | null; body: string; userName: string }[] = [];
 
@@ -105,9 +107,9 @@ export async function checkContractExpiry(opts: { force?: boolean } = {}): Promi
     const res: Sent = { due: d, email: "none", sms: "none" };
 
     const email = d.email?.trim() ?? "";
-    if (isEmail(email) && env.smtp.enabled) {
+    if (chan.email && isEmail(email) && env.smtp.enabled) {
       try {
-        await withDeliveryMeta(dmeta, () => sendPayerNotificationEmail({ to: email, subject: msg.subject, body: msg.emailBody, companyName: company || null }));
+        await withDeliveryMeta(dmeta, () => sendPayerNotificationEmail({ to: email, subject: msg.subject, body: msg.emailBody, companyName: company || null, deliveryKind: "payer.contract" }));
         res.email = "sent";
         logs.push({ ...base, channel: "EMAIL", to: email, status: "SENT", error: null, subject: msg.subject, body: msg.emailBody });
       } catch (e) {
@@ -116,7 +118,7 @@ export async function checkContractExpiry(opts: { force?: boolean } = {}): Promi
       }
     }
     const phone = normalizePhone(d.phone);
-    if (phone && env.sms.enabled) {
+    if (chan.sms && phone && env.sms.enabled) {
       try {
         await withDeliveryMeta(dmeta, () => sendSms(phone, msg.sms));
         res.sms = "sent";

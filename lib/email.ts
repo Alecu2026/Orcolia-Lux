@@ -284,6 +284,8 @@ export type PayerNotificationEmailData = {
   /** Text simplu, cu rânduri noi — se escapează și se afișează cu <br>. */
   body: string;
   companyName?: string | null;
+  /** Tipul din Jurnalul de notificări (implicit „Notificare plătitori”): expirarea contractului, verificarea metrologică, termenul unei nereguli au tipul lor. */
+  deliveryKind?: string;
 };
 
 const escapeHtml = (s: string) =>
@@ -390,6 +392,91 @@ async function sendTicketMessageEmailImpl(d: TicketMessageEmailData): Promise<vo
   await transporter.sendMail({ from: env.smtp.from, to: d.to, subject, text, html });
 }
 
+export type TicketResolvedEmailData = {
+  to: string;
+  clientName: string;
+  ticketTitle: string;
+  seq: number | null;
+  /** DONE = executată; CANCELLED = închisă fără execuție. */
+  outcome: "DONE" | "CANCELLED";
+  /** „YYYY-MM-DD” — data executării, dacă e setată. */
+  executedOn: string | null;
+  /** „Măsuri luate” și timpul de rezolvare (minute), dacă au fost completate. */
+  measures?: string | null;
+  minutes?: number | null;
+  /** Linkul spre cerere în portal. */
+  url: string;
+  companyName?: string | null;
+};
+
+/**
+ * Email către client: cererea lui din portal a fost rezolvată (executată sau închisă). Română și rusă în același mesaj; butonul duce la cerere în portal, unde
+ * poate vedea detaliile și poate scrie dacă ceva nu e în regulă. Aruncă eroare la eșec; apelantul decide ce face.
+ */
+async function sendTicketResolvedEmailImpl(d: TicketResolvedEmailData): Promise<void> {
+  const transporter = getTransporter();
+  if (!transporter) throw new Error("SMTP neconfigurat.");
+  const company = d.companyName?.trim() || "Apă-Canal";
+  const ref = d.seq != null ? `#${d.seq}` : "";
+  const date = d.executedOn ? d.executedOn.split("-").reverse().join(".") : null;
+  const done = d.outcome === "DONE";
+  const roLine = done
+    ? `Cererea ta ${ref} „${d.ticketTitle}” a fost executată${date ? ` la data de ${date}` : ""}.`
+    : `Cererea ta ${ref} „${d.ticketTitle}” a fost închisă fără execuție.`;
+  const ruLine = done
+    ? `Ваша заявка ${ref} «${d.ticketTitle}» выполнена${date ? ` (${date})` : ""}.`
+    : `Ваша заявка ${ref} «${d.ticketTitle}» закрыта без выполнения.`;
+  const took = d.minutes != null ? `${Math.floor(d.minutes / 60) ? `${Math.floor(d.minutes / 60)} h ` : ""}${d.minutes % 60 || !Math.floor(d.minutes / 60) ? `${d.minutes % 60} min` : ""}`.trim() : null;
+  const measuresRo = done && d.measures ? `Măsuri luate: ${d.measures}${took ? ` (timp de rezolvare: ${took})` : ""}` : null;
+  const measuresRu = done && d.measures ? `Принятые меры: ${d.measures}${took ? ` (время решения: ${took})` : ""}` : null;
+  const subject = (done ? `Cererea ${ref} a fost executată / Заявка ${ref} выполнена` : `Cererea ${ref} a fost închisă / Заявка ${ref} закрыта`).replace(/\s+/g, " ").trim().slice(0, 200);
+  const text = [
+    `Bună ziua, ${d.clientName},`,
+    "",
+    roLine,
+    ...(measuresRo ? [measuresRo] : []),
+    `Detalii și conversație: ${d.url}`,
+    "Dacă ceva nu e în regulă, scrie-ne în conversația cererii.",
+    ...(done ? ["Ne ajută părerea ta: dă o notă rezolvării (1–5) pe pagina cererii din portal."] : []),
+    "",
+    "— — —",
+    "",
+    `Здравствуйте, ${d.clientName},`,
+    "",
+    ruLine,
+    ...(measuresRu ? [measuresRu] : []),
+    `Подробности и переписка: ${d.url}`,
+    "Если что-то не так, напишите нам в переписке по заявке.",
+    ...(done ? ["Нам важно ваше мнение: оцените решение (1–5) на странице заявки в портале."] : []),
+  ].join("\n");
+  const html = `<!doctype html>
+<html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
+    <tr><td align="center">
+      <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+        <tr><td style="background:#0d9488;padding:20px 28px;color:#fff;font-size:19px;font-weight:700">${escapeHtml(company)}</td></tr>
+        <tr><td style="padding:28px;font-size:15px;line-height:1.6">
+          <p style="margin:0 0 12px">Bună ziua, <b>${escapeHtml(d.clientName)}</b>,</p>
+          <p style="margin:0 0 6px;font-size:16px"><b>${done ? "✓ " : ""}${escapeHtml(roLine)}</b></p>
+          ${measuresRo ? `<p style="margin:0 0 6px;background:#f1f5f9;border-radius:10px;padding:10px 12px">${escapeHtml(measuresRo).replace(/\r?\n/g, "<br>")}</p>` : ""}
+          <p style="margin:0 0 ${done ? 6 : 18}px;color:#475569">Dacă ceva nu e în regulă, scrie-ne în conversația cererii.</p>
+          ${done ? `<p style="margin:0 0 18px;color:#0f172a">⭐ Ne ajută părerea ta: dă o notă rezolvării (1–5) pe pagina cererii din portal.</p>` : ""}
+          <p style="margin:0 0 6px;font-size:16px"><b>${done ? "✓ " : ""}${escapeHtml(ruLine)}</b></p>
+          ${measuresRu ? `<p style="margin:0 0 6px;background:#f1f5f9;border-radius:10px;padding:10px 12px">${escapeHtml(measuresRu).replace(/\r?\n/g, "<br>")}</p>` : ""}
+          <p style="margin:0 0 ${done ? 6 : 20}px;color:#475569">Если что-то не так, напишите нам в переписке по заявке.</p>
+          ${done ? `<p style="margin:0 0 20px;color:#0f172a">⭐ Нам важно ваше мнение: оцените решение (1–5) на странице заявки в портале.</p>` : ""}
+          <a href="${escapeHtml(d.url)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:12px">Deschide cererea / Открыть заявку</a>
+        </td></tr>
+        <tr><td style="padding:14px 28px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">
+          Mesaj automat de la ${escapeHtml(company)}. / Автоматическое сообщение.
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+  await transporter.sendMail({ from: env.smtp.from, to: d.to, subject, text, html });
+}
+
 // ── Jurnal: fiecare trimitere de email intră în jurnal (cu tipul ei și destinatarul); fără SMTP configurat se notează „omis”. ──
 async function logged<D extends { to: string }>(d: D, meta: DeliveryMeta, send: (d: D) => Promise<void>): Promise<void> {
   if (!env.smtp.enabled) await logDelivery({ ...meta, channel: "EMAIL", status: "SKIPPED", to: d.to, error: "SMTP neconfigurat." });
@@ -406,6 +493,8 @@ export const sendVerificationCodeEmail = (d: VerificationCodeEmailData) =>
 export const sendReminderEmail = (d: ReminderEmailData) =>
   logged(d, { kind: "appointment.reminder", toName: d.clientName, objectType: "appointment", objectName: d.service }, sendReminderEmailImpl);
 export const sendPayerNotificationEmail = (d: PayerNotificationEmailData) =>
-  logged(d, { kind: "payer.campaign" }, sendPayerNotificationEmailImpl);
+  logged(d, { kind: d.deliveryKind || "payer.campaign" }, sendPayerNotificationEmailImpl);
+export const sendTicketResolvedEmail = (d: TicketResolvedEmailData) =>
+  logged(d, { kind: "ticket.resolved", toName: d.clientName, objectType: "ticket", objectId: idFromUrl(d.url, "portal/cereri"), objectName: d.ticketTitle }, sendTicketResolvedEmailImpl);
 export const sendTicketMessageEmail = (d: TicketMessageEmailData) =>
   logged(d, { kind: "ticket.message", toName: d.clientName, objectType: "ticket", objectId: idFromUrl(d.url, "tickets"), objectName: d.ticketTitle }, sendTicketMessageEmailImpl);

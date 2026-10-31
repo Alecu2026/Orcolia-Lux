@@ -9,6 +9,7 @@ import { INVOICE_STATUS, type InvoiceStatusKey } from "./invoice-meta";
 import { IconX } from "./icons";
 import ReadingForm from "./ReadingForm";
 import MeterIssuesPanel from "./MeterIssuesPanel";
+import MetrologyEditor from "./MetrologyEditor";
 import { currentPeriod, type ReadingDto } from "@/lib/meter-readings";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
@@ -156,6 +157,10 @@ export default function MeterDetailDialog({
             <MeterIssuesPanel key={row.id} issues={detail.issues ?? []} canManage={detail.canManageIssues} months={detail.months} sigiliu={row.sigiliu} removedAt={row.removedAt} />
           </Section>
         )}
+
+        <Section title={t("Verificare metrologică")}>
+          <MetrologyEditor key={`${row.id}:${detail ? 1 : 0}`} meterId={row.id} initial={detail ? detail.metrology : row.metroVerified} canEdit={!!detail?.canEditMetrology} />
+        </Section>
 
         <Section title={t("Contor")}>
           <Item label={t("Nr. contor")} value={<span className="font-mono">{row.contor}</span>} />

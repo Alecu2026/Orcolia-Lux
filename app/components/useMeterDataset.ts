@@ -19,6 +19,17 @@ let memo: { rows: MeterRow[]; at: number; etag: string | null } | null = null;
 /** Lista din memorie, dacă a fost deja încărcată în această sesiune (altfel null). */
 export const peekMeterRows = (): MeterRow[] | null => memo?.rows ?? null;
 
+/**
+ * Lista locală nu mai e la zi (ex. s-a salvat o verificare metrologică): următoarea deschidere o cere imediat serverului, iar o listă deja afișată se reîmprospătează acum.
+ */
+export function markMeterDatasetStale(): void {
+  if (memo) memo = { ...memo, at: 0 };
+  void idbGet<Stored>(IDB_KEY).then((st) => (st ? idbSet(IDB_KEY, { ...st, at: 0 } satisfies Stored) : undefined)).catch(() => {});
+  try {
+    window.dispatchEvent(new Event("meters:stale"));
+  } catch {}
+}
+
 /** Anunță serverul ce versiune a listei avem local (cookie): dacă e cea curentă, pagina nu mai cere descărcarea ei. */
 function rememberVersion(etag: string | null) {
   if (!etag) return;
@@ -112,6 +123,14 @@ export function useMeterDataset(enabled: boolean) {
       clearTimeout(id);
     };
   }, [enabled, apply, fetchFresh]);
+
+  // Altă componentă a schimbat date care apar în listă (markMeterDatasetStale): reîmprospătare imediată.
+  useEffect(() => {
+    if (!enabled) return;
+    const on = () => void fetchFresh();
+    window.addEventListener("meters:stale", on);
+    return () => window.removeEventListener("meters:stale", on);
+  }, [enabled, fetchFresh]);
 
   // La revenirea în filă după mult timp, reîmprospătare discretă.
   useEffect(() => {

@@ -142,6 +142,8 @@ export const env = {
     user: optional("IMAP_USER"),
     pass: optional("IMAP_PASS"),
     mailbox: optional("IMAP_MAILBOX", "INBOX"),
+    /** La prima rulare (sau după schimbarea UIDVALIDITY) se preiau doar mesajele din ultimele N zile; restul istoricului se consideră văzut (0 = niciunul). */
+    backfillDays: int("IMAP_BACKFILL_DAYS", 2),
     get enabled() {
       return Boolean(process.env.IMAP_HOST && process.env.IMAP_USER);
     },

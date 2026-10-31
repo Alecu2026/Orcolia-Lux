@@ -5,6 +5,8 @@ import type { InvoiceStatus, Prisma } from "@prisma/client";
 import { PER_PAGE_ALL, type MonthTuple, type SnapTuple } from "../payer-notify";
 import { cachedAsync } from "../ttl-cache";
 import { contractDate, contractFilterBounds, contractKey, type ContractExpFilter } from "../contract-expiry";
+import { metrologyFilterBounds, type MetrologyFilter } from "../metrology";
+import { payerIssueBounds, type PayerIssueFilter } from "../meter-issue-register";
 
 const PAGE_SIZE = 50;
 /** Câți plătitori pe pagină alege utilizatorul (?perPage=) — plafonat ca să nu încărcăm mii de rânduri odată. */
@@ -34,6 +36,11 @@ export type PayerRow = {
   installedAt: string | null;
   /** „YYYY-MM-DD” — data expirării contractului, introdusă manual (null = necompletată). */
   contractExpiresAt: string | null;
+  /** „YYYY-MM-DD” — cea mai apropiată scadență a verificării metrologice dintre contoarele lui (null = nicio dată introdusă). */
+  metrologyDueAt: string | null;
+  /** Câte nereguli de contor deschise are și cel mai apropiat termen de remediere („YYYY-MM-DD”). */
+  issuesOpen: number;
+  issueDueAt: string | null;
 };
 
 export type PayerSector = "privat" | "comunal";
@@ -79,6 +86,10 @@ export type ListPayersOpts = {
   estimated?: "yes" | "no";
   /** Contractul: fără dată / expirat / expiră în 10 sau 30 de zile. */
   contractExp?: ContractExpFilter;
+  /** Verificarea metrologică (cea mai apropiată scadență a contoarelor): fără dată / expirată / expiră în 10, 30 sau 60 de zile. */
+  metrologyExp?: MetrologyFilter;
+  /** Neregulile de contor: cu neregulă deschisă / termen depășit / expiră în 7 zile / fără nereguli. */
+  meterIssues?: PayerIssueFilter;
   /** Restricții pe id-uri (ex. „notificați prin SMS în perioada…", calculate din jurnalul de trimiteri). */
   idsIn?: string[];
   idsNotIn?: string[];
@@ -179,6 +190,25 @@ function contractWhere(f: ContractExpFilter | undefined): Prisma.ClientWhereInpu
   return [{ contractExpiresAt: { not: null, ...(b.gte ? { gte: contractDate(b.gte) } : {}), ...(b.lte ? { lte: contractDate(b.lte) } : {}), ...(b.lt ? { lt: contractDate(b.lt) } : {}) } }];
 }
 
+/** Filtrul „Verificare metrologică” (pe `Client.metrologyDueAt`, 00:00 UTC); ca la contract, `not: null` evită potrivirea documentelor fără dată. */
+function metrologyWhere(f: MetrologyFilter | undefined): Prisma.ClientWhereInput[] {
+  if (!f) return [];
+  if (f === "none") return [{ OR: [{ metrologyDueAt: null }, { metrologyDueAt: { isSet: false } }] }];
+  const b = metrologyFilterBounds(f);
+  if (!b) return [];
+  return [{ metrologyDueAt: { not: null, ...(b.gte ? { gte: contractDate(b.gte) } : {}), ...(b.lte ? { lte: contractDate(b.lte) } : {}), ...(b.lt ? { lt: contractDate(b.lt) } : {}) } }];
+}
+
+/** Filtrul „Nereguli contoare” (pe `Client.meterIssuesOpen` / `meterIssueDueAt`); `not: null` evită potrivirea documentelor fără termen. */
+function issuesWhere(f: PayerIssueFilter | undefined): Prisma.ClientWhereInput[] {
+  if (!f) return [];
+  if (f === "none") return [{ OR: [{ meterIssuesOpen: null }, { meterIssuesOpen: { isSet: false } }, { meterIssuesOpen: 0 }] }];
+  if (f === "open") return [{ meterIssuesOpen: { gt: 0 } }];
+  const b = payerIssueBounds(f);
+  if (!b) return [];
+  return [{ meterIssuesOpen: { gt: 0 } }, { meterIssueDueAt: { not: null, ...(b.gte ? { gte: contractDate(b.gte) } : {}), ...(b.lte ? { lte: contractDate(b.lte) } : {}), ...(b.lt ? { lt: contractDate(b.lt) } : {}) } }];
+}
+
 export async function buildPayerWhere(opts: ListPayersOpts = {}): Promise<Prisma.ClientWhereInput> {
   const search = opts.search?.trim();
   const street = opts.street?.trim();
@@ -240,6 +270,8 @@ export async function buildPayerWhere(opts: ListPayersOpts = {}): Promise<Prisma
       ...(opts.noInvoices ? [{ lastInvoiceStatus: null }, { lastInvoiceGrandTotal: null }] : []),
       // „not: true” prinde și plătitorii la care câmpul lipsește (creați înainte de el)
       ...contractWhere(opts.contractExp),
+      ...metrologyWhere(opts.metrologyExp),
+      ...issuesWhere(opts.meterIssues),
       ...(opts.estimated === "yes" ? [{ meterReadingEstimated: true }] : opts.estimated === "no" ? [{ meterReadingEstimated: { not: true } }] : []),
       ...(opts.idsIn ? [{ id: { in: opts.idsIn } }] : []),
       ...(opts.idsNotIn?.length ? [{ id: { notIn: opts.idsNotIn } }] : []),
@@ -312,7 +344,7 @@ function sortByInstall<T extends { id: string; name: string }>(
 
 const PAYER_SELECT = {
   id: true, name: true, meterSeries: true, apaCanalContract: true, email: true, phone: true,
-  portalPasswordHash: true, consumAddress: true, lastNotifiedAt: true, contractExpiresAt: true,
+  portalPasswordHash: true, consumAddress: true, lastNotifiedAt: true, contractExpiresAt: true, metrologyDueAt: true, meterIssuesOpen: true, meterIssueDueAt: true,
 } as const;
 const INVOICE_SELECT = { clientId: true, number: true, status: true, grandTotal: true, currency: true, dueDate: true, issueDate: true } as const;
 
@@ -345,6 +377,9 @@ function toPayerRow(c: PayerClient, latest: PayerInvoice | undefined, invoiceCou
     lastNotifiedAt: c.lastNotifiedAt ? c.lastNotifiedAt.toISOString() : null,
     installedAt,
     contractExpiresAt: contractKey(c.contractExpiresAt),
+    metrologyDueAt: contractKey(c.metrologyDueAt),
+    issuesOpen: c.meterIssuesOpen ?? 0,
+    issueDueAt: contractKey(c.meterIssueDueAt),
   };
 }
 
@@ -590,6 +625,8 @@ export type PayerDetail = {
   consumAddress: string | null;
   /** „YYYY-MM-DD” — data expirării contractului (introdusă manual). */
   contractExpiresAt: string | null;
+  /** „YYYY-MM-DD” — cea mai apropiată scadență a verificării metrologice a contoarelor. */
+  metrologyDueAt: string | null;
 };
 
 export async function getPayer(id: string): Promise<PayerDetail | null> {
@@ -611,6 +648,7 @@ export async function getPayer(id: string): Promise<PayerDetail | null> {
       meterCurrReading: true,
       consumAddress: true,
       contractExpiresAt: true,
+      metrologyDueAt: true,
     },
   });
   if (!c || (!c.meterSeries && !c.apaCanalContract)) return null;
@@ -629,6 +667,7 @@ export async function getPayer(id: string): Promise<PayerDetail | null> {
     meterCurrReading: c.meterCurrReading,
     consumAddress: c.consumAddress,
     contractExpiresAt: contractKey(c.contractExpiresAt),
+    metrologyDueAt: contractKey(c.metrologyDueAt),
   };
 }
 
@@ -772,7 +811,8 @@ export async function getPayerSnapshot(): Promise<SnapTuple[]> {
       c.portalPasswordHash ? 1 : 0, count.get(c.id) ?? 0,
       inv?.number ?? null, inv?.status ?? null, inv?.grandTotal ?? null, inv?.currency ?? null, inv?.dueDate ? inv.dueDate.getTime() : null,
       c.consumAddress, c.lastNotifiedAt ? c.lastNotifiedAt.getTime() : null, installBy.get(c.id) ?? null, c.lastInvoiceSectorNr,
-      sectorBy.get(c.id) ?? null, c.meterReadingEstimated ? 1 : 0, contractKey(c.contractExpiresAt),
+      sectorBy.get(c.id) ?? null, c.meterReadingEstimated ? 1 : 0, contractKey(c.contractExpiresAt), contractKey(c.metrologyDueAt),
+      c.meterIssuesOpen ?? 0, contractKey(c.meterIssueDueAt),
     ];
   });
 }

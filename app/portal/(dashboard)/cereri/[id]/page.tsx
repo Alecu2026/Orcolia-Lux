@@ -4,7 +4,9 @@ import { requireClient } from "@/lib/client-dal";
 import { prisma } from "@/lib/prisma";
 import { TASK_STATUS_RO } from "@/lib/telegram";
 import { fmtDate } from "@/app/components/invoice-meta";
+import { formatMinutes } from "@/lib/resolution";
 import TicketChat from "@/app/components/TicketChat";
+import TicketFeedback from "@/app/components/TicketFeedback";
 import { IconChevronLeft } from "@/app/components/icons";
 import { getT } from "@/lib/i18n/server-t";
 
@@ -30,7 +32,7 @@ export default async function PortalTicketPage({ params }: { params: Promise<{ i
 
   const t = await prisma.task.findFirst({
     where: { id, clientId: client.id, type: "TICKET" },
-    select: { id: true, seq: true, title: true, description: true, status: true, createdAt: true, address: true, consumerName: true, executedAt: true },
+    select: { id: true, seq: true, title: true, description: true, status: true, createdAt: true, address: true, consumerName: true, executedAt: true, measuresTaken: true, resolutionMinutes: true, feedbackRating: true, feedbackComment: true },
   });
   if (!t) notFound();
 
@@ -75,6 +77,33 @@ export default async function PortalTicketPage({ params }: { params: Promise<{ i
           <p className={`font-medium ${t.executedAt ? "text-st-done" : "text-ink-soft"}`}>{t.executedAt ? fmtDate(t.executedAt) : tr("încă neexecutată")}</p>
         </div>
       </div>
+
+      {t.status === "DONE" && (t.measuresTaken || t.resolutionMinutes != null) && (
+        <div className="card border-st-done/30 bg-st-done/5 p-3 text-sm" data-portal-resolution="">
+          <p className="mb-1 text-xs font-semibold text-st-done">✓ {tr("Rezolvare")}</p>
+          {t.measuresTaken && (
+            <div className="mb-2">
+              <p className="text-[11px] text-ink-soft">{tr("Măsuri luate")}</p>
+              <p className="whitespace-pre-wrap break-words font-medium">{t.measuresTaken}</p>
+            </div>
+          )}
+          {t.resolutionMinutes != null && (
+            <div>
+              <p className="text-[11px] text-ink-soft">{tr("Timp de rezolvare")}</p>
+              <p className="font-medium">{formatMinutes(t.resolutionMinutes)}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {t.status === "DONE" && (
+        <TicketFeedback
+          ticketId={t.id}
+          initialRating={t.feedbackRating ?? null}
+          initialComment={t.feedbackComment ?? null}
+          readOnlyReason={client.impersonation ? tr("Simulare: feedback-ul nu se trimite în numele clientului.") : null}
+        />
+      )}
 
       {t.description && (
         <details className="card px-3 py-2 text-sm" open={false}>

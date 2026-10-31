@@ -72,6 +72,7 @@ export async function listPortalMeters(clientId: string): Promise<{ period: stri
           .filter((i) => i.meterId === r.id)
           .map((i) => ({ kind: isIssueKind(i.kind) ? i.kind : "OTHER", note: i.note, reportedAt: i.reportedAt.toISOString() })),
         history: before.map(dto),
+        metroDue: r.metroDue,
       };
     })
     .sort((a, b) => a.contor.localeCompare(b.contor, "ro", { numeric: true }));

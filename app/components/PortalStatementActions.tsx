@@ -26,7 +26,9 @@ export default function PortalStatementActions() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      setErr(t("Nu am putut descărca PDF-ul. Încearcă din nou."));
+      // generatorul de pe server nu răspunde (ex. Chromium lipsă): decontarea se poate salva oricum ca PDF din dialogul de tipărire al browserului
+      setErr(t("PDF-ul nu s-a putut genera pe server. Se deschide tipărirea: alege „Salvează ca PDF”."));
+      setTimeout(() => window.print(), 700);
     } finally {
       setBusy(false);
     }

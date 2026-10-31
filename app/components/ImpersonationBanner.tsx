@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/context";
 import { formatRemaining } from "@/lib/impersonation";
 
@@ -29,6 +29,18 @@ export default function ImpersonationBanner({
 }) {
   const t = useT();
   const [left, setLeft] = useState<number | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  // Înălțimea reală a benzii (cu zona sigură de sus din PWA, și pe două rânduri pe telefon) ajunge în --imp-h, ca antetul lipicios de sub ea să se oprească exact sub bandă.
+  useEffect(() => {
+    const el = ref.current;
+    const host = el?.parentElement;
+    if (!el || !host || typeof ResizeObserver === "undefined") return;
+    const set = () => host.style.setProperty("--imp-h", `${el.getBoundingClientRect().height}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   useEffect(() => {
     const offset = serverNow - Date.now();
     const tick = () => {
@@ -51,9 +63,11 @@ export default function ImpersonationBanner({
 
   return (
     <div
+      ref={ref}
       role="status"
       data-impersonation=""
-      className={`z-40 flex min-h-9 flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-amber-400 px-3 py-1 text-xs font-medium text-black print:hidden ${className}`}
+      // în PWA (bara de stare transparentă) banda începe sub bara cu ora / rețeaua: padding-top = zona sigură de sus
+      className={`z-40 flex min-h-[calc(2.25rem+env(safe-area-inset-top,0px))] flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-amber-400 px-3 pb-1 pt-[calc(0.25rem+env(safe-area-inset-top,0px))] text-xs font-medium text-black print:hidden ${className}`}
     >
       <span className="min-w-0 truncate">
         🕵 {t("Simulare de login")}: {t("ești conectat ca")} <b>{who}</b>

@@ -55,6 +55,8 @@ export default function ProjectsMapView({ pins, meters = false }: { pins: Projec
 
   // ── Straturi + filtre pentru contoare ──
   const [showProjects, setShowProjects] = useState(true);
+  // legenda: pe telefon e închisă (un buton mic) ca să nu acopere harta; pe ecran lat stă deschisă
+  const [legendOpen, setLegendOpen] = useState(() => typeof window !== "undefined" && window.matchMedia?.("(min-width: 640px)").matches === true);
   const [showMeters, setShowMeters] = useState(meters);
   const [filters, setFilters] = useState<MeterMapFilters>(EMPTY_METER_FILTERS);
   const [filtersReady, setFiltersReady] = useState(false);
@@ -421,10 +423,15 @@ export default function ProjectsMapView({ pins, meters = false }: { pins: Projec
         />
       )}
 
-      {/* Legendă */}
-      <div className="absolute bottom-4 left-4 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-3 shadow-lg">
-        <p className="mb-2 text-xs font-semibold text-ink-soft">{m.projects.map.legend}</p>
-        <div className="flex flex-col gap-1.5">
+      {/* Legendă: pe telefon un buton mic (cu numărul de puncte); se deschide la atingere, deasupra hărții, și se închide la fel */}
+      <div className="absolute bottom-3 left-3 z-10 max-w-[calc(100%-4.5rem)]">
+        {legendOpen ? (
+          <div className="max-h-[45dvh] overflow-y-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)]/95 p-2.5 shadow-lg backdrop-blur sm:p-3" data-map-legend="open">
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold text-ink-soft">{m.projects.map.legend}</p>
+              <button type="button" onClick={() => setLegendOpen(false)} aria-label={t("Închide")} className="tap grid size-8 cursor-pointer place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)] sm:size-6">✕</button>
+            </div>
+        <div className="grid grid-cols-1 gap-1.5">
           {showProjects && Object.entries(statusLabels).map(([k, label]) => (
             <div key={k} className="flex items-center gap-2">
               <span className="size-3 rounded-full" style={{ background: STATUS_COLOR[k] ?? "#9ca3af" }} />
@@ -446,10 +453,26 @@ export default function ProjectsMapView({ pins, meters = false }: { pins: Projec
             </div>
           )}
         </div>
+
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setLegendOpen(true)}
+            aria-expanded={false}
+            data-map-legend="closed"
+            className="tap flex h-10 cursor-pointer items-center gap-2 rounded-full border border-[var(--color-line)] bg-[var(--color-surface)]/95 px-3.5 text-xs font-semibold shadow-lg backdrop-blur"
+          >
+            <span aria-hidden>ⓘ</span> {m.projects.map.legend}
+            <span className="font-normal text-ink-soft">
+              {[showProjects ? pins.length : null, meters && showMeters ? shown.length : null].filter((x) => x != null).join(" · ")}
+            </span>
+          </button>
+        )}
       </div>
 
-      {/* Contor */}
-      <div className="absolute right-4 top-4 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2 shadow-lg">
+      {/* Contor (doar pe ecran lat; pe telefon numerele sunt în butonul legendei) */}
+      <div className="absolute right-4 top-4 hidden rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] px-3 py-2 shadow-lg sm:block">
         {showProjects && (
           <div>
             <span className="text-sm font-semibold">{pins.length}</span>

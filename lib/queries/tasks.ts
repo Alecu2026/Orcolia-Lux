@@ -32,6 +32,11 @@ export type TaskRow = {
   consumerName: string | null;
   /** „YYYY-MM-DD” */
   executedOn: string | null;
+  measuresTaken: string | null;
+  resolutionMinutes: number | null;
+  /** Nota (1–5) și comentariul lăsate de client după închiderea cererii. */
+  feedbackRating: number | null;
+  feedbackComment: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -72,6 +77,10 @@ const TASK_SELECT = {
   address: true,
   consumerName: true,
   executedAt: true,
+  measuresTaken: true,
+  resolutionMinutes: true,
+  feedbackRating: true,
+  feedbackComment: true,
   extraAssigneeIds: true,
   extraTeamIds: true,
   assignmentSettingsJson: true,
@@ -179,6 +188,10 @@ function toRow(t: TaskDbRow, l: Lookups): TaskRow {
     address: t.address ?? null,
     consumerName: t.consumerName ?? null,
     executedOn: t.executedAt ? t.executedAt.toISOString().slice(0, 10) : null,
+    measuresTaken: t.measuresTaken ?? null,
+    resolutionMinutes: t.resolutionMinutes ?? null,
+    feedbackRating: t.feedbackRating ?? null,
+    feedbackComment: t.feedbackComment ?? null,
     extraAssigneeIds: t.extraAssigneeIds ?? [],
     extraTeamIds: t.extraTeamIds ?? [],
     assignmentSettingsJson: t.assignmentSettingsJson ?? null,
@@ -497,6 +510,10 @@ function toTuple(t: TaskDbRow): TaskTuple {
     t.color ?? null,
     t.consumerName ?? null,
     t.executedAt ? t.executedAt.toISOString().slice(0, 10) : null,
+    t.measuresTaken ?? null,
+    t.resolutionMinutes ?? null,
+    t.feedbackRating ?? null,
+    t.feedbackComment ?? null,
   ];
 }
 
@@ -656,6 +673,12 @@ export async function getTask(id: string) {
       description: true,
       consumerName: true,
       executedAt: true,
+      measuresTaken: true,
+      resolutionMinutes: true,
+      feedbackRating: true,
+      feedbackComment: true,
+      feedbackAt: true,
+      closedAt: true,
       createdFrom: true,
       activities: {
         select: {

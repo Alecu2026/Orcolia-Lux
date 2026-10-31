@@ -8,10 +8,12 @@
 
 import { addressLocality, cleanSectorList, effectiveSector, parseSectorFilter } from "./sector-filter";
 import type { SnapInvoice } from "./payer-notify";
+import { matchesMetrologyFilter, METROLOGY_FILTER_VALUES, metrologyDueKey, type MetrologyFilter } from "./metrology";
+import { DEFAULT_TZ, todayKey } from "./date";
 
 // ── Filtre ──────────────────────────────────────────────────────────────────────────────────────
 
-export type MeterSort = "" | "contor" | "installDesc" | "installAsc" | "consumDesc" | "consumAsc" | "debtDesc" | "readDesc";
+export type MeterSort = "" | "contor" | "installDesc" | "installAsc" | "consumDesc" | "consumAsc" | "debtDesc" | "readDesc" | "metroAsc";
 
 export type MeterFilters = {
   /** Căutare text (toate cuvintele): nr. contor, abonat, cont, contract, adresă, consumator, telefon, email. */
@@ -41,12 +43,14 @@ export type MeterFilters = {
   installedTo: string;
   /** Sursa datelor: exportul 1C sau exportul Axioma (contoare fără rând în 1C). */
   source: "" | "1c" | "axioma";
+  /** Verificarea metrologică (pe scadență): fără dată / expirată / expiră în 10, 30 sau 60 de zile. */
+  metrology: MetrologyFilter;
   sort: MeterSort;
 };
 
 export const EMPTY_METER_FILTERS: MeterFilters = {
   q: "", street: "", status: "", reading: "", consum: "", sursa: "", estimated: "", shared: "", kind: "", sector: "", usector: "", uloc: "", account: "", debt: "",
-  invoiceStatus: "", installedFrom: "", installedTo: "", source: "", sort: "",
+  invoiceStatus: "", installedFrom: "", installedTo: "", source: "", metrology: "", sort: "",
 };
 
 const ONE_OF = <T extends string>(v: unknown, allowed: readonly T[]): T | "" =>
@@ -84,7 +88,8 @@ export function sanitizeMeterFilters(src: Source): MeterFilters {
     installedFrom,
     installedTo,
     source: ONE_OF(get(src, "source"), ["1c", "axioma"] as const),
-    sort: ONE_OF(get(src, "sort"), ["contor", "installDesc", "installAsc", "consumDesc", "consumAsc", "debtDesc", "readDesc"] as const),
+    metrology: ONE_OF(get(src, "metrology"), METROLOGY_FILTER_VALUES),
+    sort: ONE_OF(get(src, "sort"), ["contor", "installDesc", "installAsc", "consumDesc", "consumAsc", "debtDesc", "readDesc", "metroAsc"] as const),
   };
 }
 
@@ -128,6 +133,8 @@ export type MeterTuple = [
   string | null,
   /** 35 sectorul din 1C („Участок”) al abonatului */
   string | null,
+  /** 36 data ultimei verificări metrologice („YYYY-MM-DD”) — lipsește în listele salvate înainte de această versiune */
+  string | null,
 ];
 
 export type MeterRowBase = {
@@ -165,6 +172,10 @@ export type MeterRowBase = {
   sector: string | null;
   /** Sectorul din 1C („Участок”) al abonatului, dacă e completat. */
   uch: string | null;
+  /** Data ultimei verificări metrologice, introdusă manual („YYYY-MM-DD”). */
+  metroVerified: string | null;
+  /** Scadența următoarei verificări (data + 5 ani). */
+  metroDue: string | null;
 };
 
 /**
@@ -236,6 +247,8 @@ export function decodeMeters(tuples: MeterTuple[], presorted = false): MeterRow[
       invoice,
       sector: t[34],
       uch: effectiveSector(t[35], t[34]),
+      metroVerified: t[36] ?? null,
+      metroDue: t[36] ? metrologyDueKey(t[36]) : null,
       _h: [t[2], t[3], t[4], t[5], t[6], t[7], t[25], t[26]].filter(Boolean).join("\n").toLowerCase(),
       _a: addressKey(t[6]),
       _ac: 0,
@@ -286,6 +299,7 @@ function orderFor(rows: MeterRow[], sort: Exclude<MeterSort, "">): Uint32Array {
     else if (sort === "installDesc") byStr((r) => r.installedAt ?? "", -1);
     else if (sort === "installAsc") byStr((r) => r.installedAt ?? "", 1);
     else if (sort === "readDesc") byStr((r) => r.currDate ?? "", -1);
+    else if (sort === "metroAsc") byStr((r) => r.metroDue ?? "", 1);
     else byStr((r) => r.contor, 1, true); // "contor"
     ord = Uint32Array.from(idx);
     m.set(sort, ord);
@@ -305,6 +319,7 @@ export function filterMeters(allRows: MeterRow[], f: MeterFilters): MeterRow[] {
   const uSectors = parseSectorFilter(f.usector);
   const uLocs = parseSectorFilter(f.uloc);
   const order = f.sort ? orderFor(allRows, f.sort) : null;
+  const today = f.metrology ? todayKey(DEFAULT_TZ) : "";
   const out: MeterRow[] = [];
 
   for (let k = 0, n = allRows.length; k < n; k++) {
@@ -327,6 +342,7 @@ export function filterMeters(allRows: MeterRow[], f: MeterFilters): MeterRow[] {
     if (uLocs && !uLocs.has(addressLocality(r.address))) continue;
     if (f.account === "activated" ? !r.activated : f.account === "pending" ? r.activated : false) continue;
     if (f.source === "1c" ? r.source !== "1c" : f.source === "axioma" ? r.source !== "axioma" : false) continue;
+    if (f.metrology && !matchesMetrologyFilter(r.metroDue, f.metrology, today)) continue;
     if (f.invoiceStatus && r.invoice?.status !== f.invoiceStatus) continue;
     if (f.debt === "has" ? !(r.invoice && r._dk > 0) : f.debt === "none" ? !(r.invoice && r._dk <= 0) : false) continue;
     if (f.installedFrom && !(r.installedAt && r.installedAt >= f.installedFrom)) continue;

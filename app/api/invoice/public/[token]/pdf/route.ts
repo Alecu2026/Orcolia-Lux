@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getInvoiceByToken } from "@/lib/queries/invoices";
 import { selfBaseUrl } from "@/lib/self-url";
-import { launchBrowser } from "@/lib/pdf-browser";
+import { PdfBrowserError, launchBrowser } from "@/lib/pdf-browser";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,7 +35,8 @@ export async function GET(
       },
     });
   } catch (e) {
-    console.error("[invoice/pdf] eșec generare PDF:", e);
+    if (e instanceof PdfBrowserError) console.error(`[invoice/pdf] Chromium indisponibil: ${e.attempts.join(" | ")} — ${e.hint}`);
+    else console.error("[invoice/pdf] eșec generare PDF:", e);
     const detail = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: `Nu am putut genera PDF-ul.`, detail }, { status: 500 });
   } finally {

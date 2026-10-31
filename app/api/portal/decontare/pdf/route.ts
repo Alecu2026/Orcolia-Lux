@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getCurrentClient } from "@/lib/client-dal";
-import { launchBrowser } from "@/lib/pdf-browser";
+import { PdfBrowserError, launchBrowser } from "@/lib/pdf-browser";
 import { LOCALE_COOKIE } from "@/lib/i18n/locale-cookie";
 import { selfBaseUrl } from "@/lib/self-url";
 
@@ -45,8 +45,12 @@ export async function GET(req: Request) {
       },
     });
   } catch (e) {
+    if (e instanceof PdfBrowserError) {
+      console.error(`[portal/decontare/pdf] Chromium indisponibil: ${e.attempts.join(" | ")} — ${e.hint}`);
+      return NextResponse.json({ error: "Nu am putut genera PDF-ul.", code: "BROWSER" }, { status: 500 });
+    }
     console.error("[portal/decontare/pdf] eșec generare PDF:", e);
-    return NextResponse.json({ error: "Nu am putut genera PDF-ul." }, { status: 500 });
+    return NextResponse.json({ error: "Nu am putut genera PDF-ul.", code: "PAGE" }, { status: 500 });
   } finally {
     await browser?.close().catch(() => {});
     await browser?.cleanup().catch(() => {});

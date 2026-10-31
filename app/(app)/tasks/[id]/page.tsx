@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 import type { TaskStatus } from "@prisma/client";
 import CloseTicketButton from "@/app/components/CloseTicketButton";
 import ExecutionDateField from "@/app/components/ExecutionDateField";
+import TicketResolution from "@/app/components/TicketResolution";
 import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
@@ -357,11 +358,40 @@ export default async function TaskDetailPage({
           )}
         </div>
 
+        {task.type === "TICKET" && (task.status === "DONE" || task.status === "CANCELLED" || task.measuresTaken || task.resolutionMinutes != null) && (
+          <TicketResolution
+            taskId={id}
+            measures={task.measuresTaken ?? null}
+            minutes={task.resolutionMinutes ?? null}
+            createdAt={task.createdAt.toISOString()}
+            closedAt={task.closedAt ? task.closedAt.toISOString() : null}
+            canEdit={canEditTask(user)}
+          />
+        )}
+
+        {task.type === "TICKET" && task.clientId && task.status === "DONE" && (
+          <section className={`mt-4 rounded-xl border p-3 ${task.feedbackRating != null && task.feedbackRating <= 2 ? "border-st-cancelled/40 bg-st-cancelled/5" : "border-[var(--color-line)] bg-[var(--color-surface-2)]/50"}`} data-staff-feedback="">
+            <h3 className="text-sm font-bold">{tr("Feedback client")}</h3>
+            {task.feedbackRating != null ? (
+              <>
+                <p className="mt-1 text-lg leading-none text-st-progress" aria-label={`${task.feedbackRating}/5`}>
+                  {"★".repeat(task.feedbackRating)}<span className="text-ink-soft/30">{"★".repeat(5 - task.feedbackRating)}</span>
+                  <span className="ml-2 text-xs font-normal text-ink-soft">{task.feedbackRating}/5{task.feedbackAt ? ` · ${task.feedbackAt.toLocaleDateString("ro-RO", { timeZone: TZ })}` : ""}</span>
+                </p>
+                {task.feedbackComment && <p className="mt-1.5 whitespace-pre-wrap break-words text-sm">{task.feedbackComment}</p>}
+                {task.feedbackRating <= 2 && <p className="mt-1.5 text-xs font-medium text-st-cancelled">{tr("Client nemulțumit: se recomandă să-l contactați.")}</p>}
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-ink-soft">{tr("Clientul nu a lăsat încă feedback.")}</p>
+            )}
+          </section>
+        )}
+
         <div className="mt-4 border-t border-[var(--color-line)] pt-4 flex flex-col gap-3">
-          <TaskStatusChanger taskId={id} initialStatus={task.status} disabled={!canWork && !can(user, "tasks.close")} closeOnly={!canWork} />
+          <TaskStatusChanger taskId={id} initialStatus={task.status} disabled={!canWork && !can(user, "tasks.close")} closeOnly={!canWork} title={task.title} createdAt={task.createdAt.toISOString()} />
           {task.type === "TICKET" && task.status !== "DONE" && task.status !== "CANCELLED" && (canWork || can(user, "tasks.close")) && (
             <div className="flex justify-end">
-              <CloseTicketButton taskId={id} />
+              <CloseTicketButton taskId={id} title={task.title} createdAt={task.createdAt.toISOString()} />
             </div>
           )}
         </div>

@@ -20,8 +20,8 @@ export function register() {
   setTimeout(() => {
     // Sarcini + programări (reamintiri noi) + reminderele vechi ale programărilor către clienți (până acum le procesa doar cron-ul extern).
     const tick = () =>
-      Promise.all([import("./lib/services/tasks"), import("./lib/services/appointment-reminders"), import("./lib/services/reminders"), import("./lib/delivery-log"), import("./lib/services/contract-expiry")])
-        .then(([tasks, appts, legacy, d, contracts]) =>
+      Promise.all([import("./lib/services/tasks"), import("./lib/services/appointment-reminders"), import("./lib/services/reminders"), import("./lib/delivery-log"), import("./lib/services/contract-expiry"), import("./lib/services/metrology-expiry"), import("./lib/services/meter-issue-deadlines")])
+        .then(([tasks, appts, legacy, d, contracts, metrology, issues]) =>
           d.withDeliveryMeta({ source: "timer" }, () =>
             Promise.all([
               tasks.checkTaskReminders().catch((e) => console.error("[startup] reamintirile sarcinilor:", e)),
@@ -29,6 +29,10 @@ export function register() {
               legacy.processDueReminders().catch((e) => console.error("[startup] reminderele vechi ale programărilor:", e)),
               // contractele care expiră (30 / 10 zile): se verifică o dată la ~25 de minute (limitat în funcție), fiecare etapă pleacă o singură dată
               contracts.checkContractExpiry().catch((e) => console.error("[startup] expirarea contractelor:", e)),
+              // verificările metrologice care ajung la scadență (60 / 30 / 10 zile), tot la ~25 de minute
+              metrology.checkMetrologyExpiry().catch((e) => console.error("[startup] verificările metrologice:", e)),
+              // termenele de remediere ale neregulilor de contor (cu 3 zile înainte și la depășire)
+              issues.checkMeterIssueDeadlines().catch((e) => console.error("[startup] termenele neregulilor de contor:", e)),
             ]),
           ),
         )

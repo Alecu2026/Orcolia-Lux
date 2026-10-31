@@ -1,6 +1,8 @@
 import { getCurrentUser } from "@/lib/dal";
 import { can, canViewTask, canViewTaskData } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { canEditMetrology } from "@/lib/services/metrology-admin";
+import { contractKey } from "@/lib/contract-expiry";
 import { getMeterDetail, type MeterDetail } from "@/lib/queries/meters";
 import { getPayerInvoices } from "@/lib/queries/payers";
 import { getMeterSnap } from "@/lib/services/meter-cache";
@@ -21,6 +23,9 @@ export type MeterPageMeter = {
   field: ReadingDto[];
   issues: IssueDto[];
   canManageIssues: boolean;
+  /** data ultimei verificări metrologice („YYYY-MM-DD”) și dacă utilizatorul o poate modifica */
+  metrology: string | null;
+  canEditMetrology: boolean;
   /** Doar dacă a fost cerut (`row=1`): rândul din lista din memorie al serverului, pentru cine nu-l are deja în browser. */
   row: MeterRowBase | null;
 };
@@ -79,9 +84,9 @@ export async function GET(req: Request) {
     const id = sp.get("id") ?? "";
     if (!id || id.length > 300) return Response.json({ error: "Id invalid." }, { status: 400 });
     const wantRow = sp.get("row") === "1";
-    const [detail, field, issues, snap] = await Promise.all([getMeterDetail(id, { historyLimit: 120 }), listMeterReadings(id), listMeterIssues(id), wantRow ? getMeterSnap() : Promise.resolve(null)]);
+    const [detail, field, issues, snap, metro] = await Promise.all([getMeterDetail(id, { historyLimit: 120 }), listMeterReadings(id), listMeterIssues(id), wantRow ? getMeterSnap() : Promise.resolve(null), prisma.meterMetrology.findUnique({ where: { meterId: id }, select: { verifiedAt: true } })]);
     const found = snap?.rows.find((r) => r.id === id) ?? null;
-    const body: MeterPageMeter = { detail, field, issues, canManageIssues: can(user, "meters.manage"), row: found ? plainMeter(found) : null };
+    const body: MeterPageMeter = { detail, field, issues, canManageIssues: can(user, "meters.manage"), metrology: contractKey(metro?.verifiedAt), canEditMetrology: canEditMetrology(user), row: found ? plainMeter(found) : null };
     return Response.json(body, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     console.error("[contoare-page] eșuat:", e);

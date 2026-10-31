@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { setTaskStatus } from "@/app/actions/tasks";
 import { useToast } from "./toast";
 import { useProofPrompt } from "./ProofDialog";
+import { useResolutionPrompt } from "./ResolutionDialog";
+import type { Resolution } from "@/lib/resolution";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
 
@@ -37,8 +39,13 @@ export default function TaskStatusChanger({
   initialStatus,
   disabled = false,
   closeOnly = false,
+  title,
+  createdAt,
 }: {
   taskId: string;
+  /** Pentru fereastra „Finalizare cerere”: titlul și data depunerii. */
+  title?: string | null;
+  createdAt?: string | number | Date | null;
   initialStatus: string;
   /** Fără drept de lucru pe task: butoanele se văd, dar nu se pot apăsa. */
   disabled?: boolean;
@@ -49,6 +56,7 @@ export default function TaskStatusChanger({
   const router = useRouter();
   const toast = useToast();
   const proof = useProofPrompt();
+  const rp = useResolutionPrompt();
   const m = useMessages();
   const [, startTransition] = useTransition();
   const [status, setStatus] = useState(initialStatus as Status);
@@ -60,16 +68,17 @@ export default function TaskStatusChanger({
     color: STATUS_COLORS[value],
   }));
 
-  async function change(next: Status) {
+  async function change(next: Status, resolution?: Resolution) {
     if (next === status || busy || disabled || (closeOnly && next !== "DONE" && next !== "CANCELLED")) return;
     const prev = status;
     setStatus(next);
     setBusy(true);
     try {
-      const res = await setTaskStatus(taskId, next);
+      const res = await setTaskStatus(taskId, next, resolution);
       if (res?.error) {
         setStatus(prev);
-        if (res.needsProof) proof.ask(taskId, () => void change(next));
+        if (res.needsResolution) rp.ask({ title, createdAt }, (r) => void change(next, r));
+        else if (res.needsProof) proof.ask(taskId, () => void change(next, resolution));
         else toast.error(t(res.error));
       } else {
         toast.success(`Status: ${m.status[next]}`);
@@ -83,6 +92,7 @@ export default function TaskStatusChanger({
   return (
     <div className="flex flex-wrap gap-1.5">
       {proof.node}
+      {rp.node}
       {STATUSES.map((s) => {
         const isActive = s.value === status;
         return (

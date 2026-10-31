@@ -7,6 +7,8 @@
 import { addressLocality, cleanSectorList, effectiveSector, parseSectorFilter } from "./sector-filter";
 import type { PayerRow } from "./queries/payers";
 import { matchesContractFilter, type ContractExpFilter } from "./contract-expiry";
+import { matchesMetrologyFilter, METROLOGY_FILTER_VALUES, type MetrologyFilter } from "./metrology";
+import { matchesPayerIssueFilter, PAYER_ISSUE_FILTER_VALUES, type PayerIssueFilter } from "./meter-issue-register";
 import { todayKey } from "./date";
 
 // ── Filtre ──────────────────────────────────────────────────────────────────────────────────────
@@ -51,11 +53,15 @@ export type NotifyFilters = {
   estimated: "" | "yes" | "no";
   /** Contractul plătitorului: fără dată / expirat / expiră în 10 sau 30 de zile. */
   contractExp: ContractExpFilter;
+  /** Verificarea metrologică a contoarelor (cea mai apropiată scadență): fără dată / expirată / expiră în 10, 30 sau 60 de zile. */
+  metrologyExp: MetrologyFilter;
+  /** Neregulile de contor ale plătitorului: cu neregulă deschisă / termen depășit / expiră în 7 zile / fără nereguli. */
+  meterIssues: PayerIssueFilter;
 };
 
 export const EMPTY_FILTERS: NotifyFilters = {
   q: "", street: "", month: "", account: "", sector: "", usector: "", uloc: "", invoiceStatus: "", debt: "",
-  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", sort: "", nameFix: "", invoices: "", estimated: "", contractExp: "",
+  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", sort: "", nameFix: "", invoices: "", estimated: "", contractExp: "", metrologyExp: "", meterIssues: "",
 };
 
 /** „Toate" = o pagină cât toată lista (plafon de siguranță; sunt ~19.000 de plătitori). */
@@ -163,6 +169,8 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     invoices: ONE_OF(get(src, "invoices"), ["none"] as const),
     estimated: ONE_OF(get(src, "estimated"), ["yes", "no"] as const),
     contractExp: ONE_OF(get(src, "contractExp"), ["none", "expired", "10d", "30d"] as const),
+    metrologyExp: ONE_OF(get(src, "metrologyExp"), METROLOGY_FILTER_VALUES),
+    meterIssues: ONE_OF(get(src, "meterIssues"), PAYER_ISSUE_FILTER_VALUES),
   };
 }
 
@@ -195,6 +203,8 @@ export const NOTIFY_TOKENS = [
   { key: "scadenta", label: "Scadență" },
   { key: "adresa", label: "Adresă" },
   { key: "link", label: "Link factură (se deschide direct)" },
+  { key: "neregula", label: "Neregulă contor (tip + nr. contor)" },
+  { key: "termen_remediere", label: "Termen de remediere al neregulii" },
 ] as const;
 export type NotifyTokenKey = (typeof NOTIFY_TOKENS)[number]["key"];
 export type NotifyVars = Record<NotifyTokenKey, string>;
@@ -224,6 +234,10 @@ export function buildVars(p: {
   address: string | null;
   /** Linkul public al facturii (se deschide fără autentificare). */
   invoiceLink?: string | null;
+  /** Neregulile deschise de contor, ca text („Sigiliu rupt sau lipsă (contor 123)”). */
+  issues?: string | null;
+  /** Cel mai apropiat termen de remediere. */
+  issueDue?: string | Date | null;
 }): NotifyVars {
   return {
     nume: p.name,
@@ -233,6 +247,8 @@ export function buildVars(p: {
     scadenta: p.dueDate ? fmtDay(p.dueDate) : "—",
     adresa: p.address ?? "—",
     link: p.invoiceLink ?? "—",
+    neregula: p.issues || "—",
+    termen_remediere: p.issueDue ? fmtDay(p.issueDue) : "—",
   };
 }
 
@@ -256,6 +272,15 @@ export const NOTIFY_PRESETS: NotifyPreset[] = [
       "Stimate(ă) {nume},\n\nFactura {factura} în valoare de {suma} (cont {cont}) a fost emisă. Scadență: {scadenta}.\n\nVezi factura: {link}\n\nVă mulțumim!",
     sms: "Apa-Canal: factura {factura} de {suma} a fost emisa. Scadenta: {scadenta}. {link}",
     call: "Bună ziua, {nume}. Vă informăm că a fost emisă factura {factura} în valoare de {suma}. Termenul de plată este {scadenta}. Vă mulțumim!",
+  },
+  {
+    key: "issue",
+    label: "Neregulă de contor",
+    subject: "Neregulă constatată la contor — termen de remediere {termen_remediere}",
+    email:
+      "Stimate(ă) {nume},\n\nLa contorul dumneavoastră (cont {cont}, adresa {adresa}) s-a constatat: {neregula}.\n\nVă rugăm să remediați situația până la {termen_remediere} sau să ne contactați.\n\nVă mulțumim!",
+    sms: "Apa-Canal: {nume}, la contorul dvs. s-a constatat: {neregula}. Remediati pana la {termen_remediere} sau contactati-ne.",
+    call: "Bună ziua, {nume}. Vă sunăm de la Apă-Canal. La contorul dumneavoastră s-a constatat: {neregula}. Vă rugăm să remediați situația până la {termen_remediere}. Vă mulțumim!",
   },
   {
     key: "announce",
@@ -415,6 +440,12 @@ export type SnapTuple = [
   estimated?: 0 | 1,
   /** „YYYY-MM-DD” — data expirării contractului (lipsește în listele salvate înainte de această versiune) */
   contractExp?: string | null,
+  /** „YYYY-MM-DD” — cea mai apropiată scadență a verificării metrologice (lipsește în listele salvate înainte de această versiune) */
+  metrologyDue?: string | null,
+  /** câte nereguli de contor deschise are (lipsește în listele salvate înainte de această versiune) */
+  issuesOpen?: number,
+  /** „YYYY-MM-DD” — cel mai apropiat termen de remediere dintre neregulile deschise */
+  issueDue?: string | null,
 ];
 /** Factura unei luni: [clientId, număr, status, total, valută, scadență ms]. */
 export type MonthTuple = [clientId: string, number: string, status: string, total: number, currency: string, dueMs: number | null];
@@ -452,6 +483,9 @@ export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[
     _dk: t[8] == null ? NaN : (t[10] ?? 0),
     estimated: t[18] === 1,
     contractExpiresAt: t[19] ?? null,
+    metrologyDueAt: t[20] ?? null,
+    issuesOpen: t[21] ?? 0,
+    issueDueAt: t[22] ?? null,
   }));
   if (!presorted) rows.sort((a, b) => collatorRo.compare(a.name, b.name)); // o singură dată; filtrarea păstrează ordinea
   return rows;
@@ -580,6 +614,8 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
     if (f.invoices === "none" && r.latestInvoice) continue;
     if (f.estimated === "yes" ? !r.estimated : f.estimated === "no" ? r.estimated : false) continue;
     if (f.contractExp && !matchesContractFilter(r.contractExpiresAt, f.contractExp, today)) continue;
+    if (f.metrologyExp && !matchesMetrologyFilter(r.metrologyDueAt, f.metrologyExp, today)) continue;
+    if (f.meterIssues && !matchesPayerIssueFilter(r.issuesOpen, r.issueDueAt, f.meterIssues, today)) continue;
 
     if (money) {
       const inv = r.latestInvoice;

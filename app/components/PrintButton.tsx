@@ -24,7 +24,9 @@ export default function PrintButton({ token, origin }: { token: string; origin: 
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      alert(t("Nu am putut descărca PDF-ul. Încearcă din nou."));
+      // generatorul de pe server nu răspunde (ex. Chromium lipsă): factura se poate salva ca PDF din dialogul de tipărire al browserului
+      alert(t("PDF-ul nu s-a putut genera pe server. Se deschide tipărirea: alege „Salvează ca PDF”."));
+      window.print();
     } finally {
       setDownloading(false);
     }

@@ -14,6 +14,8 @@ import {
   TASK_PRIORITY_RO,
 } from "../telegram";
 import { formatTime, formatDate, DEFAULT_TZ, todayKey } from "../date";
+import { notifyClientTicketClosed } from "./ticket-client-notify";
+import { validateResolution, type Resolution } from "../resolution";
 import { can } from "../permissions";
 import { env } from "../env";
 import { absoluteUrl } from "../storage";
@@ -534,7 +536,7 @@ export async function changeTaskStatus(
   taskId: string,
   actorId: string,
   newStatus: TaskStatus,
-  opts: { fromTelegram?: boolean } = {},
+  opts: { fromTelegram?: boolean; /** „Măsuri luate” + timp de rezolvare: obligatorii la finalizarea unei cereri */ resolution?: Resolution | null } = {},
 ) {
   console.log(`[tasks] changeTaskStatus: task=${taskId} actor=${actorId} -> ${newStatus}`);
   if (DEMO) return { ok: false as const, error: "Mod demo." };
@@ -573,6 +575,19 @@ export async function changeTaskStatus(
   }
 
   // Fără „Editare" poți schimba statusul doar la task-urile în care ești implicat (și din Telegram, și din aplicație).
+  // Finalizarea unei CERERI cere „Măsuri luate” (și, opțional, timpul de rezolvare): fără ele, interfața le cere într-o fereastră și reia finalizarea.
+  // Din Telegram nu se pot completa: cererea se finalizează din aplicație.
+  if (newStatus === "DONE" && task.type === "TICKET") {
+    const bad = validateResolution(opts.resolution ?? {});
+    if (bad) {
+      return {
+        ok: false as const,
+        error: opts.fromTelegram ? "Cererea se finalizează din aplicație: completează „Măsuri luate” și timpul de rezolvare." : bad,
+        needsResolution: true,
+      };
+    }
+  }
+
   if (!(await actorMayWorkOnTask(actorId, task, newStatus === "DONE" || newStatus === "CANCELLED"))) {
     return { ok: false as const, error: opts.fromTelegram ? "Nu ai acces la această sarcină." : "Nu ai permisiunea de editare." };
   }
@@ -613,12 +628,17 @@ export async function changeTaskStatus(
       ...(closed ? { nextReminderAt: null } : restartReminderAt ? { nextReminderAt: restartReminderAt } : {}),
       // cerere finalizată: „Data executării” = azi, dacă echipa n-a setat-o deja (se poate corecta oricând)
       ...(newStatus === "DONE" && task.type === "TICKET" && !task.executedAt ? { executedAt: new Date(`${todayKey(DEFAULT_TZ)}T00:00:00Z`) } : {}),
+      // când s-a închis (Finalizat / Anulat); redeschisă = gol. Măsurile și timpul se păstrează la redeschidere, iar o nouă finalizare le rescrie.
+      ...(closed ? { closedAt: new Date() } : wasClosed ? { closedAt: null } : {}),
+      ...(newStatus === "DONE" && task.type === "TICKET" && opts.resolution ? { measuresTaken: opts.resolution.measures.trim().slice(0, 2000), resolutionMinutes: opts.resolution.minutes ?? null } : {}),
     },
   });
   await prisma.taskActivity
-    .create({ data: { taskId, userId: actorId, action: "STATUS_CHANGED", fromStatus: task.status, toStatus: newStatus } })
+    .create({ data: { taskId, userId: actorId, action: "STATUS_CHANGED", fromStatus: task.status, toStatus: newStatus, ...(newStatus === "DONE" && task.type === "TICKET" && opts.resolution ? { note: `Măsuri luate: ${opts.resolution.measures.trim().slice(0, 500)}${opts.resolution.minutes != null ? ` · Timp de rezolvare: ${opts.resolution.minutes} min` : ""}` } : {}) } })
     .catch((e) => console.error(`[tasks] changeTaskStatus: jurnalizare TaskActivity eșuată pentru ${taskId}`, e));
   console.log(`[tasks] changeTaskStatus: salvat în DB — ${task.status} → ${newStatus}`);
+  // cererea clientului din portal e rezolvată / închisă: clientul primește un email (doar pentru cererile create din portal)
+  if (task.type === "TICKET" && (newStatus === "DONE" || newStatus === "CANCELLED")) notifyClientTicketClosed(taskId, newStatus);
 
   // Notificări best-effort (nu afectează rezultatul scrierii de mai sus)
   try {
@@ -984,6 +1004,8 @@ export type UpdateTaskInput = {
   clientId?: string | null;
   categoryId?: string | null;
   address?: string | null;
+  /** Numele consumatorului pentru care s-a depus cererea. */
+  consumerName?: string | null;
   priority?: TaskPriority;
   dueAt?: Date | null;
   reminderIntervalMinutes?: number | null;
@@ -1008,7 +1030,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
     select: {
       id: true, seq: true, title: true, type: true,
       description: true, priority: true, dueAt: true,
-      assigneeId: true, teamId: true, projectId: true, address: true,
+      assigneeId: true, teamId: true, projectId: true, address: true, consumerName: true,
       creatorId: true, extraAssigneeIds: true, extraTeamIds: true,
       assignee: { select: { name: true, teamIds: true } },
       team: { select: { name: true } },
@@ -1044,6 +1066,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
   }
   if ("categoryId" in input) data.categoryId = input.categoryId || null;
   if ("address" in input) data.address = input.address?.trim().slice(0, 300) || null;
+  if ("consumerName" in input) data.consumerName = input.consumerName?.replace(/\s+/g, " ").trim().slice(0, 150) || null;
   if (input.priority !== undefined) data.priority = input.priority;
   if ("dueAt" in input) {
     data.dueAt = input.dueAt ?? null;
@@ -1143,6 +1166,10 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
     if ("address" in input) {
       const na = input.address?.trim().slice(0, 300) || null;
       if (na !== (task.address ?? null)) changes.push({ field: "Adresă", from: task.address ?? null, to: na });
+    }
+    if ("consumerName" in input) {
+      const nn = input.consumerName?.replace(/\s+/g, " ").trim().slice(0, 150) || null;
+      if (nn !== (task.consumerName ?? null)) changes.push({ field: "Nume consumator", from: task.consumerName ?? null, to: nn });
     }
     if ("categoryId" in input) {
       const nc = input.categoryId || null;

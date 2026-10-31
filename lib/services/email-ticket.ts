@@ -6,6 +6,7 @@ import { filteredAdminRecipients, notifyUsers, observerRecipients } from "./noti
 import nodemailer from "nodemailer";
 import { htmlToText } from "../email-body";
 import { wrapMailTransport, type DeliveryMeta } from "../delivery-log";
+import { AUTOCLOSE_DEFAULT_HOURS, cleanAutoCloseHours, roLast, roSpan } from "../ticket-autoclose";
 
 // ── Email transport (shared with lib/email.ts logic) ────────────────────────
 function getTransport(meta?: DeliveryMeta) {
@@ -107,7 +108,7 @@ async function findExistingTicket(email: InboundEmail): Promise<string | null> {
   if (inReplyTo) {
     const msg = await prisma.emailMessage.findFirst({
       where: {
-        messageId: inReplyTo,
+        messageId: { in: [inReplyTo, `<${inReplyTo}>`] },
         task: { emailSource: true, status: { notIn: ["DONE", "CANCELLED"] } },
       },
       select: { taskId: true },
@@ -119,7 +120,7 @@ async function findExistingTicket(email: InboundEmail): Promise<string | null> {
   for (const ref of refs) {
     const msg = await prisma.emailMessage.findFirst({
       where: {
-        messageId: ref,
+        messageId: { in: [ref, `<${ref}>`] },
         task: { emailSource: true, status: { notIn: ["DONE", "CANCELLED"] } },
       },
       select: { taskId: true },
@@ -357,6 +358,8 @@ async function sendAutoAck(opts: {
       messageId: msgId,
       inReplyTo: opts.emailThreadId ? `<${opts.emailThreadId}>` : undefined,
       references: opts.emailThreadId ? `<${opts.emailThreadId}>` : undefined,
+      // răspuns automat (RFC 3834): sistemele de tip „în afara biroului” și listele nu-i mai răspund → fără buclă de confirmări
+      headers: { "Auto-Submitted": "auto-replied", "X-Auto-Response-Suppress": "All", Precedence: "auto_reply" },
     });
     return stripMsgBrackets(msgId);
   } catch (err: unknown) {
@@ -433,7 +436,7 @@ export async function sendEmailReply(opts: {
       toEmail: ticket.fromEmail,
       subject,
       body: opts.replyBody,
-      messageId: msgId,
+      messageId: stripMsgBrackets(msgId),
     },
   });
 
@@ -541,13 +544,17 @@ export async function checkUnansweredEmailTickets(): Promise<number> {
   return count;
 }
 
-// ── Cron: auto-close 48h după ultimul răspuns al operatorului fără reply client ─
+// ── Cron: închidere automată după N ore (Setări; implicit 48) de la ultimul răspuns al operatorului, fără reply client ─
 export async function checkAutoCloseEmailTickets(): Promise<number> {
   if (DEMO) return 0;
 
-  const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const cfg = await prisma.companySettings.findFirst({ where: { singleton: "main" }, select: { emailTicketAutoCloseEnabled: true, emailTicketAutoCloseHours: true } }).catch(() => null);
+  if (cfg && cfg.emailTicketAutoCloseEnabled === false) return 0;
+  const hours = cleanAutoCloseHours(cfg?.emailTicketAutoCloseHours) ?? AUTOCLOSE_DEFAULT_HOURS;
+  const span = roSpan(hours);
+  const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
 
-  // Tichete deschise care au cel puțin un mesaj OUTBOUND trimis acum >48h
+  // Tichete deschise care au cel puțin un mesaj OUTBOUND trimis acum mai mult de N ore
   const openTickets = await prisma.task.findMany({
     where: {
       emailSource: true,
@@ -579,8 +586,8 @@ export async function checkAutoCloseEmailTickets(): Promise<number> {
     // Nu închidem dacă operatorul nu a răspuns niciodată
     if (!lastOutbound) continue;
 
-    // Nu închidem dacă ultimul răspuns operator e mai recent de 48h
-    if (lastOutbound.sentAt > fortyEightHoursAgo) continue;
+    // Nu închidem dacă ultimul răspuns operator e mai recent de N ore
+    if (lastOutbound.sentAt > cutoff) continue;
 
     // Nu închidem dacă clientul a mai scris DUPĂ ultimul răspuns al operatorului
     if (t.lastClientEmailAt && t.lastClientEmailAt > lastOutbound.sentAt) continue;
@@ -588,13 +595,14 @@ export async function checkAutoCloseEmailTickets(): Promise<number> {
     // Închidem tichetul
     await prisma.task.update({
       where: { id: t.id },
-      data: { status: "DONE", autoCloseWarnedAt: null },
+      // închidere de sistem (fără operator): data închiderii și motivul în „Măsuri luate”, ca cererea să nu rămână fără rezolvare înregistrată
+      data: { status: "DONE", autoCloseWarnedAt: null, closedAt: new Date(), measuresTaken: `Închisă automat: fără răspuns de la client în ${span}.` },
     });
 
     // Notificăm clientul că tichetul a fost închis
     if (transport && t.fromEmail) {
       const subject = `Re: ${t.title}`;
-      const body = `Bună,\n\nCererea dumneavoastră a fost închisă automat deoarece nu am primit niciun răspuns în ultimele 48 de ore.\n\nDacă mai aveți nevoie de ajutor, scrieți-ne oricând și vom deschide o nouă cerere.\n\n— ${fromName}`;
+      const body = `Bună,\n\nCererea dumneavoastră a fost închisă automat deoarece nu am primit niciun răspuns în ${roLast(hours)}.\n\nDacă mai aveți nevoie de ajutor, scrieți-ne oricând și vom deschide o nouă cerere.\n\n— ${fromName}`;
       const msgId = `<autoclose-${t.id}-${Date.now()}@${msgDomain()}>`;
       await transport.sendMail({
         from: `${fromName} <${fromAddr}>`,

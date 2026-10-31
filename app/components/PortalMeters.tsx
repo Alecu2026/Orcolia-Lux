@@ -10,6 +10,8 @@ import { optimizeImage } from "@/lib/image-optimize";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 import { IconChevronDown } from "./icons";
+import ContractExpiry from "./ContractExpiry";
+import { daysUntil } from "@/lib/contract-expiry";
 
 const inp = "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
 const nf = (n: number) => String(Math.round(n * 1000) / 1000).replace(".", ",");
@@ -146,6 +148,16 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
           <p className="text-base font-bold">{m.contor}</p>
           {m.address && <p className="text-xs text-ink-soft">🏠 {m.address}</p>}
           {m.consumer && <p className="text-[11px] text-ink-soft">{m.consumer}</p>}
+          {m.metroDue && (
+            <p className="mt-1 text-xs text-ink-soft" data-portal-metrology="">
+              🔧 {t("Verificare metrologică valabilă până la")}: <b><ContractExpiry date={m.metroDue} /></b>
+            </p>
+          )}
+          {m.metroDue && daysUntil(m.metroDue) <= 60 && (
+            <p className="mt-1 rounded-lg bg-st-progress/10 px-2 py-1 text-[11px] font-medium text-st-progress">
+              {daysUntil(m.metroDue) < 0 ? t("Verificarea metrologică a expirat. Contactați-ne pentru a programa verificarea.") : t("Verificarea metrologică se apropie de scadență. Contactați-ne pentru a programa verificarea.")}
+            </p>
+          )}
         </div>
 
         <div className="grid gap-2 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)]/50 p-3 text-sm sm:grid-cols-2">

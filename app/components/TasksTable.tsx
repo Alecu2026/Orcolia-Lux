@@ -28,6 +28,8 @@ import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
 import TaskAttachmentsPanel from "./TaskAttachmentsPanel";
 import { useProofPrompt } from "./ProofDialog";
+import { useResolutionPrompt } from "./ResolutionDialog";
+import { formatMinutes, type Resolution } from "@/lib/resolution";
 import {
   Comments,
   CreateDialog,
@@ -78,7 +80,7 @@ function derivedOf(t: Task): Derived {
   let d = derivedCache.get(t);
   if (!d) {
     d = {
-      hay: [t.title, t.description, t.address, t.consumerName, t.projectName, t.clientName, t.assigneeName, t.teamName, t.creatorName].map((x) => (x ?? "").toLowerCase()).join("\n"),
+      hay: [t.title, t.description, t.address, t.consumerName, t.measuresTaken, t.feedbackComment, t.projectName, t.clientName, t.assigneeName, t.teamName, t.creatorName].map((x) => (x ?? "").toLowerCase()).join("\n"),
       due: t.dueAt ? dateKeyOf(new Date(t.dueAt), TZ) : null,
     };
     derivedCache.set(t, d);
@@ -225,6 +227,7 @@ export default function TasksTable({
   if (items !== seenItems) { setSeenItems(items); if (!(dataset && ds.rows)) setRows(items); }
   // ── Șabloane: listă locală, meniul „Șabloane”, fereastra de gestionare și șablonul aplicat în fereastra de creare ──
   const proof = useProofPrompt();
+  const rp = useResolutionPrompt();
   const [tpls, setTpls] = useState(templates);
   const [tplMenu, setTplMenu] = useState(false);
   const [tplManage, setTplManage] = useState(false);
@@ -306,19 +309,22 @@ export default function TasksTable({
       (t.creatorId === userId || t.assigneeId === userId || t.extraAssigneeIds.includes(userId) ||
         (!!t.teamId && userTeamIds.includes(t.teamId)) || t.extraTeamIds.some((x) => userTeamIds.includes(x))));
 
-  function changeStatus(id: string, next: Status) {
+  function changeStatus(id: string, next: Status, resolution?: Resolution) {
     const prev = rows;
     if (prev.find((t) => t.id === id)?.status === next) return;
     setStatusPending(id);
     inflight.current++;
     touch(id);
     setRows((cur) => cur.map((t) => (t.id === id ? { ...t, status: next } : t))); // optimist
-    setTaskStatus(id, next)
+    setTaskStatus(id, next, resolution)
       .then((res) => {
         if (res?.error) {
           setRows(prev);
+          // Finalizarea unei cereri cere „Măsuri luate” + timp de rezolvare: le cerem într-o fereastră, apoi finalizarea se reia singură.
+          const row = prev.find((t) => t.id === id);
+          if (res.needsResolution) rp.ask({ title: row?.title, createdAt: row?.createdAt }, (r) => changeStatus(id, next, r));
           // Finalizarea cere o poză / un fișier: o cerem chiar acum, iar după trimitere finalizarea se reia singură.
-          if (res.needsProof) proof.ask(id, () => changeStatus(id, next), prev.find((t) => t.id === id)?.projectName);
+          else if (res.needsProof) proof.ask(id, () => changeStatus(id, next, resolution), prev.find((t) => t.id === id)?.projectName);
           else toast.error(tr(res.error));
         } else toast.success(`Status: ${m.status[next]}`);
       })
@@ -449,7 +455,9 @@ export default function TasksTable({
       ? [
           {
             key: "consumer", label: "Nume consumator", minW: 130, maxW: 190, sort: (t: Task) => t.consumerName ?? null,
-            render: (t: Task) => (t.consumerName ? <span title={t.consumerName}>{t.consumerName}</span> : dash),
+            render: (t: Task) => (
+              <EditableText value={t.consumerName ?? ""} allowEmpty disabled={!canEditRow(t)} onSave={(v) => patchTask(t, { consumerName: v || null }, { consumerName: v || null })} display={t.consumerName ? <span title={t.consumerName}>{t.consumerName}</span> : undefined} />
+            ),
           },
           {
             key: "executed", label: "Data executării", minW: 110, sort: (t: Task) => t.executedOn ?? null,
@@ -466,6 +474,22 @@ export default function TasksTable({
                 )}
               </PopEditor>
             ),
+          },
+        ]
+      : []),
+    ...(ticketMode
+      ? [
+          {
+            key: "measures", label: "Măsuri luate", minW: 160, maxW: 260, sort: (t: Task) => t.measuresTaken ?? null,
+            render: (t: Task) => (t.measuresTaken ? <span title={t.measuresTaken}>{t.measuresTaken}</span> : dash),
+          },
+          {
+            key: "feedback", label: "Feedback client", minW: 90, sort: (t: Task) => t.feedbackRating ?? null,
+            render: (t: Task) => (t.feedbackRating != null ? <span className={`font-semibold ${t.feedbackRating <= 2 ? "text-st-cancelled" : t.feedbackRating >= 4 ? "text-st-done" : ""}`} title={t.feedbackComment ?? undefined}>{"★".repeat(t.feedbackRating)}<span className="text-ink-soft/40">{"★".repeat(5 - t.feedbackRating)}</span></span> : dash),
+          },
+          {
+            key: "resTime", label: "Timp de rezolvare", minW: 100, sort: (t: Task) => t.resolutionMinutes ?? null,
+            render: (t: Task) => (t.resolutionMinutes != null ? <span className="tabular-nums">{formatMinutes(t.resolutionMinutes)}</span> : dash),
           },
         ]
       : []),
@@ -774,6 +798,7 @@ export default function TasksTable({
       )}
 
       {proof.node}
+      {rp.node}
       {tplManage && (
         <TaskTemplatesDialog
           type={ticketMode ? "TICKET" : "TASK"}

@@ -7,6 +7,8 @@ import { useToast } from "./toast";
 import VirtualList from "./VirtualList";
 import { useTaskDataset } from "./useTaskDataset";
 import { useProofPrompt } from "./ProofDialog";
+import { useResolutionPrompt } from "./ResolutionDialog";
+import type { Resolution } from "@/lib/resolution";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
 
@@ -132,6 +134,7 @@ export default function TaskKanban({
   const tr = useT();
   const toast = useToast();
   const proof = useProofPrompt();
+  const rp = useResolutionPrompt();
   const m = useMessages();
   // Lista completă (strat 1: cache pe server, strat 2: IndexedDB + ETag, strat 3: memoria paginii); până sosește, se lucrează cu rândurile din HTML.
   const ds = useTaskDataset({ enabled: !!dataset, kind: "KANBAN", scope, userId: mover.id });
@@ -240,16 +243,17 @@ export default function TaskKanban({
   const loadingMore = !!dataset && !ds.rows && !ds.error;
   const total = loadingMore && !hasFilters ? (dataset?.total ?? filtered.length) : filtered.length;
 
-  function move(id: string, status: Status) {
+  function move(id: string, status: Status, resolution?: Resolution) {
     const task = tasks.find((t) => t.id === id);
     if (!task || task.status === status) return;
     if (!canMoveTask(mover, task)) { toast.error(tr("Nu ai permisiunea de editare.")); return; }
     const prev = tasks;
     setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, status } : t)));
-    setTaskStatus(id, status).then((res) => {
+    setTaskStatus(id, status, resolution).then((res) => {
       if (res?.error) {
         setTasks(prev);
-        if (res.needsProof) proof.ask(id, () => move(id, status), task.projectName);
+        if (res.needsResolution) rp.ask({ title: task.title }, (r) => move(id, status, r));
+        else if (res.needsProof) proof.ask(id, () => move(id, status, resolution), task.projectName);
         else toast.error(tr(res.error));
       }
       else toast.success(`${m.kanban.moved} „${m.status[status]}"`);
@@ -259,6 +263,7 @@ export default function TaskKanban({
   return (
     <>
       {proof.node}
+      {rp.node}
       {/* Quick filters */}
       <div className="mb-2 flex flex-wrap gap-2">
         {QUICK_KEYS.map((key) => (

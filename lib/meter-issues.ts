@@ -22,6 +22,57 @@ export const SERIOUS_ISSUES: IssueKind[] = ["FRAUD", "REVERSE", "DEFECT", "LEAK"
 
 export const MAX_ISSUE_NOTE = 500;
 
+/** Cine trebuie să remedieze neregula. Lipsa (null) = de stabilit de personal. */
+export type IssueResponsible = "CLIENT" | "COMPANY";
+export const RESPONSIBLE_LABELS: Record<IssueResponsible, string> = { CLIENT: "Clientul", COMPANY: "Compania" };
+export const isResponsible = (v: unknown): v is IssueResponsible => v === "CLIENT" || v === "COMPANY";
+
+/** Regula unui tip de neregulă: cine remediază (gol = de stabilit), în câte zile de la raportare și ce secție (echipă) răspunde (gol = fără secție). */
+export type IssueRule = { responsible: IssueResponsible | ""; days: number; teamId: string };
+export type IssueRules = Record<IssueKind, IssueRule>;
+export const ISSUE_DAYS_MAX = 365;
+
+/** Valorile implicite: clientul răspunde de ce ține de el (sigiliu, fraudă, acces, citire), compania de defecte; scurgerea și „altele” se stabilesc la fața locului. */
+export const DEFAULT_ISSUE_RULES: IssueRules = {
+  DEFECT: { responsible: "COMPANY", days: 14, teamId: "" },
+  REVERSE: { responsible: "COMPANY", days: 14, teamId: "" },
+  FRAUD: { responsible: "CLIENT", days: 10, teamId: "" },
+  SEAL: { responsible: "CLIENT", days: 10, teamId: "" },
+  LEAK: { responsible: "", days: 7, teamId: "" },
+  UNREADABLE: { responsible: "CLIENT", days: 10, teamId: "" },
+  INACCESSIBLE: { responsible: "CLIENT", days: 10, teamId: "" },
+  OTHER: { responsible: "", days: 10, teamId: "" },
+};
+
+/** Regulile din setări (JSON) aduse la forma validă: ce lipsește sau e invalid revine la valoarea implicită. */
+export function sanitizeIssueRules(raw: unknown): IssueRules {
+  const src = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const out = {} as IssueRules;
+  for (const k of ISSUE_KINDS) {
+    const d = DEFAULT_ISSUE_RULES[k];
+    const r = src[k] && typeof src[k] === "object" ? (src[k] as Record<string, unknown>) : {};
+    const days = typeof r.days === "number" && Number.isInteger(r.days) && r.days >= 1 && r.days <= ISSUE_DAYS_MAX ? r.days : d.days;
+    out[k] = {
+      responsible: r.responsible === "" || isResponsible(r.responsible) ? (r.responsible as IssueResponsible | "") : d.responsible,
+      days,
+      teamId: typeof r.teamId === "string" && /^[0-9a-f]{24}$/i.test(r.teamId) ? r.teamId : "",
+    };
+  }
+  return out;
+}
+
+/** Denumirile tipurilor în rusă (pentru emailurile către clienți, bilingve). */
+export const ISSUE_LABELS_RU: Record<IssueKind, string> = {
+  DEFECT: "Неисправный счётчик",
+  REVERSE: "Обратный ход счётчика",
+  FRAUD: "Подозрение на вмешательство",
+  SEAL: "Пломба сорвана или отсутствует",
+  LEAK: "Утечка у счётчика / на вводе",
+  UNREADABLE: "Показания не читаются",
+  INACCESSIBLE: "Нет доступа к счётчику",
+  OTHER: "Другая проблема",
+};
+
 export const isIssueKind = (v: unknown): v is IssueKind => typeof v === "string" && (ISSUE_KINDS as readonly string[]).includes(v);
 
 export type IssueDto = {
@@ -36,6 +87,21 @@ export type IssueDto = {
   resolvedAt: string | null;
   resolvedName: string | null;
   resolvedNote: string | null;
+  /** Cine remediază (null = de stabilit), secția responsabilă și termenul de remediere („YYYY-MM-DD”). */
+  responsible: IssueResponsible | null;
+  teamId: string | null;
+  teamName: string | null;
+  dueAt: string | null;
+};
+
+/** Un rând din registrul de nereguli: neregula + datele contorului / abonatului. */
+export type IssueRegisterRow = IssueDto & {
+  name: string;
+  account: string | null;
+  contract: string | null;
+  address: string | null;
+  phone: string | null;
+  clientId: string | null;
 };
 
 /** Un indicator dedus din datele 1C (nu e o neregulă confirmată — semnalează ce merită verificat). */

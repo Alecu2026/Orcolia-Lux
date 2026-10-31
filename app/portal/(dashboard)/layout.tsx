@@ -25,7 +25,8 @@ export default async function PortalDashboardLayout({
 
   return (
     <I18nProvider messages={messages} locale={locale}>
-    <div className="min-h-dvh bg-[var(--color-app)]">
+    {/* PWA: fără bandă de simulare, conținutul începe sub bara de stare (ora, rețeaua); cu bandă, ea acoperă zona sigură */}
+    <div className={`min-h-dvh bg-[var(--color-app)] ${client.impersonation ? "" : "pt-[env(safe-area-inset-top)]"}`}>
       {client.impersonation && <ImpersonationBanner who={client.name} by={client.impersonation.byName} expiresAt={client.impersonation.expiresAt} serverNow={Date.now()} exitAction="/api/simulare/portal-exit" className="sticky top-0" />}
       <div className="h-1 bg-brand" />
       <header className="border-b border-[var(--color-line)] bg-[var(--color-surface)] print:hidden">

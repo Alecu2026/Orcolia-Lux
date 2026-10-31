@@ -32,6 +32,8 @@ import ExportButton from "./ExportButton";
 import ImportButton from "./ImportButton";
 import TaskAttachmentsPanel from "./TaskAttachmentsPanel";
 import { useProofPrompt } from "./ProofDialog";
+import { useResolutionPrompt } from "./ResolutionDialog";
+import type { Resolution } from "@/lib/resolution";
 import { quickCreateProject } from "@/app/actions/projects";
 import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
@@ -88,6 +90,11 @@ export type Task = {
   consumerName?: string | null;
   /** Data executării cererii („YYYY-MM-DD”). */
   executedOn?: string | null;
+  /** Măsuri luate la închiderea cererii și timpul de rezolvare (minute). */
+  measuresTaken?: string | null;
+  resolutionMinutes?: number | null;
+  feedbackRating?: number | null;
+  feedbackComment?: string | null;
   assigneeName: string | null;
   teamName: string | null;
   projectName: string | null;
@@ -339,6 +346,7 @@ export default function TasksManager({
   const [editTask, setEditTask] = useState<Task | null>(null);
 
   const proof = useProofPrompt();
+  const rp = useResolutionPrompt();
   const [statusPending, setStatusPending] = useState<string | null>(null);
   const [progressPending, setProgressPending] = useState<string | null>(null);
 
@@ -410,14 +418,16 @@ export default function TasksManager({
     searchDebounce.current = setTimeout(() => applyFilter({ q: val }), 350);
   }
 
-  function changeStatus(id: string, next: Status) {
+  function changeStatus(id: string, next: Status, resolution?: Resolution) {
     const prev = tasks;
     setStatusPending(id);
     setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, status: next } : t)));
-    setTaskStatus(id, next).then((res) => {
+    setTaskStatus(id, next, resolution).then((res) => {
       if (res?.error) {
         setTasks(prev);
-        if (res.needsProof) proof.ask(id, () => changeStatus(id, next), prev.find((t) => t.id === id)?.projectName);
+        const row = prev.find((t) => t.id === id);
+        if (res.needsResolution) rp.ask({ title: row?.title, createdAt: row?.createdAt }, (r) => changeStatus(id, next, r));
+        else if (res.needsProof) proof.ask(id, () => changeStatus(id, next, resolution), prev.find((t) => t.id === id)?.projectName);
         else toast.error(tr(res.error));
       } else {
         toast.success(`Status: ${m.status[next]}`);
@@ -457,6 +467,7 @@ export default function TasksManager({
   return (
     <>
       {proof.node}
+      {rp.node}
       {scopeOptions && scopeOptions.length > 0 && (
         <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
           {scopeOptions.map((s) => (

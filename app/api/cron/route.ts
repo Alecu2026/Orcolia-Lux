@@ -13,6 +13,8 @@ import { prewarmMeters } from "@/lib/services/meter-cache";
 import { normalizeApaCanalDueDates } from "@/lib/services/apa-canal-due";
 import { prewarmInvoices } from "@/lib/services/invoice-cache";
 import { checkContractExpiry } from "@/lib/services/contract-expiry";
+import { checkMetrologyExpiry } from "@/lib/services/metrology-expiry";
+import { checkMeterIssueDeadlines } from "@/lib/services/meter-issue-deadlines";
 import { TASK_STATUS_RO, TASK_TYPE_RO } from "@/lib/telegram";
 import { formatTime, DEFAULT_TZ } from "@/lib/date";
 import type { TaskStatus } from "@prisma/client";
@@ -63,6 +65,8 @@ async function run() {
     prewarmMeters().catch((e) => console.error("[cron] pre-încălzirea listei de contoare:", e)),
     prewarmInvoices().catch((e) => console.error("[cron] pre-încălzirea listei de facturi:", e)),
     checkContractExpiry({ force: true }).catch((e) => console.error("[cron] expirarea contractelor:", e)),
+    checkMetrologyExpiry({ force: true }).catch((e) => console.error("[cron] verificările metrologice:", e)),
+    checkMeterIssueDeadlines({ force: true }).catch((e) => console.error("[cron] termenele neregulilor de contor:", e)),
   ]);
 
   const processed =

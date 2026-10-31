@@ -14,6 +14,8 @@ import { sendSms } from "@/lib/sms";
 import { sendCall } from "@/lib/call-gateway";
 import { listMatchingPayerContacts } from "@/lib/queries/payers";
 import { filtersToListOptsAsync } from "@/lib/queries/payer-notify";
+import { openIssuesByClient } from "@/lib/services/meter-issues";
+import { ISSUE_LABELS } from "@/lib/meter-issues";
 import {
   NOTIFY_CHUNK_SIZE,
   NOTIFY_MAX_CALL_BODY,
@@ -127,6 +129,14 @@ function validateMessage(input: Pick<SendChunkInput, "email" | "sms" | "call">):
   return null;
 }
 
+/** Textul {neregula} (până la 3 nereguli) și cel mai apropiat {termen_remediere} din neregulile deschise ale plătitorului. */
+function issueVars(list: { contor: string; kind: keyof typeof ISSUE_LABELS; dueAt: string | null }[] | undefined): { issues: string | null; issueDue: string | null } {
+  if (!list || list.length === 0) return { issues: null, issueDue: null };
+  const text = list.slice(0, 3).map((i) => `${ISSUE_LABELS[i.kind]} (contor ${i.contor})`).join("; ") + (list.length > 3 ? ` și încă ${list.length - 3}` : "");
+  const due = list.map((i) => i.dueAt).filter((d): d is string => !!d).sort()[0] ?? null;
+  return { issues: text, issueDue: due };
+}
+
 export async function sendPayerNotificationsChunkAction(input: SendChunkInput): Promise<SendChunkResult> {
   const auth = await requireSender();
   if (!auth.ok) return { ok: false, error: auth.error };
@@ -144,6 +154,9 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
   const { email, sms } = input;
   const call = input.call ?? { enabled: false, body: "", voice: "" };
   const needsInvoice = usesTokens(email.subject, email.body, sms.body, call.body);
+  // {neregula} / {termen_remediere}: neregulile deschise ale contoarelor plătitorului
+  const needsIssues = [email.subject, email.body, sms.body, call.body].some((tp) => /\{(neregula|termen_remediere)\}/.test(tp ?? ""));
+  const issuesBy = needsIssues ? await openIssuesByClient(ids) : new Map<string, { contor: string; kind: keyof typeof ISSUE_LABELS; dueAt: string | null }[]>();
 
   const [clients, invoices, already, company, queuedAlready] = await Promise.all([
     prisma.client.findMany({
@@ -205,6 +218,7 @@ export async function sendPayerNotificationsChunkAction(input: SendChunkInput): 
       invoiceNumber: inv?.number ?? null,
       dueDate: inv?.dueDate ?? null,
       address: c.consumAddress,
+      ...issueVars(issuesBy.get(c.id)),
     });
     const base = { campaignId: input.campaignId, clientId: c.id, clientName: c.name, userId: user.id, userName: user.name };
     const dmeta = { kind: "payer.campaign", campaignId: input.campaignId, toClientId: c.id, toName: c.name, objectType: "client", objectId: c.id };
@@ -350,6 +364,8 @@ export async function sendTestNotificationAction(input: {
     invoiceNumber: "AC-0001",
     dueDate: new Date(Date.now() + 10 * 86_400_000),
     address: "str. Exemplu 1",
+    issues: "Sigiliu rupt sau lipsă (contor 123456)",
+    issueDue: new Date(Date.now() + 10 * 86_400_000),
   });
   const done: string[] = [];
   try {

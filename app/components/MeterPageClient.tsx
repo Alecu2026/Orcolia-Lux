@@ -10,6 +10,7 @@ import InvoiceViewButton from "./InvoiceViewButton";
 import MeterMonthView from "./MeterMonthView";
 import { Item, Section, Skeleton } from "./MeterBits";
 import MeterIssuesPanel from "./MeterIssuesPanel";
+import MetrologyEditor from "./MetrologyEditor";
 import { IconChevronLeft } from "./icons";
 import { useMeterDataset } from "./useMeterDataset";
 import { useLocale, useT } from "@/lib/i18n/context";
@@ -315,6 +316,12 @@ export default function MeterPageClient({
           </Section>
         ) : (
           <Skeleton className="h-72" />
+        )}
+
+        {meter && (
+          <Section title={t("Verificare metrologică")}>
+            <MetrologyEditor key={id} meterId={id} initial={meter.metrology} canEdit={meter.canEditMetrology} />
+          </Section>
         )}
 
         {meter && (

@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
+import { can } from "@/lib/permissions";
 import { settingsSchema, categorySchema } from "@/lib/validation";
 import { DEMO } from "@/lib/demo";
 import { sanitizeReminderPresets } from "@/lib/reminder-presets";
 import type { StatusConfig } from "@/lib/ticket-status-config";
 import { DEFAULT_STATUS_CONFIGS, parseStatusConfigs } from "@/lib/ticket-status-config";
 import type { TaskStatus } from "@prisma/client";
+import { AUTOCLOSE_DEFAULT_HOURS, AUTOCLOSE_MAX_HOURS, AUTOCLOSE_MIN_HOURS, cleanAutoCloseHours } from "@/lib/ticket-autoclose";
 
 export type SettingsState = { ok?: boolean; error?: string } | undefined;
 
@@ -19,7 +21,7 @@ export async function createCategory(
   formData: FormData,
 ): Promise<SettingsState> {
   const user = await requireUser();
-  if (user.role !== "ADMIN") return { error: "Doar administratorii pot edita categorii." };
+  if (!can(user, "admin")) return { error: "Doar administratorii pot edita categorii." };
   if (DEMO) return { error: DEMO_MSG };
   const parsed = categorySchema.safeParse({
     name: formData.get("name"),
@@ -41,7 +43,7 @@ export async function updateCategory(
   formData: FormData,
 ): Promise<SettingsState> {
   const user = await requireUser();
-  if (user.role !== "ADMIN") return { error: "Doar administratorii pot edita categorii." };
+  if (!can(user, "admin")) return { error: "Doar administratorii pot edita categorii." };
   if (DEMO) return { error: DEMO_MSG };
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return { error: "ID lipsă." };
@@ -58,7 +60,7 @@ export async function updateCategory(
 
 export async function deleteCategory(id: string): Promise<void> {
   const user = await requireUser();
-  if (user.role !== "ADMIN") return;
+  if (!can(user, "admin")) return;
   if (DEMO) return;
   await prisma.category.deleteMany({ where: { id } });
   revalidatePath("/settings");
@@ -95,6 +97,30 @@ export async function updateQuietHours(
       quietHoursEnd: end,
       quietHoursTz: tz || "Europe/Bucharest",
     },
+  });
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+/** Închiderea automată a cererilor din email: pornit / oprit + după câte ore. Doar administratorii. */
+export async function updateEmailTicketAutoClose(
+  _prev: SettingsState,
+  formData: FormData,
+): Promise<SettingsState> {
+  const user = await requireUser();
+  if (!can(user, "admin")) return { error: "Doar administratorii pot modifica închiderea automată." };
+  if (DEMO) return { error: DEMO_MSG };
+
+  const enabled = formData.get("enabled") === "on";
+  const current = await prisma.companySettings.findUnique({ where: { singleton: "main" }, select: { emailTicketAutoCloseHours: true } });
+  // oprită: numărul de ore rămâne cel de până acum (câmpul e dezactivat în formular și nu se trimite)
+  const hours = enabled ? cleanAutoCloseHours(String(formData.get("hours") ?? "")) : (current?.emailTicketAutoCloseHours ?? AUTOCLOSE_DEFAULT_HOURS);
+  if (hours == null) return { error: "Numărul de ore trebuie să fie un număr întreg, între 1 și 2160." };
+
+  await prisma.companySettings.upsert({
+    where: { singleton: "main" },
+    create: { singleton: "main", emailTicketAutoCloseEnabled: enabled, emailTicketAutoCloseHours: hours },
+    update: { emailTicketAutoCloseEnabled: enabled, emailTicketAutoCloseHours: hours },
   });
   revalidatePath("/settings");
   return { ok: true };
@@ -167,7 +193,7 @@ export async function saveTicketStatusConfig(
   configs: StatusConfig[],
 ): Promise<SettingsState> {
   const user = await requireUser();
-  if (user.role !== "ADMIN") return { error: "Doar administratorii pot edita statusurile." };
+  if (!can(user, "admin")) return { error: "Doar administratorii pot edita statusurile." };
   if (DEMO) return { error: DEMO_MSG };
 
   // Validare minimă
@@ -190,7 +216,7 @@ export async function deleteTicketStatus(
   newConfigs: StatusConfig[],
 ): Promise<SettingsState> {
   const user = await requireUser();
-  if (user.role !== "ADMIN") return { error: "Doar administratorii pot edita statusurile." };
+  if (!can(user, "admin")) return { error: "Doar administratorii pot edita statusurile." };
   if (DEMO) return { error: DEMO_MSG };
   if (newConfigs.length === 0) return { error: "Nu poți șterge ultimul status." };
 
@@ -214,7 +240,7 @@ export async function deleteTicketStatus(
 
 export async function addTicketStatus(key: string): Promise<SettingsState> {
   const user = await requireUser();
-  if (user.role !== "ADMIN") return { error: "Doar administratorii pot edita statusurile." };
+  if (!can(user, "admin")) return { error: "Doar administratorii pot edita statusurile." };
   if (DEMO) return { error: DEMO_MSG };
 
   const settings = await prisma.companySettings.findUnique({ where: { singleton: "main" } });

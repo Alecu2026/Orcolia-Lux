@@ -28,6 +28,8 @@ export function filtersToListOpts(f: NotifyFilters): ListPayersOpts {
     noInvoices: f.invoices === "none" || undefined,
     estimated: f.estimated || undefined,
     contractExp: f.contractExp || undefined,
+    metrologyExp: f.metrologyExp || undefined,
+    meterIssues: f.meterIssues || undefined,
     sort: f.sort || "name",
   };
 }

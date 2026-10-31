@@ -7,6 +7,7 @@ import { DEMO } from "../demo";
 import { buildMeterStatic, parseMeterId } from "../queries/meters";
 import { getSectorMap } from "./meter-route-data";
 import { getPayerSnap, type PayerSnap } from "./payer-cache";
+import { getMetrologyMap } from "./metrology";
 import {
   decodeMeters,
   filterMeters,
@@ -186,7 +187,7 @@ let jl1: { key: string; snap: MeterSnap } | null = null;
 let jBuilding: { key: string; p: Promise<MeterSnap> } | null = null;
 
 /** Alipește datele plătitorului la fiecare contor (după client; dacă legătura lipsește — după contul personal sau contract). */
-function join(rows: MeterStatic[], pay: PayerSnap, sectors: Map<string, string>): MeterTuple[] {
+function join(rows: MeterStatic[], pay: PayerSnap, sectors: Map<string, string>, metro: Map<string, string>): MeterTuple[] {
   const byId = new Map(pay.rows.map((r) => [r.id, r]));
   const bySeries = new Map<string, string>();
   const byContract = new Map<string, string>();
@@ -208,6 +209,7 @@ function join(rows: MeterStatic[], pay: PayerSnap, sectors: Map<string, string>)
       inv?.number ?? null, inv?.status ?? null, inv?.grandTotal ?? null, inv?.currency ?? null, inv?.dueDate ? Date.parse(inv.dueDate) : null,
       p?.sector ?? null,
       sectors.get(parseMeterId(s[0])?.subKey ?? "") ?? null,
+      metro.get(s[0]) ?? null,
     ];
     return t;
   });
@@ -216,13 +218,13 @@ function join(rows: MeterStatic[], pay: PayerSnap, sectors: Map<string, string>)
 
 /** Lista curentă de contoare, gata de filtrat (în memorie) și de trimis browserului (gzip). Refăcută doar când se schimbă un strat. */
 export async function getMeterSnap(): Promise<MeterSnap> {
-  const [st, pay] = await Promise.all([getMeterStatic(), getPayerSnap()]);
-  const key = `${st.version}.${pay.version}`;
+  const [st, pay, metro] = await Promise.all([getMeterStatic(), getPayerSnap(), getMetrologyMap()]);
+  const key = `${st.version}.${pay.version}.${metro.version}`;
   if (jl1 && jl1.key === key) return jl1.snap;
   if (jBuilding && jBuilding.key === key) return jBuilding.p;
   const p = (async () => {
     const t0 = Date.now();
-    const tuples = join(st.rows, pay, await getSectorMap(st.version));
+    const tuples = join(st.rows, pay, await getSectorMap(st.version), metro.map);
     const gz = gzipSync(Buffer.from(JSON.stringify({ v: 1, at: st.builtAt, sorted: true, rows: tuples }), "utf8"), { level: 6 });
     const snap: MeterSnap = { version: createHash("sha1").update(key).digest("hex").slice(0, 16), builtAt: st.builtAt, gz, rows: decodeMeters(tuples, true) };
     jl1 = { key, snap };

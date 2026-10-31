@@ -41,7 +41,7 @@ export default function MeterMapPanel({
   onFit: () => void;
 }) {
   const t = useT();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => typeof window !== "undefined" && window.matchMedia?.("(min-width: 640px)").matches === true); // pe telefon începe închis, ca să nu acopere harta
   const n = countMeterFilters(filters);
   const sectors = useMemo(() => [...new Set(pins.map((p) => p.sector).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, "ro", { numeric: true })), [pins]);
   const localities = useMemo(() => [...new Set(pins.map((p) => p.locality).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ro")), [pins]);

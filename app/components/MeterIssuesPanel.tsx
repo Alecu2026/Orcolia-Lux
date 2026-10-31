@@ -6,6 +6,8 @@ import { ISSUE_LABELS, SERIOUS_ISSUES, highRatio, onecIndicators, type IssueDto 
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 import { useToast } from "./toast";
+import IssueEditDialog from "./IssueEditDialog";
+import { daysUntil } from "@/lib/contract-expiry";
 
 type Month = { month: string; prev: number | null; curr: number | null; consum: number | null; sursa: string | null };
 
@@ -31,6 +33,7 @@ export default function MeterIssuesPanel({
   const tag = dateTag(useLocale());
   const [issues, setIssues] = useState(initial);
   const [busy, setBusy] = useState<string | null>(null);
+  const [editing, setEditing] = useState<IssueDto | null>(null);
   const indicators = useMemo(() => onecIndicators({ months, sigiliu, removedAt }), [months, sigiliu, removedAt]);
   const open = issues.filter((i) => !i.resolvedAt);
   const done = issues.filter((i) => i.resolvedAt);
@@ -55,6 +58,13 @@ export default function MeterIssuesPanel({
     }
   }
 
+  const dueLabel = (i: IssueDto) => {
+    if (!i.dueAt) return null;
+    const d = daysUntil(i.dueAt);
+    const txt = d < 0 ? t("depășit cu {n} zile", { n: -d }) : d === 0 ? t("expiră azi") : d === 1 ? t("expiră mâine") : t("expiră în {n} zile", { n: d });
+    return { date: i.dueAt.split("-").reverse().join("."), txt, cls: d < 0 ? "font-semibold text-st-cancelled" : d <= 3 ? "font-semibold text-st-progress" : "" };
+  };
+
   const label = (x: (typeof indicators)[number]) => {
     if (x.code === "ZERO") return t(x.label, { n: x.detail });
     if (x.code === "HIGH") return t(x.label, { x: highRatio(x.detail) });
@@ -72,8 +82,18 @@ export default function MeterIssuesPanel({
               <span className={`font-semibold ${SERIOUS_ISSUES.includes(i.kind) ? "text-st-cancelled" : "text-st-progress"}`}>⚑ {t(ISSUE_LABELS[i.kind])}</span>
               <span className="text-xs text-ink-soft">{dt(i.reportedAt)} · {i.userName}</span>
               {i.note && <p className="w-full text-[13px]">{i.note}</p>}
+              <p className="flex w-full flex-wrap gap-x-3 text-xs text-ink-soft" data-issue-meta="">
+                <span>{t("Cine remediază")}: <b className="text-ink">{i.responsible === "CLIENT" ? t("Clientul") : i.responsible === "COMPANY" ? t("Compania") : t("De stabilit")}</b></span>
+                {i.teamName && <span>{t("Secția")}: <b className="text-ink">{i.teamName}</b></span>}
+                {(() => { const d = dueLabel(i); return d ? <span>{t("Termen")}: <b className={d.cls || "text-ink"}>{d.date} · {d.txt}</b></span> : null; })()}
+              </p>
               {canManage && (
-                <button type="button" disabled={busy === i.id} onClick={() => void resolve(i)} className="tap ml-auto h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-xs hover:bg-[var(--color-surface-2)] disabled:opacity-50">
+                <button type="button" onClick={() => setEditing(i)} className="tap ml-auto h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-xs hover:bg-[var(--color-surface-2)]" data-act="edit-issue">
+                  ✎ {t("Editează")}
+                </button>
+              )}
+              {canManage && (
+                <button type="button" disabled={busy === i.id} onClick={() => void resolve(i)} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-xs hover:bg-[var(--color-surface-2)] disabled:opacity-50">
                   {t("Marchează rezolvată")}
                 </button>
               )}
@@ -93,6 +113,13 @@ export default function MeterIssuesPanel({
             ))}
           </ul>
         </div>
+      )}
+      {editing && (
+        <IssueEditDialog
+          issue={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(u) => setIssues((list) => list.map((x) => (x.id === u.id ? u : x)))}
+        />
       )}
       {done.length > 0 && (
         <details className="border-t border-[var(--color-line)] px-3 py-2">

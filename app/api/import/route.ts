@@ -13,6 +13,7 @@ import { createTask } from "@/lib/services/tasks";
 import { createAppointment } from "@/lib/services/appointments";
 import { invalidatePayers } from "@/lib/services/payer-cache";
 import { DEFAULT_TZ, zonedToUtc } from "@/lib/date";
+import { MEASURES_MAX, parseDuration } from "@/lib/resolution";
 import { cleanContractDate, contractDate, contractKey } from "@/lib/contract-expiry";
 import type { Prisma } from "@prisma/client";
 
@@ -233,6 +234,14 @@ export async function POST(req: Request) {
         continue;
       }
       const consumerName = (r["Nume consumator"] ?? "").replace(/\s+/g, " ").trim().slice(0, 150);
+      // „Măsuri luate” + „Timp de rezolvare” (doar cereri): același format ca în aplicație („2 h 30 min”, „1:30”, „90”)
+      const measuresRaw = (r["Măsuri luate"] ?? "").replace(/\r\n/g, "\n").trim().slice(0, MEASURES_MAX);
+      const minutesRaw = (r["Timp de rezolvare"] ?? "").trim();
+      const minutesVal = minutesRaw ? parseDuration(minutesRaw) : null;
+      if (minutesRaw && minutesVal == null) {
+        result.failed.push({ row: rowNum, error: `Timp de rezolvare '${minutesRaw}' nu este valid. Exemple: 2 h 30 min, 1:30, 90.` });
+        continue;
+      }
 
       try {
         const created = await createTask(user.id, {
@@ -254,6 +263,11 @@ export async function POST(req: Request) {
         if (taskClientId) postUpdates.clientId = taskClientId;
         if (consumerName) postUpdates.consumerName = consumerName;
         if (executedKey) postUpdates.executedAt = contractDate(executedKey);
+        if (typeVal === "TICKET") {
+          if (measuresRaw) postUpdates.measuresTaken = measuresRaw;
+          if (minutesVal != null) postUpdates.resolutionMinutes = minutesVal;
+        }
+        if (statusVal === "DONE" || statusVal === "CANCELLED") postUpdates.closedAt = new Date();
         if (Object.keys(postUpdates).length > 0) {
           await prisma.task.update({ where: { id: created.id }, data: postUpdates });
         }

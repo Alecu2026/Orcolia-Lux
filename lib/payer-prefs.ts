@@ -11,3 +11,6 @@ export const INVOICES_V_COOKIE = "invoices-v";
 /** La fel pentru /contoare: câte rânduri pe pagină (inclusiv „Toate") și versiunea listei de contoare din IndexedDB. */
 export const METERS_PP_COOKIE = "meters-pp";
 export const METERS_V_COOKIE = "meters-v";
+
+/** La fel pentru /contoare/nereguli: câte rânduri pe pagină (inclusiv „Toate”). */
+export const ISSUES_PP_COOKIE = "issues-pp";

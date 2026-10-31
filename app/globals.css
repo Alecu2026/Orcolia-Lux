@@ -124,6 +124,13 @@ body {
   .tap:active {
     transform: scale(0.97);
   }
+  /* Listele <select> NU se scalează la apăsare: fereastra nativă de opțiuni ține starea „apăsat” instabilă (mouse / deget capturat de fereastră),
+     iar lista se micșora și se mărea în loop. */
+  select.tap,
+  select.tap:active {
+    transform: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
   /* Arrow for styled <select> — use with appearance-none + pl-2 pr-7 */
   .sel-arrow {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");

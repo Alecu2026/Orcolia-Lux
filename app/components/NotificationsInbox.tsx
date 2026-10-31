@@ -12,6 +12,8 @@ import { DEFAULT_PER_PAGE, NOTIFY_PER_PAGE, normalizePerPageClient, perPageLabel
 import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useToast } from "./toast";
 import DateFilterInput from "./DateFilterInput";
+import { useResolutionPrompt } from "./ResolutionDialog";
+import type { Resolution } from "@/lib/resolution";
 import { useNotificationDataset } from "./useNotificationDataset";
 
 type Kind = "" | "reminders" | NotificationKind;
@@ -84,7 +86,7 @@ function filterRows(rows: NRow[], f: Filters, canAppt: boolean, skipKind = false
 
 const activeCount = (f: Filters) => (f.kind ? 1 : 0) + (f.status !== "all" ? 1 : 0) + (f.period !== "all" ? 1 : 0) + (f.q ? 1 : 0) + (f.actions ? 1 : 0) + (f.sort !== "new" ? 1 : 0);
 
-const sel = (on: boolean) => `h-8 rounded-lg border px-2 text-xs outline-none focus:border-brand ${on ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)]"}`;
+const sel = (on: boolean) => `h-8 rounded-lg border px-2 text-xs outline-none focus:border-brand pointer-coarse:h-10 pointer-coarse:text-base ${on ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)]"}`;
 
 /**
  * Inbox-ul de notificări (ca în Telegram, dar în aplicație), construit ca „Plătitori”: lista completă stă în browser pe 3 straturi (memorie → IndexedDB → server, vezi
@@ -106,6 +108,7 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
   const [perPage, setPerPageState] = useState<number>(DEFAULT_PER_PAGE);
   /** Pagina curentă, legată de filtrele pentru care a fost aleasă: la orice schimbare de filtru / mărime se revine la pagina 1 (fără efecte). */
   const [pg, setPg] = useState({ key: "", page: 1 });
+  const rp = useResolutionPrompt();
   const [acts, setActs] = useState<Record<string, { busy?: boolean; done?: string; error?: string }>>({});
   /** Notificările necitite la deschidere / apărute cât timp pagina e deschisă: rămân evidențiate în această vizită chiar după ce sunt marcate citite. */
   const [fresh, setFresh] = useState<Set<string>>(new Set());
@@ -303,10 +306,16 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
     ds.removeRead();
     await clearReadNotifications().then(() => toast.success(m.notifications.clearReadDone)).catch(() => toast.error(t(m.common.error)));
   }
-  async function act(r: NRow, label: string, run: () => Promise<{ ok?: boolean; error?: string; needsProof?: boolean } | undefined>) {
+  async function act(r: NRow, label: string, run: (resolution?: Resolution) => Promise<{ ok?: boolean; error?: string; needsProof?: boolean; needsResolution?: boolean } | undefined>, resolution?: Resolution) {
     setActs((a) => ({ ...a, [r.id]: { busy: true } }));
     try {
-      const res = await run();
+      const res = await run(resolution);
+      // finalizarea unei cereri cere „Măsuri luate” + timp de rezolvare: fereastra se deschide, iar după confirmare acțiunea se reia
+      if (res?.needsResolution) {
+        setActs((a) => ({ ...a, [r.id]: {} }));
+        rp.ask({ title: r.title }, (rs) => void act(r, label, run, rs));
+        return;
+      }
       if (res?.needsProof) setActs((a) => ({ ...a, [r.id]: { error: t("Finalizarea cere o poză sau un fișier — deschide sarcina.") } }));
       else if (res?.error) setActs((a) => ({ ...a, [r.id]: { error: t(res.error!) } }));
       else {
@@ -327,6 +336,7 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
 
   return (
     <div data-source={ds.source ?? ""} data-total={rows?.length ?? ""}>
+      {rp.node}
       <div className="mb-3 border-b border-[var(--color-line)] pb-2">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -450,20 +460,20 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
                           <>
                             {showWork && (
                               <>
-                                <button type="button" disabled={a?.busy} onClick={() => act(r, t("În lucru"), () => setTaskStatus(oid!, "IN_PROGRESS"))} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50">▶ {t("În lucru")}</button>
-                                <button type="button" disabled={a?.busy} onClick={() => act(r, t("Finalizat"), () => setTaskStatus(oid!, "DONE"))} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50">✓ {t("Finalizat")}</button>
+                                <button type="button" disabled={a?.busy} onClick={() => act(r, t("În lucru"), () => setTaskStatus(oid!, "IN_PROGRESS"))} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50 pointer-coarse:h-10 pointer-coarse:px-3.5 pointer-coarse:text-sm">▶ {t("În lucru")}</button>
+                                <button type="button" disabled={a?.busy} onClick={() => act(r, t("Finalizat"), (rs) => setTaskStatus(oid!, "DONE", rs))} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50 pointer-coarse:h-10 pointer-coarse:px-3.5 pointer-coarse:text-sm">✓ {t("Finalizat")}</button>
                                 {/* toate statusurile și progresul, ca în Telegram: listă derulantă (pe telefon se deschide selectorul nativ) */}
-                                <select aria-label={t("Alt status")} value="" disabled={a?.busy} onChange={(ev) => { const v = ev.target.value; if (v) void act(r, m.status[v as keyof typeof m.status], () => setTaskStatus(oid!, v)); }} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50">
+                                <select aria-label={t("Alt status")} value="" disabled={a?.busy} onChange={(ev) => { const v = ev.target.value; if (v) void act(r, m.status[v as keyof typeof m.status], (rs) => setTaskStatus(oid!, v, rs)); }} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50 pointer-coarse:h-10 pointer-coarse:px-2 pointer-coarse:text-base">
                                   <option value="">{t("Alt status")}…</option>
                                   {(["READ", "IN_PROGRESS", "ON_HOLD", "REVIEW", "DONE", "CANCELLED", "ASSIGNED", "NEW"] as const).map((k) => <option key={k} value={k}>{m.status[k]}</option>)}
                                 </select>
-                                <select aria-label={t("Progres")} value="" disabled={a?.busy} onChange={(ev) => { const v = ev.target.value; if (v) void act(r, `${v}%`, () => setTaskProgress(oid!, Number(v))); }} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50">
+                                <select aria-label={t("Progres")} value="" disabled={a?.busy} onChange={(ev) => { const v = ev.target.value; if (v) void act(r, `${v}%`, () => setTaskProgress(oid!, Number(v))); }} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50 pointer-coarse:h-10 pointer-coarse:px-2 pointer-coarse:text-base">
                                   <option value="">{t("Progres")}…</option>
                                   {[0, 25, 50, 75, 100].map((p) => <option key={p} value={p}>{p}%</option>)}
                                 </select>
                               </>
                             )}
-                            {showAppt && <button type="button" disabled={a?.busy} onClick={() => act(r, t("Confirmată"), () => setAppointmentStatus(oid!, "CONFIRMED"))} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50">✓ {t("Confirmă")}</button>}
+                            {showAppt && <button type="button" disabled={a?.busy} onClick={() => act(r, t("Confirmată"), () => setAppointmentStatus(oid!, "CONFIRMED"))} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50 pointer-coarse:h-10 pointer-coarse:px-3.5 pointer-coarse:text-sm">✓ {t("Confirmă")}</button>}
                           </>
                         )}
                         {a?.error && <span className="text-[11px] text-st-cancelled">{a.error}</span>}

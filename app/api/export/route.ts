@@ -12,6 +12,7 @@ import { can } from "@/lib/permissions";
 import { toCSV, toXLSX, csvResponse, xlsxResponse, streamText } from "@/lib/export-utils";
 import { getPayerStatement } from "@/lib/services/payer-statement";
 import { formatDate, formatTime, DEFAULT_TZ } from "@/lib/date";
+import { formatMinutes } from "@/lib/resolution";
 import type { TaskStatus, TaskType, TaskPriority, ProjectStatus, AppointmentStatus, InvoiceStatus } from "@prisma/client";
 
 const TZ = DEFAULT_TZ;
@@ -128,7 +129,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
     const clientIds = [...new Set(items.map((t) => t.clientId).filter(Boolean) as string[])];
     const clientNameMap = await clientNamesFor(clientIds); // id-in cu mii de id-uri e lent: pentru liste mari se citește harta numelor
 
-    const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Proiect", "Client", "Adresă", "Nume consumator", "Categorie", "Scadent", "Data executării", "Progres (%)", "Creat la", "Creat de", "Descriere"];
+    const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Proiect", "Client", "Adresă", "Nume consumator", "Categorie", "Scadent", "Data executării", "Măsuri luate", "Timp de rezolvare", "Feedback client (1-5)", "Comentariu feedback", "Progres (%)", "Creat la", "Creat de", "Descriere"];
     const rows = items.map((t) => ({
       "#": t.seq ?? "",
       "Titlu": t.title,
@@ -144,6 +145,10 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
       "Categorie": t.categoryName ?? "",
       "Scadent": fmtDate(t.dueAt),
       "Data executării": t.executedOn ? t.executedOn.split("-").reverse().join(".") : "",
+      "Măsuri luate": t.measuresTaken ?? "",
+      "Timp de rezolvare": t.resolutionMinutes != null ? formatMinutes(t.resolutionMinutes) : "",
+      "Feedback client (1-5)": t.feedbackRating ?? "",
+      "Comentariu feedback": t.feedbackComment ?? "",
       "Progres (%)": t.progress,
       "Creat la": fmtDateTime(t.createdAt),
       "Creat de": t.creatorName,
@@ -269,6 +274,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
         consumAddress: true,
         portalPasswordHash: true,
         contractExpiresAt: true,
+        metrologyDueAt: true,
         _count: { select: { invoices: true } },
       },
     });
@@ -319,7 +325,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
       "Serie contor", "Nume", "Telefon", "Email", "Note", "Nr. contor", "Adresa consum", "Indice curent", "Cont portal", "Nr. facturi",
       "Nr. contract", "IDNO / ИНН", "Sector", "Nr. factură", "Data facturii", "Perioadă", "Status factură",
       "Citire anterioară", "Citire curentă (factură)", "Calculat", "Datorii / avans", "Recalculări", "Penalități", "Total de plată", "Valută",
-      "Zonă presiune", "Nr. sigiliu", "Data instalării contor", "UID 1C", "Contract expiră la",
+      "Zonă presiune", "Nr. sigiliu", "Data instalării contor", "UID 1C", "Contract expiră la", "Verificare metrologică (scadență)",
     ];
     const rows = payers.map((p) => {
       const inv = lastInvoice.get(p.id);
@@ -355,6 +361,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
         "Data instalării contor": c1?.dataInstalare ?? "",
         "UID 1C": c1?.uid ?? "",
         "Contract expiră la": p.contractExpiresAt ? p.contractExpiresAt.toISOString().slice(0, 10).split("-").reverse().join(".") : "",
+        "Verificare metrologică (scadență)": p.metrologyDueAt ? p.metrologyDueAt.toISOString().slice(0, 10).split("-").reverse().join(".") : "",
       };
     });
 

@@ -43,6 +43,8 @@ import CompactCard, { CompactField } from "./CompactCard";
 import PayerDetailDialog, { type PayerPatch } from "./PayerDetailDialog";
 import ContractExpiry from "./ContractExpiry";
 import { CONTRACT_EXP_OPTIONS } from "@/lib/contract-expiry";
+import { METROLOGY_FILTER_OPTIONS } from "@/lib/metrology";
+import { PAYER_ISSUE_OPTIONS } from "@/lib/meter-issue-register";
 import PayerBulkDeleteDialog from "./PayerBulkDeleteDialog";
 import VirtualList from "./VirtualList";
 import { PAYERS_PP_COOKIE } from "@/lib/payer-prefs";
@@ -82,6 +84,8 @@ function rowVars(r: PayerRow): NotifyVars {
     invoiceNumber: r.latestInvoice?.number ?? null,
     dueDate: r.latestInvoice?.dueDate ?? null,
     address: r.consumAddress,
+    issues: r.issuesOpen > 0 ? (r.issuesOpen === 1 ? "neregulă de contor" : `${r.issuesOpen} nereguli de contor`) : null,
+    issueDue: r.issueDueAt,
   });
 }
 
@@ -89,6 +93,7 @@ const SAMPLE_VARS = buildVars({
   invoiceLink: "https://exemplu.md/invoice/public/…",
   name: "Ion Popescu", account: "123456", amount: 250, currency: "MDL", invoiceNumber: "AC-0001",
   dueDate: new Date(Date.now() + 10 * 86_400_000), address: "str. Exemplu 1",
+  issues: "Sigiliu rupt sau lipsă (contor 123456)", issueDue: new Date(Date.now() + 10 * 86_400_000),
 });
 
 function queryKey(f: NotifyFilters, page: number, perPage: number): string {
@@ -102,7 +107,7 @@ type TextKey = "q" | "street" | "minDebt" | "maxDebt";
  * sute de mii de noduri (măsurat: 343.000 de noduri și 220 MB pe telefon → fila pica, iar alegerea salvată se reaplica la fiecare deschidere).
  */
 /** Lățimile coloanelor tabelului (px): adresă (fixă la derulare orizontală), plătitor, cont, contract expiră, email, telefon, factură, scadență, de achitat, status, portal, facturi, ultima notificare. */
-const COL_W = [220, 200, 108, 92, 190, 108, 120, 80, 90, 72, 58, 52, 110];
+const COL_W = [220, 200, 108, 92, 96, 96, 190, 108, 120, 80, 90, 72, 58, 52, 110];
 const SERVER_MAX_ROWS = 200; // doar cât timp lista completă nu e încă în browser (răspunsul vine de pe server)
 const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
 const ROW_H = 24; // înălțimea fixă a unui rând de tabel (necesară virtualizării)
@@ -625,7 +630,7 @@ export default function PayerNotifyManager({
   const pageButtons = buildPageButtons(page, totalPages);
   const from = view.total === 0 ? 0 : (page - 1) * uiPerPage + 1;
   const to = Math.min(page * uiPerPage, view.total);
-  const colCount = 13 + (canSelect ? 1 : 0) + (canSend ? 1 : 0) + (canTask ? 1 : 0);
+  const colCount = 15 + (canSelect ? 1 : 0) + (canSend ? 1 : 0) + (canTask ? 1 : 0);
   /** Sarcină nouă pentru plătitor: pagina de sarcini deschide fereastra de creare cu clientul ales și adresa lui completată. */
   const taskHref = (r: PayerRow) => {
     const sp = new URLSearchParams({ create: "task", client: r.id, desc: [r.name, r.meterSeries ?? r.contract, r.phone].filter(Boolean).join(" · ") });
@@ -755,6 +760,14 @@ export default function PayerNotifyManager({
         <select value={filters.contractExp} onChange={(e) => setFilter({ contractExp: e.target.value as NotifyFilters["contractExp"] })} className={fld(filters.contractExp)} aria-label={t("Contract")}>
           <option value="">{t("Contract: toate")}</option>
           {CONTRACT_EXP_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+        </select>
+        <select value={filters.metrologyExp} onChange={(e) => setFilter({ metrologyExp: e.target.value as NotifyFilters["metrologyExp"] })} className={fld(filters.metrologyExp)} aria-label={t("Verificare metrologică")}>
+          <option value="">{t("Verificare metrologică: toate")}</option>
+          {METROLOGY_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+        </select>
+        <select value={filters.meterIssues} onChange={(e) => setFilter({ meterIssues: e.target.value as NotifyFilters["meterIssues"] })} className={fld(filters.meterIssues)} aria-label={t("Nereguli contoare")}>
+          <option value="">{t("Nereguli contoare: toate")}</option>
+          {PAYER_ISSUE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
         </select>
         <select value={filters.kind} onChange={(e) => setFilter({ kind: e.target.value as NotifyFilters["kind"] })} className={fld(filters.kind)} aria-label={t("Tip plătitor")}>
           <option value="">{t("Tip: toți")}</option>
@@ -963,6 +976,8 @@ export default function PayerNotifyManager({
                     {r.phone ? <span className={`tabular-nums ${flags & 2 ? "" : "text-st-progress"}`} title={flags & 2 ? undefined : t("Număr invalid pentru SMS")}>{r.phone}</span> : <Dash />}
                   </CompactField>
                   <CompactField label={t("Contract expiră")}>{r.contractExpiresAt ? <ContractExpiry date={r.contractExpiresAt} compact /> : <Dash />}</CompactField>
+                  <CompactField label={t("Verificare metrologică")}>{r.metrologyDueAt ? <ContractExpiry date={r.metrologyDueAt} compact /> : <Dash />}</CompactField>
+                  <CompactField label={t("Nereguli contoare")}>{r.issuesOpen > 0 ? <>{r.issuesOpen}{r.issueDueAt ? <> · <ContractExpiry date={r.issueDueAt} compact /></> : null}</> : <Dash />}</CompactField>
                   <CompactField label={t("Factură")}>{r.latestInvoice?.number ?? <Dash />}</CompactField>
                   <CompactField label={t("Scadență")}>{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</CompactField>
                   <CompactField label={t("Portal")}>{r.activated ? <span className="text-st-done">✓ {t("activ")}</span> : <span className="text-ink-soft/60">—</span>}</CompactField>
@@ -1034,6 +1049,8 @@ export default function PayerNotifyManager({
               </Th>
               <Th minW={108}>{t("Cont / contract")}</Th>
               <Th minW={80}>{t("Contract expiră")}</Th>
+              <Th minW={96}>{t("Verificare metrologică")}</Th>
+              <Th minW={96}>{t("Nereguli contoare")}</Th>
               <Th minW={160}>{t("Email")}</Th>
               <Th minW={108}>{t("Telefon")}</Th>
               <Th minW={120}>{t("Factură")}</Th>
@@ -1089,6 +1106,8 @@ export default function PayerNotifyManager({
                   </td>
                   <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" title={r.meterSeries ?? r.contract ?? ""}>{r.meterSeries ?? r.contract ?? "—"}</td>
                   <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px tabular-nums">{r.contractExpiresAt ? <ContractExpiry date={r.contractExpiresAt} compact /> : <Dash />}</td>
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px tabular-nums" data-metro={r.metrologyDueAt ?? ""}>{r.metrologyDueAt ? <ContractExpiry date={r.metrologyDueAt} compact /> : <Dash />}</td>
+                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px tabular-nums" data-issues={r.issuesOpen}>{r.issuesOpen > 0 ? <a href={`/contoare/nereguli?q=${encodeURIComponent(r.meterSeries ?? r.contract ?? r.name)}`} onClick={(e) => e.stopPropagation()} className="hover:underline" title={t("Vezi neregulile în „Nereguli contoare”")}><b>{r.issuesOpen}</b>{r.issueDueAt ? <> · <ContractExpiry date={r.issueDueAt} compact /></> : null}</a> : <Dash />}</td>
                   <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" style={{ maxWidth: 190 }}>
                     {r.email ? (
                       <div className={`truncate ${flags & 1 ? "" : "text-st-progress"}`} title={flags & 1 ? r.email : `${t("Adresă invalidă")}: ${r.email}`}>{r.email}</div>

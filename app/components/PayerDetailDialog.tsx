@@ -224,6 +224,7 @@ export default function PayerDetailDialog({
             <Item label={t("Telefon")} value={row.phone} />
             <Item label={t("Adresă")} value={row.consumAddress} />
             <Item label={t("Contract expiră la")} value={row.contractExpiresAt ? <ContractExpiry date={row.contractExpiresAt} /> : null} />
+            <Item label={t("Verificare metrologică (cea mai apropiată)")} value={row.metrologyDueAt ? <ContractExpiry date={row.metrologyDueAt} /> : null} />
           </Section>
         )}
 

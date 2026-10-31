@@ -3,6 +3,8 @@ import { processDueReminders } from "@/lib/services/reminders";
 import { checkTaskReminders } from "@/lib/services/tasks";
 import { checkAppointmentReminders } from "@/lib/services/appointment-reminders";
 import { checkContractExpiry } from "@/lib/services/contract-expiry";
+import { checkMetrologyExpiry } from "@/lib/services/metrology-expiry";
+import { checkMeterIssueDeadlines } from "@/lib/services/meter-issue-deadlines";
 import { withDeliveryMeta } from "@/lib/delivery-log";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +25,7 @@ async function run(req: Request) {
     return new Response("forbidden", { status: 401 });
   }
 
-  const [reminders, taskReminders, appointmentReminders, contractExpiry] = await withDeliveryMeta({ source: "cron:reminders" }, () =>
+  const [reminders, taskReminders, appointmentReminders, contractExpiry, metrologyExpiry, issueDeadlines] = await withDeliveryMeta({ source: "cron:reminders" }, () =>
     Promise.all([
       processDueReminders(),
       checkTaskReminders().catch((e) => {
@@ -38,9 +40,17 @@ async function run(req: Request) {
         console.error("[cron/reminders] expirarea contractelor:", e);
         return { due: 0, notified: 0 };
       }),
+      checkMetrologyExpiry().catch((e) => {
+        console.error("[cron/reminders] verificările metrologice:", e);
+        return { due: 0, notified: 0 };
+      }),
+      checkMeterIssueDeadlines().catch((e) => {
+        console.error("[cron/reminders] termenele neregulilor de contor:", e);
+        return { due: 0, notified: 0 };
+      }),
     ]),
   );
-  return Response.json({ ok: true, reminders, taskReminders, appointmentReminders, contractExpiry });
+  return Response.json({ ok: true, reminders, taskReminders, appointmentReminders, contractExpiry, metrologyExpiry, issueDeadlines });
 }
 
 export async function GET(req: Request) {

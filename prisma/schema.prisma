@@ -337,6 +337,14 @@ model Task {
   consumerName String?
   /// Data executării cererii (doar data, 00:00 UTC): completată de echipă; la finalizarea unei cereri rămâne data zilei dacă nu e deja setată.
   executedAt DateTime?
+  /// Închiderea unei cereri: ce s-a făcut („Măsuri luate”), cât a durat rezolvarea (minute, introdus de executant) și când s-a închis (Finalizat / Anulat; gol la redeschidere).
+  measuresTaken     String?
+  /// Feedback-ul clientului după închiderea cererii (portal): nota 1–5, comentariul opțional și momentul trimiterii (ultima modificare).
+  feedbackRating  Int?
+  feedbackComment String?
+  feedbackAt      DateTime?
+  resolutionMinutes Int?
+  closedAt          DateTime?
 
   dueAt       DateTime?
   createdFrom CreatedFrom @default(WEB)
@@ -529,6 +537,19 @@ model CompanySettings {
   quietHoursEnd     String  @default("07:00")
   quietHoursTz      String  @default("Europe/Bucharest")
 
+  // Închiderea automată a cererilor din email: după câte ore de la ultimul răspuns al operatorului, fără răspuns de la client, cererea trece în „Finalizat”.
+  emailTicketAutoCloseEnabled Boolean @default(true)
+  emailTicketAutoCloseHours   Int     @default(48)
+
+  // Neregulile de contor: pentru fiecare tip — cine remediază (client / companie), în câte zile și ce secție răspunde (JSON: { KIND: { responsible, days, teamId } }); lipsă = valorile implicite.
+  meterIssueRules Json?
+
+  // Notificările automate către clienți (contract, verificare metrologică, termen neregulă): pornit / oprit și canalele (email / SMS) — JSON { contract|metrology|issue: { enabled, email, sms } }; lipsă = pornit, email + SMS.
+  autoNotify Json?
+
+  // Mesajele automate către clienți pentru termenele neregulilor (SMS, subiect, email — pe tip și etapă), modificate din „Nereguli contoare”; lipsă = textele implicite.
+  issueMessages Json?
+
   // --- Letterhead pentru facturile de tip „Apă-Canal" (editabil, altfel identic cu modelul primit) ---
   // Logo dedicat (separat de logo-ul principal al firmei) — folosit doar pe facturile Apă-Canal.
   apaCanalLogo        String?
@@ -694,6 +715,13 @@ model Client {
   /// Etapele deja notificate pentru data curentă, ex. "2026-12-31:30"; schimbarea datei le face irelevante (notificările pornesc de la capăt).
   contractNotified  String[]
 
+  /// Cea mai apropiată scadență a verificării metrologice dintre contoarele plătitorului (denormalizat din MeterMetrology: filtre și coloană fără join); null = nicio dată introdusă.
+  metrologyDueAt DateTime?
+
+  /// Câte nereguli de contor deschise au contoarele plătitorului și cel mai apropiat termen de remediere dintre ele (denormalizat din MeterIssue: filtru și coloană în Plătitori / Notificări fără join).
+  meterIssuesOpen  Int?
+  meterIssueDueAt  DateTime?
+
   // Instantaneu al ULTIMEI facturi (după issueDate) — MongoDB/Prisma nu poate sorta/filtra
   // clienți după un câmp dintr-o relație (Invoice), așa că duplicăm aici ce ne trebuie pentru
   // filtrele din /platitori (sold, status, sector), reîmprospătat la fiecare creare/modificare
@@ -726,6 +754,8 @@ model Client {
   @@index([userId, lastInvoiceSectorNr])
   @@index([lastNotifiedAt])
   @@index([contractExpiresAt])
+  @@index([metrologyDueAt])
+  @@index([meterIssueDueAt])
 }
 
 // Jurnal al notificărilor trimise plătitorilor (email/SMS) — fără relație la Client/User intenționat
@@ -1284,6 +1314,25 @@ model MeterLocation {
   updatedAt DateTime @updatedAt
 }
 
+/// Verificarea metrologică a unui contor (data o introduce personalul, manual): următoarea scadență = data + 5 ani (vezi lib/metrology.ts). Fără relații, ca MeterLocation:
+/// `meterId` e id-ul stabil din lista de contoare. `notified` = etapele deja anunțate pentru scadența curentă (ex. "2031-05-01:60"); o dată nouă le resetează.
+model MeterMetrology {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  meterId    String   @unique
+  contor     String
+  clientId   String?  @db.ObjectId
+  /// data ultimei verificări metrologice (00:00 UTC)
+  verifiedAt DateTime
+  notified   String[]
+  userId     String?  @db.ObjectId
+  userName   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([verifiedAt])
+}
+
 model MeterReading {
   id           String   @id @default(auto()) @map("_id") @db.ObjectId
   meterId      String
@@ -1366,6 +1415,14 @@ model MeterIssue {
   resolvedName String?
   resolvedNote String?
 
+  /// Cine trebuie să remedieze: CLIENT sau COMPANY (lipsă = de stabilit de personal); secția responsabilă (echipa) și termenul de remediere (doar data, 00:00 UTC).
+  responsible String?
+  teamId      String?   @db.ObjectId
+  dueAt       DateTime?
+  /// etapele deja anunțate pentru termenul curent, ex. "2026-11-10:3" (cu 3 zile înainte) și "2026-11-10:0" (termen depășit); un termen nou le resetează
+  dueNotified String[]
+
+  @@index([dueAt])
   @@index([meterId, reportedAt])
   @@index([resolvedAt, reportedAt])
   @@index([period])

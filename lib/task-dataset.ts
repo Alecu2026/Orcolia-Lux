@@ -37,6 +37,10 @@ export type TaskTuple = [
   string | null, // 25 culoarea rândului (hex) — lipsește în listele salvate înainte de această versiune
   string | null, // 26 numele consumatorului (cererile din portal) — lipsește în listele salvate înainte de această versiune
   string | null, // 27 data executării „YYYY-MM-DD” sau gol — lipsește în listele salvate înainte de această versiune
+  string | null, // 28 măsuri luate — lipsește în listele salvate înainte de această versiune
+  number | null, // 29 timp de rezolvare (minute) — lipsește în listele salvate înainte de această versiune
+  number | null, // 30 nota de feedback a clientului (1–5) — lipsește în listele salvate înainte de această versiune
+  string | null, // 31 comentariul de feedback — lipsește în listele salvate înainte de această versiune
 ];
 
 export type TaskNames = {
@@ -80,6 +84,13 @@ export type DecodedTask = {
   consumerName: string | null;
   /** Data executării cererii („YYYY-MM-DD”). */
   executedOn: string | null;
+  /** Măsuri luate la închiderea cererii. */
+  measuresTaken: string | null;
+  /** Timp de rezolvare, în minute. */
+  resolutionMinutes: number | null;
+  /** Nota (1–5) și comentariul lăsate de client după închiderea cererii. */
+  feedbackRating: number | null;
+  feedbackComment: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -127,6 +138,10 @@ export function decodeTasks(tuples: TaskTuple[], names: TaskNames): DecodedTask[
       address: r[23] || null,
       consumerName: r[26] || null,
       executedOn: r[27] || null,
+      measuresTaken: r[28] ?? null,
+      resolutionMinutes: r[29] ?? null,
+      feedbackRating: r[30] ?? null,
+      feedbackComment: r[31] ?? null,
       extraAssigneeIds: r[16],
       extraTeamIds: r[17],
       assignmentSettingsJson: r[18],

@@ -254,6 +254,9 @@ export type MeterDetailResponse = MeterDetail & {
   /** neregulile raportate în teren la acest contor (cele mai noi primele) și dacă utilizatorul le poate rezolva */
   issues: IssueDto[];
   canManageIssues: boolean;
+  /** data ultimei verificări metrologice a contorului („YYYY-MM-DD”), citită proaspăt din baza de date, și dacă utilizatorul o poate modifica */
+  metrology: string | null;
+  canEditMetrology: boolean;
 };
 
 const EMPTY_DETAIL: MeterDetail = { months: [], meter: null, reading: null, lines: [], consumer: null, history: [], subscriber: null };

@@ -24,6 +24,8 @@ import { useToast } from "./toast";
 import CompactCard, { CompactField } from "./CompactCard";
 import VirtualList from "./VirtualList";
 import MeterDetailDialog from "./MeterDetailDialog";
+import ContractExpiry from "./ContractExpiry";
+import { METROLOGY_FILTER_OPTIONS } from "@/lib/metrology";
 import { useMeterDataset } from "./useMeterDataset";
 import SectorFilter from "./SectorFilter";
 import { addressLocality, distinctBy, distinctSectors } from "@/lib/sector-filter";
@@ -42,8 +44,8 @@ const txtFld = (val: string) =>
   }`;
 
 /** Lățimile coloanelor (px), în ordinea din antet: contor, abonat, cont/contract, adresă, consumator, status, instalat, sigiliu, citire ant., citire curentă,
- * data citirii, consum, sursă, apă, canal, contoare abonat, factură, de achitat, status factură, telefon, portal. */
-const COL_W = [115, 190, 95, 210, 150, 62, 80, 85, 118, 108, 80, 92, 100, 150, 150, 62, 115, 90, 72, 140, 60];
+ * verificare metrologică, data citirii, consum, sursă, apă, canal, contoare abonat, factură, de achitat, status factură, telefon, portal. */
+const COL_W = [115, 190, 95, 210, 150, 62, 80, 85, 125, 118, 108, 80, 92, 100, 150, 150, 62, 115, 90, 72, 140, 60];
 const SERVER_MAX_ROWS = 200; // doar cât timp lista completă nu e încă în browser (răspunsul vine de pe server)
 const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
 const ROW_H = 24; // înălțimea fixă a unui rând de tabel (necesară virtualizării)
@@ -318,7 +320,7 @@ export default function MetersManager({
     const head = [
       "Nr. contor", "Abonat", "Cont personal", "Contract", "Adresă", "Consumator", "Status", "Instalat", "Sigiliu", "Scos la", "Citire anterioară (m³)", "Data citirii anterioare",
       "Citire curentă (m³)", "Data citirii", "Consum (m³)", "Sursa citirii", "Apă: volum (m³)", "Apă: sumă (MDL)", "Canal: volum (m³)", "Canal: sumă (MDL)", "Contoare active la abonat", "Factură",
-      "Status factură", "De achitat (MDL)", "Telefon", "Email",
+      "Status factură", "De achitat (MDL)", "Telefon", "Email", "Ultima verificare metrologică", "Scadență verificare metrologică",
     ].map((h) => esc(t(h)));
     const lines = [head.join(";")];
     for (const r of localList) {
@@ -326,7 +328,7 @@ export default function MetersManager({
         [
           r.contor, r.name, r.account, r.contract, r.address, r.consumator, r.removedAt ? t("Scos") : t("Activ"), dmy(r.installedAt), r.sigiliu, dmy(r.removedAt), r.prev, dmy(r.prevDate),
           r.curr, dmy(r.currDate), r.consum, enumLabel(r.sursa, t), r.apaVol, r.apaSum, r.canalVol, r.canalSum, r.meterCount, r.invoice?.number,
-          r.invoice ? t(INVOICE_STATUS[r.invoice.status as InvoiceStatusKey]?.label ?? r.invoice.status) : "", r.invoice?.grandTotal, r.phone, r.email,
+          r.invoice ? t(INVOICE_STATUS[r.invoice.status as InvoiceStatusKey]?.label ?? r.invoice.status) : "", r.invoice?.grandTotal, r.phone, r.email, dmy(r.metroVerified), dmy(r.metroDue),
         ].map(esc).join(";"),
       );
     }
@@ -398,6 +400,10 @@ export default function MetersManager({
           <option value="yes">{t("Citire estimată (calculată)")}</option>
           <option value="no">{t("Citire reală (nu estimată)")}</option>
         </select>
+        <select value={filters.metrology} onChange={(e) => setFilter({ metrology: e.target.value as MeterFilters["metrology"] })} className={fld(filters.metrology)} aria-label={t("Verificare metrologică")}>
+          <option value="">{t("Verificare metrologică: toate")}</option>
+          {METROLOGY_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+        </select>
         <select value={filters.source} onChange={(e) => setFilter({ source: e.target.value as MeterFilters["source"] })} className={fld(filters.source)} aria-label={t("Sursa datelor")}>
           <option value="">{t("Date: 1C și Axioma")}</option>
           <option value="1c">{t("Doar 1C")}</option>
@@ -442,6 +448,7 @@ export default function MetersManager({
           <option value="consumDesc">{t("Consum: descrescător")}</option>
           <option value="consumAsc">{t("Consum: crescător")}</option>
           <option value="readDesc">{t("Data citirii: recente")}</option>
+          <option value="metroAsc">{t("Verificare metrologică: cele mai apropiate")}</option>
           <option value="debtDesc">{t("Sold: descrescător")}</option>
         </select>
         {(active > 0 || filters.sort) && (
@@ -531,6 +538,7 @@ export default function MetersManager({
                   <CompactField label={t("Consumator")}>{r.consumator ?? <Dash />}</CompactField>
                   <CompactField label={t("Instalat")}>{r.installedAt ? dmy(r.installedAt) : <Dash />}</CompactField>
                   <CompactField label={t("Sigiliu")}>{r.sigiliu ?? <Dash />}</CompactField>
+                  <CompactField label={t("Verificare metrologică")}>{r.metroDue ? <>{dmy(r.metroDue)} <ContractExpiry date={r.metroDue} /></> : <Dash />}</CompactField>
                   <CompactField label={t("Citire anterioară")}>{r.prev != null ? `${num(r.prev)} m³${r.prevDate ? ` (${dmy(r.prevDate)})` : ""}` : <Dash />}</CompactField>
                   <CompactField label={t("Citire curentă")}>{r.curr != null ? `${num(r.curr)} m³${r.currDate ? ` (${dmy(r.currDate)})` : ""}` : <Dash />}</CompactField>
                   <CompactField label={t("Consum (m³)")}>{r.consum != null ? `${num(r.consum)} m³` : <Dash />}</CompactField>
@@ -677,6 +685,7 @@ const MeterTr = memo(function MeterTr({ r, canTask, onOpen }: { r: MeterRowBase;
       <div role="cell" className={CELL}>{chip}</div>
       <div role="cell" className={CELL}>{r.installedAt ? dmy(r.installedAt) : <Dash />}</div>
       <div role="cell" className={CELL} title={r.sigiliu ?? ""}>{r.sigiliu ?? <Dash />}</div>
+      <div role="cell" className={`${CELL} tabular-nums`} data-metro={r.metroDue ?? ""} title={r.metroVerified ? `${t("Ultima verificare")}: ${dmy(r.metroVerified)}` : t("Data verificării metrologice nu e introdusă")}>{r.metroDue ? <ContractExpiry date={r.metroDue} compact /> : <Dash />}</div>
       <div role="cell" className={num_} title={r.prevDate ? dmy(r.prevDate) : undefined}>{r.prev != null ? num(r.prev) : <Dash />}</div>
       <div role="cell" className={num_}>{r.curr != null ? num(r.curr) : <Dash />}</div>
       <div role="cell" className={CELL}>{r.currDate ? dmy(r.currDate) : <Dash />}</div>
@@ -799,6 +808,11 @@ const GridTable = memo(function GridTable({
             </button>
           </HeadCell>
           <HeadCell>{t("Sigiliu")}</HeadCell>
+          <HeadCell title={t("Scadența următoarei verificări metrologice (ultima verificare + 5 ani)")}>
+            <button type="button" onClick={() => onSort(sort === "metroAsc" ? "" : "metroAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
+              {t("Verificare metrologică")} <span className="text-[10px] text-ink-soft">{sort === "metroAsc" ? "▲" : "↕"}</span>
+            </button>
+          </HeadCell>
           <HeadCell right title={t("Indexul contorului (m³) la citirea anterioară")}>{t("Citire anterioară")}</HeadCell>
           <HeadCell right title={t("Indexul contorului (m³) la ultima citire")}>{t("Citire curentă")}</HeadCell>
           <HeadCell>

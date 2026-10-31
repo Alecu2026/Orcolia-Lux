@@ -61,6 +61,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
   "/notificari-platitori": bellIcon(),
   "/contoare": meterIcon(),
   "/contoare/citiri": pinIcon(),
+  "/contoare/nereguli": shieldIcon(),
   "/pbx": phoneIcon(),
   "/invoices": invoiceIcon(),
   "/users": userIcon(),
@@ -344,10 +345,10 @@ function AppShellInner({
           </div>
         )}
 
-        <div className="flex min-h-dvh min-w-0 flex-col" style={impersonation ? ({ "--imp-h": "2.25rem" } as CSSProperties) : undefined}>
+        <div className="flex min-h-dvh min-w-0 flex-col" style={impersonation ? ({ "--imp-h": "calc(2.25rem + env(safe-area-inset-top, 0px))" } as CSSProperties) : undefined}>
           {impersonation && <ImpersonationBanner who={impersonation.who} by={impersonation.by} expiresAt={impersonation.expiresAt} serverNow={impersonation.serverNow} exitAction="/api/simulare/exit" className="sticky top-0" />}
           {/* Header */}
-          <header className="sticky top-[var(--imp-h,0px)] z-30 flex items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-app)]/80 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur">
+          <header className={`sticky top-[var(--imp-h,0px)] z-30 flex items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-app)]/80 px-4 py-3 ${impersonation ? "" : "pt-[max(0.75rem,env(safe-area-inset-top))]"} backdrop-blur`}>
             <button
               onClick={() => setDrawer(true)}
               className="tap grid size-10 place-items-center rounded-xl bg-[var(--color-surface-2)] lg:hidden"

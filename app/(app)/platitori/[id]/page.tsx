@@ -19,6 +19,8 @@ import { Skeleton } from "@/app/components/MeterBits";
 import { getMeterSnap } from "@/lib/services/meter-cache";
 import { plainMeter } from "@/lib/meters";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
+import PayerIssues from "@/app/components/PayerIssues";
+import { listClientIssues } from "@/lib/services/meter-issues";
 import { dateTag } from "@/lib/i18n/t";
 
 export const dynamic = "force-dynamic";
@@ -86,6 +88,10 @@ export default async function PayerDetailPage({
                 <dt className="text-[11px] text-ink-soft">{tr("Contract expiră la")}</dt>
                 <dd className="font-medium"><ContractExpiry date={payer.contractExpiresAt} /></dd>
               </div>
+              <div className="col-span-2">
+                <dt className="text-[11px] text-ink-soft">{tr("Verificare metrologică (cea mai apropiată)")}</dt>
+                <dd className="font-medium"><ContractExpiry date={payer.metrologyDueAt} /></dd>
+              </div>
               <div>
                 <dt className="text-[11px] text-ink-soft">{tr("Activat la")}</dt>
                 <dd className="font-medium">{payer.portalActivatedAt ? fmtDate(payer.portalActivatedAt) : "—"}</dd>
@@ -141,6 +147,10 @@ export default async function PayerDetailPage({
           {/* Contoarele plătitorului: apar când sunt gata (lista de contoare din memoria serverului), fără să țină pagina în așteptare */}
           <Suspense fallback={<Skeleton className="h-24" />}>
             <PayerMetersBlock clientId={payer.id} canTask={can(user, "tasks.create")} canEditInvoices={can(user, "invoices.edit")} canRead={can(user, "meters.read")} />
+          </Suspense>
+
+          <Suspense fallback={<Skeleton className="h-16" />}>
+            <PayerIssuesBlock clientId={payer.id} canManage={can(user, "meters.manage")} title={tr("Nereguli contoare")} />
           </Suspense>
 
           <CollapsibleSection
@@ -227,6 +237,16 @@ export default async function PayerDetailPage({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Neregulile contoarelor plătitorului (deschise primele), cu cine remediază, secția și termenul. */
+async function PayerIssuesBlock({ clientId, canManage, title }: { clientId: string; canManage: boolean; title: string }) {
+  const issues = await listClientIssues(clientId).catch(() => []);
+  return (
+    <CollapsibleSection id="payer-issues" title={title} count={issues.filter((i) => !i.resolvedAt).length}>
+      <PayerIssues issues={issues} canManage={canManage} />
+    </CollapsibleSection>
   );
 }
 

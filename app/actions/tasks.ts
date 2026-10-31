@@ -9,6 +9,7 @@ import { can, canAny, canUseAllScope, canEditTask, canViewTask, canViewTaskData 
 import { DEMO } from "@/lib/demo";
 import { zonedToUtc } from "@/lib/date";
 import { cleanContractDate, contractDate, contractKey } from "@/lib/contract-expiry";
+import { formatMinutes, validateResolution } from "@/lib/resolution";
 import { parseReminderSchedule, type ReminderSchedule } from "@/lib/reminder-schedule";
 import {
   createTask,
@@ -28,7 +29,7 @@ import { TASK_STATUS_RO } from "@/lib/telegram";
 import type { TaskStatus, TaskType, TaskPriority } from "@prisma/client";
 import type { AssignmentSetting } from "@/lib/services/tasks";
 
-export type TaskState = { ok?: boolean; error?: string; id?: string; /** Finalizarea cere o poză / un fișier atașat de utilizator. */ needsProof?: boolean } | undefined;
+export type TaskState = { ok?: boolean; error?: string; id?: string; /** Finalizarea cere o poză / un fișier atașat de utilizator. */ needsProof?: boolean; /** Finalizarea unei cereri cere „Măsuri luate” (+ timp de rezolvare). */ needsResolution?: boolean } | undefined;
 
 const F_STATUSES = new Set(["NEW","ASSIGNED","READ","IN_PROGRESS","ON_HOLD","REVIEW","DONE","CANCELLED"]);
 const F_PRIOS = new Set(["LOW","MEDIUM","HIGH","URGENT"]);
@@ -192,7 +193,7 @@ export async function createTaskAction(
 }
 
 /** Schimbarea statusului e permisă oricărui utilizator autentificat (acțiune zilnică). */
-export async function setTaskStatus(id: string, status: string): Promise<TaskState> {
+export async function setTaskStatus(id: string, status: string, resolution?: { measures: string; minutes: number | null } | null): Promise<TaskState> {
   const user = await requireUser();
   console.log(`[tasks.action] setTaskStatus: user=${user.id} (${user.name}) task=${id} -> ${status}`);
   if (!STATUSES.includes(status as TaskStatus)) {
@@ -200,10 +201,11 @@ export async function setTaskStatus(id: string, status: string): Promise<TaskSta
     return { error: "Status invalid." };
   }
   // Finalizarea / anularea: regula „Închidere / finalizare” (sau poză atașată) se aplică în changeTaskStatus; celelalte schimbări de status rămân deschise.
-  const res = await changeTaskStatus(id, user.id, status as TaskStatus);
+  const clean = resolution ? { measures: String(resolution.measures ?? ""), minutes: resolution.minutes == null || !Number.isFinite(Number(resolution.minutes)) ? null : Math.round(Number(resolution.minutes)) } : null;
+  const res = await changeTaskStatus(id, user.id, status as TaskStatus, { resolution: clean });
   if (!res.ok) {
     console.error(`[tasks.action] setTaskStatus: eșuat — ${res.error}`);
-    return { error: res.error, needsProof: "needsProof" in res ? res.needsProof : false };
+    return { error: res.error, needsProof: "needsProof" in res ? res.needsProof : false, needsResolution: "needsResolution" in res ? res.needsResolution : false };
   }
   if (res.changed) {
     await logAudit(
@@ -405,6 +407,7 @@ export type TaskFieldPatch = {
   clientId?: string | null;
   categoryId?: string | null;
   address?: string | null;
+  consumerName?: string | null;
   /** "YYYY-MM-DD" (sau null/"" = fără termen) + ora opțională "HH:mm", în fusul Europe/Bucharest. */
   dueDate?: string | null;
   dueTime?: string | null;
@@ -473,6 +476,7 @@ export async function updateTaskFieldAction(id: string, patch: TaskFieldPatch): 
     if ("clientId" in patch) input.clientId = idOrNull(patch.clientId);
     if ("categoryId" in patch) input.categoryId = idOrNull(patch.categoryId);
     if ("address" in patch) input.address = String(patch.address ?? "").trim().slice(0, 300) || null;
+    if ("consumerName" in patch) input.consumerName = String(patch.consumerName ?? "").replace(/\s+/g, " ").trim().slice(0, 150) || null;
     if ("dueDate" in patch) {
       const d = String(patch.dueDate ?? "").trim();
       const t = String(patch.dueTime ?? "").trim();
@@ -644,6 +648,44 @@ export async function setTaskExecutionDateAction(id: string, date: string | null
     return { ok: true, id };
   } catch (e) {
     console.error("[tasks.action] setTaskExecutionDateAction: eșuat", e);
+    return { error: "Eroare la salvare. Încearcă din nou." };
+  }
+}
+
+/** Corectarea ulterioară a „Măsuri luate” / „Timp de rezolvare” la o cerere (cu „Editare”). */
+export async function setTicketResolutionAction(id: string, input: { measures: string; minutes: number | null }): Promise<TaskState> {
+  try {
+    const user = await requireUser();
+    if (DEMO) return { error: "Mod demo: conectează o bază de date." };
+    if (!OBJECT_ID.test(id ?? "")) return { error: "ID sarcină invalidă." };
+    if (!canEditTask(user)) return { error: "Nu ai permisiunea de editare." };
+    if (!(await canSeeTaskById(user, id))) return { error: "Nu ai acces la această sarcină." };
+    const minutes = input.minutes == null || !Number.isFinite(Number(input.minutes)) ? null : Math.round(Number(input.minutes));
+    const bad = validateResolution({ measures: input.measures, minutes });
+    if (bad) return { error: bad };
+    const before = await prisma.task.findUnique({ where: { id }, select: { title: true, type: true, measuresTaken: true, resolutionMinutes: true } });
+    if (!before || before.type !== "TICKET") return { error: "Doar cererile au „Măsuri luate”." };
+    const measures = input.measures.trim().slice(0, 2000);
+    await prisma.task.update({ where: { id }, data: { measuresTaken: measures, resolutionMinutes: minutes } });
+    await logAudit(
+      { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
+      {
+        action: "ticket.edit",
+        module: "Tickets",
+        objectId: id,
+        objectName: before.title,
+        details: { changes: [
+          ...(before.measuresTaken !== measures ? [{ field: "measuresTaken", label: "Măsuri luate", old: before.measuresTaken, new: measures }] : []),
+          ...(before.resolutionMinutes !== minutes ? [{ field: "resolutionMinutes", label: "Timp de rezolvare", old: formatMinutes(before.resolutionMinutes) || null, new: formatMinutes(minutes) || null }] : []),
+        ] },
+      },
+    );
+    revalidateTasks();
+    revalidatePath(`/tasks/${id}`);
+    revalidatePath(`/tickets/${id}`);
+    return { ok: true, id };
+  } catch (e) {
+    console.error("[tasks.action] setTicketResolutionAction: eșuat", e);
     return { error: "Eroare la salvare. Încearcă din nou." };
   }
 }

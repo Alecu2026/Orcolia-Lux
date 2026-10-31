@@ -18,6 +18,7 @@ export const NAV_META: NavMeta[] = [
   { href: "/notificari-platitori", labelKey: "payerNotify", perm: "payers.view" },
   { href: "/contoare", labelKey: "meters", perm: "payers.view" },
   { href: "/contoare/citiri", labelKey: "fieldReadings", perm: "meters.read" },
+  { href: "/contoare/nereguli", labelKey: "meterIssues", perm: "payers.view" },
   { href: "/pbx", labelKey: "pbx", perm: "pbx.view" },
   { href: "/invoices", labelKey: "invoices", perm: "invoices.view" },
   { href: "/users", labelKey: "users", perm: "users.manage" },

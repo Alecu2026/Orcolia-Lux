@@ -32,6 +32,8 @@ export type PortalMeterDto = {
   openIssues: { kind: IssueKind; note: string | null; reportedAt: string }[];
   /** Citirile ultimelor luni (cele mai noi primele), fără luna curentă. */
   history: PortalReadingDto[];
+  /** Scadența următoarei verificări metrologice („YYYY-MM-DD”, ultima verificare + 5 ani); null = necunoscută. */
+  metroDue: string | null;
 };
 
 export type PortalReadingResult =
