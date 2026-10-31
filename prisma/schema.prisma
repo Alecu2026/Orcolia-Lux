@@ -633,6 +633,7 @@ model Invoice {
   @@index([clientId])
   // Ultima factură pe client (snapshot-ul de plătitori): sortare după client + dată fără sortare în memorie
   @@index([clientId, issueDate])
+  @@index([issueDate]) // listele pe luni și căutarea peste perioade (creat și la rulare de lib/services/invoice-cache.ts)
   @@index([createdAt])
 }
 
@@ -781,6 +782,7 @@ model PayerNotificationLog {
   @@index([campaignId, clientId])
   @@index([clientId, createdAt])
   @@index([createdAt])
+  @@index([createdAt, channel, status]) // rezumatul ultimelor 24 h, acoperit de index (creat și la rulare de lib/queries/payer-log.ts)
 }
 
 // --- Autentificare portal client (oglindă Session/VerificationCode, dar legată de Client) ---
@@ -992,6 +994,7 @@ model DeliveryLog {
   @@index([toClientId, createdAt])
   @@index([objectId, createdAt])
   @@index([campaignId])
+  @@index([createdAt, channel, status, kind]) // rezumatul ultimelor 24 h, acoperit de index (creat și la rulare de lib/queries/delivery.ts)
 }
 
 model VoiceCommandLog {

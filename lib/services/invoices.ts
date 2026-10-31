@@ -1,4 +1,4 @@
-import { invalidateInvoices, syncInvoiceToCache } from "./invoice-cache";
+import { syncInvoiceToCache } from "./invoice-cache";
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { prisma } from "../prisma";
@@ -188,8 +188,7 @@ export async function createInvoice(userId: string, input: InvoiceInput) {
     },
     select: { id: true },
   });
-  await syncInvoiceToCache(inv.id);
-  await invalidateInvoices({ soft: true });
+  await syncInvoiceToCache(inv.id); // aplică factura în luna ei din memorie și marchează doar luna aceea
   return { ok: true as const, id: inv.id };
 }
 
@@ -219,7 +218,6 @@ export async function updateInvoice(id: string, input: InvoiceInput) {
       ...(apaCanal ?? {}),
     },
   });
-  await syncInvoiceToCache(id);
-  await invalidateInvoices({ soft: true });
+  await syncInvoiceToCache(id); // aplică factura în luna ei din memorie și marchează doar luna aceea
   return { ok: true as const, id };
 }

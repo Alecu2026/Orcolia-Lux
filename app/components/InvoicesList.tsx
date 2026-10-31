@@ -17,23 +17,39 @@ import ApaCanalJsonImport from "./ApaCanalJsonImport";
 import InvoiceViewButton from "./InvoiceViewButton";
 import CompactCard, { CompactField } from "./CompactCard";
 import VirtualList from "./VirtualList";
-import { useInvoiceDataset } from "./useInvoiceDataset";
+import { useInvoiceDataset, useInvoiceMonths } from "./useInvoiceDataset";
 import { buildPageButtons } from "@/lib/page-buttons";
 import { perPageLabel } from "@/lib/payer-notify";
 import { INVOICES_PS_COOKIE } from "@/lib/payer-prefs";
-import { INVOICE_ALL, INVOICE_DEFAULT_PER_PAGE, INVOICE_PER_PAGE, filterInvoices, type InvoiceListItem, type InvRow } from "@/lib/invoice-list";
+import {
+  EMPTY_QUERY,
+  INVOICE_ALL,
+  INVOICE_DEFAULT_PER_PAGE,
+  INVOICE_PER_PAGE,
+  activeFilterCount,
+  periodFitsLocally,
+  periodMonths,
+  queryInvoices,
+  queryToParams,
+  type InvQuery,
+  type InvSort,
+  type InvSums,
+  type InvoiceListItem,
+  type InvRow,
+  type MonthCount,
+} from "@/lib/invoice-list";
 import { useT } from "@/lib/i18n/context";
 
 /** Peste atâtea rânduri se desenează doar cele vizibile (virtualizare), ca la plătitori. */
 const VIRTUAL_MIN = 80;
 const ROW_H = 28;
-/** Cât timp lista completă nu e în browser (sau e în modul „server"), serverul dă pagini de cel mult atâtea rânduri. */
-const SERVER_MAX_SNAPSHOT_MODE = 200;
+/** Cât timp lista locală nu e încărcată (sau perioada e prea mare), serverul dă pagini de cel mult atâtea rânduri. */
+const SERVER_MAX_PENDING = 200;
 const SERVER_MAX_SERVER_MODE = 1000;
 /** Lățimile coloanelor tabelului (px): număr, client, emisă, scadență, achitată, sumă, status, acțiuni. */
 const COL_W = [150, 230, 92, 92, 92, 105, 105, 270];
 
-type Page = { items: InvRow[]; total: number; totalPages: number };
+type Page = { items: InvRow[]; total: number; totalPages: number; sums: InvSums | null };
 
 const fromItem = (i: InvoiceListItem): InvRow => ({
   id: i.id, number: i.number, status: i.status, kind: i.kind, issueMs: Date.parse(i.issueDate), dueMs: i.dueDate ? Date.parse(i.dueDate) : null,
@@ -46,19 +62,37 @@ function nowMs(): number {
 }
 
 const fmtMs = (ms: number | null) => (ms == null ? "—" : fmtDate(new Date(ms)));
+const fmtMoney = (n: number, cur: string) => `${n.toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`;
+const monthLabel = (m: string) => {
+  const [y, mo] = m.split("-").map(Number);
+  return new Date(y, mo - 1, 1).toLocaleDateString("ro-RO", { month: "long", year: "numeric" });
+};
+
+/** Sortările pe care le face și serverul (cu index); restul doar în browser, pe perioada încărcată. */
+const SERVER_SORTS = new Set(["issue", "number"]);
+const TEXT_SORTS = new Set(["number", "client", "status"]);
+
+const hasAdvanced = (q: InvQuery) =>
+  !!(q.min || q.max || q.currency || q.issueFrom || q.issueTo || q.dueFrom || q.dueTo || q.paidFrom || q.paidTo);
+
+const filterCls = (on: boolean) =>
+  `h-7 appearance-none sel-arrow rounded-lg border pl-1.5 pr-6 text-[11px] outline-none focus:border-brand ${
+    on ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)]"
+  }`;
+const inputCls = (on: boolean) =>
+  `h-7 rounded-lg border px-1.5 text-[11px] outline-none focus:border-brand ${
+    on ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)]"
+  }`;
 
 export default function InvoicesList({
   initial,
-  mode: initialMode,
   origin,
   canImportApaCanal = false,
   canCreate = false,
   canEdit = false,
   canDelete = false,
 }: {
-  initial: { items: InvoiceListItem[]; page: number; total: number; totalPages: number; perPage: number; status: string; q: string };
-  /** "snapshot": toate facturile se pot ține în browser; "server": prea multe, pagini de pe server. */
-  mode: "snapshot" | "server";
+  initial: { items: InvoiceListItem[]; page: number; total: number; totalPages: number; perPage: number; query: InvQuery; period: string; months: MonthCount[]; sums: InvSums | null };
   origin: string;
   canImportApaCanal?: boolean;
   /** Permisiunile „Creare / Editare / Ștergere" la facturi: fără ele butoanele dispar, iar statusul nu se mai poate schimba. */
@@ -71,14 +105,16 @@ export default function InvoicesList({
   const m = useMessages();
 
   // ── Filtrele sunt locale (schimbarea lor e instantanee în UI); adresa se sincronizează fără navigare ──
-  const [status, setStatus] = useState(initial.status);
-  const [q, setQ] = useState(initial.q);
-  const [search, setSearch] = useState(initial.q);
+  const [query, setQuery] = useState<InvQuery>(initial.query);
+  const [search, setSearch] = useState(initial.query.q);
+  const [period, setPeriod] = useState(initial.period);
   const [page, setPage] = useState(initial.page);
   const [wantPerPage, setWantPerPage] = useState(initial.perPage);
+  const [showMore, setShowMore] = useState(() => hasAdvanced(initial.query));
   const [goto, setGoto] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusMenu = useRef<HTMLDetailsElement>(null);
 
   // Mod telefon: fiecare factură devine un card. `cardsPref` = alegerea utilizatorului; null = automat (carduri pe ecrane înguste).
   const [cardsPref, setCardsPref] = useState<boolean | null>(null);
@@ -97,28 +133,37 @@ export default function InvoicesList({
     setCardsPref(next);
     try { localStorage.setItem("invoices-view", next ? "cards" : "table"); } catch {}
   }
+  useEffect(() => {
+    // meniul de statusuri se închide la click în afara lui
+    const close = (e: MouseEvent) => {
+      const el = statusMenu.current;
+      if (el?.open && !el.contains(e.target as Node)) el.open = false;
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, []);
 
-  // ── Motor local (toate facturile în browser) sau pagini de pe server ──
-  const ds = useInvoiceDataset(true);
-  const mode = ds.mode ?? initialMode;
+  // ── Motor local (lunile perioadei în browser) sau pagini de pe server ──
+  const months = useInvoiceMonths(initial.months);
+  const fits = periodFitsLocally(period, months);
+  const monthList = useMemo(() => periodMonths(period, months), [period, months]);
+  const ds = useInvoiceDataset(fits ? monthList : null);
   const useLocal = !!ds.rows;
-  const perPage = useLocal ? wantPerPage : Math.min(wantPerPage, mode === "server" ? SERVER_MAX_SERVER_MODE : SERVER_MAX_SNAPSHOT_MODE);
+  const serverMode = !fits;
+  const perPage = useLocal ? wantPerPage : Math.min(wantPerPage, serverMode ? SERVER_MAX_SERVER_MODE : SERVER_MAX_PENDING);
   // Controalele se actualizează imediat; lista (zeci de mii de rânduri) se recalculează în randarea următoare (amânată).
-  const listFilters = useDeferredValue({ status, q });
-  const localList = useMemo(
-    () => (ds.rows ? filterInvoices(ds.rows, listFilters) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ds.rows, ds.version, listFilters],
-  );
+  const dQuery = useDeferredValue(query);
+  const local = useMemo(() => (ds.rows ? queryInvoices(ds.rows, dQuery) : null), [ds.rows, dQuery]);
 
-  const [data, setData] = useState<Page>(() => ({ items: initial.items.map(fromItem), total: initial.total, totalPages: initial.totalPages }));
+  const [data, setData] = useState<Page>(() => ({ items: initial.items.map(fromItem), total: initial.total, totalPages: initial.totalPages, sums: initial.sums }));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cache = useRef(new Map<string, Page>());
   const abortRef = useRef<AbortController | null>(null);
-  const key = `${status}|${q.trim().toLowerCase()}|${page}|${perPage}`;
+  const qKey = JSON.stringify(query);
+  const key = `${qKey}|${period}|${page}|${perPage}`;
   // Pagina primită de la server are cel mult 100 de rânduri (vezi page.tsx); pentru alt număr de rânduri aducem pagina potrivită.
-  const initialKey = useRef(`${initial.status}|${initial.q.trim().toLowerCase()}|${initial.page}|${Math.min(initial.perPage, 100)}`);
+  const initialKey = useRef(`${JSON.stringify(initial.query)}|${initial.period}|${initial.page}|${Math.min(initial.perPage, 100)}`);
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
@@ -136,31 +181,34 @@ export default function InvoicesList({
     const ctl = new AbortController();
     abortRef.current = ctl;
     setError(null);
-    const sp = new URLSearchParams({ status, q, page: String(page), ps: String(perPage) });
-    // Cât timp lista completă încă se încarcă local (IndexedDB / rețea), nu pornim imediat o cerere de pagină care oricum ar fi anulată peste câteva zeci de ms.
-    const wait = mode === "snapshot" && !ds.rows && reloadTick === 0 ? 350 : 0;
+    const sp = queryToParams(query);
+    sp.set("p", period);
+    sp.set("page", String(page));
+    sp.set("ps", String(perPage));
+    // Cât timp lista locală încă se încarcă (IndexedDB / rețea), nu pornim imediat o cerere de pagină care oricum ar fi anulată peste câteva zeci de ms.
+    const wait = fits && !ds.rows && reloadTick === 0 ? 350 : 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const run = () => {
-    setLoading(true);
-    fetch(`/api/invoices/list?${sp}`, { signal: ctl.signal })
-      .then(async (r) => {
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error ?? m.common.error);
-        return j as { items: InvoiceListItem[]; total: number; totalPages: number; page: number };
-      })
-      .then((j) => {
-        const next: Page = { items: j.items.map(fromItem), total: j.total, totalPages: j.totalPages };
-        cache.current.set(key, next);
-        if (cache.current.size > 40) cache.current.delete(cache.current.keys().next().value!);
-        setData(next);
-        setLoading(false);
-        if (j.page !== page) setPage(j.page);
-      })
-      .catch((e: Error) => {
-        if (e.name === "AbortError") return;
-        setError(t(e.message));
-        setLoading(false);
-      });
+      setLoading(true);
+      fetch(`/api/invoices/list?${sp}`, { signal: ctl.signal })
+        .then(async (r) => {
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.error ?? m.common.error);
+          return j as { items: InvoiceListItem[]; total: number; totalPages: number; page: number; sums: InvSums | null };
+        })
+        .then((j) => {
+          const next: Page = { items: j.items.map(fromItem), total: j.total, totalPages: j.totalPages, sums: j.sums };
+          cache.current.set(key, next);
+          if (cache.current.size > 40) cache.current.delete(cache.current.keys().next().value!);
+          setData(next);
+          setLoading(false);
+          if (j.page !== page) setPage(j.page);
+        })
+        .catch((e: Error) => {
+          if (e.name === "AbortError") return;
+          setError(t(e.message));
+          setLoading(false);
+        });
     };
     if (wait) timer = setTimeout(run, wait);
     else run();
@@ -171,38 +219,60 @@ export default function InvoicesList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, useLocal, reloadTick]);
 
-  const view: Page = useMemo(
-    () => (localList ? { items: localList.slice((page - 1) * perPage, page * perPage), total: localList.length, totalPages: Math.max(1, Math.ceil(localList.length / perPage)) } : data),
-    [localList, page, perPage, data],
-  );
+  const view: Page = useMemo(() => {
+    if (!local || !ds.rows) return data;
+    const from = (page - 1) * perPage;
+    const items: InvRow[] = [];
+    for (let k = from; k < Math.min(local.total, from + perPage); k++) items.push(ds.rows[local.idx[k]]);
+    return { items, total: local.total, totalPages: Math.max(1, Math.ceil(local.total / perPage)), sums: local.sums };
+  }, [local, ds.rows, page, perPage, data]);
   const totalPages = Math.max(1, Math.ceil(view.total / perPage));
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (localList && page > totalPages) setPage(totalPages);
-  }, [localList, page, totalPages]);
+    if (local && page > totalPages) setPage(totalPages);
+  }, [local, page, totalPages]);
   const rows = view.items;
+  const currencies = useMemo(() => (ds.rows ? [...new Set(ds.rows.map((r) => r.currency))].sort() : []), [ds.rows]);
 
   // Adresa (link de partajat) fără navigare; alegerea „câte pe pagină" se ține și într-un cookie, pentru randarea pe server.
   useEffect(() => {
-    const sp = new URLSearchParams();
-    if (status) sp.set("status", status);
-    if (q) sp.set("q", q);
+    const sp = queryToParams(query);
+    sp.set("m", period);
     if (page > 1) sp.set("page", String(page));
     if (wantPerPage !== INVOICE_DEFAULT_PER_PAGE) sp.set("ps", String(wantPerPage));
-    window.history.replaceState(null, "", `/invoices${sp.toString() ? `?${sp}` : ""}`);
+    window.history.replaceState(null, "", `/invoices?${sp}`);
     try { document.cookie = `${INVOICES_PS_COOKIE}=${wantPerPage}; path=/; max-age=31536000; samesite=lax`; } catch {}
-  }, [status, q, page, wantPerPage]);
+  }, [query, period, page, wantPerPage]);
 
+  function patchQuery(p: Partial<InvQuery>) {
+    setQuery((q) => ({ ...q, ...p }));
+    setPage(1);
+  }
   function onSearch(v: string) {
     setSearch(v);
     if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => { setQ(v.trim()); setPage(1); }, ds.rows ? 120 : 300);
+    debounce.current = setTimeout(() => patchQuery({ q: v.trim() }), ds.rows ? 120 : 300);
   }
-  function setStatusFilter(s: string) { setStatus(s); setPage(1); }
+  function toggleStatus(s: string) {
+    patchQuery({ statuses: query.statuses.includes(s) ? query.statuses.filter((x) => x !== s) : [...query.statuses, s] });
+  }
+  function toggleSort(col: InvSort) {
+    if (serverMode && !SERVER_SORTS.has(col)) return;
+    setQuery((q) => (q.sort === col ? { ...q, dir: q.dir === "asc" ? "desc" : "asc" } : { ...q, sort: col, dir: TEXT_SORTS.has(col) ? "asc" : "desc" }));
+    setPage(1);
+  }
+  const nFilters = activeFilterCount(query) + (search.trim() && !query.q ? 1 : 0);
   function resetFilters() {
     if (debounce.current) clearTimeout(debounce.current);
-    setSearch(""); setQ(""); setStatus(""); setPage(1);
+    setSearch("");
+    setQuery(EMPTY_QUERY);
+    setPage(1);
   }
+  function changePeriod(p: string) {
+    setPeriod(p);
+    setPage(1);
+  }
+  const years = useMemo(() => [...new Set(months.map((x) => x.month.slice(0, 4)))], [months]);
 
   // ── Acțiuni pe rând: optimist (se vede pe loc), la eșec revenim ──
   const patchEverywhere = useCallback((id: string, patch: Partial<InvRow>) => {
@@ -271,7 +341,7 @@ export default function InvoicesList({
   }, [virtualTable]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [status, q, page, perPage, cards]);
+  }, [query, period, page, perPage, cards]);
   function onTableScroll(e: React.UIEvent<HTMLDivElement>) {
     const top = e.currentTarget.scrollTop;
     if (scrollRaf.current) return;
@@ -300,26 +370,53 @@ export default function InvoicesList({
             search ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)]"
           }`}
         />
-        <select
-          value={status}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className={`h-7 appearance-none sel-arrow rounded-lg border pl-1.5 pr-6 text-[11px] outline-none focus:border-brand ${
-            status ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)]"
-          }`}
-          aria-label={t("Status")}
-        >
-          <option value="">{t("Status: {v1}", { v1: m.invoices.filterAll.toLowerCase() })}</option>
-          {INVOICE_STATUS_LIST.map((s) => (
-            <option key={s} value={s}>{t(INVOICE_STATUS[s].label)}</option>
-          ))}
+        <select value={period} onChange={(e) => changePeriod(e.target.value)} className={filterCls(false)} aria-label={t("Perioadă")} data-inv-period="">
+          <option value="all">{t("Toate lunile")}</option>
+          {months.length > 3 && <option value="last3">{t("Ultimele 3 luni")}</option>}
+          {years.length > 1 && years.map((y) => <option key={y} value={`year:${y}`}>{t("Anul {v1}", { v1: y })}</option>)}
+          {months.map((x) => <option key={x.month} value={x.month}>{monthLabel(x.month)} ({x.count.toLocaleString("ro-RO")})</option>)}
         </select>
-        {(status || q || search) && (
+        <details ref={statusMenu} className="relative" data-inv-status="">
+          <summary className={`${filterCls(query.statuses.length > 0)} flex cursor-pointer list-none items-center`}>
+            {query.statuses.length === 0 ? t("Status: {v1}", { v1: m.invoices.filterAll.toLowerCase() }) : t("Status: {v1}", { v1: query.statuses.map((s) => t(INVOICE_STATUS[s as InvoiceStatusKey].label)).join(", ") })}
+          </summary>
+          <div className="absolute left-0 z-40 mt-1 min-w-40 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1 shadow-xl">
+            {INVOICE_STATUS_LIST.map((s) => (
+              <label key={s} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] hover:bg-[var(--color-surface-2)]">
+                <input type="checkbox" checked={query.statuses.includes(s)} onChange={() => toggleStatus(s)} className="size-3.5 accent-[var(--color-brand)]" data-inv-status-opt={s} />
+                <span className={`rounded-full px-1.5 ${INVOICE_STATUS[s].cls}`}>{t(INVOICE_STATUS[s].label)}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+        <select value={query.kind} onChange={(e) => patchQuery({ kind: e.target.value as InvQuery["kind"] })} className={filterCls(!!query.kind)} aria-label={t("Tip")} data-inv-kind="">
+          <option value="">{t("Tip: toate")}</option>
+          <option value="APA_CANAL">{t("Apă-Canal")}</option>
+          <option value="STANDARD">{t("Standard")}</option>
+        </select>
+        <select value={query.quick} onChange={(e) => patchQuery({ quick: e.target.value as InvQuery["quick"] })} className={filterCls(!!query.quick)} aria-label={t("Scurtături")} data-inv-quick="">
+          <option value="">{t("Scurtături")}</option>
+          <option value="unpaid">{t("Neachitate")}</option>
+          <option value="overdue">{t("Restante (scadența trecută)")}</option>
+          <option value="nodue">{t("Fără scadență")}</option>
+          <option value="paidnodate">{t("Achitate fără dată")}</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => setShowMore((v) => !v)}
+          aria-expanded={showMore}
+          data-inv-more=""
+          className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${hasAdvanced(query) ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+        >
+          {showMore ? t("Mai puține filtre ▴") : t("Mai multe filtre ▾")}
+        </button>
+        {nFilters > 0 && (
           <button
             type="button"
             onClick={resetFilters}
             className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]"
           >
-            {t("Resetează filtrele")}
+            {t("Resetează filtrele ({activeFilters})", { activeFilters: nFilters })}
           </button>
         )}
         <div className="ml-auto flex items-center gap-1.5">
@@ -337,14 +434,60 @@ export default function InvoicesList({
         </div>
       </div>
 
-      <div className="mb-1 flex flex-wrap items-center gap-x-3 text-xs">
+      {showMore && (
+        <div className="mb-1.5 flex flex-wrap items-end gap-x-3 gap-y-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)]/50 px-2 py-1.5 text-[11px]" data-inv-advanced="">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-ink-soft">{t("Sumă")}</span>
+            <span className="flex items-center gap-1">
+              <input value={query.min} onChange={(e) => patchQuery({ min: e.target.value.replace(/[^\d.,]/g, "").slice(0, 12) })} inputMode="decimal" placeholder={t("min")} aria-label={t("Sumă minimă")} className={`${inputCls(!!query.min)} w-20`} data-inv-min="" />
+              –
+              <input value={query.max} onChange={(e) => patchQuery({ max: e.target.value.replace(/[^\d.,]/g, "").slice(0, 12) })} inputMode="decimal" placeholder={t("max")} aria-label={t("Sumă maximă")} className={`${inputCls(!!query.max)} w-20`} data-inv-max="" />
+            </span>
+          </label>
+          {([
+            ["Emisă", "issueFrom", "issueTo"],
+            ["Scadență", "dueFrom", "dueTo"],
+            ["Achitată", "paidFrom", "paidTo"],
+          ] as const).map(([label, a, b]) => (
+            <label key={a} className="flex flex-col gap-0.5">
+              <span className="text-ink-soft">{t(label)}</span>
+              <span className="flex items-center gap-1">
+                <input type="date" value={query[a]} onChange={(e) => patchQuery({ [a]: e.target.value })} aria-label={`${t(label)} ${t("de la")}`} className={inputCls(!!query[a])} data-inv-date={a} />
+                –
+                <input type="date" value={query[b]} onChange={(e) => patchQuery({ [b]: e.target.value })} aria-label={`${t(label)} ${t("până la")}`} className={inputCls(!!query[b])} data-inv-date={b} />
+              </span>
+            </label>
+          ))}
+          {(currencies.length > 1 || query.currency) && (
+            <label className="flex flex-col gap-0.5">
+              <span className="text-ink-soft">{t("Valută")}</span>
+              <select value={query.currency} onChange={(e) => patchQuery({ currency: e.target.value })} className={filterCls(!!query.currency)} data-inv-currency="">
+                <option value="">{t("toate")}</option>
+                {[...new Set([...currencies, ...(query.currency ? [query.currency] : [])])].map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+          )}
+        </div>
+      )}
+
+      <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs" data-inv-summary="">
         <span>
           <b>{view.total.toLocaleString("ro-RO")}</b> {t("facturi")}
           {view.total > 0 && <span className="text-ink-soft"> {t("· afișate {v1}–{v2} · pagina {page}/{totalPages}", { v1: from.toLocaleString("ro-RO"), v2: to.toLocaleString("ro-RO"), page, totalPages })}</span>}
         </span>
-        <span className="text-ink-soft">{t("Σ pagină:")} <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
+        {view.sums ? (
+          <>
+            <span className="text-ink-soft">{t("Σ total:")} <b className="tabular-nums text-ink">{fmtMoney(view.sums.total, view.sums.currency)}</b></span>
+            <span className="text-ink-soft">{t("achitat:")} <b className="tabular-nums text-st-done">{fmtMoney(view.sums.paid, view.sums.currency)}</b></span>
+            <span className="text-ink-soft">{t("neachitat:")} <b className="tabular-nums text-ink">{fmtMoney(view.sums.open, view.sums.currency)}</b></span>
+            {view.sums.overdueCount > 0 && <span className="text-ink-soft">{t("din care restant:")} <b className="tabular-nums text-st-cancelled">{fmtMoney(view.sums.overdue, view.sums.currency)}</b> ({view.sums.overdueCount.toLocaleString("ro-RO")})</span>}
+            {view.sums.mixedCurrency && <span className="text-ink-soft" title={t("Sumele sunt doar în valuta principală; filtrează după valută pentru celelalte.")}>{t("(mai multe valute)")}</span>}
+          </>
+        ) : (
+          <span className="text-ink-soft">{t("Σ pagină:")} <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
+        )}
         {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}
-        {ds.rows && <span className="text-ink-soft" title={t("Lista e ținută în memorie și filtrată instant în browser.")}>{t("⚡ local")}</span>}
+        {useLocal && <span className="text-ink-soft" title={t("Lista e ținută în memorie și filtrată instant în browser.")}>{t("⚡ local")}</span>}
         <button
           type="button"
           onClick={toggleCards}
@@ -368,6 +511,11 @@ export default function InvoicesList({
           </select>
         </label>
       </div>
+      {serverMode && (
+        <p className="mb-1 text-[11px] text-st-progress" data-inv-servernote="">
+          {t("Perioadă mare: căutarea rulează pe server (mai lent). Sortarea după număr și dată emitere merge; pentru filtre instante și totaluri alege o lună sau „Ultimele 3 luni”.")}
+        </p>
+      )}
       {error && (
         <p className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
           {error}
@@ -449,13 +597,13 @@ export default function InvoicesList({
           <colgroup>{COL_W.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
           <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
             <tr>
-              <Th>{t("Număr")}</Th>
-              <Th>{t("Client")}</Th>
-              <Th>{t("Emisă")}</Th>
-              <Th>{t("Scadență")}</Th>
-              <Th>{t("Achitată")}</Th>
-              <Th right>{t("Sumă")}</Th>
-              <Th>{t("Status")}</Th>
+              <Th sortKey="number" q={query} onSort={toggleSort} disabled={false}>{t("Număr")}</Th>
+              <Th sortKey="client" q={query} onSort={toggleSort} disabled={serverMode}>{t("Client")}</Th>
+              <Th sortKey="issue" q={query} onSort={toggleSort} disabled={false}>{t("Emisă")}</Th>
+              <Th sortKey="due" q={query} onSort={toggleSort} disabled={serverMode}>{t("Scadență")}</Th>
+              <Th sortKey="paid" q={query} onSort={toggleSort} disabled={serverMode}>{t("Achitată")}</Th>
+              <Th sortKey="total" q={query} onSort={toggleSort} disabled={serverMode} right>{t("Sumă")}</Th>
+              <Th sortKey="status" q={query} onSort={toggleSort} disabled={serverMode}>{t("Status")}</Th>
               <Th>{t("Acțiuni")}</Th>
             </tr>
           </thead>
@@ -606,10 +754,19 @@ function isPast(ms: number | null): boolean {
   return ms != null && ms < Date.now();
 }
 
-function Th({ children, right }: { children: React.ReactNode; right?: boolean }) {
+function Th({ children, right, sortKey, q, onSort, disabled }: { children: React.ReactNode; right?: boolean; sortKey?: InvSort; q?: InvQuery; onSort?: (k: InvSort) => void; disabled?: boolean }) {
+  const active = !!sortKey && q?.sort === sortKey;
   return (
-    <th className={`border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1 font-semibold ${right ? "text-right" : "text-left"}`}>
-      {children}
+    <th
+      className={`border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1 font-semibold ${right ? "text-right" : "text-left"}`}
+      aria-sort={active ? (q?.dir === "asc" ? "ascending" : "descending") : undefined}
+    >
+      {sortKey && onSort && !disabled ? (
+        <button type="button" onClick={() => onSort(sortKey)} data-inv-sort={sortKey} className={`cursor-pointer font-semibold hover:text-brand ${active ? "text-brand" : ""}`}>
+          {children}
+          {active ? (q?.dir === "asc" ? " ▲" : " ▼") : ""}
+        </button>
+      ) : children}
     </th>
   );
 }

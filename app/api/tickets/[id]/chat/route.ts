@@ -17,13 +17,16 @@ const asOf = (req: Request) => (new URL(req.url).searchParams.get("as") === "cli
  */
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const access = await resolveChatAccess(id, asOf(req));
-  if (!access.ok) return Response.json({ error: access.error }, { status: access.status, headers: noStore });
-
   const sp = new URL(req.url).searchParams;
   const sinceRaw = sp.get("since");
   const since = sinceRaw && !Number.isNaN(Date.parse(sinceRaw)) ? new Date(sinceRaw) : null;
-  const messages = await listChatMessages(id, since);
+  // Verificarea accesului (tichetul + sesiunea) și mesajele pornesc deodată — înainte se așteptau una pe alta (două drumuri la rând la fiecare interogare a conversației,
+  // făcută la câteva secunde cât e deschisă). Mesajele se returnează doar dacă accesul e permis.
+  const [access, messages] = await Promise.all([
+    resolveChatAccess(id, asOf(req)),
+    /^[0-9a-f]{24}$/i.test(id) ? listChatMessages(id, since) : Promise.resolve([]),
+  ]);
+  if (!access.ok) return Response.json({ error: access.error }, { status: access.status, headers: noStore });
   if (sp.get("mark") === "1") await markChatRead(access).catch(() => {});
   return Response.json(chatState(access, messages), { headers: noStore });
 }

@@ -17,3 +17,6 @@ export const ISSUES_PP_COOKIE = "issues-pp";
 
 /** Versiunea listei „Tabel 1C” (luna cea mai recentă) din IndexedDB: dacă e cea curentă, pagina nu mai preîncarcă lista. */
 export const ONEC_V_COOKIE = "onec-v";
+
+/** Versiunea listei de clienți CRM din IndexedDB: dacă e cea curentă, /clients nu mai preîncarcă lista. */
+export const CLIENTS_V_COOKIE = "clients-v";

@@ -2,7 +2,9 @@ import "server-only";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import type { Prisma } from "@prisma/client";
+import { unstable_cache } from "next/cache";
 import { zonedToUtc } from "../date";
+import { cappedCount, memoQuery, pageableTotal } from "../log-count";
 import { AUDIT_ALL_CAP, AUDIT_NEXT_CHUNK, AUDIT_PAGE_SIZES, AUDIT_DEFAULT_PAGE_SIZE, type AuditFilterState } from "../audit-meta";
 
 export type AuditLogRow = {
@@ -86,21 +88,13 @@ const LIST_SELECT = {
 } as const;
 
 /**
- * Totalul pentru un filtru, ținut în memorie ~20 s: trecerea de la o pagină la alta (același filtru) nu mai numără din nou toată colecția.
- * Un jurnal nou apărut între timp întârzie cel mult 20 s în total — rândurile în sine vin mereu proaspete.
+ * Totalul pentru un filtru: plafonat (vezi lib/log-count.ts — nu numără toată colecția) și ținut în memorie ~20 s, ca trecerea de la o pagină la alta (același filtru) să nu-l refacă.
+ * Un jurnal nou apărut între timp întârzie cel mult 20 s în total — rândurile în sine vin mereu proaspete. Răspunsurile întregi (pagină + total) se țin ~5 s, cu o singură interogare în zbor.
  */
 const COUNT_TTL_MS = 20_000;
-const countMemo = new Map<string, { n: number; at: number }>();
-async function countCached(where: Prisma.AuditLogWhereInput, fresh = false): Promise<number> {
-  const key = JSON.stringify(where);
-  const hit = countMemo.get(key);
-  // „Reîmprospătează” (fresh) sare peste memorie: totalul apare exact, nu cel de acum câteva secunde
-  if (!fresh && hit && Date.now() - hit.at < COUNT_TTL_MS) return hit.n;
-  const n = await prisma.auditLog.count({ where });
-  if (countMemo.size >= 40) countMemo.delete(countMemo.keys().next().value as string);
-  countMemo.set(key, { n, at: Date.now() });
-  return n;
-}
+const PAGE_TTL_MS = 5_000;
+const countOf = (where: Prisma.AuditLogWhereInput, fresh: boolean) => memoQuery(`audit|count|${JSON.stringify(where)}`, COUNT_TTL_MS, fresh, () => cappedCount("auditLog", where));
+const keyOf = (filter: AuditFilter) => JSON.stringify({ ...filter, fresh: undefined });
 
 /**
  * „Toate”: jurnalele aduse pe bucăți, cu cursor (id-ul ultimului jurnal primit) — fiecare bucată costă la fel, oricât de adânc ai fi în listă
@@ -109,59 +103,62 @@ async function countCached(where: Prisma.AuditLogWhereInput, fresh = false): Pro
 export async function listAuditChunk(
   filter: AuditFilter,
   opts: { cursor?: string; limit?: number; loaded?: number; fresh?: boolean },
-): Promise<{ items: AuditListRow[]; total: number; nextCursor: string | null; capped: boolean }> {
+): Promise<{ items: AuditListRow[]; total: number; totalCapped?: boolean; nextCursor: string | null; capped: boolean }> {
   if (DEMO) return { items: [], total: 0, nextCursor: null, capped: false };
   const where = buildWhere(filter);
   const cursor = opts.cursor && /^[0-9a-f]{24}$/i.test(opts.cursor) ? opts.cursor : undefined;
   const limit = Math.min(AUDIT_NEXT_CHUNK, Math.max(1, Math.floor(opts.limit ?? 1000)));
   const room = Math.max(0, AUDIT_ALL_CAP - (opts.loaded ?? 0));
   const take = Math.min(limit, room);
-  const [rows, total] = await Promise.all([
-    take > 0
-      ? prisma.auditLog.findMany({
-          where,
-          select: LIST_SELECT,
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: take + 1,
-          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        })
-      : Promise.resolve([]),
-    // prima bucată numără proaspăt (totalul din antet să fie exact); următoarele folosesc memoria, ca totalul să rămână același cât se încarcă
-    countCached(where, opts.fresh || !cursor),
-  ]);
-  const hasMore = rows.length > take;
-  const page = hasMore ? rows.slice(0, take) : rows;
-  const items = page.map(({ details, ...r }): AuditListRow => ({ ...r, oldValue: clip(r.oldValue), newValue: clip(r.newValue), hasDetails: !!details }));
-  const loaded = (opts.loaded ?? 0) + items.length;
-  const capped = hasMore && loaded >= AUDIT_ALL_CAP;
-  return { items, total, nextCursor: hasMore && !capped ? (page[page.length - 1]?.id ?? null) : null, capped };
+  return memoQuery(`audit|chunk|${keyOf(filter)}|${cursor ?? ""}|${take}`, PAGE_TTL_MS, !!opts.fresh, async () => {
+    const [rows, cnt] = await Promise.all([
+      take > 0
+        ? prisma.auditLog.findMany({
+            where,
+            select: LIST_SELECT,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: take + 1,
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          })
+        : Promise.resolve([]),
+      // prima bucată numără proaspăt (totalul din antet să fie exact); următoarele folosesc memoria, ca totalul să rămână același cât se încarcă
+      countOf(where, !!opts.fresh || !cursor),
+    ]);
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+    const items = page.map(({ details, ...r }): AuditListRow => ({ ...r, oldValue: clip(r.oldValue), newValue: clip(r.newValue), hasDetails: !!details }));
+    const loaded = (opts.loaded ?? 0) + items.length;
+    const capped = hasMore && loaded >= AUDIT_ALL_CAP;
+    return { items, total: cnt.n, totalCapped: cnt.capped, nextCursor: hasMore && !capped ? (page[page.length - 1]?.id ?? null) : null, capped };
+  });
 }
 
-/** O pagină de jurnale (cele mai noi primele) + totalul pentru paginare. Citește doar coloanele din listă. */
+/** O pagină de jurnale (cele mai noi primele) + totalul pentru paginare (plafonat la 50.000, cu `totalCapped`). Citește doar coloanele din listă. */
 export async function listAuditLogs(
   filter: AuditFilter,
-): Promise<{ items: AuditListRow[]; total: number; hasMore: boolean; page: number; pageSize: number; totalPages: number }> {
+): Promise<{ items: AuditListRow[]; total: number; totalCapped?: boolean; hasMore: boolean; page: number; pageSize: number; totalPages: number }> {
   const pageSize = normalizeAuditPageSize(filter.pageSize);
   if (DEMO) return { items: [], total: 0, hasMore: false, page: 1, pageSize, totalPages: 0 };
   const where = buildWhere(filter);
   const wanted = Math.max(1, Math.floor(filter.page ?? 1));
-
-  const fetchPage = (n: number) =>
-    prisma.auditLog.findMany({
-      where,
-      select: LIST_SELECT,
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      skip: (n - 1) * pageSize,
-      take: pageSize,
-    });
-  let [rows, total] = await Promise.all([fetchPage(wanted), countCached(where, filter.fresh)]);
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const page = Math.min(wanted, totalPages);
-  // pagină peste ultima (ex. link vechi, sau filtre care au redus rezultatele): se întoarce ultima pagină, nu una goală
-  if (page !== wanted && total > 0) rows = await fetchPage(page);
-  const items = rows.map(({ details, ...r }): AuditListRow => ({ ...r, oldValue: clip(r.oldValue), newValue: clip(r.newValue), hasDetails: !!details }));
-  return { items, total, hasMore: page < totalPages, page, pageSize, totalPages };
+  return memoQuery(`audit|page|${keyOf(filter)}|${wanted}|${pageSize}`, PAGE_TTL_MS, !!filter.fresh, async () => {
+    const fetchPage = (n: number) =>
+      prisma.auditLog.findMany({
+        where,
+        select: LIST_SELECT,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (n - 1) * pageSize,
+        take: pageSize,
+      });
+    let [rows, cnt] = await Promise.all([fetchPage(wanted), countOf(where, !!filter.fresh)]);
+    const total = cnt.n;
+    const totalPages = Math.max(1, Math.ceil(pageableTotal(total) / pageSize));
+    const page = Math.min(wanted, totalPages);
+    // pagină peste ultima (ex. link vechi, sau filtre care au redus rezultatele): se întoarce ultima pagină, nu una goală
+    if (page !== wanted && total > 0) rows = await fetchPage(page);
+    const items = rows.map(({ details, ...r }): AuditListRow => ({ ...r, oldValue: clip(r.oldValue), newValue: clip(r.newValue), hasDetails: !!details }));
+    return { items, total, totalCapped: cnt.capped, hasMore: page < totalPages, page, pageSize, totalPages };
+  });
 }
 
 /** Un jurnal întreg (pop-up) + ce s-a mai întâmplat cu același obiect. */
@@ -212,7 +209,11 @@ export function filterFromState(f: AuditFilterState, page?: number, pageSize?: n
 }
 
 /** Toți utilizatorii (și cei dezactivați / cu jurnale vechi) pentru filtrul „Utilizator”. */
-export async function auditUserOptions(): Promise<{ id: string; name: string }[]> {
-  if (DEMO) return [];
-  return prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
-}
+export const auditUserOptions = unstable_cache(
+  async (): Promise<{ id: string; name: string }[]> => {
+    if (DEMO) return [];
+    return prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } });
+  },
+  ["audit-user-options"],
+  { tags: ["users"], revalidate: 300 },
+);

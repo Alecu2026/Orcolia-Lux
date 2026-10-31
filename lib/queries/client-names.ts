@@ -26,6 +26,11 @@ export async function allClientNames(): Promise<Map<string, string>> {
   return g.__clientNamesP;
 }
 
+/** Harta se reface la următoarea cerere (nume de client schimbat, client creat / șters). */
+export function dropClientNames(): void {
+  g.__clientNames = undefined;
+}
+
 /** Numele pentru un set de id-uri: puține → interogare directă; multe → din harta tuturor clienților. */
 export async function clientNamesFor(ids: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();

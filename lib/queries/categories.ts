@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { prisma } from "../prisma";
 import { DEMO, demoCategories } from "../demo";
+import { lookupEpoch } from "../lookup-memory";
 
 export type CategoryLite = {
   id: string;
@@ -10,11 +11,19 @@ export type CategoryLite = {
   defaultDurationMinutes: number;
 };
 
-/** Lista tuturor categoriilor din organizație (select minimal). Cache per-request. */
+/**
+ * Lista tuturor categoriilor din organizație (select minimal). Cache per-request + în memoria procesului ~60 s; se golește imediat la orice scriere pe Category
+ * (lib/lookup-memory.ts, extensia Prisma) — înainte fiecare pagină de detaliu o citea din baza de date.
+ */
+const CATEGORY_TTL_MS = 60_000;
+const cg = globalThis as unknown as { __categoryList?: { at: number; v: CategoryLite[] } };
 export const listCategories = cache(
   async (): Promise<CategoryLite[]> => {
     if (DEMO) return demoCategories;
-    return prisma.category.findMany({
+    const hit = cg.__categoryList;
+    if (hit && Date.now() - hit.at < CATEGORY_TTL_MS) return hit.v;
+    const epoch = lookupEpoch();
+    const v = await prisma.category.findMany({
       select: {
         id: true,
         name: true,
@@ -23,6 +32,8 @@ export const listCategories = cache(
       },
       orderBy: { name: "asc" },
     });
+    if (epoch === lookupEpoch()) cg.__categoryList = { at: Date.now(), v };
+    return v;
   },
 );
 

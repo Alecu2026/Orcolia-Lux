@@ -2,6 +2,7 @@ import "server-only";
 import { PrismaClient } from "@prisma/client";
 import { bumpTaskEpoch } from "./task-epoch";
 import { clearStaffSessionCache } from "./staff-session-cache";
+import { bumpApptEpoch, bumpClientEpoch, clearLookupMemory } from "./lookup-memory";
 
 const WRITE_OPS = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert", "delete", "deleteMany"]);
 
@@ -41,7 +42,45 @@ function createClient() {
           }
           const result = await query(args);
           // sesiunea personalului ține minte utilizatorul (lib/staff-session-cache.ts): orice scriere — permisiuni, echipe, dezactivare, parolă, ștergere — o invalidează
-          if (WRITE_OPS.has(operation)) clearStaffSessionCache();
+          if (WRITE_OPS.has(operation)) {
+            clearStaffSessionCache();
+            clearLookupMemory(); // numele utilizatorilor din paginile de detaliu
+          }
+          return result;
+        },
+      },
+      client: {
+        async $allOperations({ operation, args, query }) {
+          const result = await query(args);
+          if (WRITE_OPS.has(operation)) bumpClientEpoch(); // lista de clienți CRM din memorie (lib/services/client-cache.ts); se reface abia la următoarea cerere
+          return result;
+        },
+      },
+      appointment: {
+        async $allOperations({ operation, args, query }) {
+          const result = await query(args);
+          if (WRITE_OPS.has(operation)) bumpApptEpoch(); // listele de programări pe luni (lib/services/appointment-cache.ts)
+          return result;
+        },
+      },
+      team: {
+        async $allOperations({ operation, args, query }) {
+          const result = await query(args);
+          if (WRITE_OPS.has(operation)) clearLookupMemory();
+          return result;
+        },
+      },
+      project: {
+        async $allOperations({ operation, args, query }) {
+          const result = await query(args);
+          if (WRITE_OPS.has(operation)) clearLookupMemory();
+          return result;
+        },
+      },
+      category: {
+        async $allOperations({ operation, args, query }) {
+          const result = await query(args);
+          if (WRITE_OPS.has(operation)) clearLookupMemory();
           return result;
         },
       },

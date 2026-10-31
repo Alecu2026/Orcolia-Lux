@@ -60,7 +60,7 @@ export type DeliveryRow = {
   durationMs: number | null;
   createdAt: string;
 };
-type Page = { items: DeliveryRow[]; total: number; page: number; pageSize: number; totalPages: number; nextCursor?: string | null; capped?: boolean };
+type Page = { items: DeliveryRow[]; total: number; totalCapped?: boolean; page: number; pageSize: number; totalPages: number; nextCursor?: string | null; capped?: boolean };
 type Summary = Record<string, Record<string, number>>;
 
 const STORAGE_KEY = "filters:delivery";
@@ -372,13 +372,13 @@ export default function DeliveryLogsClient({
         for (;;) {
           const qs = `${key}${tick > 0 && first ? "&fresh=1" : ""}&limit=${first ? DELIVERY_FIRST_CHUNK : DELIVERY_NEXT_CHUNK}&loaded=${acc.length}${cursor ? `&cursor=${cursor}` : ""}`;
           const r = await fetch(`${apiBase}?${qs}${qsExtra}`, { signal: ctl.signal });
-          const j = (await r.json()) as { items: DeliveryRow[]; total: number; nextCursor: string | null; capped: boolean; error?: string };
+          const j = (await r.json()) as { items: DeliveryRow[]; total: number; totalCapped?: boolean; nextCursor: string | null; capped: boolean; error?: string };
           if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
           acc = acc.concat(j.items);
           first = false;
           cursor = j.nextCursor;
           allRef.current = { key, cursor };
-          setData({ items: acc, total: j.total, page: 1, pageSize: acc.length, totalPages: 1, nextCursor: cursor, capped: j.capped });
+          setData({ items: acc, total: j.total, totalCapped: j.totalCapped, page: 1, pageSize: acc.length, totalPages: 1, nextCursor: cursor, capped: j.capped });
           if (!cursor) break;
         }
         setLoading(false);
@@ -527,10 +527,10 @@ export default function DeliveryLogsClient({
 
       {/* ── Sumar + acțiuni ─────────────────────────────────────────────────── */}
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        <span><b>{nf(data.total)}</b> {t("mesaje")}{active > 0 ? ` ${t("(filtrat)")}` : ""}</span>
+        <span><b>{nf(data.total)}{data.totalCapped ? "+" : ""}</b> {t("mesaje")}{active > 0 ? ` ${t("(filtrat)")}` : ""}</span>
         {data.total > 0 && !all && (
           <span className="text-ink-soft">
-            {t("afișate {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(data.total) })}
+            {t("afișate {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(data.total) + (data.totalCapped ? "+" : "") })}
             {data.totalPages > 1 ? ` · ${t("pagina {cur}/{pages}", { cur: data.page, pages: data.totalPages })}` : ""}
           </span>
         )}
@@ -562,9 +562,9 @@ export default function DeliveryLogsClient({
         </div>
       </div>
 
-      {all && data.total > DELIVERY_ALL_CAP && (
+      {all && (data.total > DELIVERY_ALL_CAP || data.totalCapped) && (
         <p className="mb-2 rounded-lg bg-st-progress/10 px-3 py-2 text-xs text-st-progress">
-          {t("Se afișează cele mai noi {cap} din {total} mesaje. Restrânge filtrele (perioadă, canal, tip) sau exportă.", { cap: nf(DELIVERY_ALL_CAP), total: nf(data.total) })}
+          {t("Se afișează cele mai noi {cap} din {total} mesaje. Restrânge filtrele (perioadă, canal, tip) sau exportă.", { cap: nf(DELIVERY_ALL_CAP), total: nf(data.total) + (data.totalCapped ? "+" : "") })}
         </p>
       )}
       {error && (

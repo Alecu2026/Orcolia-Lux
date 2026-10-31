@@ -2,8 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requireAnyPermission } from "@/lib/dal";
 import { can, canEditTask, canViewTask, canWorkOnTask } from "@/lib/permissions";
-import { getTask, ticketCreatorName } from "@/lib/queries/tasks";
-import { listTaskComments } from "@/lib/services/tasks";
+import { getTask, getTaskComments, ticketCreatorName } from "@/lib/queries/tasks";
 import { dateKeyOf, formatDate, formatTime } from "@/lib/date";
 import { userOptions } from "@/lib/queries/users";
 import { teamOptions } from "@/lib/queries/teams";
@@ -15,7 +14,6 @@ import TaskStatusChanger from "@/app/components/TaskStatusChanger";
 import TaskDetailActions from "@/app/components/TaskDetailActions";
 import EmailThread from "@/app/components/EmailThread";
 import TicketChat from "@/app/components/TicketChat";
-import { prisma } from "@/lib/prisma";
 import type { TaskStatus } from "@prisma/client";
 import CloseTicketButton from "@/app/components/CloseTicketButton";
 import ExecutionDateField from "@/app/components/ExecutionDateField";
@@ -98,7 +96,7 @@ export default async function TaskDetailPage({
 
   const [task, comments, users, teams, projects, categories] = await Promise.all([
     getTask(id),
-    listTaskComments(id),
+    getTaskComments(id),
     userOptions(),
     teamOptions(),
     projectOptions(),
@@ -110,11 +108,8 @@ export default async function TaskDetailPage({
   // nu ca "fără permisiune" (nu dezvăluim nici măcar că task-ul există).
   if (!canViewTask(user, task)) notFound();
 
-  // Conversația cu clientul (doar la tichete): clientul tichetului, ca să arătăm dacă primește emailuri și dacă are cont în portal.
-  const chatClient =
-    task.type === "TICKET" && task.clientId
-      ? await prisma.client.findUnique({ where: { id: task.clientId }, select: { name: true, email: true, portalPasswordHash: true } })
-      : null;
+  // Conversația cu clientul (doar la tichete): clientul tichetului, ca să arătăm dacă primește emailuri și dacă are cont în portal (adus odată cu task-ul, în paralel).
+  const chatClient = task.chatClient;
 
   const canDelete = can(user, "tasks.delete");
   const canEdit = canEditTask(user);

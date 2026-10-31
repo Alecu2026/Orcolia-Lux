@@ -101,7 +101,8 @@ export async function listInvoices(opts: {
   };
 }
 
-const FULL_SELECT = {
+/** Câmpurile simple ale facturii (fără relații): formularul de editare nu are nevoie de client / proiect / task ca obiecte. */
+const SCALAR_SELECT = {
   id: true,
   number: true,
   status: true,
@@ -132,6 +133,20 @@ const FULL_SELECT = {
   penalitati: true,
   datoriiAvans: true,
   monthlyConsumption: true,
+} as const;
+
+const ITEM_SELECT = {
+  id: true,
+  description: true,
+  quantity: true,
+  unitPrice: true,
+  taxRate: true,
+  lineSubtotal: true,
+  lineTotal: true,
+} as const;
+
+const FULL_SELECT = {
+  ...SCALAR_SELECT,
   client: { select: { id: true, name: true, phone: true, email: true, notes: true } },
   project: { select: { id: true, name: true } },
   task: { select: { id: true, title: true } },
@@ -149,9 +164,17 @@ const FULL_SELECT = {
   },
 } as const;
 
-export async function getInvoice(id: string) {
+/**
+ * Factura pentru formularul de editare: rândul facturii și liniile ei pornesc deodată (după id), fără relațiile client / proiect / task pe care formularul nu le folosește
+ * (cu `FULL_SELECT`, Prisma făcea trei niveluri de interogări succesive).
+ */
+export async function getInvoiceForEdit(id: string) {
   if (DEMO) return null;
-  return prisma.invoice.findUnique({ where: { id }, select: FULL_SELECT });
+  const [inv, items] = await Promise.all([
+    prisma.invoice.findUnique({ where: { id }, select: SCALAR_SELECT }),
+    prisma.invoiceItem.findMany({ where: { invoiceId: id }, select: ITEM_SELECT, orderBy: { position: "asc" } }),
+  ]);
+  return inv ? { ...inv, items } : null;
 }
 
 export async function getInvoiceByToken(token: string) {
@@ -203,22 +226,37 @@ export async function getApaCanalMonthlyForForm(clientId: string, issueDate: Dat
   if (DEMO) return [];
   const start = new Date(Date.UTC(issueDate.getUTCFullYear(), issueDate.getUTCMonth() - 11, 1));
   const end = new Date(Date.UTC(issueDate.getUTCFullYear(), issueDate.getUTCMonth() + 1, 1)); // exclusiv
+  // fără liniile facturilor (o interogare în plus): se citesc mai jos doar pentru facturile fără consum salvat în grafic
   const invoices = await prisma.invoice.findMany({
     where: { clientId, kind: "APA_CANAL", issueDate: { gte: start, lt: end } },
     orderBy: { issueDate: "desc" },
-    select: { issueDate: true, monthlyConsumption: true, items: true },
+    select: { id: true, issueDate: true, monthlyConsumption: true },
   });
+  const ownValue = (inv: (typeof invoices)[number]): number | null => {
+    const month = inv.issueDate.getUTCMonth() + 1;
+    const points = Array.isArray(inv.monthlyConsumption) ? (inv.monthlyConsumption as ConsumptionPoint[]) : [];
+    const own = points.find((p) => String(p.label) === String(month)) ?? points[0];
+    return own != null && Number.isFinite(Number(own.value)) ? Number(own.value) : null;
+  };
+  // facturile care contează (prima de fiecare lună, cea mai recentă) și nu au valoare în grafic au nevoie de cantitatea „alimentare cu apă”
+  const seen = new Set<number>();
+  const needItems: string[] = [];
+  for (const inv of invoices) {
+    const month = inv.issueDate.getUTCMonth() + 1;
+    if (seen.has(month)) continue;
+    seen.add(month);
+    if (ownValue(inv) == null) needItems.push(inv.id);
+  }
+  const apaQty = new Map<string, number>();
+  if (needItems.length > 0) {
+    const lines = await prisma.invoiceItem.findMany({ where: { invoiceId: { in: needItems } }, select: { invoiceId: true, description: true, quantity: true }, orderBy: { position: "asc" } });
+    for (const it of lines) if (!apaQty.has(it.invoiceId) && /alimentare cu ap[aă]/i.test(it.description) && Number.isFinite(it.quantity)) apaQty.set(it.invoiceId, it.quantity);
+  }
   const byMonth = new Map<number, number>();
   for (const inv of invoices) {
     const month = inv.issueDate.getUTCMonth() + 1;
     if (byMonth.has(month)) continue; // prima întâlnită = cea mai recentă pentru luna aceea (orderBy desc)
-    const points = Array.isArray(inv.monthlyConsumption) ? (inv.monthlyConsumption as ConsumptionPoint[]) : [];
-    const own = points.find((p) => String(p.label) === String(month)) ?? points[0];
-    let value = own != null && Number.isFinite(Number(own.value)) ? Number(own.value) : null;
-    if (value == null) {
-      const apa = inv.items.find((it) => /alimentare cu ap[aă]/i.test(it.description));
-      if (apa && Number.isFinite(apa.quantity)) value = apa.quantity;
-    }
+    const value = ownValue(inv) ?? apaQty.get(inv.id) ?? null;
     if (value != null) byMonth.set(month, value);
   }
   return [...byMonth.entries()].map(([m, v]) => ({ label: String(m), value: v }));

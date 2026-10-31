@@ -27,6 +27,8 @@ const LIST_SELECT = {
   lastAppointmentAt: true,
 } as const;
 
+export const CLIENT_LIST_SELECT = LIST_SELECT;
+
 const PAGE_SIZE = 20;
 
 /**
@@ -34,7 +36,7 @@ const PAGE_SIZE = 20;
  * Plătitori) și neimportați din 1C. `meterSeries: null` singur nu prinde clienții la care câmpul
  * lipsește complet; isSet:false îi acoperă.
  */
-const CRM_CLIENT_WHERE: Prisma.ClientWhereInput = {
+export const CRM_CLIENT_WHERE: Prisma.ClientWhereInput = {
   AND: [
     { OR: [{ meterSeries: null }, { meterSeries: { isSet: false } }] },
     { apaCanalImport: { not: true } },

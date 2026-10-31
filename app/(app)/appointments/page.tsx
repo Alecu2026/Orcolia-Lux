@@ -1,12 +1,11 @@
 import { requirePermission } from "@/lib/dal";
 import { getSettings } from "@/lib/queries/settings";
 import { listCategories } from "@/lib/queries/categories";
-import { listAllForUser } from "@/lib/queries/appointments";
-import { todayKey, tomorrowKey } from "@/lib/date";
+import { apptPeople, getApptManifest, getUserNameMap, listApptWindow } from "@/lib/services/appointment-cache";
+import { addDaysToKey, todayKey, tomorrowKey } from "@/lib/date";
 import { toVM } from "@/lib/view";
 import AppointmentsTable from "@/app/components/AppointmentsTable";
 import { can } from "@/lib/permissions";
-import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -16,20 +15,18 @@ export default async function AppointmentsPage({
   searchParams: Promise<{ create?: string }>;
 }) {
   const user = await requirePermission("appointments.view");
-  const [settings, categories] = await Promise.all([getSettings(user.id), listCategories()]);
+  // utilizatorii activi cu acces la Programări (lista „Pentru”) și numele tuturor (cei care au creat / pentru care e programarea) vin din memorie, în paralel cu setările
+  const [settings, categories, allPeople, nameMap] = await Promise.all([getSettings(user.id), listCategories(), apptPeople(), getUserNameMap()]);
   const tz = settings.timezone;
   const { create } = await searchParams;
 
   const today = todayKey(tz);
   const tomorrow = tomorrowKey(tz);
-  // Toate programările odată; filtrarea (perioadă, status, categorie, text…) rulează în browser — vezi DataTable.
-  const list = await listAllForUser(user.id);
-  // utilizatorii activi cu acces la Programări: pentru lista „Pentru” (asignare) și pentru numele celor care au creat / pentru care e programarea
-  const people = (await prisma.user.findMany({ where: { isActive: true }, select: { id: true, name: true, role: true, permissions: true } })).filter((u) => can(u, "appointments.view"));
-  const names = Object.fromEntries(people.map((u) => [u.id, u.name]));
-  const missing = [...new Set(list.flatMap((a) => [a.userId, a.assigneeId]).filter((id): id is string => Boolean(id) && !names[id as string]))];
-  if (missing.length) for (const u of await prisma.user.findMany({ where: { id: { in: missing } }, select: { id: true, name: true } })) names[u.id] = u.name;
-  const items = list.map((a) => toVM(a, tz, names));
+  // Prima afișare: doar programările apropiate (azi − 7 zile … azi + 90 de zile); istoricul vine în browser lună cu lună (IndexedDB, doar lunile noi / modificate — vezi
+  // lib/services/appointment-cache.ts), iar filtrarea (perioadă, status, categorie, text…) rulează tot în browser — vezi DataTable. Înainte se încărcau TOATE programările la fiecare deschidere.
+  const [list, manifest] = await Promise.all([listApptWindow(user.id, addDaysToKey(today, -7, tz), addDaysToKey(today, 90, tz)), getApptManifest(user.id)]);
+  const people = allPeople.filter((u) => can(u, "appointments.view"));
+  const items = list.map((a) => toVM(a, tz, nameMap));
 
   const quickDefaults = {
     today,
@@ -45,6 +42,7 @@ export default async function AppointmentsPage({
   return (
     <AppointmentsTable
       items={items}
+      manifest={manifest}
       categories={categories}
       quickDefaults={quickDefaults}
       initialCreate={create === "1"}

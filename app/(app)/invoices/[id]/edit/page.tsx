@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/dal";
 import { can } from "@/lib/permissions";
-import { getApaCanalMonthlyForForm, getInvoice, invoiceProjectOptions } from "@/lib/queries/invoices";
+import { getApaCanalMonthlyForForm, getInvoiceForEdit, invoiceProjectOptions } from "@/lib/queries/invoices";
 import { getCompanySettings } from "@/lib/queries/company";
-import { crmClientOptionsPlus } from "@/lib/queries/clients";
+import { crmClientOptions } from "@/lib/queries/clients";
 import { prisma } from "@/lib/prisma";
 import InvoiceForm, { type InvoiceInitial } from "@/app/components/InvoiceForm";
 import ApaCanalInvoiceForm, { type ApaCanalInitial } from "@/app/components/ApaCanalInvoiceForm";
@@ -21,16 +21,32 @@ export default async function EditInvoicePage({
   const t = await getT();
   const user = await requirePermission("invoices.edit");
   const { id } = await params;
-  const [invoice, projects, company] = await Promise.all([
-    getInvoice(id),
+  // Primul val: factura (cu liniile) și listele păstrate în memorie. Al doilea val (mai jos), în paralel: tot ce depinde de plătitorul facturii.
+  const [invoice, projects, company, baseClients] = await Promise.all([
+    getInvoiceForEdit(id),
     invoiceProjectOptions(),
     getCompanySettings(),
+    crmClientOptions(),
   ]);
   if (!invoice) notFound();
+  const isApa = invoice.kind === "APA_CANAL";
+  const clientInList = !!invoice.clientId && baseClients.some((c) => c.id === invoice.clientId);
+  const needFill = isApa && (!invoice.contPersonal || !invoice.consumAddress);
+  const [history, payer] = await Promise.all([
+    // "Consum lunar": valorile salvate pe factură au prioritate, dar o lună rămasă goală sau 0 se completează din facturile celorlalte luni ale plătitorului
+    isApa && invoice.clientId ? getApaCanalMonthlyForForm(invoice.clientId, invoice.issueDate) : [],
+    // Plătitorul facturii: numele (să rămână selectat, dacă nu e în lista de CRM) și, la facturile importate cu cont / adresă goale, datele de pe fișa lui
+    invoice.clientId && (!clientInList || needFill)
+      ? prisma.client.findUnique({ where: { id: invoice.clientId }, select: { name: true, meterSeries: true, consumAddress: true } }).catch(() => null)
+      : null,
+  ]);
   // Clienții de CRM + al facturii (plătitorul rămâne selectat); lista completă avea ~19.000 de opțiuni.
-  const clients = await crmClientOptionsPlus(invoice.clientId);
+  const clients =
+    invoice.clientId && !clientInList && payer
+      ? [...baseClients, { id: invoice.clientId, name: payer.name }].sort((a, b) => a.name.localeCompare(b.name, "ro"))
+      : baseClients;
 
-  if (invoice.kind === "APA_CANAL") {
+  if (isApa) {
     // "ap[aă]" — acceptă și "apă" (cu diacritic), cum apar descrierile facturilor importate din
     // exportul 1C — vezi explicația din ApaCanalInvoicePublic.tsx.
     const apaItem = invoice.items.find((it) => /alimentare cu ap[aă]/i.test(it.description));
@@ -41,7 +57,6 @@ export default async function EditInvoicePage({
 
     // Grila „Consum lunar": valorile salvate pe factură au prioritate, dar o lună rămasă goală sau 0 se completează din facturile celorlalte
     // luni ale plătitorului (altfel formularul arată doar luna facturii curente, deși plătitorul are consum în celelalte).
-    const history = invoice.clientId ? await getApaCanalMonthlyForForm(invoice.clientId, invoice.issueDate) : [];
     const consumByLabel = new Map<string, number>();
     for (const p of history) consumByLabel.set(String(p.label), p.value);
     for (const p of rawConsumption) {
@@ -54,11 +69,6 @@ export default async function EditInvoicePage({
 
     // Facturile create de importuri mai vechi pot avea contul personal / adresa goale, deși plătitorul le are pe fișă —
     // le completăm din fișa lui (doar în formular; se salvează pe factură abia când apeși Salvează).
-    const needFill = !invoice.contPersonal || !invoice.consumAddress;
-    const payer =
-      needFill && invoice.clientId
-        ? await prisma.client.findUnique({ where: { id: invoice.clientId }, select: { meterSeries: true, consumAddress: true } })
-        : null;
     const prefilled = {
       contPersonal: !invoice.contPersonal && !!payer?.meterSeries,
       consumAddress: !invoice.consumAddress && !!payer?.consumAddress,

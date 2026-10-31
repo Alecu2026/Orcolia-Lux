@@ -10,19 +10,12 @@ import ImportButton from "./ImportButton";
 import { useToast } from "./toast";
 import { IconPencil, IconTrash } from "./icons";
 import { agoLabel } from "@/lib/payer-notify";
+import type { ClientRow } from "@/lib/clients-snapshot";
+import { useClientDataset } from "./useClientDataset";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
 
-export type ClientRow = {
-  id: string;
-  name: string;
-  phone: string | null;
-  email: string | null;
-  telegramChatId: string | null;
-  notes: string | null;
-  noShowCount: number;
-  lastAppointmentAt: string | null;
-};
+export type { ClientRow };
 
 const DAY = 86_400_000;
 const toEdit = (c: ClientRow): ClientEdit => ({
@@ -37,14 +30,17 @@ const topBtn =
   "tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]";
 
 /** Clienți (CRM) — același tabel dens, cu filtre locale, ca la Plătitori. Click pe rând = editare. */
-export default function ClientsTable({ items, openCreate, canEdit = true, canCreate = true, canDelete = true, canExport = true, canImport = true }: {
+export default function ClientsTable({ items, total = items.length, version = null, openCreate, canEdit = true, canCreate = true, canDelete = true, canExport = true, canImport = true }: {
   canExport?: boolean;
-  canImport?: boolean; items: ClientRow[]; openCreate?: boolean; canEdit?: boolean; canCreate?: boolean; canDelete?: boolean }) {
+  canImport?: boolean; items: ClientRow[]; /** Câți clienți sunt în total (când pagina a primit doar primele rânduri). */ total?: number; /** Versiunea listei complete de pe server; null = pagina are deja toți clienții. */ version?: string | null; openCreate?: boolean; canEdit?: boolean; canCreate?: boolean; canDelete?: boolean }) {
   const t = useT();
   const toast = useToast();
   const m = useMessages();
+  const ds = useClientDataset(version);
   const [rows, setRows] = useState(items);
-  useEffect(() => setRows(items), [items]);
+  // Fără listă completă: rândurile primite cu pagina. Cu lista completă (IndexedDB / rețea): ea înlocuiește rândurile; modificările locale rămân până vine versiunea nouă.
+  useEffect(() => { if (!ds.rows) setRows(items); }, [items, ds.rows]);
+  useEffect(() => { if (ds.rows) setRows(ds.rows); }, [ds.rows]);
   const [dialog, setDialog] = useState<{ open: boolean; client: ClientEdit | null }>({ open: !!openCreate && canCreate, client: null });
 
   function remove(id: string) {
@@ -153,6 +149,8 @@ export default function ClientsTable({ items, openCreate, canEdit = true, canCre
         emptyText={m.clients.noClients}
         toolbar={(view) => (
           <>
+            {version && !ds.rows && ds.loading && <span className="text-[11px] text-ink-soft" data-clients-loading="">{t("se încarcă lista completă ({total} clienți)…", { total: total.toLocaleString("ro-RO") })}</span>}
+            {ds.error && <span className="text-[11px] text-st-cancelled">{t(ds.error)}</span>}
             {canExport && <ExportButton entity="clients" filtered={view.filtered} getIds={view.getIds} count={view.count} className={topBtn} />}
             {canCreate && canImport && <ImportButton entity="clients" className={topBtn} />}
             {canCreate && (

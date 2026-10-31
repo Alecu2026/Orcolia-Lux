@@ -104,6 +104,24 @@ export async function quickCreateClient(name: string): Promise<QuickCreateResult
   return { ok: true, id: client.id, name: client.name };
 }
 
+/**
+ * După o schimbare pe un client, reface DOAR ce depinde de el: lista de plătitori (dacă e plătitor — listele de ~19.000 de rânduri nu se mai reconstruiesc la editarea unui client obișnuit)
+ * și lista de facturi (dacă are facturi — numele lui apare pe ele). `payer` / `hadInvoices` se citesc ÎNAINTE de ștergere.
+ */
+async function refreshAfterClientChange(id: string, known?: { payer: boolean; hadInvoices: boolean }) {
+  const ctx =
+    known ??
+    (await (async () => {
+      const [c, inv] = await Promise.all([
+        prisma.client.findUnique({ where: { id }, select: { meterSeries: true, apaCanalContract: true, apaCanalImport: true } }),
+        prisma.invoice.findFirst({ where: { clientId: id }, select: { id: true } }),
+      ]);
+      return { payer: !c || !!(c.meterSeries || c.apaCanalContract || c.apaCanalImport), hadInvoices: !!inv };
+    })());
+  if (ctx.payer) await invalidatePayers();
+  if (ctx.hadInvoices) await invalidateInvoices({ soft: true });
+}
+
 export async function updateClient(
   _prev: ClientState,
   formData: FormData,
@@ -139,7 +157,7 @@ export async function updateClient(
       notes: d.notes || null,
     },
   });
-  await invalidatePayers();
+  await refreshAfterClientChange(id);
   await logAudit(actor(user), {
     action: "client.update",
     module: "Clients",
@@ -160,10 +178,12 @@ export async function deleteClient(id: string): Promise<void> {
   const user = await requireUser();
   if (!can(user, "clients.delete")) return;
   if (DEMO) return;
-  const c = await prisma.client.findFirst({ where: { id }, select: { name: true } });
+  const [c, inv] = await Promise.all([
+    prisma.client.findFirst({ where: { id }, select: { name: true, meterSeries: true, apaCanalContract: true, apaCanalImport: true } }),
+    prisma.invoice.findFirst({ where: { clientId: id }, select: { id: true } }),
+  ]);
   await prisma.client.deleteMany({ where: { id } });
-  await invalidatePayers();
-  await invalidateInvoices({ soft: true });
+  await refreshAfterClientChange(id, { payer: !c || !!(c.meterSeries || c.apaCanalContract || c.apaCanalImport), hadInvoices: !!inv });
   await logAudit(actor(user), { action: "client.delete", module: "Clients", objectId: id, objectName: c?.name ?? null });
   revalidatePath("/clients");
   updateTag("clients");
@@ -203,8 +223,7 @@ export async function updateClientFieldAction(id: string, patch: ClientFieldPatc
   if (Object.keys(data).length === 0) return { ok: true, id };
 
   await prisma.client.update({ where: { id }, data });
-  await invalidatePayers();
-  await invalidateInvoices({ soft: true });
+  await refreshAfterClientChange(id);
   await logAudit(actor(user), {
     action: "client.update",
     module: "Clients",

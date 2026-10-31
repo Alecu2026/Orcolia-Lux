@@ -31,7 +31,7 @@ import AuditDetailDialog from "./AuditDetailDialog";
 import { fmtStamp, moduleCls, roleCls, roleLabel, type AuditRow } from "./audit-shared";
 
 type Opt = { id: string; name: string };
-type Page = { items: AuditRow[]; total: number; page: number; pageSize: number; totalPages: number; nextCursor?: string | null; capped?: boolean };
+type Page = { items: AuditRow[]; total: number; totalCapped?: boolean; page: number; pageSize: number; totalPages: number; nextCursor?: string | null; capped?: boolean };
 
 const STORAGE_KEY = "filters:audit";
 const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
@@ -320,13 +320,13 @@ export default function AuditLogsClient({
         for (;;) {
           const qs = `${key}${tick > 0 && first ? "&fresh=1" : ""}&limit=${first ? AUDIT_FIRST_CHUNK : AUDIT_NEXT_CHUNK}&loaded=${acc.length}${cursor ? `&cursor=${cursor}` : ""}`;
           const r = await fetch(`/api/admin/audit?${qs}`, { signal: ctl.signal });
-          const j = (await r.json()) as { items: AuditRow[]; total: number; nextCursor: string | null; capped: boolean; error?: string };
+          const j = (await r.json()) as { items: AuditRow[]; total: number; totalCapped?: boolean; nextCursor: string | null; capped: boolean; error?: string };
           if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
           acc = acc.concat(j.items);
           first = false;
           cursor = j.nextCursor;
           allRef.current = { key, cursor };
-          setData({ items: acc, total: j.total, page: 1, pageSize: acc.length, totalPages: 1, nextCursor: cursor, capped: j.capped });
+          setData({ items: acc, total: j.total, totalCapped: j.totalCapped, page: 1, pageSize: acc.length, totalPages: 1, nextCursor: cursor, capped: j.capped });
           if (!cursor) break;
         }
         setLoading(false);
@@ -439,10 +439,10 @@ export default function AuditLogsClient({
 
       {/* ── Sumar + acțiuni ─────────────────────────────────────────────────── */}
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        <span><b>{nf(data.total)}</b> {t("jurnale")}{active > 0 ? ` ${t("(filtrat)")}` : ""}</span>
+        <span><b>{nf(data.total)}{data.totalCapped ? "+" : ""}</b> {t("jurnale")}{active > 0 ? ` ${t("(filtrat)")}` : ""}</span>
         {data.total > 0 && !all && (
           <span className="text-ink-soft">
-            {t("afișate {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(data.total) })}
+            {t("afișate {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(data.total) + (data.totalCapped ? "+" : "") })}
             {data.totalPages > 1 ? ` · ${t("pagina {cur}/{pages}", { cur: data.page, pages: data.totalPages })}` : ""}
           </span>
         )}
@@ -493,9 +493,9 @@ export default function AuditLogsClient({
         </div>
       )}
 
-      {all && data.total > AUDIT_ALL_CAP && (
+      {all && (data.total > AUDIT_ALL_CAP || data.totalCapped) && (
         <p className="mb-2 rounded-lg bg-st-progress/10 px-3 py-2 text-xs text-st-progress">
-          {t("Se afișează cele mai noi {cap} din {total} jurnale. Restrânge filtrele (perioadă, utilizator, modul) sau exportă.", { cap: nf(AUDIT_ALL_CAP), total: nf(data.total) })}
+          {t("Se afișează cele mai noi {cap} din {total} jurnale. Restrânge filtrele (perioadă, utilizator, modul) sau exportă.", { cap: nf(AUDIT_ALL_CAP), total: nf(data.total) + (data.totalCapped ? "+" : "") })}
         </p>
       )}
       {error && (

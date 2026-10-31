@@ -5,6 +5,7 @@ import { dayBoundsUtc, dateKeyOf, addDaysToKey, todayKey as getTodayKey, weekKey
 import type { Prisma, TaskStatus, TaskType, TaskPriority } from "@prisma/client";
 import { canAny, type PermissionSubject } from "../permissions";
 import { allClientNames, clientNamesFor } from "./client-names";
+import { lookupEpoch } from "../lookup-memory";
 import { TASK_PRIORITY_LIST, TASK_STATUS_LIST, type TaskNames, type TaskTuple } from "../task-dataset";
 
 export type TaskRow = {
@@ -115,7 +116,7 @@ type Lookups = {
   at: number;
   users: Map<string, string>;
   teams: Map<string, string>;
-  projects: Map<string, { name: string; clientId: string | null; lat: number | null; lng: number | null }>;
+  projects: Map<string, { name: string; clientId: string | null; lat: number | null; lng: number | null; address: string | null }>;
   categories: Map<string, { name: string; color: string | null }>;
 };
 const LOOKUP_TTL_MS = 20_000;
@@ -125,14 +126,14 @@ async function loadLookups(): Promise<Lookups> {
   const [users, teams, projects, categories] = await Promise.all([
     prisma.user.findMany({ select: { id: true, name: true } }),
     prisma.team.findMany({ select: { id: true, name: true } }),
-    prisma.project.findMany({ select: { id: true, name: true, clientId: true, lat: true, lng: true } }),
+    prisma.project.findMany({ select: { id: true, name: true, clientId: true, lat: true, lng: true, address: true } }),
     prisma.category.findMany({ select: { id: true, name: true, color: true } }),
   ]);
   return {
     at: Date.now(),
     users: new Map(users.map((u) => [u.id, u.name])),
     teams: new Map(teams.map((t) => [t.id, t.name])),
-    projects: new Map(projects.map((p) => [p.id, { name: p.name, clientId: p.clientId ?? null, lat: p.lat ?? null, lng: p.lng ?? null }])),
+    projects: new Map(projects.map((p) => [p.id, { name: p.name, clientId: p.clientId ?? null, lat: p.lat ?? null, lng: p.lng ?? null, address: p.address ?? null }])),
     categories: new Map(categories.map((c) => [c.id, { name: c.name, color: c.color ?? null }])),
   };
 }
@@ -142,8 +143,9 @@ async function taskLookups(force = false): Promise<Lookups> {
   const cur = lkg.__taskLookups;
   if (!force && cur && Date.now() - cur.at < LOOKUP_TTL_MS) return cur;
   if (!lkg.__taskLookupsP) {
+    const epoch = lookupEpoch(); // o scriere pe User / Team / Project / Category în timpul încărcării (lib/lookup-memory.ts) → rezultatul nu mai rămâne în memorie
     lkg.__taskLookupsP = loadLookups()
-      .then((l) => { lkg.__taskLookups = l; return l; })
+      .then((l) => { if (epoch === lookupEpoch()) lkg.__taskLookups = l; return l; })
       .finally(() => { lkg.__taskLookupsP = undefined; });
   }
   return lkg.__taskLookupsP;
@@ -658,71 +660,100 @@ export async function tasksDueBetween(opts: {
   }));
 }
 
+/** Numele care lipsesc din hărți (cont șters, proiect abia creat) → o singură reîncărcare. */
+async function lookupsFor(ids: { users: (string | null | undefined)[]; teams?: (string | null | undefined)[]; projects?: (string | null | undefined)[]; categories?: (string | null | undefined)[] }): Promise<Lookups> {
+  let lk = await taskLookups();
+  const miss = (m: Map<string, unknown>, list?: (string | null | undefined)[]) => (list ?? []).some((x) => !!x && !m.has(x));
+  if (miss(lk.users, ids.users) || miss(lk.teams, ids.teams) || miss(lk.projects, ids.projects) || miss(lk.categories, ids.categories)) lk = await taskLookups(true);
+  return lk;
+}
+
+/**
+ * Detaliul unui task / tichet, în cât mai puține drumuri către baza de date: Prisma ar face câte o interogare per relație, pe niveluri (task → relații → utilizatori ai relațiilor).
+ * Aici rândul task-ului, istoricul și atașamentele pornesc deodată (după id), numele vin din hărțile din memorie (`taskLookups`), iar ce depinde de task (clientul tichetului,
+ * clientul proiectului, mesajele de email) se aduce într-un al doilea val paralel, doar când există. Forma rezultatului e aceeași ca înainte.
+ */
 export async function getTask(id: string) {
   if (DEMO) return null;
-  return prisma.task.findUnique({
-    where: { id },
-    select: {
-      ...TASK_SELECT,
-      // Detaliul unui singur task păstrează relațiile (un singur rând, nu costă); lista folosește hărți (vezi taskLookups)
-      assignee: { select: { name: true } },
-      team: { select: { name: true } },
-      category: { select: { name: true, color: true } },
-      creator: { select: { name: true } },
-      project: { select: { name: true, clientId: true, lat: true, lng: true, address: true, client: { select: { name: true } } } },
-      description: true,
-      consumerName: true,
-      executedAt: true,
-      measuresTaken: true,
-      resolutionMinutes: true,
-      feedbackRating: true,
-      feedbackComment: true,
-      feedbackAt: true,
-      closedAt: true,
-      createdFrom: true,
-      activities: {
-        select: {
-          id: true,
-          action: true,
-          fromStatus: true,
-          toStatus: true,
-          meta: true,
-          note: true,
-          createdAt: true,
-          user: { select: { name: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 200,
-      },
-      attachments: {
-        select: {
-          id: true,
-          name: true,
-          url: true,
-          size: true,
-          mimeType: true,
-          createdAt: true,
-          user: { select: { id: true, name: true } },
-        },
-        orderBy: { createdAt: "asc" },
-      },
-      emailSource: true,
-      fromEmail: true,
-      fromName: true,
-      emailMessages: {
-        select: {
-          id: true,
-          direction: true,
-          fromEmail: true,
-          fromName: true,
-          toEmail: true,
-          body: true,
-          sentAt: true,
-        },
-        orderBy: { sentAt: "asc" },
-      },
-    },
+  const [t, acts, atts] = await Promise.all([
+    prisma.task.findUnique({
+      where: { id },
+      select: { ...TASK_SELECT, closedAt: true, createdFrom: true, feedbackAt: true, emailSource: true },
+    }),
+    prisma.taskActivity.findMany({
+      where: { taskId: id },
+      select: { id: true, action: true, fromStatus: true, toStatus: true, meta: true, note: true, createdAt: true, userId: true },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    }),
+    prisma.taskAttachment.findMany({
+      where: { taskId: id },
+      select: { id: true, name: true, url: true, size: true, mimeType: true, createdAt: true, userId: true },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+  if (!t) return null;
+
+  const lk = await lookupsFor({
+    users: [t.creatorId, t.assigneeId, ...acts.map((a) => a.userId), ...atts.map((a) => a.userId)],
+    teams: [t.teamId],
+    projects: [t.projectId],
+    categories: [t.categoryId],
   });
+  const proj = t.projectId ? lk.projects.get(t.projectId) : undefined;
+
+  // al doilea val, în paralel: doar ce există
+  const [chatClient, projectClient, emailMessages] = await Promise.all([
+    t.type === "TICKET" && t.clientId
+      ? prisma.client.findUnique({ where: { id: t.clientId }, select: { name: true, email: true, portalPasswordHash: true } })
+      : null,
+    proj?.clientId && !(t.type === "TICKET" && t.clientId === proj.clientId)
+      ? prisma.client.findUnique({ where: { id: proj.clientId }, select: { name: true } })
+      : null,
+    t.emailSource
+      ? prisma.emailMessage.findMany({
+          where: { taskId: id },
+          select: { id: true, direction: true, fromEmail: true, fromName: true, toEmail: true, body: true, sentAt: true },
+          orderBy: { sentAt: "asc" },
+        })
+      : [],
+  ]);
+  const projectClientName = proj?.clientId ? (chatClient && t.clientId === proj.clientId ? chatClient.name : (projectClient?.name ?? null)) : null;
+  const nm = (m: Map<string, string>, k: string | null | undefined) => (k ? (m.get(k) ?? null) : null);
+  const named = (m: Map<string, string>, k: string | null | undefined) => {
+    const n = nm(m, k);
+    return n != null ? { name: n } : null;
+  };
+  const cat = t.categoryId ? lk.categories.get(t.categoryId) : undefined;
+
+  return {
+    ...t,
+    assignee: named(lk.users, t.assigneeId),
+    team: named(lk.teams, t.teamId),
+    category: cat ? { name: cat.name, color: cat.color } : null,
+    creator: named(lk.users, t.creatorId),
+    project: proj
+      ? { name: proj.name, clientId: proj.clientId, lat: proj.lat, lng: proj.lng, address: proj.address, client: projectClientName != null ? { name: projectClientName } : null }
+      : null,
+    activities: acts.map(({ userId, ...a }) => ({ ...a, user: { name: nm(lk.users, userId) ?? "—" } })),
+    attachments: atts.map(({ userId, ...a }) => ({ ...a, user: { id: userId, name: nm(lk.users, userId) ?? "—" } })),
+    emailMessages,
+    /** Clientul tichetului (conversația din pagină arată dacă primește emailuri și dacă are cont în portal). */
+    chatClient,
+  };
+}
+
+/** Comentariile interne ale unui task, cu numele autorilor din hărțile din memorie (fără relația Prisma → o interogare, nu două). */
+export async function getTaskComments(taskId: string) {
+  if (DEMO) return [];
+  const rows = await prisma.taskComment.findMany({
+    where: { taskId },
+    select: { id: true, body: true, source: true, createdAt: true, userId: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (rows.length === 0) return [];
+  const lk = await lookupsFor({ users: rows.map((r) => r.userId) });
+  return rows.map(({ userId, ...c }) => ({ ...c, user: { name: lk.users.get(userId) ?? "—" } }));
 }
 
 /** Statistici pentru dashboard: ale mele pe status + tichete/task-uri deschise + proiecte active. */

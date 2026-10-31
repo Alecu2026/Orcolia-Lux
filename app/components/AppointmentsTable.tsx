@@ -23,6 +23,8 @@ import { humanDay } from "@/lib/date";
 import { useLocale, useMessages, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 import type { ApptStatus, ApptVM, CategoryLite, QuickDefaults, QuickPrefill } from "./types";
+import type { ApptMonth } from "@/lib/appt-snapshot";
+import { useApptHistory } from "./useApptHistory";
 
 const iconBtn =
   "tap grid size-5 cursor-pointer place-items-center rounded border border-[var(--color-line)] hover:bg-brand-soft";
@@ -81,6 +83,7 @@ function EditApptButton({ a, className, children }: { a: ApptVM; className?: str
 /** Programări — tabel dens cu filtre locale (ca la Plătitori). Click pe rând = popup; statusul se schimbă direct din rând. */
 export default function AppointmentsTable({
   items,
+  manifest = [],
   categories,
   quickDefaults,
   initialCreate,
@@ -95,7 +98,10 @@ export default function AppointmentsTable({
   canExport?: boolean;
   canImport?: boolean;
   userId?: string;
+  /** Programările apropiate (primite odată cu pagina). */
   items: ApptVM[];
+  /** Lunile cu programări ale utilizatorului + versiunea lor: istoricul se aduce din ele (vezi useApptHistory). */
+  manifest?: ApptMonth[];
   categories: CategoryLite[];
   quickDefaults: QuickDefaults;
   initialCreate?: boolean;
@@ -106,8 +112,15 @@ export default function AppointmentsTable({
   const m = useMessages();
   const t = useT();
   const locale = useLocale();
-  const [rows, setRows] = useState(items);
-  useEffect(() => setRows(items), [items]);
+  const hist = useApptHistory(manifest);
+  // istoricul + fereastra primită cu pagina (fereastra e mai proaspătă: are întâietate pentru aceleași programări); cele șterse aici nu reapar până vine luna reîmprospătată
+  const [removed, setRemoved] = useState<ReadonlySet<string>>(() => new Set());
+  const merged = useMemo(() => {
+    const near = new Set(items.map((i) => i.id));
+    return [...items, ...hist.rows.filter((r) => !near.has(r.id) && !removed.has(r.id))];
+  }, [items, hist.rows, removed]);
+  const [rows, setRows] = useState(merged);
+  useEffect(() => setRows(merged), [merged]);
   const [busy, setBusy] = useState<string | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
 
@@ -125,11 +138,12 @@ export default function AppointmentsTable({
   function remove(id: string) {
     if (!confirm(m.appts.deleteConfirm)) return;
     const prev = rows;
+    setRemoved((cur) => new Set(cur).add(id));
     setRows((cur) => cur.filter((r) => r.id !== id));
     setDetail((d) => (d === id ? null : d));
     deleteAppointment(id)
-      .then((res) => { if (res?.error) { setRows(prev); toast.error(t(res.error)); } else toast.success(m.appts.deleted); })
-      .catch(() => { setRows(prev); toast.error(m.common.deleteFailed); });
+      .then((res) => { if (res?.error) { setRemoved((cur) => { const n = new Set(cur); n.delete(id); return n; }); setRows(prev); toast.error(t(res.error)); } else toast.success(m.appts.deleted); })
+      .catch(() => { setRemoved((cur) => { const n = new Set(cur); n.delete(id); return n; }); setRows(prev); toast.error(m.common.deleteFailed); });
   }
 
   /** Reprogramare (dată + oră; durata rămâne): optimist, la eșec (ex. interval ocupat) revenim + mesaj. */
@@ -334,6 +348,8 @@ export default function AppointmentsTable({
         emptyText={m.appts.noAppts}
         toolbar={(view) => (
           <>
+            {hist.loading && <span className="text-[11px] text-ink-soft" data-appt-history="loading">{t("se încarcă istoricul…")}</span>}
+            {hist.error && <span className="text-[11px] text-st-cancelled">{t(hist.error)}</span>}
             {canExport && <ExportButton entity="appointments" filtered={view.filtered} getIds={view.getIds} count={view.count} className={topBtn} />}
             {canManage && canImport && <ImportButton entity="appointments" className={topBtn} />}
             {canManage && <OpenQuickAddButton className="tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong" />}

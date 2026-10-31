@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCompanySettings } from "@/lib/queries/company";
 import { refreshClientInvoiceSnapshot } from "@/lib/services/invoices";
 import { invalidatePayers } from "@/lib/services/payer-cache";
-import { invalidateInvoices } from "@/lib/services/invoice-cache";
+import { syncInvoiceToCache } from "@/lib/services/invoice-cache";
 
 // Fallback DOAR dacă firma n-a completat niciodată tariful în Setări (apaCanalTarifApa/Canal
 // rămân 0) — altfel, prima factură auto-generată respectă tariful curent salvat, la fel ca
@@ -85,7 +85,7 @@ export async function generateFirstApaCanalInvoice(clientId: string): Promise<vo
   const subtotal = round2(apaSubtotal + canalSubtotal);
   const number = await genNumber(prefix);
 
-  await prisma.invoice.create({
+  const created = await prisma.invoice.create({
     data: {
       number,
       status: "SENT",
@@ -137,5 +137,5 @@ export async function generateFirstApaCanalInvoice(clientId: string): Promise<vo
 
   await refreshClientInvoiceSnapshot(client.id);
   await invalidatePayers();
-  await invalidateInvoices();
+  await syncInvoiceToCache(created.id); // doar luna facturii noi, nu toate lunile
 }
