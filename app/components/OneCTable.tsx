@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { ONEC_COLUMNS, type OneCColumn } from "@/lib/apa-canal-1c";
 import { useT } from "@/lib/i18n/context";
+import { HEAD, IDX_DIFF, IDX_PWA_TOTAL, IDX_TOKEN, TOLERANCE, filterOneC, type OneCTuple } from "@/lib/onec-table";
+import { PER_PAGE_ALL, perPageLabel } from "@/lib/payer-notify";
+import { useOneCDataset } from "./useOneCDataset";
 
 type Row = Record<string, string | number | null> & {
   id: string;
@@ -13,7 +16,7 @@ type Row = Record<string, string | number | null> & {
   diff: number | null;
   invoiceToken: string | null;
 };
-type Payload = {
+type ServerPayload = {
   items: Row[];
   total: number;
   page: number;
@@ -34,7 +37,17 @@ type Detail = {
 };
 
 const MONEY = new Set(["calculat", "datorieAvans", "deAchitat", "apaSuma", "canalSuma", "apaTarif", "canalTarif"]);
-const PER_PAGE = [50, 100, 200, 500];
+const PER_PAGE = [50, 100, 200, 500, 1000, PER_PAGE_ALL];
+const ROW_H = 28; // înălțimea fixă a unui rând (necesară virtualizării)
+const HEAD_H = 76; // antetul (titlu + filtru) — rândurile încep sub el
+const VIEW_H = 640; // înălțimea zonei derulabile
+const OVER = 8;
+const VIRT_MIN = 60; // peste atâtea rânduri pe pagină se desenează doar cele vizibile
+
+/** Un rând primit de la server („Toate lunile”) în aceeași formă de tuplu ca în snapshot. */
+function serverRowToTuple(r: Row): OneCTuple {
+  return [r.id, r.clientId, r.invoiceNumber, ...ONEC_COLUMNS.map((c) => (r[c.key] ?? null) as string | number | null), r.pwaTotal, r.diff, r.invoiceToken];
+}
 
 const money = (n: number | null | undefined) =>
   n == null ? "" : n.toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -51,7 +64,6 @@ const inputCls =
 export default function OneCTable({ canExport = true }: { canExport?: boolean } = {}) {
   const tr = useT();
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [applied, setApplied] = useState<Record<string, string>>({});
   const [sort, setSort] = useState("nume");
   const [dir, setDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
@@ -60,16 +72,23 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
   // Implicit un rând per abonat (luna cea mai recentă) — UID-ul 1C e per chitanță, deci altfel același
   // abonat apare o dată pentru fiecare lună importată.
   const [period, setPeriod] = useState("latest");
-  const [data, setData] = useState<Payload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [previewToken, setPreviewToken] = useState<string | null>(null);
-  const req = useRef(0);
+  const [scrollTop, setScrollTop] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
+
+  // „Toate lunile” (un rând per abonat ȘI lună) ar fi de zeci de ori mai mare: rămâne pe interogări server (filtre cu pauză de tastare, max. 500 pe pagină).
+  const serverMode = period === "all";
+  const ds = useOneCDataset(serverMode ? null : period);
+  const [applied, setApplied] = useState<Record<string, string>>({});
+  const [srv, setSrv] = useState<ServerPayload | null>(null);
+  const [srvLoading, setSrvLoading] = useState(false);
+  const [srvError, setSrvError] = useState<string | null>(null);
+  const reqId = useRef(0);
   const appliedRef = useRef<Record<string, string>>({});
 
-  // Filtrele se aplică după o scurtă pauză de tastare (fiecare aplicare = o interogare pe server).
   useEffect(() => {
+    if (!serverMode) return;
     const t = setTimeout(() => {
       const prev = appliedRef.current;
       const same = Object.keys({ ...prev, ...filters }).every((k) => (prev[k] ?? "") === (filters[k] ?? ""));
@@ -79,12 +98,12 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
       setPage(1);
     }, 400);
     return () => clearTimeout(t);
-  }, [filters]);
+  }, [filters, serverMode]);
 
   const queryString = useCallback(
-    (extra: Record<string, string> = {}) => {
+    (extra: Record<string, string> = {}, f: Record<string, string> = filters) => {
       const sp = new URLSearchParams();
-      for (const [k, v] of Object.entries(applied)) if (v.trim()) sp.set(`f_${k}`, v.trim());
+      for (const [k, v] of Object.entries(f)) if (v.trim()) sp.set(`f_${k}`, v.trim());
       sp.set("sort", sort);
       sp.set("dir", dir);
       if (onlyDiff) sp.set("diff", "1");
@@ -92,26 +111,62 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
       for (const [k, v] of Object.entries(extra)) sp.set(k, v);
       return sp.toString();
     },
-    [applied, sort, dir, onlyDiff, period],
+    [filters, sort, dir, onlyDiff, period],
   );
 
+  const effPerPage = serverMode ? Math.min(perPage === PER_PAGE_ALL ? 500 : perPage, 500) : perPage;
   useEffect(() => {
-    const id = ++req.current;
-    setLoading(true);
-    setError(null);
-    fetch(`/api/platitori/tabel?${queryString({ page: String(page), perPage: String(perPage) })}`)
+    if (!serverMode) return;
+    const id = ++reqId.current;
+    setSrvLoading(true);
+    setSrvError(null);
+    fetch(`/api/platitori/tabel?${queryString({ page: String(page), perPage: String(effPerPage) }, applied)}`)
       .then(async (r) => {
         const j = await r.json();
         if (!r.ok) throw new Error(j.error ?? "Eroare la încărcare.");
-        return j as Payload;
+        return j as ServerPayload;
       })
-      .then((j) => { if (id === req.current) setData(j); })
-      .catch((e: Error) => { if (id === req.current) setError(tr(e.message)); })
-      .finally(() => { if (id === req.current) setLoading(false); });
-  }, [queryString, page, perPage]);
+      .then((j) => { if (id === reqId.current) setSrv(j); })
+      .catch((e: Error) => { if (id === reqId.current) setSrvError(tr(e.message)); })
+      .finally(() => { if (id === reqId.current) setSrvLoading(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverMode, applied, sort, dir, onlyDiff, page, effPerPage]);
 
-  const pages = data ? Math.max(1, Math.ceil(data.total / data.perPage)) : 1;
-  const activeFilters = Object.values(applied).filter((v) => v.trim()).length + (onlyDiff ? 1 : 0);
+  // ── modul local: filtrare / sortare / totaluri pe lista completă din browser ──
+  const dFilters = useDeferredValue(filters);
+  const local = useMemo(
+    () => (!serverMode && ds.rows ? filterOneC(ds.rows, { filters: dFilters, onlyDiff, sort, dir }) : null),
+    [serverMode, ds.rows, dFilters, onlyDiff, sort, dir],
+  );
+  const total = serverMode ? (srv?.total ?? 0) : (local?.total ?? 0);
+  const sums = serverMode ? srv?.sums : local?.sums;
+  const months = serverMode ? (srv?.months ?? ds.months) : ds.months;
+  const allPage = !serverMode && perPage === PER_PAGE_ALL;
+  const pageSize = allPage ? Math.max(total, 1) : effPerPage;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const curPage = Math.min(page, pages);
+  const loading = serverMode ? srvLoading : ds.loading;
+  const error = serverMode ? srvError : ds.error;
+
+  // rândurile paginii curente, ca tupluri (modul server: din răspuns, în aceeași formă)
+  const pageRows: OneCTuple[] = useMemo(() => {
+    if (serverMode) return (srv?.items ?? []).map(serverRowToTuple);
+    if (!local || !ds.rows) return [];
+    const out: OneCTuple[] = [];
+    const from = (curPage - 1) * pageSize;
+    for (let k = from; k < Math.min(from + pageSize, local.idx.length); k++) out.push(ds.rows[local.idx[k]]);
+    return out;
+  }, [serverMode, srv, local, ds.rows, curPage, pageSize]);
+
+  const virt = pageRows.length > VIRT_MIN;
+  const start = virt ? Math.max(0, Math.floor(Math.max(0, scrollTop - HEAD_H) / ROW_H) - OVER) : 0;
+  const end = virt ? Math.min(pageRows.length, Math.ceil((scrollTop + VIEW_H) / ROW_H) + OVER) : pageRows.length;
+  useEffect(() => {
+    if (box.current) box.current.scrollTop = 0;
+    setScrollTop(0);
+  }, [curPage, perPage, sort, dir, onlyDiff, period, dFilters]);
+
+  const activeFilters = Object.values(filters).filter((v) => v.trim()).length + (onlyDiff ? 1 : 0);
   const exportUrl = useCallback((sheet: string) => `/api/platitori/tabel/export?${queryString({ sheet })}`, [queryString]);
 
   function toggleSort(key: string) {
@@ -119,9 +174,12 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
     else { setSort(key); setDir("asc"); }
     setPage(1);
   }
+  const setFilter = (key: string, v: string) => { setFilters((f) => ({ ...f, [key]: v })); setPage(1); };
+  const waiting = !serverMode && !ds.rows && !ds.error;
+  const colSpan = ONEC_COLUMNS.length + 4;
 
   return (
-    <div>
+    <div data-onec="" data-mode={serverMode ? "server" : "local"}>
       <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
         <select
           value={period}
@@ -130,7 +188,7 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
           aria-label={tr("Luna")}
         >
           <option value="latest">{tr("Luna cea mai recentă (un rând per abonat)")}</option>
-          {data?.months.map((m) => (
+          {months.map((m) => (
             <option key={m.month} value={m.month}>{tr("Doar {v1} ({v2})", { v1: monthLabel(m.month), v2: m.count.toLocaleString("ro-RO") })}</option>
           ))}
           <option value="all">{tr("Toate lunile (un rând per abonat și lună)")}</option>
@@ -140,7 +198,7 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
           {tr("Doar diferențe PWA ≠ 1C")}
         </label>
         <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }} className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm" aria-label={tr("Rânduri pe pagină")}>
-          {PER_PAGE.map((n) => <option key={n} value={n}>{n} / {tr("pagină")}</option>)}
+          {PER_PAGE.map((n) => <option key={n} value={n} disabled={serverMode && n > 500}>{perPageLabel(n, tr)}</option>)}
         </select>
         {activeFilters > 0 && (
           <button type="button" onClick={() => { appliedRef.current = {}; setFilters({}); setApplied({}); setOnlyDiff(false); setPage(1); }} className="tap h-9 rounded-lg border border-[var(--color-line)] px-3 text-sm text-ink-soft hover:bg-[var(--color-surface-2)]">
@@ -170,19 +228,31 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
       <p className="mb-2 text-xs text-ink-soft">
         {tr("Filtrele merg pe fiecare coloană (text: „conține”). La coloanele cu numere poți scrie")} <b>&gt;100</b>, <b>&lt;=0</b>, <b>=45.3</b> {tr("sau un interval")} <b>10-50</b>{tr(". Click pe un rând = toate datele lui din cele 6 tabele 1C. În 1C, UID-ul e al chitanței unei luni, nu al abonatului — la „Toate lunile” același abonat apare o dată pentru fiecare lună (vezi coloana „Data document”).")}
       </p>
+      {serverMode && <p className="mb-2 text-xs text-st-progress">{tr("„Toate lunile”: filtrele rulează pe server (cu pauză de tastare), cel mult 500 de rânduri pe pagină.")}</p>}
 
-      {data && (
-        <div className="mb-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
-          <span><b>{data.total.toLocaleString("ro-RO")}</b> {period === "all" ? tr("rânduri (abonat × lună)") : tr("abonați")}</span>
-          <span>{tr("Σ Calculat:")} <b>{money(data.sums.calculat)}</b></span>
-          <span>{tr("Σ Datorie/avans:")} <b>{money(data.sums.datorieAvans)}</b></span>
-          <span>{tr("Σ De achitat:")} <b>{money(data.sums.deAchitat)}</b></span>
+      {sums && (
+        <div className="mb-2 flex flex-wrap gap-x-5 gap-y-1 text-sm" data-onec-summary="">
+          <span><b>{total.toLocaleString("ro-RO")}</b> {period === "all" ? tr("rânduri (abonat × lună)") : tr("abonați")}</span>
+          <span>{tr("Σ Calculat:")} <b>{money(sums.calculat)}</b></span>
+          <span>{tr("Σ Datorie/avans:")} <b>{money(sums.datorieAvans)}</b></span>
+          <span>{tr("Σ De achitat:")} <b>{money(sums.deAchitat)}</b></span>
           {loading && <span className="text-ink-soft">{tr("se încarcă…")}</span>}
         </div>
       )}
-      {error && <p className="mb-2 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{tr(error)}</p>}
+      {waiting && (
+        <p className="mb-2 flex items-center gap-2 text-sm text-ink-soft" data-onec-loading="">
+          <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+          {tr("Se încarcă tabelul 1C (prima dată durează mai mult; apoi rămâne în browser)…")}
+        </p>
+      )}
+      {error && (
+        <p className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
+          {tr(error)}
+          {!serverMode && <button type="button" onClick={() => void ds.refresh()} className="tap shrink-0 font-semibold underline">{tr("Reîncearcă")}</button>}
+        </p>
+      )}
 
-      <div className="card overflow-auto" style={{ maxHeight: "68vh" }}>
+      <div ref={box} className="card overflow-auto" style={{ maxHeight: "68vh" }} onScroll={virt ? (e) => setScrollTop(e.currentTarget.scrollTop) : undefined} data-onec-scroll="">
         <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
           <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
             <tr>
@@ -199,10 +269,11 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
                   </button>
                   <input
                     value={filters[c.key] ?? ""}
-                    onChange={(e) => setFilters((f) => ({ ...f, [c.key]: e.target.value }))}
+                    onChange={(e) => setFilter(c.key, e.target.value)}
                     placeholder={c.type === "num" ? ">100 · 10-50" : tr("Filtru…")}
                     className={`${inputCls} mb-2`}
                     aria-label={`${tr("Filtru")} ${tr(c.label)}`}
+                    data-filter={c.key}
                   />
                 </th>
               ))}
@@ -213,48 +284,58 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
             </tr>
           </thead>
           <tbody>
-            {data?.items.map((r) => (
-              <tr key={r.id} onClick={() => setDetailId(r.id)} className="cursor-pointer hover:bg-brand-soft/40">
-                {ONEC_COLUMNS.map((c, i) => (
-                  <td
-                    key={c.key}
-                    className={`border-b border-[var(--color-line)] px-2 py-1.5 ${c.type === "num" ? "text-right tabular-nums" : ""} ${i === 1 ? "sticky left-0 z-10 bg-[var(--color-surface)] font-medium" : ""}`}
-                    style={{ maxWidth: Math.max(c.w, 160) }}
-                  >
-                    <div className="truncate" title={fmt(c, r[c.key])}>{fmt(c, r[c.key])}</div>
+            {virt && start > 0 && <tr aria-hidden="true"><td colSpan={colSpan} style={{ height: start * ROW_H, padding: 0, border: 0 }} /></tr>}
+            {pageRows.slice(start, end).map((r) => {
+              const id = String(r[0]);
+              const token = r[IDX_TOKEN] as string | null;
+              const diff = r[IDX_DIFF] as number | null;
+              return (
+                <tr key={id} data-onec-row={id} onClick={() => setDetailId(id)} className="cursor-pointer hover:bg-brand-soft/40" style={{ height: ROW_H }}>
+                  {ONEC_COLUMNS.map((c, i) => {
+                    const text = fmt(c, r[HEAD + i]);
+                    return (
+                      <td
+                        key={c.key}
+                        className={`border-b border-[var(--color-line)] px-2 ${c.type === "num" ? "text-right tabular-nums" : ""} ${i === 1 ? "sticky left-0 z-10 bg-[var(--color-surface)] font-medium" : ""}`}
+                        style={{ maxWidth: Math.max(c.w, 160) }}
+                      >
+                        <div className="truncate" title={text}>{text}</div>
+                      </td>
+                    );
+                  })}
+                  <td className="border-b border-[var(--color-line)] px-2">{r[2]}</td>
+                  <td className="border-b border-[var(--color-line)] px-2 text-center">
+                    {token && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setPreviewToken(token); }}
+                        title={tr("Vezi factura (pop-up, fără să navighezi)")}
+                        className="tap rounded-lg border border-[var(--color-line)] px-2 py-0.5 text-xs hover:bg-brand-soft hover:text-brand-strong"
+                      >
+                        👁
+                      </button>
+                    )}
                   </td>
-                ))}
-                <td className="border-b border-[var(--color-line)] px-2 py-1.5">{r.invoiceNumber}</td>
-                <td className="border-b border-[var(--color-line)] px-2 py-1.5 text-center">
-                  {r.invoiceToken && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setPreviewToken(r.invoiceToken); }}
-                      title={tr("Vezi factura (pop-up, fără să navighezi)")}
-                      className="tap rounded-lg border border-[var(--color-line)] px-2 py-1 text-xs hover:bg-brand-soft hover:text-brand-strong"
-                    >
-                      👁
-                    </button>
-                  )}
-                </td>
-                <td className="border-b border-[var(--color-line)] px-2 py-1.5 text-right tabular-nums">{money(r.pwaTotal)}</td>
-                <td className={`border-b border-[var(--color-line)] px-2 py-1.5 text-right tabular-nums ${r.diff && Math.abs(r.diff) > 0.011 ? "font-semibold text-st-cancelled" : ""}`}>{money(r.diff)}</td>
-              </tr>
-            ))}
-            {data && data.items.length === 0 && (
-              <tr><td colSpan={ONEC_COLUMNS.length + 4} className="p-8 text-center text-ink-soft">{tr("Niciun abonat cu filtrele acestea.")}</td></tr>
+                  <td className="border-b border-[var(--color-line)] px-2 text-right tabular-nums">{money(r[IDX_PWA_TOTAL] as number | null)}</td>
+                  <td className={`border-b border-[var(--color-line)] px-2 text-right tabular-nums ${diff && Math.abs(diff) > TOLERANCE ? "font-semibold text-st-cancelled" : ""}`}>{money(diff)}</td>
+                </tr>
+              );
+            })}
+            {virt && end < pageRows.length && <tr aria-hidden="true"><td colSpan={colSpan} style={{ height: (pageRows.length - end) * ROW_H, padding: 0, border: 0 }} /></tr>}
+            {!waiting && !loading && pageRows.length === 0 && (
+              <tr><td colSpan={colSpan} className="p-8 text-center text-ink-soft">{tr("Niciun abonat cu filtrele acestea.")}</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
-      <div className="mt-3 flex items-center justify-between text-sm">
-        <button type="button" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)} className="tap card rounded-lg px-3 py-2 disabled:opacity-40">{tr("‹ Anterior")}</button>
+      <div className="mt-3 flex items-center justify-between text-sm" data-onec-pager="">
+        <button type="button" disabled={curPage <= 1 || (serverMode && loading)} onClick={() => setPage(curPage - 1)} className="tap card rounded-lg px-3 py-2 disabled:opacity-40">{tr("‹ Anterior")}</button>
         <span className="text-center text-ink-soft">
-          {tr("Pagina")} {page} {tr("din")} {pages}
-          {data && data.total > 0 && <><br /><span className="text-xs">{(page - 1) * data.perPage + 1}–{Math.min(page * data.perPage, data.total)} {tr("din")} {data.total.toLocaleString("ro-RO")}</span></>}
+          {tr("Pagina")} {curPage} {tr("din")} {pages}
+          {total > 0 && <><br /><span className="text-xs">{(curPage - 1) * pageSize + 1}–{Math.min(curPage * pageSize, total)} {tr("din")} {total.toLocaleString("ro-RO")}</span></>}
         </span>
-        <button type="button" disabled={page >= pages || loading} onClick={() => setPage((p) => p + 1)} className="tap card rounded-lg px-3 py-2 disabled:opacity-40">{tr("Următor ›")}</button>
+        <button type="button" disabled={curPage >= pages || (serverMode && loading)} onClick={() => setPage(curPage + 1)} className="tap card rounded-lg px-3 py-2 disabled:opacity-40">{tr("Următor ›")}</button>
       </div>
 
       {detailId && <DetailDialog id={detailId} onClose={() => setDetailId(null)} />}

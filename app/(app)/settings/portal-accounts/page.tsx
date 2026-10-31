@@ -2,9 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
-import { prisma } from "@/lib/prisma";
 import { IconChevronLeft } from "@/app/components/icons";
-import PortalAccountsTable, { type PortalAccountRow } from "@/app/components/PortalAccountsTable";
+import PortalAccountsTable from "@/app/components/PortalAccountsTable";
+import { decodeAccount } from "@/lib/portal-accounts";
+import { getPortalAccountsSnap } from "@/lib/services/portal-accounts-cache";
 import { getT } from "@/lib/i18n/server-t";
 import { listPortalTemplates } from "@/lib/queries/portal-templates";
 import PortalTemplatesManager from "@/app/components/PortalTemplatesManager";
@@ -21,35 +22,11 @@ export default async function PortalAccountsPage() {
   const user = await requireUser();
   if (!can(user, "admin")) redirect("/settings");
 
-  // Fără orderBy în baza de date (sortarea pe zeci de mii de rânduri depășește limita MongoDB): sortează tabelul în browser.
-  const clients = await prisma.client.findMany({
-    where: { OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] },
-    select: {
-      id: true,
-      name: true,
-      meterSeries: true,
-      apaCanalContract: true,
-      email: true,
-      portalPasswordHash: true,
-      portalActivatedAt: true,
-      portalLastLoginAt: true,
-      createdAt: true,
-    },
-  });
-
-  const templates = await listPortalTemplates();
-
-  const rows: PortalAccountRow[] = clients.map((c) => ({
-    id: c.id,
-    name: c.name,
-    account: c.meterSeries,
-    contract: c.apaCanalContract,
-    email: c.email || null,
-    activated: !!c.portalPasswordHash,
-    activatedAt: c.portalActivatedAt?.toISOString() ?? null,
-    lastLoginAt: c.portalLastLoginAt?.toISOString() ?? null,
-    createdAt: c.createdAt.toISOString(),
-  }));
+  // Lista din memoria serverului (se reface la schimbări și la cel mult un minut). Un set mic vine întreg în HTML; unul mare vine ca primele 100 + totalul, iar restul îl aduce
+  // browserul din /api/portal-accounts/snapshot (comprimat, cu ETag, păstrat în IndexedDB) — nu mai trimitem ~19.000 de rânduri în fiecare răspuns.
+  const [snap, templates, teams] = await Promise.all([getPortalAccountsSnap(), listPortalTemplates(), teamOptions()]);
+  const total = snap.tuples.length;
+  const initial = snap.tuples.slice(0, total <= 300 ? total : 100).map(decodeAccount);
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -62,8 +39,8 @@ export default async function PortalAccountsPage() {
           {t("Plătitorii care au cont personal sau contract și pot deschide cont în portal. Alege câte rânduri vrei pe pagină și filtrează după orice criteriu.")}
         </p>
       </div>
-      <PortalTemplatesManager initial={templates} teams={await teamOptions()} />
-      <PortalAccountsTable rows={rows} />
+      <PortalTemplatesManager initial={templates} teams={teams} />
+      <PortalAccountsTable initial={initial} total={total} />
     </div>
   );
 }

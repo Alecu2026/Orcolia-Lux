@@ -40,7 +40,17 @@ export type PayerStatementRow = {
 };
 
 export type PayerStatement = {
-  client: { id: string; name: string; meterSeries: string | null; consumAddress: string | null };
+  client: {
+    id: string;
+    name: string;
+    meterSeries: string | null;
+    consumAddress: string | null;
+    /** Contul / contractul de afișat: contul personal, iar dacă lipsește — cel din ultima factură, din 1C sau nr. de contract (firme). */
+    account: string | null;
+    accountKind: "account" | "contract" | null;
+    /** Adresa de afișat: cea a plătitorului, altfel cea de pe ultima factură sau din 1C. */
+    address: string | null;
+  };
   rows: PayerStatementRow[];
   totals: { apaQty: number; canalQty: number; subtotal: number; datoriiAvans: number; recalculari: number; penalitati: number; grandTotal: number };
 };
@@ -49,7 +59,7 @@ export type PayerStatement = {
 export async function getPayerStatement(clientId: string, opts: { forPortal?: boolean } = {}): Promise<PayerStatement | null> {
   const client = await prisma.client.findFirst({
     where: { id: clientId },
-    select: { id: true, name: true, meterSeries: true, consumAddress: true },
+    select: { id: true, name: true, meterSeries: true, consumAddress: true, apaCanalContract: true },
   });
   if (!client) return null;
 
@@ -57,7 +67,7 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
     where: { clientId: client.id, kind: "APA_CANAL", ...(opts.forPortal ? { status: { not: "DRAFT" as const } } : {}) },
     orderBy: { issueDate: "asc" },
     select: {
-      id: true, publicToken: true, number: true, status: true, issueDate: true, billingPeriodLabel: true, sectorNr: true, contPersonal: true,
+      id: true, publicToken: true, number: true, status: true, issueDate: true, billingPeriodLabel: true, sectorNr: true, contPersonal: true, consumAddress: true,
       meterPrevReading: true, meterCurrReading: true, subtotal: true, datoriiAvans: true, recalculari: true,
       penalitati: true, grandTotal: true, currency: true,
       items: { select: { description: true, quantity: true, unitPrice: true } },
@@ -99,8 +109,30 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
     };
   });
 
+  // Contul și adresa pot lipsi de pe fișa plătitorului (nu toți vin cu ele din Axioma): le luăm de pe ultima factură, apoi din ultimul document 1C.
+  const newest = [...invoices].reverse();
+  let account: string | null = client.meterSeries || newest.find((i) => i.contPersonal)?.contPersonal || null;
+  let address: string | null = client.consumAddress || newest.find((i) => i.consumAddress)?.consumAddress || null;
+  let contract: string | null = account ? null : client.apaCanalContract || null;
+  if (!account || !address || !contract) {
+    const rec = await prisma.oneCRecord
+      .findFirst({ where: { clientId: client.id }, orderBy: { dataDoc: "desc" }, select: { contPersonal: true, nrContract: true, oras: true, strada: true, casa: true, apartament: true } })
+      .catch(() => null);
+    if (rec) {
+      account = account || rec.contPersonal || null;
+      contract = account ? null : contract || rec.nrContract || null;
+      if (!address) {
+        address =
+          [rec.oras?.trim(), rec.strada?.trim() ? `str. ${rec.strada.trim()}` : "", rec.casa?.trim() ? `nr. ${rec.casa.trim()}` : "", rec.apartament?.trim() ? `ap. ${rec.apartament.trim()}` : ""]
+            .filter(Boolean)
+            .join(", ") || null;
+      }
+    }
+  }
+  const shownAccount = account ?? contract;
+
   return {
-    client,
+    client: { ...client, account: shownAccount, accountKind: account ? "account" : contract ? "contract" : null, address },
     rows,
     totals: {
       apaQty: round3(totals.apaQty),

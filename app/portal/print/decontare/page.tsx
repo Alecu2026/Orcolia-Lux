@@ -2,6 +2,7 @@ import { requireClient } from "@/lib/client-dal";
 import { getPayerStatement } from "@/lib/services/payer-statement";
 import { getCompanySettings } from "@/lib/queries/company";
 import PayerStatementView from "@/app/components/PayerStatementView";
+import StatementSummary from "@/app/components/StatementSummary";
 import { getT } from "@/lib/i18n/server-t";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
@@ -20,6 +21,7 @@ export default async function PortalStatementPrintPage() {
   return (
     <I18nProvider messages={getMessages(locale)} locale={locale}>
       <div className="min-h-dvh bg-white p-4 text-black">
+        <style>{"@page { size: A4 landscape; margin: 10mm }"}</style>
         <div className="mb-3 flex items-end justify-between gap-4 border-b border-zinc-300 pb-2">
           <div>
             <p className="text-sm font-bold">{company.companyName || "Apă-Canal"}</p>
@@ -29,10 +31,7 @@ export default async function PortalStatementPrintPage() {
         </div>
         {statement && (
           <>
-            <div className="mb-3 grid grid-cols-2 gap-x-4 text-sm">
-              <div><span className="text-xs text-zinc-600">{t("Cont personal")}: </span><b>{statement.client.meterSeries ?? "—"}</b></div>
-              <div><span className="text-xs text-zinc-600">{t("Adresă")}: </span><b>{statement.client.consumAddress ?? "—"}</b></div>
-            </div>
+            <div className="mb-3"><StatementSummary statement={statement} /></div>
             <PayerStatementView statement={statement} portal />
           </>
         )}

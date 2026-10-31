@@ -8,6 +8,7 @@ import { buildMeterStatic, parseMeterId } from "../queries/meters";
 import { getSectorMap } from "./meter-route-data";
 import { getPayerSnap, type PayerSnap } from "./payer-cache";
 import { getMetrologyMap } from "./metrology";
+import { invalidateOneC } from "./onec-cache";
 import {
   decodeMeters,
   filterMeters,
@@ -152,6 +153,7 @@ async function getMeterStatic(): Promise<StaticSnap> {
  */
 export async function invalidateMeters(): Promise<void> {
   if (DEMO) return;
+  invalidateOneC(); // exportul 1C s-a schimbat: și „Tabel 1C” trebuie refăcut
   localDirtyAt = Date.now();
   try {
     await prisma.payerCacheEntry.updateMany({ where: { id: STATIC_ID }, data: { dirtyAt: new Date() } });

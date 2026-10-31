@@ -3,6 +3,7 @@ import { gzipSync, gunzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { after } from "next/server";
 import { prisma } from "../prisma";
+import { invalidateOneC } from "./onec-cache";
 import { DEMO } from "../demo";
 import { listInvoices } from "../queries/invoices";
 import {
@@ -251,6 +252,7 @@ export async function getInvoicePayload(): Promise<{ version: string; gz: Buffer
 /** Anunță că s-au schimbat facturi (sau numele unui client de pe ele). Nu aruncă niciodată. \`soft\`: modificare minoră (nume client). */
 export async function invalidateInvoices(opts: { soft?: boolean } = {}): Promise<void> {
   if (DEMO) return;
+  invalidateOneC(); // „Total PWA” / „Diferență” din Tabel 1C vin din facturi
   const soft = !!opts.soft;
   if (soft) localSoftDirtyAt = Date.now();
   else localHardDirtyAt = Date.now();

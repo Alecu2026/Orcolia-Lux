@@ -6,6 +6,7 @@ import { getSessionToken, hashToken } from "./session";
 import { can, homePath, type PermissionKey } from "./permissions";
 import { ensureSuperAdminExists } from "./services/super-admin";
 import { canImpersonateUser, type ImpersonationInfo } from "./impersonation";
+import { getCachedStaffUser, putCachedStaffUser, staffSessionEpoch, staffSessionFlight } from "./staff-session-cache";
 
 export type CurrentUser = {
   id: string;
@@ -43,6 +44,8 @@ function demoActive() {
  *  - memoizat cu React `cache()` ⇒ un singur query per render, oricâte componente îl cer
  *  - un singur query cu `select` minimal (fără include greu)
  *  - actualizare `lastUsedAt` throttle-uită (max o dată/zi) ⇒ fără write la fiecare request
+ *  - cache scurt în memoria procesului (lib/staff-session-cache.ts): cererile următoare nu mai citesc sesiunea și utilizatorul din baza de date; orice scriere pe User / Session / Team
+ *    îl golește (lib/prisma.ts), iar sesiunile de simulare de login nu se țin în cache
  */
 export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   if (demoActive()) {
@@ -63,8 +66,17 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const token = await getSessionToken();
   if (!token) return null;
 
+  const tokenHash = hashToken(token);
+  const cached = getCachedStaffUser<CurrentUser>(tokenHash);
+  if (cached) return cached;
+  return staffSessionFlight(tokenHash, () => loadStaffUser(tokenHash));
+});
+
+/** Citirea efectivă din baza de date (cache-ul a dat greș); rezultatul valid, fără simulare, intră în cache. */
+async function loadStaffUser(tokenHash: string): Promise<CurrentUser | null> {
+  const epoch = staffSessionEpoch();
   const session = await prisma.session.findUnique({
-    where: { tokenHash: hashToken(token) },
+    where: { tokenHash },
     select: {
       id: true,
       expiresAt: true,
@@ -126,10 +138,12 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const current = (impersonation ? { ...session.user, impersonation } : session.user) as CurrentUser;
   if (!current.isSuperAdmin) {
     const healed = await ensureSuperAdminExists().catch(() => null);
-    if (healed?.promotedId === current.id) return { ...current, isSuperAdmin: true, role: "ADMIN" };
+    if (healed?.promotedId === current.id) return { ...current, isSuperAdmin: true, role: "ADMIN" }; // scrierea de mai sus a golit deja cache-ul
   }
+  // o simulare de login se reverifică la fiecare cerere (cel care simulează trebuie să fie încă activ și îndreptățit): nu se ține în cache
+  if (!impersonation) putCachedStaffUser(tokenHash, current, session.expiresAt.getTime(), epoch);
   return current;
-});
+}
 
 /** Pentru pagini/acțiuni: întoarce userul sau redirect la /login. */
 export const requireUser = cache(async (): Promise<CurrentUser> => {

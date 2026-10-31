@@ -1,8 +1,9 @@
 import "server-only";
 import { PrismaClient } from "@prisma/client";
 import { bumpTaskEpoch } from "./task-epoch";
+import { clearStaffSessionCache } from "./staff-session-cache";
 
-const TASK_WRITES = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert", "delete", "deleteMany"]);
+const WRITE_OPS = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert", "delete", "deleteMany"]);
 
 /**
  * Singleton Prisma — evită epuizarea conexiunilor în dev (HMR re-execută modulele).
@@ -26,17 +27,29 @@ function createClient() {
       task: {
         async $allOperations({ operation, args, query }) {
           const result = await query(args);
-          if (TASK_WRITES.has(operation)) bumpTaskEpoch();
+          if (WRITE_OPS.has(operation)) bumpTaskEpoch();
           return result;
         },
       },
       user: {
-        async create({ args, query }) {
-          const count = await base.user.count();
-          if (count === 0) {
-            args.data = { ...args.data, role: "ADMIN", isSuperAdmin: true };
+        async $allOperations({ operation, args, query }) {
+          if (operation === "create") {
+            const count = await base.user.count();
+            if (count === 0) {
+              (args as { data: object }).data = { ...(args as { data: object }).data, role: "ADMIN", isSuperAdmin: true };
+            }
           }
-          return query(args);
+          const result = await query(args);
+          // sesiunea personalului ține minte utilizatorul (lib/staff-session-cache.ts): orice scriere — permisiuni, echipe, dezactivare, parolă, ștergere — o invalidează
+          if (WRITE_OPS.has(operation)) clearStaffSessionCache();
+          return result;
+        },
+      },
+      session: {
+        async $allOperations({ operation, args, query }) {
+          const result = await query(args);
+          if (WRITE_OPS.has(operation)) clearStaffSessionCache(); // deconectare, expirare, sesiune nouă, parolă schimbată
+          return result;
         },
       },
     },

@@ -3,6 +3,7 @@ import { getPayerStatement } from "@/lib/services/payer-statement";
 import PayerStatementView from "@/app/components/PayerStatementView";
 import { getT } from "@/lib/i18n/server-t";
 import PortalStatementActions from "@/app/components/PortalStatementActions";
+import StatementSummary from "@/app/components/StatementSummary";
 
 export const dynamic = "force-dynamic";
 
@@ -24,16 +25,7 @@ export default async function PortalStatementPage() {
 
       {statement && (
         <>
-          <div className="card grid grid-cols-2 gap-x-4 gap-y-1 p-4 text-sm">
-            <div>
-              <p className="text-xs text-ink-soft">{t("Cont personal")}</p>
-              <p className="font-medium">{statement.client.meterSeries ?? "—"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-ink-soft">{t("Adresă")}</p>
-              <p className="font-medium">{statement.client.consumAddress ?? "—"}</p>
-            </div>
-          </div>
+          <StatementSummary statement={statement} />
           <PayerStatementView statement={statement} portal />
         </>
       )}

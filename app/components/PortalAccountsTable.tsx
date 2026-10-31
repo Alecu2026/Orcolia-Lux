@@ -5,19 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import DataTable, { type Col, type Filter } from "./DataTable";
 import { useT } from "@/lib/i18n/context";
+import type { PortalAccountRow } from "@/lib/portal-accounts";
+import { usePortalAccountsDataset } from "./usePortalAccountsDataset";
 
-export type PortalAccountRow = {
-  id: string;
-  name: string;
-  /** Contul personal (meterSeries), dacă are. */
-  account: string | null;
-  contract: string | null;
-  email: string | null;
-  activated: boolean;
-  activatedAt: string | null;
-  lastLoginAt: string | null;
-  createdAt: string;
-};
+export type { PortalAccountRow };
 
 const TZ = "Europe/Chisinau";
 const dmy = (iso: string | null) =>
@@ -26,10 +17,14 @@ const dayKey = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("
 const dash = <span className="text-ink-soft/60">—</span>;
 const daysAgo = (iso: string | null) => (iso ? (Date.now() - new Date(iso).getTime()) / 86_400_000 : Infinity);
 
-/** Conturile din portalul clienților: toate odată, filtrate/sortate/paginate în browser, cu orice număr de rânduri pe pagină. */
-export default function PortalAccountsTable({ rows }: { rows: PortalAccountRow[] }) {
+/**
+ * Conturile din portalul clienților: lista completă stă în browser (descărcată o dată, comprimată, apoi păstrată în IndexedDB și reîntrebată condiționat), iar filtrarea, sortarea și
+ * paginarea rulează local, cu orice număr de rânduri pe pagină. Pagina vine cu primele rânduri (`initial`) ca să nu fie goală cât se aduce lista completă.
+ */
+export default function PortalAccountsTable({ initial, total }: { initial: PortalAccountRow[]; total: number }) {
   const t = useT();
   const router = useRouter();
+  const { rows, full, loading, error, refresh } = usePortalAccountsDataset(initial, total);
 
   const columns: Col<PortalAccountRow>[] = useMemo(
     () => [
@@ -117,6 +112,20 @@ export default function PortalAccountsTable({ rows }: { rows: PortalAccountRow[]
   const activated = rows.filter((r) => r.activated).length;
 
   return (
+    <div data-portal-accounts="" data-full={full ? "1" : "0"}>
+    {!full && !error && (
+      <p className="mb-1.5 flex items-center gap-2 text-xs text-ink-soft" data-loading-full="">
+        <span className="inline-block size-3 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+        {t("Se încarcă lista completă ({n} conturi)… Până atunci: primele {m}.", { n: total.toLocaleString("ro-RO"), m: initial.length })}
+      </p>
+    )}
+    {error && (
+      <p className="mb-1.5 flex items-center justify-between gap-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
+        {error}
+        <button type="button" onClick={() => void refresh()} className="tap shrink-0 font-semibold underline">{t("Reîncearcă")}</button>
+      </p>
+    )}
+    {loading && full && <div className="mb-1.5 h-0.5 animate-pulse rounded-full bg-brand opacity-60" />}
     <DataTable
       storageKey="portal-accounts"
       rows={rows}
@@ -132,5 +141,6 @@ export default function PortalAccountsTable({ rows }: { rows: PortalAccountRow[]
         </span>
       )}
     />
+    </div>
   );
 }

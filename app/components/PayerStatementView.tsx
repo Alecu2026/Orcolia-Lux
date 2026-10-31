@@ -17,9 +17,9 @@ export default async function PayerStatementView({ statement, portal = false }: 
   const invoiceHref = (r: PayerStatementRow) => (portal ? `/invoice/public/${r.publicToken}` : `/invoices/${r.invoiceId}/edit`);
 
   // Tabel pe toată lățimea, fără derulare: antetele se rup pe rânduri, moneda e în antet (nu repetată în fiecare celulă), numerele rămân pe un rând.
-  const th = "border border-[var(--color-line)] px-1.5 py-1.5 text-left align-bottom font-semibold leading-tight";
+  const th = "border-b border-[var(--color-line)] px-1.5 py-2.5 text-left align-bottom text-[9px] font-semibold uppercase leading-tight tracking-wide text-ink-soft";
   const thNum = `${th} text-right`;
-  const td = "border border-[var(--color-line)] px-1.5 py-1.5 align-top";
+  const td = "border-b border-[var(--color-line)]/70 px-1.5 py-2.5 align-middle";
   const tdNum = `${td} text-right tabular-nums whitespace-nowrap`;
   const nr = (n: number, cur: string) =>
     n.toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (cur === currency ? "" : ` ${cur}`);
@@ -31,7 +31,7 @@ export default async function PayerStatementView({ statement, portal = false }: 
     ) : (
       <>
         {/* Ecran mare: tabelul pe toată lățimea, fără derulare orizontală */}
-        <div className="card hidden p-0 sm:block">
+        <div className="card hidden overflow-x-auto p-0 sm:block" data-statement-table="">
           <table className="w-full border-collapse text-[11px] lg:text-xs">
             <thead>
               <tr className="bg-[var(--color-surface-2)]">
@@ -49,15 +49,15 @@ export default async function PayerStatementView({ statement, portal = false }: 
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {rows.map((r, idx) => {
                 const st = INVOICE_STATUS[r.status as InvoiceStatusKey];
                 return (
-                  <tr key={r.invoiceId} className="hover:bg-[var(--color-surface-2)]/60">
-                    <td className={td}>
-                      <Link href={invoiceHref(r)} className="font-medium text-brand-strong hover:underline">
+                  <tr key={r.invoiceId} className={`hover:bg-brand-soft/40 ${idx % 2 === 1 ? "bg-[var(--color-surface-2)]/40" : ""}`}>
+                    <td className={`${td} whitespace-nowrap`}>
+                      <Link href={invoiceHref(r)} className="font-semibold text-brand-strong hover:underline">
                         {r.billingPeriodLabel ?? fmtDate(r.issueDate)}
                       </Link>
-                      <span className="block text-ink-soft">{r.number}</span>
+                      <span className="block text-[10px] text-ink-soft">{r.number}</span>
                     </td>
                     <td className={tdNum}>{r.meterPrevReading ?? "—"}</td>
                     <td className={tdNum}>{r.meterCurrReading ?? "—"}</td>
@@ -75,7 +75,7 @@ export default async function PayerStatementView({ statement, portal = false }: 
                 );
               })}
               {/* Rândul TOTAL — evidențiat, ca "ВСЕГО" din raportul lor. */}
-              <tr className="bg-brand-soft font-bold text-brand-strong">
+              <tr className="border-t-2 border-brand/50 bg-brand-soft font-bold text-brand-strong">
                 <td className={td}>{t("TOTAL")}</td>
                 <td className={td} />
                 <td className={td} />

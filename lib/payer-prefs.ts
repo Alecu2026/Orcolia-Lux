@@ -14,3 +14,6 @@ export const METERS_V_COOKIE = "meters-v";
 
 /** La fel pentru /contoare/nereguli: câte rânduri pe pagină (inclusiv „Toate”). */
 export const ISSUES_PP_COOKIE = "issues-pp";
+
+/** Versiunea listei „Tabel 1C” (luna cea mai recentă) din IndexedDB: dacă e cea curentă, pagina nu mai preîncarcă lista. */
+export const ONEC_V_COOKIE = "onec-v";

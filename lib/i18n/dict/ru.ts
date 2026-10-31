@@ -2915,4 +2915,8 @@ export const RU: Record<string, string> = {
   "Neregulă de contor": "Нарушение счётчика",
   "Contul meu": "Мой аккаунт",
   "Cereri și notificări": "Заявки и уведомления",
+  "Pagina {a} / {b}": "Страница {a} / {b}",
+  "Se încarcă lista completă ({n} conturi)… Până atunci: primele {m}.": "Загрузка полного списка ({n} аккаунтов)… Пока: первые {m}.",
+  "Se încarcă tabelul 1C (prima dată durează mai mult; apoi rămâne în browser)…": "Загрузка таблицы 1C (в первый раз дольше; затем она остаётся в браузере)…",
+  "„Toate lunile”: filtrele rulează pe server (cu pauză de tastare), cel mult 500 de rânduri pe pagină.": "«Все месяцы»: фильтры работают на сервере (с паузой при вводе), не более 500 строк на странице.",
 };

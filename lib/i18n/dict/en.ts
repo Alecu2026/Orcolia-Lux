@@ -2915,4 +2915,8 @@ export const EN: Record<string, string> = {
   "Neregulă de contor": "Meter issue",
   "Contul meu": "My account",
   "Cereri și notificări": "Requests and notifications",
+  "Pagina {a} / {b}": "Page {a} / {b}",
+  "Se încarcă lista completă ({n} conturi)… Până atunci: primele {m}.": "Loading the full list ({n} accounts)… Meanwhile: the first {m}.",
+  "Se încarcă tabelul 1C (prima dată durează mai mult; apoi rămâne în browser)…": "Loading the 1C table (the first time takes longer; then it stays in the browser)…",
+  "„Toate lunile”: filtrele rulează pe server (cu pauză de tastare), cel mult 500 de rânduri pe pagină.": "“All months”: filters run on the server (with a typing pause), at most 500 rows per page.",
 };

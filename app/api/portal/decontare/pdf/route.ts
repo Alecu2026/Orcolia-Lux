@@ -1,42 +1,32 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { getCurrentClient } from "@/lib/client-dal";
-import { PdfBrowserError, launchBrowser } from "@/lib/pdf-browser";
-import { LOCALE_COOKIE } from "@/lib/i18n/locale-cookie";
-import { selfBaseUrl } from "@/lib/self-url";
+import { getPayerStatement } from "@/lib/services/payer-statement";
+import { getCompanySettings } from "@/lib/queries/company";
+import { buildStatementPdf } from "@/lib/pdf/statement-pdf";
+import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
+import { makeT } from "@/lib/i18n/t";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * Decontarea clientului din portal, ca PDF: aceeași pagină de tipărire (/portal/print/decontare) deschisă într-un Chromium headless cu sesiunea
- * și limba clientului. Un client primește DOAR propria decontare (pagina o citește din sesiune, nu dintr-un parametru).
+ * Decontarea clientului din portal, ca PDF, generată direct pe server (pdfkit) — fără Chromium / browser instalat. Un client primește DOAR propria decontare
+ * (se citește din sesiune, nu dintr-un parametru).
  */
-export async function GET(req: Request) {
+export async function GET() {
   const client = await getCurrentClient();
   if (!client) return NextResponse.json({ error: "Neautentificat." }, { status: 401 });
 
-  const jar = await cookies();
-  const session = jar.get("client_session")?.value;
-  if (!session) return NextResponse.json({ error: "Neautentificat." }, { status: 401 });
-  const base = await selfBaseUrl(req.url);
-  const locale = jar.get(LOCALE_COOKIE)?.value;
-  const pass = [{ name: "client_session", value: session }, ...(locale ? [{ name: LOCALE_COOKIE, value: locale }] : [])];
-
-  let browser: Awaited<ReturnType<typeof launchBrowser>> | undefined;
   try {
-    browser = await launchBrowser();
-    const page = await browser.newPage(pass, base);
-    await page.goto(`${base}/portal/print/decontare`, { waitUntil: "networkidle" });
-    const pdf = await page.pdf({
-      format: "A4",
-      landscape: true,
-      printBackground: true,
-      margin: { top: "12mm", bottom: "12mm", left: "10mm", right: "10mm" },
-    });
+    const locale = await getLocaleFromCookie();
+    const t = makeT(locale);
+    const [statement, company] = await Promise.all([getPayerStatement(client.id, { forPortal: true }), getCompanySettings()]);
+    if (!statement) return NextResponse.json({ error: "Nu există decontare." }, { status: 404 });
+    const today = new Date().toLocaleDateString(locale === "ru" ? "ru-RU" : locale === "en" ? "en-GB" : "ro-RO", { timeZone: "Europe/Bucharest" });
+    const pdf = await buildStatementPdf({ statement, clientName: client.name, companyName: company.companyName || "Apă-Canal", locale: locale === "ru" || locale === "en" ? locale : "ro", t, today });
     const day = new Date().toISOString().slice(0, 10);
-    const who = (client.meterSeries ?? client.name).replace(/[^\w.-]+/g, "_").slice(0, 40);
+    const who = (statement.client.account ?? client.name).replace(/[^\w.-]+/g, "_").slice(0, 40);
     return new NextResponse(new Uint8Array(pdf), {
       headers: {
         "Content-Type": "application/pdf",
@@ -45,14 +35,7 @@ export async function GET(req: Request) {
       },
     });
   } catch (e) {
-    if (e instanceof PdfBrowserError) {
-      console.error(`[portal/decontare/pdf] Chromium indisponibil: ${e.attempts.join(" | ")} — ${e.hint}`);
-      return NextResponse.json({ error: "Nu am putut genera PDF-ul.", code: "BROWSER" }, { status: 500 });
-    }
     console.error("[portal/decontare/pdf] eșec generare PDF:", e);
-    return NextResponse.json({ error: "Nu am putut genera PDF-ul.", code: "PAGE" }, { status: 500 });
-  } finally {
-    await browser?.close().catch(() => {});
-    await browser?.cleanup().catch(() => {});
+    return NextResponse.json({ error: "Nu am putut genera PDF-ul.", code: "PDF" }, { status: 500 });
   }
 }

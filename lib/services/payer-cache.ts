@@ -3,6 +3,8 @@ import { gzipSync, gunzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { after } from "next/server";
 import { prisma } from "../prisma";
+import { invalidatePortalAccounts } from "./portal-accounts-cache";
+import { invalidateOneC } from "./onec-cache";
 import { DEMO } from "../demo";
 import {
   countPayersNeedingNameFix, getPayerSnapshot, getPayerMonthSlice, listPayerMonths, listPayers, loadPayerMonths, normalizePerPage, type PayerRow,
@@ -195,6 +197,9 @@ function agedOut(s: PayerSnap, builtAtMs = s.builtAt): PayerSnap {
  */
 export async function invalidatePayers(opts: { soft?: boolean } = {}): Promise<void> {
   if (DEMO) return;
+  // aceleași schimbări (activare / resetare cont portal, modificări și importuri de plătitori) fac depășită și lista conturilor din portal
+  invalidatePortalAccounts();
+  invalidateOneC();
   const soft = !!opts.soft;
   if (soft) localSoftDirtyAt = Date.now();
   else localHardDirtyAt = Date.now();
