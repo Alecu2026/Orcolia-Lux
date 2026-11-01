@@ -31,7 +31,7 @@ export default function PortalResetPasswordForm({ email }: { email: string }) {
         placeholder={t("Parolă nouă")}
         autoComplete="new-password"
         required
-        minLength={8}
+        minLength={10} maxLength={128}
         className={input}
       />
       <input
@@ -40,7 +40,7 @@ export default function PortalResetPasswordForm({ email }: { email: string }) {
         placeholder={t("Confirmă parola nouă")}
         autoComplete="new-password"
         required
-        minLength={8}
+        minLength={10} maxLength={128}
         className={input}
       />
 

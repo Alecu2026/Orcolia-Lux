@@ -53,6 +53,7 @@ export default async function ProjectDetailPage({
       userId: user.id,
       teamIds: user.teamIds,
       ...taskViewFilter(user),
+      hideClientNames: true, // lista proiectului nu arată clientul sarcinilor: se sare peste citirea numelor (o interogare în plus)
       projectId: id,
       pageSize: 200,
       page: 1,
@@ -89,7 +90,7 @@ export default async function ProjectDetailPage({
           project={project}
           users={users}
           teams={teams}
-          clients={clients}
+          clients={client ? [client] : []}
           canEdit={canEdit}
         />
 
@@ -190,6 +191,7 @@ export default async function ProjectDetailPage({
                 <Link
                   key={t.id}
                   href={`/tasks/${t.id}`}
+                  prefetch={false} // listă lungă: fără prefetch pentru fiecare sarcină (zeci/sute de cereri la server la simpla deschidere a paginii)
                   className="tap flex items-center gap-2.5 rounded-xl px-2.5 py-2 hover:bg-[var(--color-surface-2)]"
                 >
                   <span className={`size-2 shrink-0 rounded-full ${dot}`} />
@@ -225,6 +227,7 @@ export default async function ProjectDetailPage({
                     <Link
                       key={t.id}
                       href={`/tasks/${t.id}`}
+                      prefetch={false} // listă lungă: fără prefetch pentru fiecare sarcină (zeci/sute de cereri la server la simpla deschidere a paginii)
                       className="tap flex items-center gap-2.5 rounded-xl px-2.5 py-2 opacity-50 hover:bg-[var(--color-surface-2)] hover:opacity-100"
                     >
                       <span className={`size-2 shrink-0 rounded-full ${dot}`} />

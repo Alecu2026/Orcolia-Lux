@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/actions/auth";
@@ -410,8 +410,46 @@ function BottomNav({ perms, appointmentsLabel, chosen }: { perms?: Record<string
   const visible = visibleNav(NAV, perms);
   const picked = sanitizeBottomNav(chosen).map((h) => visible.find((n) => n.href === h)).filter((n): n is NavItem => !!n);
   const items = picked.length > 0 ? picked : visible.slice(0, BOTTOM_NAV_MAX);
+
+  // Cât se scrie într-un câmp (tastatura de pe telefon deschisă), bara se ascunde: pe iOS / Android tastatura și panoul vizual mută sau redimensionează zona vizibilă, iar o bară fixă rămâne
+  // „ridicată” deasupra tastaturii sau în mijlocul ecranului după ce aceasta se închide. Reapare imediat ce câmpul pierde focusul.
+  const [typing, setTyping] = useState(false);
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const FIELD = "textarea, [contenteditable=\"true\"], input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]):not([type=reset]):not([type=file]):not([type=range]):not([type=color]):not([type=image])";
+    const isField = (el: EventTarget | null) => el instanceof Element && el.matches(FIELD);
+    const onIn = (e: FocusEvent) => {
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      if (isField(e.target)) setTyping(true);
+    };
+    const onOut = () => {
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+      typingTimer.current = setTimeout(() => setTyping(isField(document.activeElement)), 120);
+    };
+    // întoarcerea în pagină din fundal / din cache-ul de navigare: bara nu rămâne ascunsă dacă focusul s-a pierdut între timp
+    const onShow = () => setTyping(isField(document.activeElement));
+    document.addEventListener("focusin", onIn);
+    document.addEventListener("focusout", onOut);
+    window.addEventListener("pageshow", onShow);
+    document.addEventListener("visibilitychange", onShow);
+    return () => {
+      document.removeEventListener("focusin", onIn);
+      document.removeEventListener("focusout", onOut);
+      window.removeEventListener("pageshow", onShow);
+      document.removeEventListener("visibilitychange", onShow);
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+    };
+  }, []);
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 flex items-stretch border-t border-[var(--color-line)] bg-[var(--color-surface)] pb-[env(safe-area-inset-bottom)] lg:hidden">
+    <nav
+      data-bottom-nav=""
+      data-hidden={typing ? "1" : "0"}
+      // strat propriu de compoziție (translate3d): pe iOS bara fixă nu mai „plutește” / nu rămâne în urmă la derulare și la schimbarea barei de adrese
+      style={{ transform: typing ? "translate3d(0,100%,0)" : "translate3d(0,0,0)", transition: "transform 0.18s ease", willChange: "transform", WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden" }}
+      aria-hidden={typing}
+      className="fixed bottom-0 left-0 right-0 z-30 flex items-stretch border-t border-[var(--color-line)] bg-[var(--color-surface)] pb-[env(safe-area-inset-bottom)] lg:hidden"
+    >
       {items.map((item) => {
         const active = path.startsWith(item.href);
         const label = m.nav[item.labelKey];

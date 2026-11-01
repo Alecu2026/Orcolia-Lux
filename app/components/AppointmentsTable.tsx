@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncedState } from "@/app/hooks/useSyncedState";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import RowColorPicker from "./RowColorPicker";
@@ -119,8 +120,7 @@ export default function AppointmentsTable({
     const near = new Set(items.map((i) => i.id));
     return [...items, ...hist.rows.filter((r) => !near.has(r.id) && !removed.has(r.id))];
   }, [items, hist.rows, removed]);
-  const [rows, setRows] = useState(merged);
-  useEffect(() => setRows(merged), [merged]);
+  const [rows, setRows] = useSyncedState(merged);
   const [busy, setBusy] = useState<string | null>(null);
   const [detail, setDetail] = useState<string | null>(null);
 

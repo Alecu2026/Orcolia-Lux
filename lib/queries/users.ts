@@ -19,6 +19,8 @@ export type UserRow = {
   taskViewScope: string;
   taskViewTeamIds: string[];
   taskViewMemberIds: string[];
+  /** Autentificarea în doi pași (TOTP) e activă pe cont. */
+  totp?: boolean;
 };
 
 const USER_SELECT = {
@@ -46,10 +48,11 @@ export async function listUsers(): Promise<UserRow[]> {
       { id: "demo-user", name: "Cont Demo", email: "demo@local", role: "ADMIN", isActive: true, isSuperAdmin: true, permissions: [], notifyEvents: [], telegramChatId: null, notifyScope: "ALL", notifyTeamIds: [], notifyMemberIds: [], taskViewScope: "ALL", taskViewTeamIds: [], taskViewMemberIds: [] },
     ];
   }
-  return prisma.user.findMany({
-    select: USER_SELECT,
+  const rows = await prisma.user.findMany({
+    select: { ...USER_SELECT, totpEnabledAt: true },
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
   });
+  return rows.map(({ totpEnabledAt, ...u }) => ({ ...u, totp: !!totpEnabledAt }));
 }
 
 export async function getUserById(id: string): Promise<UserRow | null> {

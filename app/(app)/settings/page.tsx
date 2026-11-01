@@ -20,12 +20,15 @@ import TicketStatusConfigEditor from "@/app/components/TicketStatusConfigEditor"
 import { IconChevronRight } from "@/app/components/icons";
 import { NAV_META, sanitizeBottomNav } from "@/lib/nav-meta";
 import { teamNameMap } from "@/lib/services/meter-issues";
+import SecurityPanel from "@/app/components/SecurityPanel";
+import { getSessionToken, hashToken } from "@/lib/session";
+import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { env } from "@/lib/env";
 import { getT } from "@/lib/i18n/server-t";
 
 export const dynamic = "force-dynamic";
 
-type Tab = "me" | "company" | "workflow";
+type Tab = "me" | "security" | "company" | "workflow";
 
 /**
  * Setări. Un utilizator obișnuit vede DOAR setările lui (profil, preferințe, notificări push, butoanele rapide, Telegram). Administratorii (rolul Administrator sau permisiunea „admin”)
@@ -37,13 +40,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const user = await requireUser();
   const isAdmin = can(user, "admin");
   const sp = await searchParams;
-  const tab: Tab = isAdmin && (sp.tab === "company" || sp.tab === "workflow") ? sp.tab : "me";
+  const tab: Tab = sp.tab === "security" ? "security" : isAdmin && (sp.tab === "company" || sp.tab === "workflow") ? sp.tab : "me";
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-5">
-      {isAdmin && (
+      {(
         <nav role="tablist" aria-label={t("Setări")} className="flex gap-1 overflow-x-auto rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1 text-sm" data-settings-tabs="">
-          {([["me", "Contul meu", "/settings"], ["company", "Companie", "/settings?tab=company"], ["workflow", "Cereri și notificări", "/settings?tab=workflow"]] as const).map(([k, label, href]) => (
+          {([["me", "Contul meu", "/settings"], ["security", "Securitate", "/settings?tab=security"], ...(isAdmin ? ([["company", "Companie", "/settings?tab=company"], ["workflow", "Cereri și notificări", "/settings?tab=workflow"]] as const) : [])] as const).map(([k, label, href]) => (
             <Link key={k} href={href} role="tab" aria-selected={tab === k} data-tab={k} className={`tap shrink-0 rounded-lg px-3 py-1.5 font-medium ${tab === k ? "bg-brand text-white" : "text-ink-soft hover:bg-[var(--color-surface-2)]"}`}>
               {t(label)}
             </Link>
@@ -51,6 +54,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </nav>
       )}
       {tab === "me" && <MyTab user={user} />}
+      {tab === "security" && <SecurityTab user={user} />}
       {tab === "company" && <CompanyTab user={user} />}
       {tab === "workflow" && <WorkflowTab user={user} />}
     </div>
@@ -79,6 +83,25 @@ async function MyTab({ user }: { user: CurrentUser }) {
         <IconChevronRight className="size-5 text-brand" />
       </Link>
     </>
+  );
+}
+
+/** Securitatea contului: autentificarea în doi pași și sesiunile active — pentru orice utilizator. */
+async function SecurityTab({ user }: { user: CurrentUser }) {
+  const [me, rows, token, locale] = await Promise.all([
+    prisma.user.findUnique({ where: { id: user.id }, select: { totpEnabledAt: true, totpRecovery: true } }),
+    prisma.session.findMany({ where: { userId: user.id, expiresAt: { gt: new Date() } }, orderBy: { lastUsedAt: "desc" }, take: 20, select: { id: true, userAgent: true, ip: true, lastUsedAt: true, tokenHash: true } }),
+    getSessionToken(),
+    getLocaleFromCookie(),
+  ]);
+  const cur = token ? hashToken(token) : null;
+  return (
+    <SecurityPanel
+      enabled={!!me?.totpEnabledAt}
+      recoveryLeft={me?.totpRecovery.length ?? 0}
+      locale={locale}
+      sessions={rows.map((r) => ({ id: r.id, userAgent: r.userAgent, ip: r.ip, lastUsedAt: r.lastUsedAt.toISOString(), current: r.tokenHash === cur }))}
+    />
   );
 }
 

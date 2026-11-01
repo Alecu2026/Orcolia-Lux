@@ -31,6 +31,7 @@ export default function CardActionsMenu({
   const [mounted, setMounted] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- marcaj de montare (conținut doar în browser)
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {

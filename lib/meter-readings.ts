@@ -379,7 +379,7 @@ export const MAX_LOC_ACCURACY = 100;
 export const MAX_ADDRESS = 200;
 
 export type SaveReadingResult =
-  | { ok: true; reading: ReadingDto; location: MeterLocationDto; /** neregula raportată odată cu citirea (sau motivul pentru care n-a putut fi salvată) */ issue?: IssueDto | null; issueError?: string | null }
+  | { ok: true; reading: ReadingDto; location: MeterLocationDto; /** adresa mascată la care a plecat emailul de verificare către titular; lipsește dacă n-a plecat niciunul */ ownerEmailTo?: string | null; /** neregula raportată odată cu citirea (sau motivul pentru care n-a putut fi salvată) */ issue?: IssueDto | null; issueError?: string | null }
   /** `confirm`: citirea pare greșită (mai mică decât cea anterioară / peste sau sub media contorului) — se salvează abia după confirmare. `avg` și `pct` (abaterea în %) însoțesc avertismentele față de medie. */
   | { ok: false; error: string; confirm?: "lower" | "high" | "low"; avg?: ConsumAvg; pct?: number };
 

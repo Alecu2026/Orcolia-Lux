@@ -124,7 +124,6 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
         setF({ ...EMPTY, ...s, q: "" });
       }
       const pp = localStorage.getItem(LS_PER_PAGE);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (pp) setPerPageState(normalizePerPageClient(pp));
     } catch {}
     setReady(true);
@@ -143,7 +142,6 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
     if (!rows) return;
     if (freshSeen.current === null) {
       freshSeen.current = new Set(rows.map((r) => r.id));
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFresh(new Set(rows.filter((r) => !r.read).map((r) => r.id)));
       return;
     }
@@ -203,6 +201,7 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
   const offsets = useMemo(() => {
     const o = new Array<number>(entries.length + 1);
     o[0] = 0;
+    // eslint-disable-next-line react-hooks/refs -- valoare măsurată într-o referință, recalculată la `hv`
     for (let i = 0; i < entries.length; i++) o[i + 1] = o[i] + est(entries[i]);
     return o;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -263,7 +262,7 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
     markNotificationsReadAction(ids).then((r) => { ds.markRead([], r.unread); window.dispatchEvent(new CustomEvent("crm:unread", { detail: r.unread })); }).catch(() => {});
   }, [ds]);
   const flushRef = useRef(flush);
-  flushRef.current = flush;
+  useEffect(() => { flushRef.current = flush; });
   const markSoon = useCallback((id: string) => {
     queue.current.add(id);
     if (flushTimer.current) clearTimeout(flushTimer.current);
@@ -327,7 +326,9 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
     }
   }
 
+  // eslint-disable-next-line react-hooks/purity -- momentul curent afișat la randare (valoare de afișare, nu stare)
   const today = notificationDay(Date.now());
+  // eslint-disable-next-line react-hooks/purity -- momentul curent afișat la randare (valoare de afișare, nu stare)
   const yesterday = notificationDay(Date.now() - 86_400_000);
   const dayLabel = (d: string) => (d === today ? t("Azi") : d === yesterday ? t("Ieri") : new Date(`${d}T12:00:00`).toLocaleDateString(tag, { weekday: "long", day: "2-digit", month: "long", year: "numeric" }));
   const time = (ms: number) => new Date(ms).toLocaleTimeString(tag, { timeZone: TZ, hour: "2-digit", minute: "2-digit" });

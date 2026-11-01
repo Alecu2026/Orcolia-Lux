@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncedState } from "@/app/hooks/useSyncedState";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -15,6 +16,7 @@ import { useToast } from "./toast";
 import { IconPencil, IconPlus, IconTrash, IconX } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
+import { useProjectDataset } from "./useProjectDataset";
 
 const STATUS_CLS: Record<Project["status"], string> = {
   ACTIVE: "bg-st-progress/15 text-st-progress",
@@ -38,6 +40,8 @@ export default function ProjectsTable({
   users,
   teams,
   clients,
+  total = projects.length,
+  version = null,
   openCreate,
   canEdit = true,
   canCreate = true,
@@ -57,13 +61,18 @@ export default function ProjectsTable({
   users: Opt[];
   teams: Opt[];
   clients: Opt[];
+  /** Câte proiecte sunt în total (când pagina a primit doar primele rânduri). */
+  total?: number;
+  /** Versiunea listei complete de pe server; null = pagina are deja toate proiectele. */
+  version?: string | null;
   openCreate?: boolean;
 }) {
   const tr = useT();
   const toast = useToast();
   const m = useMessages();
-  const [rows, setRows] = useState(projects);
-  useEffect(() => setRows(projects), [projects]);
+  // Lista completă (IndexedDB / rețea) înlocuiește primele rânduri primite cu pagina; modificările locale rămân până vine o versiune nouă.
+  const ds = useProjectDataset(version);
+  const [rows, setRows] = useSyncedState<Project[]>(ds.rows ?? projects);
   const [dialog, setDialog] = useState<{ open: boolean; project: Project | null }>({ open: !!openCreate && canCreate, project: null });
   const [detail, setDetail] = useState<Project | null>(null);
   const router = useRouter();
@@ -207,6 +216,8 @@ export default function ProjectsTable({
         emptyText={m.projects.noProjects}
         toolbar={(view) => (
           <>
+            {version && !ds.rows && ds.loading && <span className="text-[11px] text-ink-soft" data-projects-loading="">{tr("se încarcă lista completă ({total} proiecte)…", { total: total.toLocaleString("ro-RO") })}</span>}
+            {ds.error && <span className="text-[11px] text-st-cancelled">{tr(ds.error)}</span>}
             {canExport && <ExportButton entity="projects" filtered={view.filtered} getIds={view.getIds} count={view.count} className={topBtn} />}
             {canCreate && canImport && <ImportButton entity="projects" className={topBtn} />}
             {canCreate && (

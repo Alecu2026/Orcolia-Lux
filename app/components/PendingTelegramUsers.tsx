@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncedState } from "@/app/hooks/useSyncedState";
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -41,8 +42,7 @@ export default function PendingTelegramUsers({
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
-  const [rows, setRows] = useState(contacts);
-  useEffect(() => setRows(contacts), [contacts]);
+  const [rows, setRows] = useSyncedState(contacts);
   const [dialog, setDialog] = useState<Contact | null>(null);
 
   function reject(c: Contact) {

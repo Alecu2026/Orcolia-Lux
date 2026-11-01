@@ -28,6 +28,7 @@ export type UserRow = {
   taskViewScope: string;
   taskViewTeamIds: string[];
   taskViewMemberIds: string[];
+  totp?: boolean;
   /** Aspectul tabelelor setat de administrator (vezi lib/table-look.ts). */
   tableLook?: unknown;
 };
@@ -212,8 +213,8 @@ export default function UserDialog({
   function validate(): string | null {
     if (name.trim().length < 2) return t("Nume prea scurt.");
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return t("Email invalid.");
-    if (!user && password.length < 8) return t("Parola: minim 8 caractere.");
-    if (user && password !== "" && password.length < 8) return t("Parola nouă: minim 8 caractere (sau lasă gol ca să rămână neschimbată).");
+    if (!user && password.length < 10) return t("Parola: minim 10 caractere.");
+    if (user && password !== "" && password.length < 10) return t("Parola nouă: minim 10 caractere (sau lasă gol ca să rămână neschimbată).");
     const tg = telegram.trim();
     if (tg && !/^-?\d{5,15}$/.test(tg)) return t("Telegram chat ID invalid: doar cifre (ex. 123456789).");
     if (!isAdminRole && !allEvents && events.size === 0) return null; // permis: doar notificările directe
@@ -331,7 +332,7 @@ export default function UserDialog({
                     // „new-password”: fără asta browserul completează parola SALVATĂ în acest câmp și o schimbă fără să știi.
                     autoComplete="new-password"
                     required={!user}
-                    placeholder={user ? t("lasă gol = rămâne neschimbată") : t("minim 8 caractere")}
+                    placeholder={user ? t("lasă gol = rămâne neschimbată") : t("minim 10 caractere")}
                     className={`${input} pr-20 font-normal text-ink`}
                   />
                   <button type="button" onClick={() => setShowPw((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded-md px-2 py-1 text-[11px] font-medium text-ink-soft hover:bg-[var(--color-surface)]">

@@ -5,6 +5,7 @@ import { ObjectId } from "mongodb";
 import type { Prisma } from "@prisma/client";
 import { buildOneCRecords, makeNameFixer } from "../apa-canal-1c";
 import { prisma } from "../prisma";
+import { bumpClientEpoch, bumpClientSearchEpoch } from "../lookup-memory";
 import { apaCanalDueDate } from "../apa-canal-due";
 
 /**
@@ -743,6 +744,9 @@ async function bulkUpdateClients(
     })) as { n?: number; nModified?: number };
     modified += res.nModified ?? res.n ?? slice.length;
   }
+  // comanda nativă ocolește extensia Prisma: listele din memorie care depind de clienți (lista de clienți, căutarea după nume / telefon) trebuie marcate depășite aici
+  bumpClientEpoch();
+  bumpClientSearchEpoch();
   return modified;
 }
 

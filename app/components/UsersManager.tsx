@@ -1,10 +1,12 @@
 "use client";
 
+import { useSyncedState } from "@/app/hooks/useSyncedState";
 import { useEffect, useMemo, useState } from "react";
 import {
   toggleUserActive,
   deleteUser,
   setSuperAdmin,
+  resetUserTotp,
 } from "@/app/actions/users";
 import { useToast } from "./toast";
 import { IconPencil, IconTrash } from "./icons";
@@ -37,11 +39,9 @@ export default function UsersManager({
   const t = useT();
   const toast = useToast();
   const m = useMessages();
-  const [rows, setRows] = useState(users);
-  const [tpls, setTpls] = useState<RoleTemplate[]>(roleTemplates);
-  useEffect(() => setTpls(roleTemplates), [roleTemplates]);
+  const [rows, setRows] = useSyncedState(users);
+  const [tpls, setTpls] = useSyncedState<RoleTemplate[]>(roleTemplates);
   const [tplOpen, setTplOpen] = useState(false);
-  useEffect(() => setRows(users), [users]);
   const [dialog, setDialog] = useState<{ open: boolean; user: UserRow | null }>({
     open: false,
     user: null,
@@ -82,6 +82,17 @@ export default function UsersManager({
         toast.error(t(res.error));
       } else {
         toast.success(next ? m.users.superGranted : m.users.superRevoked);
+      }
+    });
+  }
+
+  function resetTotp(u: UserRow) {
+    if (!confirm(t("Oprești autentificarea în doi pași pentru acest cont? Utilizatorul va fi deconectat și va putea intra doar cu parola, până își configurează alt telefon."))) return;
+    resetUserTotp(u.id).then((res) => {
+      if (res?.error) toast.error(t(res.error));
+      else {
+        setRows((r) => r.map((x) => (x.id === u.id ? { ...x, totp: false } : x)));
+        toast.success(t("Autentificarea în doi pași a fost oprită."));
       }
     });
   }
@@ -157,6 +168,7 @@ export default function UsersManager({
                   {u.isSuperAdmin && (
                     <span className="ml-2 rounded bg-brand-soft px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand-strong">{m.users.superLabel}</span>
                   )}
+                  {u.totp && <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800" title={t("Autentificare în doi pași activă")}>2FA</span>}
                   {!u.isActive && <span className="ml-2 text-xs text-st-cancelled">{m.users.inactive}</span>}
                 </p>
                 <p className="truncate text-xs text-ink-soft">
@@ -189,6 +201,11 @@ export default function UsersManager({
                   title={u.id === viewerId ? m.users.deactivateSelf : undefined}
                 >
                   {u.isActive ? m.users.deactivate : m.users.activate}
+                </button>
+              )}
+              {u.totp && u.id !== viewerId && (viewerIsSuper || u.role !== "ADMIN") && (
+                <button onClick={() => resetTotp(u)} className="tap rounded-lg border border-[var(--color-line)] px-2.5 py-1.5 text-xs hover:bg-[var(--color-surface-2)]" title={t("Telefon pierdut: oprește autentificarea în doi pași a acestui cont")}>
+                  {t("Resetează 2FA")}
                 </button>
               )}
               {impersonable.includes(u.id) && (

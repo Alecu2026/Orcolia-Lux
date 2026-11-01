@@ -7,6 +7,7 @@ import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useUrlFilters } from "@/app/hooks/useUrlFilters";
 import { useLocale, useMessages } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
+import ClientFilterPicker from "./ClientFilterPicker";
 
 type Opt = { id: string; name: string };
 
@@ -174,10 +175,7 @@ export default function CalendarControls({
           {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         {clients.length > 0 && (
-          <select value={clientId} onChange={(e) => patch({ clientId: e.target.value })} className={fldCls(clientId)}>
-            <option value="">{m.calendar.filterClient}</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <ClientFilterPicker options={clients} value={clientId} onChange={(id) => patch({ clientId: id })} label={m.calendar.filterClient} className={fldCls(clientId)} />
         )}
         {categories.length > 0 && (
           <select value={categoryId} onChange={(e) => patch({ categoryId: e.target.value })} className={fldCls(categoryId)}>

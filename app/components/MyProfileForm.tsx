@@ -124,11 +124,11 @@ export default function MyProfileForm({
             </div>
             <div>
               <label className={label}>{t("Parolă nouă")}</label>
-              <input name="newPassword" type="password" required minLength={8} className={input} />
+              <input name="newPassword" type="password" required minLength={10} maxLength={128} autoComplete="new-password" className={input} />
             </div>
             <div>
               <label className={label}>{t("Confirmă parola nouă")}</label>
-              <input name="confirmPassword" type="password" required minLength={8} className={input} />
+              <input name="confirmPassword" type="password" required minLength={10} maxLength={128} autoComplete="new-password" className={input} />
             </div>
 
             {codeState?.error && <p className="text-sm text-st-cancelled">{codeState.error}</p>}

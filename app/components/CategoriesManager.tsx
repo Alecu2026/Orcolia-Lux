@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncedState } from "@/app/hooks/useSyncedState";
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -29,8 +30,7 @@ export default function CategoriesManager({
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
-  const [rows, setRows] = useState(categories);
-  useEffect(() => setRows(categories), [categories]);
+  const [rows, setRows] = useSyncedState(categories);
 
   // create
   const [createState, createAction, createPending] = useActionState<SettingsState, FormData>(

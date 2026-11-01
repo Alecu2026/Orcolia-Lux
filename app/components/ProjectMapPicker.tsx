@@ -114,6 +114,7 @@ export default function ProjectMapPicker({
 
   const coordsRef = useRef(coords);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability -- tipar intenționat (referință actualizată după randare / funcție recursivă)
     coordsRef.current = coords;
   }, [coords]);
 

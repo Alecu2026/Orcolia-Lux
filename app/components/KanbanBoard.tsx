@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncedState } from "@/app/hooks/useSyncedState";
 import { useEffect, useState } from "react";
 import { setStatus as setStatusAction } from "@/app/actions/appointments";
 import { KANBAN_COLUMNS, STATUS_META } from "./status";
@@ -24,8 +25,7 @@ export default function KanbanBoard({ items }: { items: ApptVM[] }) {
   const tr = useT();
   const toast = useToast();
   const m = useMessages();
-  const [list, setList] = useState(items);
-  useEffect(() => setList(items), [items]);
+  const [list, setList] = useSyncedState(items);
 
   const byStatus = new Map<ApptStatus, ApptVM[]>();
   for (const col of KANBAN_COLUMNS) byStatus.set(col.status, []);

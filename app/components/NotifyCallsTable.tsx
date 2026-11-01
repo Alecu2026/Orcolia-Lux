@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import DataTable, { type Col, type Filter } from "./DataTable";
 import VoicePicker from "./VoicePicker";
@@ -17,31 +16,10 @@ import {
 } from "@/app/actions/notify-calls";
 import type { PbxUser } from "@/lib/pbx-api";
 import { useT } from "@/lib/i18n/context";
+import { decodeNotify, type NotifyCallRow } from "@/lib/pbx-data";
+import { usePbxDataset } from "./usePbxDataset";
 
-export type NotifyCallRow = {
-  id: string;
-  campaignId: string;
-  clientId: string;
-  clientName: string;
-  phone: string;
-  /** Mesajul de transmis, cu datele plătitorului. */
-  text: string;
-  /** Când a fost pus în coadă. */
-  at: string;
-  dialedAt: string | null;
-  operator: string | null;
-  callId: string | null;
-  /** queued (în coadă) | dialing (apel pornit) | exported (în ZIP-ul pentru autoinformare) */
-  status: string;
-  note: string | null;
-  userName: string;
-  // din apelul PBX cu același callId (webhook-ul /api/pbx)
-  pbxStatus: string | null;
-  pbxState: string | null;
-  durationSec: number | null;
-  hasRecording: boolean;
-  rating: number | null;
-};
+export type { NotifyCallRow };
 
 const TZ = "Europe/Chisinau";
 const OPERATOR_KEY = "notify-call-operator";
@@ -83,9 +61,11 @@ function readOperator(fallback: string): string {
  * Coada de apeluri către plătitori (canalul „Apel"). „Sună" → PBX-ul sună întâi operatorul ales, apoi îl leagă cu plătitorul.
  * Starea, durata și înregistrarea vin din apelul PBX (același callId). Aici operatorul vede și mesajul de transmis.
  */
-export default function NotifyCallsTable({ rows: serverRows, defaultOperator, canManage = true }: { rows: NotifyCallRow[]; defaultOperator: string; canManage?: boolean }) {
+export default function NotifyCallsTable({ rows: head, defaultOperator, canManage = true }: { rows: NotifyCallRow[]; defaultOperator: string; canManage?: boolean }) {
   const tr = useT();
-  const router = useRouter();
+  // `head` = primele rânduri primite cu pagina; coada completă vine în browser (IndexedDB) și se completează la ~20 s doar cu rândurile schimbate (starea apelurilor vine din webhook-ul PBX)
+  const ds = usePbxDataset<NotifyCallRow>("notify", head, decodeNotify);
+  const serverRows = ds.rows;
   const toast = useToast();
   const [local, setLocal] = useState<Record<string, Partial<NotifyCallRow>>>({});
   const [removed, setRemoved] = useState<Set<string>>(new Set());
@@ -127,12 +107,6 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator, ca
     return () => { alive = false; };
   }, []);
 
-  // Starea apelurilor vine din webhook-ul PBX — reîmprospătăm discret cât fila e vizibilă.
-  useEffect(() => {
-    const t = setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, 60_000);
-    return () => clearInterval(t);
-  }, [router]);
-
   function pickOperator(v: string) {
     setOperator(v);
     try { localStorage.setItem(OPERATOR_KEY, v); } catch {}
@@ -146,7 +120,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator, ca
     if (res?.ok) {
       setLocal((m) => ({ ...m, [c.id]: { ...m[c.id], callId: res.callId, dialedAt: res.dialedAt, operator: res.operator, pbxStatus: null, pbxState: null } }));
       toast.success(tr("Apel pornit prin „{op}” către {name}. Starea apare în tabel în câteva secunde.", { op: res.operator, name: c.clientName }));
-      router.refresh();
+      void ds.refresh().then(() => setLocal((m) => { const n = { ...m }; delete n[c.id]; return n; }));
     } else {
       toast.error(res && !res.ok ? res.error : "Nu am putut porni apelul.");
     }
@@ -176,7 +150,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator, ca
       await new Promise((r) => setTimeout(r, 1700));
     }
     setBulk({ phase: "done", done, total: todo.length, failed, lastError });
-    router.refresh();
+    void ds.refresh().then(() => setLocal((m) => { const n = { ...m }; for (const c of todo) delete n[c.id]; return n; }));
   }
 
   async function remove(c: NotifyCallRow) {
@@ -186,7 +160,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator, ca
     if (!res?.ok) {
       setRemoved((s) => { const n = new Set(s); n.delete(c.id); return n; });
       toast.error(res && !res.ok ? res.error : "Nu am putut șterge rândul.");
-    }
+    } else ds.remove(c.id);
   }
 
   async function saveNote(c: NotifyCallRow, note: string) {
@@ -284,6 +258,8 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator, ca
 
   return (
     <>
+      {!ds.ready && ds.loading && <p className="mb-1 text-[11px] text-ink-soft">{tr("Se încarcă coada completă de apeluri…")}</p>}
+      {ds.error && <p className="mb-1 text-[11px] text-st-cancelled">{tr(ds.error)}</p>}
       <DataTable
         storageKey="pbx-notify-calls"
         rows={rows}
@@ -329,7 +305,7 @@ export default function NotifyCallsTable({ rows: serverRows, defaultOperator, ca
               </>
             )}
             </fieldset>
-            <button type="button" onClick={() => router.refresh()} className={topBtn}>{tr("↻ Reîncarcă")}</button>
+            <button type="button" onClick={() => void ds.refresh(true)} className={topBtn}>{tr("↻ Reîncarcă")}</button>
           </>
         }
       />

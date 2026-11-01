@@ -621,6 +621,7 @@ let optionsMemo: { at: number; value: RouteOptions } | null = null;
 function RouteDialog({ route, users, onClose, onSaved }: { route: RouteDto | null; users: { id: string; name: string }[]; onClose: () => void; onSaved: () => void }) {
   const t = useT();
   const toast = useToast();
+  // eslint-disable-next-line react-hooks/purity -- momentul curent afișat la randare (valoare de afișare, nu stare)
   const [options, setOptions] = useState<RouteOptions | null>(optionsMemo && Date.now() - optionsMemo.at < 60_000 ? optionsMemo.value : null);
   useEffect(() => {
     if (options) return;

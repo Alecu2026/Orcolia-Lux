@@ -28,6 +28,8 @@ export const KIND_LABEL: Record<string, string> = {
   "task.overdue": "Sarcină în întârziere",
   "invoice.email": "Factură pe email",
   "verification.code": "Cod de verificare",
+  "auth.new_device": "Autentificare de pe un dispozitiv nou",
+  "reading.verify": "Verificare citire contor (email către client)",
   "appointment.reminder": "Reamintire programare",
   "payer.campaign": "Notificare plătitori",
   "payer.test": "Test notificare plătitori",

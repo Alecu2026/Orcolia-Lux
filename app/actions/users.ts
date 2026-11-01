@@ -7,6 +7,7 @@ import { requireUser, isSuper, type CurrentUser } from "@/lib/dal";
 import { can, ALL_PERMISSION_KEYS, PERMISSIONS_V2, PERMISSIONS_V3 } from "@/lib/permissions";
 import { sanitizePreset } from "@/lib/table-look";
 import { hashPassword } from "@/lib/password";
+import { validateNewPassword } from "@/lib/password-policy";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
 import { USER_SPEC, diffFields } from "@/lib/services/audit-diff";
@@ -101,7 +102,10 @@ export async function createUser(
 
   if (name.length < 2) return { error: "Nume prea scurt." };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Email invalid." };
-  if (password.length < 8) return { error: "Parola: minim 8 caractere." };
+  {
+    const weak = validateNewPassword(password, { email, name });
+    if (weak) return { error: weak };
+  }
   const telegram = parseTelegram(formData);
   if (telegram.error) return { error: telegram.error };
   if (role === "ADMIN" && !isAdminLevel(user)) return { error: "Doar un administrator poate crea alt administrator." };
@@ -161,7 +165,10 @@ export async function updateUser(
   const newPassword = String(formData.get("password") ?? "");
   if (name.length < 2) return { error: "Nume prea scurt." };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Email invalid." };
-  if (newPassword !== "" && newPassword.length < 8) return { error: "Parola nouă: minim 8 caractere (sau lasă gol ca să rămână neschimbată)." };
+  if (newPassword !== "") {
+    const weak = validateNewPassword(newPassword, { email: String(formData.get("email") ?? ""), name: String(formData.get("name") ?? "") });
+    if (weak) return { error: weak };
+  }
   const telegram = parseTelegram(formData);
   if (telegram.error) return { error: telegram.error };
 
@@ -297,6 +304,25 @@ export async function toggleUserActive(id: string, active: boolean): Promise<voi
     objectName: target?.name ?? null,
   });
   invalidate();
+}
+
+/**
+ * Telefon pierdut: oprește autentificarea în doi pași a unui cont (și închide sesiunile lui), ca să poată intra din nou doar cu parola și să-și configureze alt telefon.
+ * Același drept ca la dezactivare / ștergere: un administrator obișnuit nu poate face asta pe conturi de administrator.
+ */
+export async function resetUserTotp(id: string): Promise<UserState> {
+  const admin = await requireUser();
+  if (!can(admin, "users.manage")) return { error: "Nu ai permisiunea." };
+  if (DEMO) return { error: "Mod demo: conectează o bază de date." };
+  const target = await prisma.user.findUnique({ where: { id }, select: { name: true, role: true, isSuperAdmin: true, totpEnabledAt: true } });
+  if (!target) return { error: "Utilizator inexistent." };
+  if (!isSuper(admin) && (target.role === "ADMIN" || target.isSuperAdmin)) return { error: "Nu ai permisiunea." };
+  if (!target.totpEnabledAt) return { error: "Autentificarea în doi pași nu este activă pe acest cont." };
+  await prisma.user.update({ where: { id }, data: { totpSecret: null, totpEnabledAt: null, totpPending: null, totpLastStep: null, totpRecovery: [] } });
+  await prisma.session.deleteMany({ where: { userId: id } });
+  await logAudit(actor(admin), { action: "user.totp_reset", module: "Users", objectId: id, objectName: target.name });
+  invalidate();
+  return { ok: true };
 }
 
 /** Ștergere definitivă utilizator (cu curățarea datelor legate). */

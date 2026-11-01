@@ -55,24 +55,85 @@ export type PayerStatement = {
   totals: { apaQty: number; canalQty: number; subtotal: number; datoriiAvans: number; recalculari: number; penalitati: number; grandTotal: number };
 };
 
+type StatementInvoice = {
+  id: string; publicToken: string; number: string; status: InvoiceStatus; issueDate: Date; billingPeriodLabel: string | null; sectorNr: string | null; contPersonal: string | null; consumAddress: string | null;
+  meterPrevReading: string | null; meterCurrReading: string | null; subtotal: number; datoriiAvans: number; recalculari: number; penalitati: number; grandTotal: number; currency: string;
+  items: { description: string; quantity: number; unitPrice: number }[];
+};
+
+// MongoDB (agregare brută) întoarce valorile în format EJSON ({ $oid }, { $date }) — le aducem la tipuri JS.
+const ejId = (v: unknown): string => (typeof v === "string" ? v : v && typeof v === "object" && "$oid" in v ? String((v as { $oid: unknown }).$oid) : "");
+const ejDate = (v: unknown): Date => {
+  if (typeof v === "string" || typeof v === "number") return new Date(v);
+  const d = (v as { $date?: unknown } | null)?.$date;
+  if (typeof d === "string" || typeof d === "number") return new Date(d);
+  const n = (d as { $numberLong?: string } | undefined)?.$numberLong;
+  return new Date(n ? Number(n) : NaN);
+};
+const ejNum = (v: unknown): number => {
+  if (typeof v === "number") return v;
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    const n = Number(o.$numberDouble ?? o.$numberInt ?? o.$numberLong ?? o.$numberDecimal ?? NaN);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+};
+const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+
+/**
+ * Facturile Apă-Canal ale plătitorului, cu liniile lor, într-un SINGUR drum către baza de date (agregare cu $lookup) — cu Prisma ar fi două interogări la rând (facturile, apoi liniile lor).
+ * Aceleași câmpuri și aceeași ordine (după data emiterii) ca interogarea veche.
+ */
+async function statementInvoices(clientId: string, forPortal: boolean): Promise<StatementInvoice[]> {
+  const raw = (await prisma.invoice.aggregateRaw({
+    pipeline: [
+      { $match: { clientId: { $oid: clientId }, kind: "APA_CANAL", ...(forPortal ? { status: { $ne: "DRAFT" } } : {}) } },
+      { $sort: { issueDate: 1 } },
+      { $lookup: { from: "InvoiceItem", localField: "_id", foreignField: "invoiceId", as: "items" } },
+      {
+        $project: {
+          publicToken: 1, number: 1, status: 1, issueDate: 1, billingPeriodLabel: 1, sectorNr: 1, contPersonal: 1, consumAddress: 1,
+          meterPrevReading: 1, meterCurrReading: 1, subtotal: 1, datoriiAvans: 1, recalculari: 1, penalitati: 1, grandTotal: 1, currency: 1,
+          items: { $map: { input: "$items", as: "i", in: { description: "$$i.description", quantity: "$$i.quantity", unitPrice: "$$i.unitPrice" } } },
+        },
+      },
+    ],
+  })) as unknown as Record<string, unknown>[];
+  return raw.map((r) => ({
+    id: ejId(r._id),
+    publicToken: String(r.publicToken ?? ""),
+    number: String(r.number ?? ""),
+    status: String(r.status ?? "DRAFT") as InvoiceStatus,
+    issueDate: ejDate(r.issueDate),
+    billingPeriodLabel: str(r.billingPeriodLabel),
+    sectorNr: str(r.sectorNr),
+    contPersonal: str(r.contPersonal),
+    consumAddress: str(r.consumAddress),
+    meterPrevReading: str(r.meterPrevReading),
+    meterCurrReading: str(r.meterCurrReading),
+    subtotal: ejNum(r.subtotal),
+    datoriiAvans: ejNum(r.datoriiAvans),
+    recalculari: ejNum(r.recalculari),
+    penalitati: ejNum(r.penalitati),
+    grandTotal: ejNum(r.grandTotal),
+    currency: String(r.currency ?? "MDL"),
+    items: ((r.items as Record<string, unknown>[] | undefined) ?? []).map((it) => ({ description: String(it.description ?? ""), quantity: ejNum(it.quantity), unitPrice: ejNum(it.unitPrice) })),
+  }));
+}
+
 /** `forPortal`: ce vede clientul în cabinetul personal — fără facturile ciornă (încă nerevizuite de staff). */
 export async function getPayerStatement(clientId: string, opts: { forPortal?: boolean } = {}): Promise<PayerStatement | null> {
-  const client = await prisma.client.findFirst({
-    where: { id: clientId },
-    select: { id: true, name: true, meterSeries: true, consumAddress: true, apaCanalContract: true },
-  });
+  if (!/^[0-9a-f]{24}$/i.test(clientId)) return null;
+  // Plătitorul, facturile cu liniile lor și ultimul document 1C (pentru cont / adresă lipsă) pornesc odată, în paralel: un singur drum către baza de date, nu trei-patru la rând.
+  const [client, invoices, rec] = await Promise.all([
+    prisma.client.findFirst({ where: { id: clientId }, select: { id: true, name: true, meterSeries: true, consumAddress: true, apaCanalContract: true } }),
+    statementInvoices(clientId, !!opts.forPortal),
+    prisma.oneCRecord
+      .findFirst({ where: { clientId }, orderBy: { dataDoc: "desc" }, select: { contPersonal: true, nrContract: true, oras: true, strada: true, casa: true, apartament: true } })
+      .catch(() => null),
+  ]);
   if (!client) return null;
-
-  const invoices = await prisma.invoice.findMany({
-    where: { clientId: client.id, kind: "APA_CANAL", ...(opts.forPortal ? { status: { not: "DRAFT" as const } } : {}) },
-    orderBy: { issueDate: "asc" },
-    select: {
-      id: true, publicToken: true, number: true, status: true, issueDate: true, billingPeriodLabel: true, sectorNr: true, contPersonal: true, consumAddress: true,
-      meterPrevReading: true, meterCurrReading: true, subtotal: true, datoriiAvans: true, recalculari: true,
-      penalitati: true, grandTotal: true, currency: true,
-      items: { select: { description: true, quantity: true, unitPrice: true } },
-    },
-  });
 
   const totals = { apaQty: 0, canalQty: 0, subtotal: 0, datoriiAvans: 0, recalculari: 0, penalitati: 0, grandTotal: 0 };
   const rows: PayerStatementRow[] = invoices.map((inv) => {
@@ -115,9 +176,6 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
   let address: string | null = client.consumAddress || newest.find((i) => i.consumAddress)?.consumAddress || null;
   let contract: string | null = account ? null : client.apaCanalContract || null;
   if (!account || !address || !contract) {
-    const rec = await prisma.oneCRecord
-      .findFirst({ where: { clientId: client.id }, orderBy: { dataDoc: "desc" }, select: { contPersonal: true, nrContract: true, oras: true, strada: true, casa: true, apartament: true } })
-      .catch(() => null);
     if (rec) {
       account = account || rec.contPersonal || null;
       contract = account ? null : contract || rec.nrContract || null;

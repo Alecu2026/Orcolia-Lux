@@ -33,6 +33,14 @@ export const MODULE_LABELS: Record<string, string> = {
 
 export const ACTION_LABELS: Record<string, string> = {
   "auth.login": "Autentificare",
+  "auth.lockout": "Cont blocat temporar (prea multe încercări)",
+  "auth.new_device": "Autentificare de pe un dispozitiv nou",
+  "auth.recovery_code_used": "Cod de recuperare folosit la intrare",
+  "user.totp_enable": "Autentificare în doi pași activată",
+  "user.totp_disable": "Autentificare în doi pași oprită",
+  "user.totp_reset": "Autentificare în doi pași resetată de administrator",
+  "user.totp_recovery_regenerate": "Coduri de recuperare regenerate",
+  "user.sessions_revoke": "Sesiuni închise",
   "auth.logout": "Delogare",
   "auth.impersonate_start": "Simulare login — intrare în cont",
   "auth.impersonate_end": "Simulare login — ieșire",
@@ -101,6 +109,14 @@ export const ACTION_LABELS: Record<string, string> = {
 // Etichete scurte pentru afișarea compactă (un singur rând).
 const SHORT_LABELS: Record<string, string> = {
   "auth.login": "Autentificare",
+  "auth.lockout": "Cont blocat temporar",
+  "auth.new_device": "Dispozitiv nou",
+  "auth.recovery_code_used": "Cod de recuperare folosit",
+  "user.totp_enable": "2FA activat",
+  "user.totp_disable": "2FA oprit",
+  "user.totp_reset": "2FA resetat",
+  "user.totp_recovery_regenerate": "Coduri de recuperare noi",
+  "user.sessions_revoke": "Sesiuni închise",
   "auth.logout": "Delogare",
   "auth.impersonate_start": "Intrat în contul altcuiva",
   "auth.impersonate_end": "Ieșit din simulare",

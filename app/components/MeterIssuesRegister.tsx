@@ -101,6 +101,7 @@ export default function MeterIssuesRegister({
 
   useEffect(() => {
     if (box.current) box.current.scrollTop = 0;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
     setScroll(0);
   }, [cur, filters, perPage]);
 

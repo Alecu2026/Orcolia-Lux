@@ -11,7 +11,7 @@ import { evictCachedSession } from "./portal-cache";
 const COOKIE = "client_session";
 /** Marcaj (httpOnly) pus doar când sesiunea de client e o SIMULARE pornită din staff: la expirare te duce înapoi în staff, nu la autentificarea clienților. */
 export const PORTAL_IMP_COOKIE = "client_imp";
-const TTL_MS = 180 * 24 * 60 * 60 * 1000;
+const TTL_MS = (Math.max(1, Number(process.env.CLIENT_SESSION_TTL_DAYS) || 90)) * 24 * 60 * 60 * 1000; // 90 de zile (înainte 180); CLIENT_SESSION_TTL_DAYS
 
 /** Hash-ul tokenului (sha256) — în DB salvăm DOAR acest hash, niciodată tokenul brut. */
 export function hashClientToken(token: string): string {

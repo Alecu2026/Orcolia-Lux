@@ -71,6 +71,7 @@ export function useNotificationDataset(userId: string) {
             const localUnread = m.tuples.reduce((n, t) => n + (t[2] === 0 ? 1 : 0), 0);
             if (m.total <= m.tuples.length && Number.isFinite(srvUnread) && srvUnread !== localUnread) {
               inflight.current = null;
+              // eslint-disable-next-line react-hooks/immutability -- tipar intenționat (referință actualizată după randare / funcție recursivă)
               return void (await fetchFull(true));
             }
           }

@@ -99,10 +99,10 @@ export function clearLogMemo(): void {
 }
 
 /** Creează un index o singură dată per proces (idempotent). Cheia: `{ câmp: 1, … }`. */
-export function ensureIndex(collection: string, key: Record<string, 1 | -1>, name: string): void {
+export function ensureIndex(collection: string, key: Record<string, 1 | -1>, name: string, extra: Record<string, unknown> = {}): void {
   if (S.indexes.has(name)) return;
   S.indexes.add(name);
   void prisma
-    .$runCommandRaw({ createIndexes: collection, indexes: [{ key, name }] })
+    .$runCommandRaw({ createIndexes: collection, indexes: [{ key, name, ...extra }] })
     .catch((e) => console.error(`[log-count] nu am putut crea indexul ${name} (merge și fără, mai lent):`, String(e?.message ?? e).slice(0, 200)));
 }

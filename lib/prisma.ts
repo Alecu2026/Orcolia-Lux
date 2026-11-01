@@ -2,9 +2,16 @@ import "server-only";
 import { PrismaClient } from "@prisma/client";
 import { bumpTaskEpoch } from "./task-epoch";
 import { clearStaffSessionCache } from "./staff-session-cache";
-import { bumpApptEpoch, bumpClientEpoch, clearLookupMemory } from "./lookup-memory";
+import { bumpApptEpoch, bumpClientEpoch, bumpClientSearchEpoch, clearLookupMemory } from "./lookup-memory";
 
 const WRITE_OPS = new Set(["create", "createMany", "createManyAndReturn", "update", "updateMany", "updateManyAndReturn", "upsert", "delete", "deleteMany"]);
+
+/** O scriere pe Client schimbă rezultatul căutării doar dacă adaugă / șterge clienți sau atinge numele / telefonul (ultima programare, absențele, notele nu contează). */
+function changesClientSearch(operation: string, args: unknown): boolean {
+  if (!operation.startsWith("update")) return true;
+  const data = (args as { data?: unknown } | undefined)?.data;
+  return !data || typeof data !== "object" || "name" in data || "phone" in data;
+}
 
 /**
  * Singleton Prisma — evită epuizarea conexiunilor în dev (HMR re-execută modulele).
@@ -52,7 +59,10 @@ function createClient() {
       client: {
         async $allOperations({ operation, args, query }) {
           const result = await query(args);
-          if (WRITE_OPS.has(operation)) bumpClientEpoch(); // lista de clienți CRM din memorie (lib/services/client-cache.ts); se reface abia la următoarea cerere
+          if (WRITE_OPS.has(operation)) {
+            bumpClientEpoch(); // lista de clienți CRM din memorie (lib/services/client-cache.ts); se reface abia la următoarea cerere
+            if (changesClientSearch(operation, args)) bumpClientSearchEpoch(); // indexul de căutare după nume / telefon (lib/services/client-search.ts)
+          }
           return result;
         },
       },

@@ -1,46 +1,52 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getInvoiceByToken } from "@/lib/queries/invoices";
-import { selfBaseUrl } from "@/lib/self-url";
-import { PdfBrowserError, launchBrowser } from "@/lib/pdf-browser";
+import { PdfBrowserError } from "@/lib/pdf-browser";
+import { PdfBusyError, PdfRateLimitedError } from "@/lib/pdf-limiter";
+import { getInvoicePdf } from "@/lib/services/invoice-pdf";
+import { isRateLimited } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/request-ip";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ token: string }> },
-) {
+/**
+ * PDF-ul unei facturi publice (link cu cod în adresă). Ruta e publică, deci e protejată: limită pe adresă IP pentru PDF-urile noi, generare doar în coadă controlată (cel mult câteva deodată, restul așteaptă sau primesc 503
+ * cu Retry-After) și cache pe disc (vezi lib/services/invoice-pdf.ts) — o factură descărcată a doua oară nu mai pornește niciun browser.
+ */
+export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  const ip = await clientIp();
   const invoice = await getInvoiceByToken(token);
   if (!invoice) {
     return NextResponse.json({ error: "Factura nu a fost găsită." }, { status: 404 });
   }
 
-  let session: Awaited<ReturnType<typeof launchBrowser>> | undefined;
   try {
-    session = await launchBrowser();
-    const page = await session.newPage();
-    await page.goto(`${await selfBaseUrl(_req.url)}/invoice/public/${token}`, { waitUntil: "networkidle" });
-    const pdfBuffer = await page.pdf({
-      format: "A4",
-      landscape: invoice.kind === "APA_CANAL",
-      preferCSSPageSize: true,
-      printBackground: true,
+    const { pdf, etag, cached } = await getInvoicePdf(invoice, token, req.url, () => {
+      // doar PDF-urile NOI (cele din cache sunt ieftine) se limitează pe adresă; fără adresă cunoscută (server fără proxy configurat) nu limităm: toți ar împărți aceeași găleată, iar coada protejează oricum serverul
+      if (ip && isRateLimited(`invoice-pdf-gen:${ip}`, 30, 60_000)) throw new PdfRateLimitedError();
     });
-    return new NextResponse(new Uint8Array(pdfBuffer), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="Factura-${invoice.number}.pdf"`,
-      },
+    const tag = `"${etag}"`;
+    const headers = {
+      ETag: tag,
+      "Cache-Control": "private, no-cache",
+      "X-Pdf-Cache": cached ? "hit" : "miss",
+    };
+    if (req.headers.get("if-none-match") === tag) return new NextResponse(null, { status: 304, headers });
+    return new NextResponse(new Uint8Array(pdf), {
+      headers: { ...headers, "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="Factura-${invoice.number}.pdf"` },
     });
   } catch (e) {
+    if (e instanceof PdfRateLimitedError) {
+      return NextResponse.json({ error: "Prea multe cereri. Încearcă din nou peste un minut." }, { status: 429, headers: { "Retry-After": "60" } });
+    }
+    if (e instanceof PdfBusyError) {
+      return NextResponse.json({ error: "Serverul generează acum multe PDF-uri. Încearcă din nou peste câteva secunde." }, { status: 503, headers: { "Retry-After": "5" } });
+    }
     if (e instanceof PdfBrowserError) console.error(`[invoice/pdf] Chromium indisponibil: ${e.attempts.join(" | ")} — ${e.hint}`);
     else console.error("[invoice/pdf] eșec generare PDF:", e);
     const detail = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: `Nu am putut genera PDF-ul.`, detail }, { status: 500 });
-  } finally {
-    await session?.close().catch(() => {});
-    await session?.cleanup().catch(() => {});
   }
 }

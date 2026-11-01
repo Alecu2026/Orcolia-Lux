@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncedState } from "@/app/hooks/useSyncedState";
 import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -69,8 +70,7 @@ export default function ProjectsManager({
   const router = useRouter();
   const toast = useToast();
   const m = useMessages();
-  const [rows, setRows] = useState(projects);
-  useEffect(() => setRows(projects), [projects]);
+  const [rows, setRows] = useSyncedState(projects);
 
   // ── Persistenţă filtre ──────────────────────────────────
   const projFiltersEmpty = !filters.q && !filters.status;
@@ -121,8 +121,7 @@ export default function ProjectsManager({
   }
 
   // Filtrare pe server (reflectată în URL)
-  const [searchInput, setSearchInput] = useState(filters.q);
-  useEffect(() => setSearchInput(filters.q), [filters.q]);
+  const [searchInput, setSearchInput] = useSyncedState(filters.q);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {

@@ -89,6 +89,7 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
 
   // Keep taskType in sync when switching entity
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
     setTaskType(entity === "ticket" ? "TICKET" : "TASK");
   }, [entity]);
 
@@ -217,7 +218,7 @@ function UniversalVoiceDialog({ data, onClose }: { data: DialogData; onClose: ()
             <h2 className="text-base font-bold">{m.voice.confirmTitle}</h2>
             {data.transcript && (
               <p className="mt-0.5 text-xs text-ink-soft">
-                „{data.transcript.length > 100 ? `${data.transcript.slice(0, 100)}…` : data.transcript}"
+                „{data.transcript.length > 100 ? `${data.transcript.slice(0, 100)}…` : data.transcript}”
               </p>
             )}
           </div>
@@ -416,6 +417,7 @@ export default function VoiceTaskButton() {
   const [errMsg, setErrMsg] = useState("");
   const [dialogData, setDialogData] = useState<DialogData | null>(null);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- marcaj de montare (conținut doar în browser)
   useEffect(() => setMounted(true), []);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);

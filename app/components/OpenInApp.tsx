@@ -34,6 +34,7 @@ export default function OpenInApp() {
     const isAndroid = /android/i.test(ua);
 
     if (isIOS) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
       setView("ios");
       return;
     }

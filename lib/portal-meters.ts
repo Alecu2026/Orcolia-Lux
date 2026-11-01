@@ -37,6 +37,6 @@ export type PortalMeterDto = {
 };
 
 export type PortalReadingResult =
-  | { ok: true; readingId: string; value: number; consum: number | null; issueSaved: boolean; issueError?: string }
+  | { ok: true; readingId: string; value: number; consum: number | null; issueSaved: boolean; issueError?: string; /** adresa (mascată) la care s-a trimis emailul de verificare a citirii */ verifyEmail?: string }
   /** Plătitorul nu primește avertismentul „prea mic” (lipsa de consum e normală: plecat, casă nelocuită), doar „prea mare”; `avg`/`pct` explică avertismentul față de medie. */
   | { ok: false; error: string; confirm?: "lower" | "high"; avg?: { avg: number; count: number }; pct?: number };

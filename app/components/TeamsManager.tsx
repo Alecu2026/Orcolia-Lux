@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncedState } from "@/app/hooks/useSyncedState";
 import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -28,8 +29,7 @@ const input =
 export default function TeamsManager({ teams, users, canManage = true }: { teams: Team[]; users: Opt[]; canManage?: boolean }) {
   const toast = useToast();
   const m = useMessages();
-  const [rows, setRows] = useState(teams);
-  useEffect(() => setRows(teams), [teams]);
+  const [rows, setRows] = useSyncedState(teams);
   const [dialog, setDialog] = useState<{ open: boolean; team: Team | null }>({
     open: false,
     team: null,

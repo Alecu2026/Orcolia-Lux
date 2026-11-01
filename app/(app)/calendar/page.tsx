@@ -4,14 +4,14 @@ import Link from "next/link";
 import { requirePermission } from "@/lib/dal";
 import { can, canAny, canUseAllScope } from "@/lib/permissions";
 import { getUserTimezone } from "@/lib/queries/settings";
-import { tasksDueBetween, taskViewFilter } from "@/lib/queries/tasks";
-import { apptsBetween } from "@/lib/queries/appointments";
+import { taskViewFilter } from "@/lib/queries/tasks";
+import { bucketByDay, getCalendarItems, type CalItem } from "@/lib/services/calendar-data";
 import { userOptions } from "@/lib/queries/users";
 import { teamOptions } from "@/lib/queries/teams";
 import { projectOptions } from "@/lib/queries/projects";
 import { clientOptions } from "@/lib/queries/clients";
 import { listCategories } from "@/lib/queries/categories";
-import { todayKey, addDaysToKey, dayBoundsUtc, dateKeyOf } from "@/lib/date";
+import { todayKey, addDaysToKey, dayBoundsUtc } from "@/lib/date";
 import CalendarControls from "@/app/components/CalendarControls";
 import type { TaskType } from "@prisma/client";
 
@@ -19,17 +19,9 @@ export const dynamic = "force-dynamic";
 
 type View = "month" | "week" | "day";
 
-type CalItem = {
-  id: string;
-  kind: "TASK" | "TICKET" | "APPT";
-  title: string;
-  dateAt: Date;
-  status: string;
-  seq: number | null;
-  assigneeName: string | null;
-  clientName: string | null;
-  color: string | null;
-};
+/** Câte intrări se desenează pe zi în vederea „Săptămână” (restul: „+N altele”, cu link spre ziua respectivă) și, inițial, în vederea „Zi” (cu „Arată încă”). */
+const WEEK_PER_DAY = 30;
+const DAY_PAGE = 250;
 
 const TASK_DOT: Record<string, string> = {
   NEW: "bg-st-new",
@@ -138,24 +130,11 @@ export default async function CalendarPage({
   // Appointment user filter
   const apptUserId = assigneeId ?? (scope === "mine" || scope === "created" ? user.id : undefined);
 
-  const [tasks, appts, users, teams, projects, clients, categories] = await Promise.all([
-    needTasks
-      ? tasksDueBetween({
-          scope,
-          userId: user.id,
-          teamIds: user.teamIds,
-          ...taskViewFilter(user),
-          from,
-          to,
-          assigneeId,
-          teamId,
-          projectId,
-          clientId,
-          categoryId,
-          types: taskTypes,
-        })
-      : [],
-    showAppts ? apptsBetween({ userId: apptUserId, clientId, from, to }) : [],
+  const [items, users, teams, projects, clients, categories] = await Promise.all([
+    getCalendarItems({
+      scope, userId: user.id, teamIds: user.teamIds, ...taskViewFilter(user), from, to, assigneeId, teamId, projectId, clientId, categoryId,
+      taskTypes: needTasks ? taskTypes : [], showAppts, apptUserId, lean: view === "month",
+    }),
     userOptions(),
     // Listele din filtre arată doar ce are voie userul să vadă pe paginile respective.
     can(user, "teams.view") ? teamOptions() : [],
@@ -163,32 +142,7 @@ export default async function CalendarPage({
     canAny(user, ["clients.view", "payers.view"]) ? clientOptions(user.id) : [],
     listCategories(),
   ]);
-
-  // Merge into CalItem[]
-  const items: CalItem[] = [
-    ...tasks.map((t) => ({
-      id: t.id,
-      kind: t.type as CalItem["kind"],
-      title: t.title,
-      dateAt: t.dueAt,
-      status: t.status,
-      seq: t.seq,
-      assigneeName: t.assigneeName,
-      clientName: null,
-      color: null,
-    })),
-    ...appts.map((a) => ({
-      id: a.id,
-      kind: "APPT" as const,
-      title: a.title,
-      dateAt: a.startAt,
-      status: a.status,
-      seq: null,
-      assigneeName: null,
-      clientName: a.clientNameSnapshot,
-      color: a.categoryColorSnapshot,
-    })),
-  ].sort((a, b) => a.dateAt.getTime() - b.dateAt.getTime());
+  const dayLimit = Math.min(5000, Math.max(DAY_PAGE, Math.floor(Number(sp.limit)) || DAY_PAGE));
 
   return (
     <div className="w-full">
@@ -212,7 +166,7 @@ export default async function CalendarPage({
         <WeekView weekKeys={weekKeys} tz={tz} items={items} />
       )}
       {view === "day" && (
-        <DayView anchor={anchor} tz={tz} items={items} />
+        <DayView anchor={anchor} tz={tz} items={items} limit={dayLimit} sp={sp} />
       )}
     </div>
   );
@@ -228,13 +182,7 @@ async function MonthView({ anchor, tz, items }: { anchor: string; tz: string; it
   const today = todayKey(tz);
   const curMonth = `${y}-${String(m).padStart(2, "0")}`;
 
-  const byDay = new Map<string, CalItem[]>();
-  for (const item of items) {
-    const key = dateKeyOf(item.dateAt, tz);
-    const arr = byDay.get(key) ?? [];
-    arr.push(item);
-    byDay.set(key, arr);
-  }
+  const byDay = bucketByDay(items, cells, tz);
 
   return (
     <div>
@@ -288,16 +236,12 @@ async function MonthView({ anchor, tz, items }: { anchor: string; tz: string; it
   );
 }
 
-function WeekView({ weekKeys, tz, items }: { weekKeys: string[]; tz: string; items: CalItem[] }) {
+async function WeekView({ weekKeys, tz, items }: { weekKeys: string[]; tz: string; items: CalItem[] }) {
+  const tr = await getT();
   const today = todayKey(tz);
   const DAY_NAMES = ["L", "Ma", "Mi", "J", "V", "S", "D"];
 
-  const byDay = new Map<string, CalItem[]>();
-  for (const k of weekKeys) byDay.set(k, []);
-  for (const item of items) {
-    const key = dateKeyOf(item.dateAt, tz);
-    byDay.get(key)?.push(item);
-  }
+  const byDay = bucketByDay(items, weekKeys, tz);
 
   return (
     <div className="overflow-x-auto">
@@ -330,7 +274,12 @@ function WeekView({ weekKeys, tz, items }: { weekKeys: string[]; tz: string; ite
                 </span>
               </Link>
               <div className="flex flex-col gap-1">
-                {dayItems.map((item) => <CalCard key={item.id} item={item} />)}
+                {dayItems.slice(0, WEEK_PER_DAY).map((item) => <CalCard key={item.id} item={item} />)}
+                {dayItems.length > WEEK_PER_DAY && (
+                  <Link href={`/calendar?view=day&date=${dayKey}`} prefetch={false} className="rounded-lg border border-dashed border-[var(--color-line)] px-2 py-1 text-center text-[11px] font-medium text-brand hover:bg-[var(--color-surface-2)]">
+                    {tr("+{n} altele", { n: (dayItems.length - WEEK_PER_DAY).toLocaleString("ro-RO") })}
+                  </Link>
+                )}
               </div>
             </div>
           );
@@ -340,8 +289,9 @@ function WeekView({ weekKeys, tz, items }: { weekKeys: string[]; tz: string; ite
   );
 }
 
-async function DayView({ anchor, tz, items }: { anchor: string; tz: string; items: CalItem[] }) {
+async function DayView({ anchor, tz, items, limit, sp }: { anchor: string; tz: string; items: CalItem[]; limit: number; sp: Record<string, string> }) {
   const tr = await getT();
+  void tz; void anchor;
   if (items.length === 0) {
     return (
       <div className="card grid place-items-center p-10 text-center text-sm text-ink-soft">
@@ -349,9 +299,12 @@ async function DayView({ anchor, tz, items }: { anchor: string; tz: string; item
       </div>
     );
   }
+  const more = new URLSearchParams(sp);
+  more.set("limit", String(limit + 500));
   return (
     <div className="flex flex-col gap-1.5">
-      {items.map((item) => {
+      {items.length > limit && <p className="text-xs text-ink-soft">{tr("Se afișează {shown} din {total} intrări", { shown: limit.toLocaleString("ro-RO"), total: items.length.toLocaleString("ro-RO") })}</p>}
+      {items.slice(0, limit).map((item) => {
         const href = item.kind === "APPT" ? "/appointments" : `/tasks/${item.id}`;
         return (
           <Link key={item.id} href={href} prefetch={false} className="card flex items-center gap-2.5 px-3 py-2">
@@ -378,6 +331,11 @@ async function DayView({ anchor, tz, items }: { anchor: string; tz: string; item
           </Link>
         );
       })}
+      {items.length > limit && (
+        <Link href={`/calendar?${more.toString()}`} prefetch={false} scroll={false} className="card py-2 text-center text-sm font-medium text-brand hover:opacity-80">
+          {tr("Arată încă {n}", { n: Math.min(500, items.length - limit).toLocaleString("ro-RO") })}
+        </Link>
+      )}
     </div>
   );
 }

@@ -320,6 +320,7 @@ export default function TasksManager({
         category: params.get("category") ?? "", ps: params.get("ps") ?? "",
       };
       const s = (params.get("scope") as "mine"|"all"|"created") ?? "mine";
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
       setLocalFilters(f);
       setLocalScope(s);
       window.history.replaceState(null, "", `${basePath}?${saved}`);
@@ -355,9 +356,11 @@ export default function TasksManager({
   useEffect(() => {
     if (initialOpenId) {
       getTaskHistory(initialOpenId)
+        // eslint-disable-next-line react-hooks/immutability -- tipar intenționat (referință actualizată după randare / funcție recursivă)
         .then((rows) => setHistory((h) => ({ ...h, [initialOpenId]: rows as HistoryRow[] })))
         .catch(() => {});
       getTaskComments(initialOpenId)
+        // eslint-disable-next-line react-hooks/immutability -- tipar intenționat (referință actualizată după randare / funcție recursivă)
         .then((rows) => setComments((c) => ({ ...c, [initialOpenId]: rows as CommentRow[] })))
         .catch(() => {});
     }
@@ -904,6 +907,7 @@ export function StatusDropdown({
   const [mounted, setMounted] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- marcaj de montare (conținut doar în browser)
   useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {

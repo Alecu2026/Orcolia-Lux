@@ -25,7 +25,7 @@ export default async function PortalRegisterPage({
           <p className="mt-1 text-xs text-ink-soft">
             {step2
               ? t("Am trimis un cod de 6 cifre pe email. Introdu-l mai jos împreună cu parola pe care vrei s-o folosești.")
-              : t("Introdu contul personal (de pe factură) și emailul tău — îți trimitem un cod de confirmare.")}
+              : t("Introdu contul personal și emailul înregistrat la companie — îți trimitem un cod de confirmare.")}
           </p>
         </div>
 

@@ -18,6 +18,8 @@ export default function PortalRegisterRequestForm() {
     <form action={formAction} className="flex flex-col gap-3">
       <input name="meterSeries" placeholder={t("Cont personal sau contract")} required className={input} />
       <input name="email" type="email" placeholder="Email" autoComplete="email" required className={input} />
+      <input name="proof" placeholder={t("Suma ultimei facturi sau numărul ei (doar dacă nu ai email înregistrat)")} autoComplete="off" maxLength={60} className={input} />
+      <p className="-mt-1 text-[11px] text-ink-soft">{t("Scrie emailul înregistrat la companie — codul ajunge doar acolo. Dacă la companie nu ai încă un email înregistrat, completează și suma sau numărul din ultima factură.")}</p>
 
       {state?.error && <p className="text-sm text-st-cancelled">{t(state.error)}</p>}
 

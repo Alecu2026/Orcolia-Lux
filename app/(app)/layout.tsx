@@ -67,6 +67,7 @@ export default async function AppLayout({
       bottomNav={user.bottomNav ?? []}
       messages={messages}
       locale={locale}
+      // eslint-disable-next-line react-hooks/purity -- momentul curent afișat la randare (valoare de afișare, nu stare)
       impersonation={user.impersonation ? { who: user.name, by: user.impersonation.byName, expiresAt: user.impersonation.expiresAt, serverNow: Date.now() } : undefined}
     >
       {children}

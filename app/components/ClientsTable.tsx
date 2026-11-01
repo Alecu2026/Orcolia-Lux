@@ -39,7 +39,9 @@ export default function ClientsTable({ items, total = items.length, version = nu
   const ds = useClientDataset(version);
   const [rows, setRows] = useState(items);
   // Fără listă completă: rândurile primite cu pagina. Cu lista completă (IndexedDB / rețea): ea înlocuiește rândurile; modificările locale rămân până vine versiunea nouă.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
   useEffect(() => { if (!ds.rows) setRows(items); }, [items, ds.rows]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
   useEffect(() => { if (ds.rows) setRows(ds.rows); }, [ds.rows]);
   const [dialog, setDialog] = useState<{ open: boolean; client: ClientEdit | null }>({ open: !!openCreate && canCreate, client: null });
 

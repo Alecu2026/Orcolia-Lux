@@ -8,6 +8,7 @@ import { listRoutes } from "./meter-route-data";
 import { getMeterDetail } from "../queries/meters";
 import { invalidatePortalClient } from "../portal-cache";
 import { isEstimatedSource } from "../meters";
+import { queueReadingVerification } from "./reading-verify";
 import type { FieldList } from "../meter-routes";
 import {
   AVG_MIN_READINGS,
@@ -245,11 +246,11 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     if (lastLoc?.lat != null && lastLoc.lng != null) distanceM = Math.round(distanceMeters(lat, lng, lastLoc.lat, lastLoc.lng));
   }
 
-  if (input.source === "PORTAL") {
-    // plătitorul își poate corecta propria citire din portal, dar nu o citire făcută de cititor / operator
-    const cur = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { source: true, value: true } });
-    if (cur && cur.source !== "PORTAL") return { ok: false, error: "Pentru luna aceasta citirea a fost deja înregistrată de cititor." };
-  }
+  // citirea existentă a lunii (dacă e): regula portalului de mai jos și emailul de verificare către titular, la o modificare
+  const cur = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { source: true, value: true } });
+  // plătitorul își poate corecta propria citire din portal, dar nu o citire făcută de cititor / operator
+  if (input.source === "PORTAL" && cur && cur.source !== "PORTAL") return { ok: false, error: "Pentru luna aceasta citirea a fost deja înregistrată de cititor." };
+  const changed = !!cur && cur.value !== v;
   const data = {
     contor: row.contor,
     clientId: row.clientId,
@@ -265,6 +266,8 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     // o citire din teren care o înlocuiește pe cea din portal șterge marcajul „PORTAL”
     source: input.source ?? null,
     avgConsum: avg ? avg.avg : null,
+    // un index schimbat anulează confirmarea / contestarea de dinainte (se cere o verificare nouă)
+    ...(changed ? { verifiedAt: null, disputedAt: null, disputeNote: null } : {}),
   };
   if (input.fromQueue) {
     const existing = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { readAt: true, value: true, userName: true } });
@@ -279,7 +282,24 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
   });
   const location = await updateMeterLocation(actor, row, { address: input.address ?? null, lat, lng, accuracy });
   invalidatePortalClient(row.clientId); // plătitorul vede imediat citirea în portal
-  return { ok: true, reading: toReadingDto(saved), location };
+  // email de verificare către titular: citire nouă din portal, sau index schimbat (de plătitor în portal / de un angajat peste citirea trimisă de plătitor)
+  const ownerNotice = !!row.clientId && (cur ? changed && (input.source === "PORTAL" || cur.source === "PORTAL") : input.source === "PORTAL");
+  let ownerEmailTo: string | null = null;
+  if (ownerNotice && row.clientId) {
+    ownerEmailTo = await queueReadingVerification({
+      readingId: saved.id,
+      clientId: row.clientId,
+      contor: row.contor,
+      address: row.address,
+      period,
+      value: saved.value,
+      prevValue: saved.prevValue,
+      oldValue: cur ? cur.value : null,
+      readAt: saved.readAt,
+      byClient: input.source === "PORTAL",
+    });
+  }
+  return { ok: true, reading: toReadingDto(saved), location, ownerEmailTo };
 }
 
 /**

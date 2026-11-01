@@ -1,19 +1,21 @@
 import { gunzipSync } from "node:zlib";
 import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
+import { canImpersonatePortal } from "@/lib/impersonation";
 import { getPortalAccountsSnap } from "@/lib/services/portal-accounts-cache";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Lista conturilor din portal pentru tabelul din Setări → Conturi portal clienți (doar administratori): comprimată gzip, cu ETag; dacă browserul are deja versiunea
+ * Lista conturilor din portal pentru tabelele din Setări → Conturi portal clienți (administratori) și Simulare → Portal clienți (cine poate simula): comprimată gzip, cu ETag; dacă browserul are deja versiunea
  * curentă (If-None-Match) răspunsul e 304, fără corp.
  */
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Autentificare necesară." }, { status: 401 });
-  if (!can(user, "admin")) return Response.json({ error: "Fără permisiune." }, { status: 403 });
+  // administratorii (Setări → Conturi portal) și cine are voie să simuleze intrarea în portal (Simulare → Portal clienți)
+  if (!can(user, "admin") && !canImpersonatePortal(user)) return Response.json({ error: "Fără permisiune." }, { status: 403 });
   try {
     const snap = await getPortalAccountsSnap();
     const etag = `"${snap.version}"`;

@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncedState } from "@/app/hooks/useSyncedState";
 import { useEffect, useState } from "react";
 import { deleteClient } from "@/app/actions/clients";
 import ClientDialog, { type ClientEdit } from "./ClientDialog";
@@ -28,8 +29,7 @@ export default function ClientsList({
 }) {
   const toast = useToast();
   const m = useMessages();
-  const [rows, setRows] = useState(items);
-  useEffect(() => setRows(items), [items]);
+  const [rows, setRows] = useSyncedState(items);
   const [dialog, setDialog] = useState<{ open: boolean; client: ClientEdit | null }>({
     open: openCreate ? true : false,
     client: null,

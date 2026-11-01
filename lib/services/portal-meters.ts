@@ -115,7 +115,9 @@ export async function submitPortalReading(client: Client, input: PortalReadingIn
       }
     } else issueError = iss.error;
   }
-  return { ok: true, readingId: r.id, value: r.value, consum, issueSaved, ...(issueError ? { issueError } : {}) };
+  // adresa (mascată) la care a plecat emailul de verificare, ca plătitorul să știe unde să caute
+  const to = res.ownerEmailTo ?? null;
+  return { ok: true, readingId: r.id, value: r.value, consum, issueSaved, ...(issueError ? { issueError } : {}), ...(to ? { verifyEmail: to } : {}) };
 }
 
 /** Poza pentru o citire trimisă din portal (doar a plătitorului, doar pentru citirea lui din portal). */

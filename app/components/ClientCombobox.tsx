@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncedState } from "@/app/hooks/useSyncedState";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/context";
 
@@ -13,15 +14,11 @@ export default function ClientCombobox({
   onPick: (v: { id: string; name: string }) => void;
 }) {
   const tr = useT();
-  const [query, setQuery] = useState(value.name);
+  const [query, setQuery] = useSyncedState(value.name);
   const [open, setOpen] = useState(false);
   const [matches, setMatches] = useState<Match[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setQuery(value.name);
-  }, [value.name]);
 
   // Debounce 220ms pe search
   useEffect(() => {
@@ -29,6 +26,7 @@ export default function ClientCombobox({
     if (!open) return;
     const q = query.trim();
     if (q.length < 1) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
       setMatches([]);
       return;
     }

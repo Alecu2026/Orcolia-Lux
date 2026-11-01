@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { env } from "@/lib/env";
 import { getT } from "@/lib/i18n/server-t";
@@ -60,6 +61,8 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const locale = await getLocaleFromCookie();
+  // nonce-ul CSP al cererii (pus de proxy.ts): fără el scriptul inline de temă ar fi blocat
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     <html
       lang={locale}
@@ -67,7 +70,7 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable}`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full antialiased">
         {children}

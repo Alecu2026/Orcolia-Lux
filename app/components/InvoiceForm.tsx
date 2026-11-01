@@ -138,6 +138,7 @@ export default function InvoiceForm({
   // Încarcă task-urile pentru proiectul curent
   useEffect(() => {
     if (!projectId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
       setTasks([]);
       return;
     }
@@ -173,17 +174,14 @@ export default function InvoiceForm({
 
   // Calcule live
   const totals = useMemo(() => {
-    let subtotal = 0;
-    let taxTotal = 0;
-    const lines = items.map((it) => {
+    const parts = items.map((it) => {
       const ls = round2(num(it.quantity) * num(it.unitPrice));
       const lt = round2((ls * num(it.taxRate)) / 100);
-      subtotal += ls;
-      taxTotal += lt;
-      return { lineSubtotal: ls, lineTotal: round2(ls + lt) };
+      return { ls, lt };
     });
-    subtotal = round2(subtotal);
-    taxTotal = round2(taxTotal);
+    const lines = parts.map(({ ls, lt }) => ({ lineSubtotal: ls, lineTotal: round2(ls + lt) }));
+    const subtotal = round2(parts.reduce((a, p) => a + p.ls, 0));
+    const taxTotal = round2(parts.reduce((a, p) => a + p.lt, 0));
     return { lines, subtotal, taxTotal, grandTotal: round2(subtotal + taxTotal) };
   }, [items]);
 

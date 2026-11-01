@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import DataTable, { type Col, type Filter } from "./DataTable";
 import Link from "next/link";
 import { getCallerContextAction, getPbxEventsAction, savePbxCallNoteAction, type PbxEventRow } from "@/app/actions/pbx";
@@ -10,31 +9,10 @@ import { phoneQuery } from "./IncomingCallPopup";
 import { useToast } from "./toast";
 import { IconX } from "./icons";
 import { useT } from "@/lib/i18n/context";
+import { decodeCall, type PbxCallRow } from "@/lib/pbx-data";
+import { usePbxDataset } from "./usePbxDataset";
 
-export type PbxCallRow = {
-  id: string;
-  callId: string;
-  direction: string | null;
-  phone: string | null;
-  phoneE164: string | null;
-  diversion: string | null;
-  pbxUser: string | null;
-  ext: string | null;
-  status: string | null;
-  state: string | null;
-  durationSec: number | null;
-  waitSec: number | null;
-  at: string;
-  lastCmd: string | null;
-  eventCount: number;
-  clientId: string | null;
-  clientName: string | null;
-  recordingUrl: string | null;
-  rating: number | null;
-  groupName: string | null;
-  lineName: string | null;
-  note: string | null;
-};
+export type { PbxCallRow };
 
 const TZ = "Europe/Chisinau";
 
@@ -81,18 +59,14 @@ const topBtn =
   "tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]";
 
 /** PBX (Moldcell) — apelurile primite prin webhook. Tabel dens cu filtre locale; click pe rând = toate mesajele apelului. */
-export default function PbxTable({ rows, webhookUrl, tokenConfigured, canManage = true, canTask = true, canClient = true }: { rows: PbxCallRow[]; webhookUrl: string; tokenConfigured: boolean; canManage?: boolean; canTask?: boolean; canClient?: boolean }) {
+export default function PbxTable({ rows: head, webhookUrl, tokenConfigured, canManage = true, canTask = true, canClient = true }: { rows: PbxCallRow[]; webhookUrl: string; tokenConfigured: boolean; canManage?: boolean; canTask?: boolean; canClient?: boolean }) {
   const tr = useT();
-  const router = useRouter();
+  // `head` = primele rânduri primite cu pagina; lista completă vine în browser (IndexedDB) și se completează la ~20 s doar cu rândurile schimbate (apelurile noi apar singure)
+  const ds = usePbxDataset<PbxCallRow>("calls", head, decodeCall);
+  const rows = ds.rows;
   const [detail, setDetail] = useState<PbxCallRow | null>(null);
   const [playing, setPlaying] = useState<PbxCallRow | null>(null);
   const [copied, setCopied] = useState(false);
-
-  // Apelurile noi apar singure (reîmprospătare discretă la 20 s cât timp fila e vizibilă).
-  useEffect(() => {
-    const t = setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, 60_000);
-    return () => clearInterval(t);
-  }, [router]);
 
   /** „+” de pe rând: sarcină nouă din apel (client + titlu + descriere); adresa plătitorului o completează pagina de sarcini. */
   const taskHref = (c: PbxCallRow) => {
@@ -140,7 +114,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured, canManage 
     {
       key: "rec", label: "Înregistrare", minW: 90,
       render: (c) =>
-        c.recordingUrl ? (
+        c.hasRecording ? (
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setPlaying(c); }}
@@ -196,7 +170,7 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured, canManage 
       {
         kind: "select", key: "rec", label: "Înregistrare: toate",
         options: [{ value: "yes", label: "Cu înregistrare" }, { value: "no", label: "Fără" }],
-        test: (c, v) => (v === "yes" ? !!c.recordingUrl : !c.recordingUrl),
+        test: (c, v) => (v === "yes" ? c.hasRecording : !c.hasRecording),
       },
     ],
     [],
@@ -219,6 +193,8 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured, canManage 
         </span>
       </div>
 
+      {!ds.ready && ds.loading && <p className="mb-1 text-[11px] text-ink-soft">{tr("Se încarcă istoricul complet al apelurilor…")}</p>}
+      {ds.error && <p className="mb-1 text-[11px] text-st-cancelled">{tr(ds.error)}</p>}
       <DataTable
         storageKey="pbx"
         rows={rows}
@@ -229,10 +205,10 @@ export default function PbxTable({ rows, webhookUrl, tokenConfigured, canManage 
         emptyText={tr("Niciun apel primit încă. Apelurile apar aici imediat ce PBX-ul trimite mesaje către webhook.")}
         onRowClick={(c) => setDetail(c)}
         rowClassName={(c) => (resultOf(c).key === "missed" ? "bg-st-cancelled/5" : "")}
-        toolbar={<button type="button" onClick={() => router.refresh()} className={topBtn}>{tr("↻ Reîncarcă")}</button>}
+        toolbar={<button type="button" onClick={() => void ds.refresh(true)} className={topBtn}>{tr("↻ Reîncarcă")}</button>}
       />
 
-      {detail && <CallDialog call={rows.find((r) => r.id === detail.id) ?? detail} onClose={() => setDetail(null)} onPlay={(c) => setPlaying(c)} canManage={canManage} canTask={canTask} canClient={canClient} />}
+      {detail && <CallDialog call={rows.find((r) => r.id === detail.id) ?? detail} onChanged={() => void ds.refresh()} onClose={() => setDetail(null)} onPlay={(c) => setPlaying(c)} canManage={canManage} canTask={canTask} canClient={canClient} />}
 
       {playing && (
         <div className="fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 mx-auto w-[calc(100%-1.5rem)] max-w-2xl rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-2.5 shadow-2xl lg:bottom-4">
@@ -276,10 +252,9 @@ function RecordingAudio({ callId, autoPlay = false }: { callId: string; autoPlay
   );
 }
 
-function CallDialog({ call: c, onClose, onPlay, canManage, canTask, canClient }: { call: PbxCallRow; onClose: () => void; onPlay: (c: PbxCallRow) => void; canManage: boolean; canTask: boolean; canClient: boolean }) {
+function CallDialog({ call: c, onClose, onChanged, onPlay, canManage, canTask, canClient }: { call: PbxCallRow; onClose: () => void; onChanged: () => void; onPlay: (c: PbxCallRow) => void; canManage: boolean; canTask: boolean; canClient: boolean }) {
   const tr = useT();
   const toast = useToast();
-  const router = useRouter();
   const [events, setEvents] = useState<PbxEventRow[] | null>(null);
   const [ctx, setCtx] = useState<CallerContext | null>(null);
   const [note, setNote] = useState("");
@@ -306,7 +281,7 @@ function CallDialog({ call: c, onClose, onPlay, canManage, canTask, canClient }:
     setSaving(true);
     const res = await savePbxCallNoteAction(c.callId, text).catch(() => null);
     setSaving(false);
-    if (res?.ok) { setSavedNote((s) => (s ? `${s}\n${res.note}` : res.note)); setNote(""); toast.success(c.clientId ? tr("Notă salvată (și pe fișa clientului).") : tr("Notă salvată.")); router.refresh(); }
+    if (res?.ok) { setSavedNote((s) => (s ? `${s}\n${res.note}` : res.note)); setNote(""); toast.success(c.clientId ? tr("Notă salvată (și pe fișa clientului).") : tr("Notă salvată.")); onChanged(); }
     else toast.error(res && !res.ok ? res.error : "Nu am putut salva nota.");
   }
   const actBtn = "tap inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-brand-soft";
@@ -391,7 +366,7 @@ function CallDialog({ call: c, onClose, onPlay, canManage, canTask, canClient }:
             <Item label={tr("Număr companie")}>{c.diversion ? pretty(c.diversion) : "—"}{c.lineName ? ` (${c.lineName})` : ""}</Item>
             {c.groupName && <Item label={tr("Departament")}>{c.groupName}</Item>}
             {c.rating != null && <Item label={tr("Nota clientului")}>{c.rating}/5</Item>}
-            {c.recordingUrl && (
+            {c.hasRecording && (
               <div className="px-2.5 py-1.5">
                 <p className="mb-1 text-[11px] text-ink-soft">{tr("Înregistrare")}</p>
                 <RecordingAudio callId={c.callId} />

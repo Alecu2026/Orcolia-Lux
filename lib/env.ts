@@ -50,7 +50,8 @@ export const env = {
   },
 
   sessionCookieName: optional("SESSION_COOKIE_NAME", "pr_session"),
-  sessionTtlDays: int("SESSION_TTL_DAYS", 180),
+  // Sesiunea personalului: 30 de zile (înainte 180). După expirare trebuie reautentificare; se poate schimba cu SESSION_TTL_DAYS.
+  sessionTtlDays: int("SESSION_TTL_DAYS", 30),
 
   appUrl: optional("NEXT_PUBLIC_APP_URL", "http://localhost:3000"),
   // Adresa la care serverul se poate apela pe el însuși (ex. http://127.0.0.1:3000), pentru generarea PDF-ului de factură. Pe un server

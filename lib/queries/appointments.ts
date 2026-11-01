@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "../prisma";
 import { DEMO, demoAppointments } from "../demo";
 import type { AppointmentStatus, Prisma } from "@prisma/client";
+import { ensureIndex } from "../log-count";
 
 export type ApptFilter = {
   search?: string;
@@ -168,15 +169,18 @@ export async function apptsBetween(opts: {
   to: Date;
 }): Promise<CalendarAppt[]> {
   if (DEMO) return [];
-  return prisma.appointment.findMany({
-    where: {
-      ...(opts.userId ? mineWhere(opts.userId) : {}),
-      ...(opts.clientId ? { clientId: opts.clientId } : {}),
-      startAt: { gte: opts.from, lt: opts.to },
-    },
-    select: CAL_SELECT,
-    orderBy: { startAt: "asc" },
-  });
+  const base: Prisma.AppointmentWhereInput = { ...(opts.clientId ? { clientId: opts.clientId } : {}), startAt: { gte: opts.from, lt: opts.to } };
+  if (!opts.userId) {
+    // toate programările din interval: fără un index pe startAt ar citi toată colecția (creat o singură dată, la rulare)
+    ensureIndex("Appointment", { startAt: 1 }, "Appointment_startAt_idx");
+    return prisma.appointment.findMany({ where: base, select: CAL_SELECT, orderBy: { startAt: "asc" } });
+  }
+  // ale unui utilizator: create de el (index userId + startAt) SAU în care e „pentru”; două interogări paralele, a doua fără cele create de el (să nu apară de două ori)
+  const parts = await Promise.all([
+    prisma.appointment.findMany({ where: { ...base, userId: opts.userId }, select: CAL_SELECT, orderBy: { startAt: "asc" } }),
+    prisma.appointment.findMany({ where: { ...base, assigneeId: opts.userId, userId: { not: opts.userId } }, select: CAL_SELECT, orderBy: { startAt: "asc" } }),
+  ]);
+  return parts.flat().sort((a, b) => a.startAt.getTime() - b.startAt.getTime());
 }
 
 export function getAppointment(userId: string, id: string) {

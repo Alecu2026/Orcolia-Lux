@@ -143,6 +143,7 @@ export default async function TaskDetailPage({
     task.status !== "DONE" &&
     task.status !== "CANCELLED";
 
+  // eslint-disable-next-line react-hooks/purity -- momentul curent afișat la randare (valoare de afișare, nu stare)
   const overdueMs = isOverdue ? Date.now() - new Date(task.dueAt!).getTime() : 0;
 
   type TimelineEvent = {

@@ -35,10 +35,10 @@ export default function PortalRegisterConfirmForm({
       <input
         name="newPassword"
         type="password"
-        placeholder={t("Parolă (minim 8 caractere)")}
+        placeholder={t("Parolă (minim 10 caractere)")}
         autoComplete="new-password"
         required
-        minLength={8}
+        minLength={10} maxLength={128}
         className={input}
       />
       <input
@@ -47,7 +47,7 @@ export default function PortalRegisterConfirmForm({
         placeholder={t("Confirmă parola")}
         autoComplete="new-password"
         required
-        minLength={8}
+        minLength={10} maxLength={128}
         className={input}
       />
 

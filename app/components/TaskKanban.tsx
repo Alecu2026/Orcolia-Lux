@@ -5,6 +5,7 @@ import Link from "next/link";
 import { setTaskStatus } from "@/app/actions/tasks";
 import { useToast } from "./toast";
 import VirtualList from "./VirtualList";
+import ClientFilterPicker from "./ClientFilterPicker";
 import { useTaskDataset } from "./useTaskDataset";
 import { useProofPrompt } from "./ProofDialog";
 import { useResolutionPrompt } from "./ResolutionDialog";
@@ -80,35 +81,31 @@ const fldCls = (val: string) =>
       : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"
   }`;
 
-function matchesDue(dueAt: Date | string | null, filter: string): boolean {
-  if (!filter) return true;
-  if (filter === "none") return dueAt === null;
-  if (!dueAt) return false;
-  const d = new Date(dueAt);
-  const now = new Date();
-  if (filter === "overdue") return d < now;
-
+/**
+ * Testul „termen” pentru un filtru: limitele (azi, mâine, săptămâna, luna) se calculează O DATĂ per filtru, nu pentru fiecare sarcină (înainte: 6–8 obiecte Date per rând,
+ * la zeci de mii de sarcini sute de mii de alocări la fiecare schimbare de filtru). Întoarce null dacă nu e filtru.
+ */
+function dueMatcher(filter: string): ((dueAt: Date | string | null) => boolean) | null {
+  if (!filter) return null;
+  if (filter === "none") return (d) => d === null;
+  const now = Date.now();
+  if (filter === "overdue") return (d) => !!d && new Date(d).getTime() < now;
   const s0 = new Date(); s0.setHours(0, 0, 0, 0);
-  const e0 = new Date(s0); e0.setDate(e0.getDate() + 1);
-  if (filter === "today") return d >= s0 && d < e0;
-
-  const s1 = new Date(s0); s1.setDate(s1.getDate() + 1);
-  const e1 = new Date(s1); e1.setDate(e1.getDate() + 1);
-  if (filter === "tomorrow") return d >= s1 && d < e1;
-
-  if (filter === "week") {
-    const ws = new Date(s0);
-    const day = ws.getDay();
-    ws.setDate(ws.getDate() - (day === 0 ? 6 : day - 1)); // Monday
-    const we = new Date(ws); we.setDate(we.getDate() + 7);
-    return d >= ws && d < we;
-  }
-  if (filter === "month") {
-    const ms = new Date(s0); ms.setDate(1);
-    const me = new Date(ms); me.setMonth(me.getMonth() + 1);
-    return d >= ms && d < me;
-  }
-  return true;
+  let lo: number, hi: number;
+  if (filter === "today") { lo = s0.getTime(); hi = new Date(s0.getFullYear(), s0.getMonth(), s0.getDate() + 1).getTime(); }
+  else if (filter === "tomorrow") { lo = new Date(s0.getFullYear(), s0.getMonth(), s0.getDate() + 1).getTime(); hi = new Date(s0.getFullYear(), s0.getMonth(), s0.getDate() + 2).getTime(); }
+  else if (filter === "week") {
+    const day = s0.getDay();
+    const mon = s0.getDate() - (day === 0 ? 6 : day - 1);
+    lo = new Date(s0.getFullYear(), s0.getMonth(), mon).getTime();
+    hi = new Date(s0.getFullYear(), s0.getMonth(), mon + 7).getTime();
+  } else if (filter === "month") { lo = new Date(s0.getFullYear(), s0.getMonth(), 1).getTime(); hi = new Date(s0.getFullYear(), s0.getMonth() + 1, 1).getTime(); }
+  else return null;
+  return (d) => {
+    if (!d) return false;
+    const t = typeof d === "string" ? Date.parse(d) : d.getTime();
+    return t >= lo && t < hi;
+  };
 }
 
 export default function TaskKanban({
@@ -216,6 +213,7 @@ export default function TaskKanban({
   /** Filtrele se aplică pe TOATĂ lista (cele mai noi primele); abia apoi se taie la numărul ales. */
   const filtered = useMemo(() => {
     const term = dflt.fSearch.trim().toLowerCase();
+    const dueOk = dueMatcher(dflt.fDeadline);
     return tasks.filter((t) => {
       if (dflt.fStatus && t.status !== dflt.fStatus) return false;
       if (dflt.fType && t.type !== dflt.fType) return false;
@@ -225,7 +223,7 @@ export default function TaskKanban({
       if (dflt.fProject && t.projectId !== dflt.fProject) return false;
       if (dflt.fClient && t.clientId !== dflt.fClient) return false;
       if (dflt.fCategory && t.categoryId !== dflt.fCategory) return false;
-      if (!matchesDue(t.dueAt, dflt.fDeadline)) return false;
+      if (dueOk && !dueOk(t.dueAt)) return false;
       if (term && !t.title.toLowerCase().includes(term)) return false;
       return true;
     });
@@ -332,12 +330,7 @@ export default function TaskKanban({
           ))}
         </select>
         {clients.length > 0 && (
-          <select value={fClient} onChange={(e) => setFClient(e.target.value)} className={fldCls(fClient)}>
-            <option value="">{m.kanban.filterClient}</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
+          <ClientFilterPicker options={clients} value={fClient} onChange={setFClient} label={m.kanban.filterClient} className={fldCls(fClient)} />
         )}
         {categories.length > 0 && (
           <select value={fCategory} onChange={(e) => setFCategory(e.target.value)} className={fldCls(fCategory)}>

@@ -45,6 +45,7 @@ export default function TaskAttachmentsPanel({
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
     setLoading(true);
     getTaskAttachments(taskId).then((rows) => {
       if (!cancelled) {

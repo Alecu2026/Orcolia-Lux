@@ -2,6 +2,8 @@
 const nextConfig = {
   /* config options here */
   reactCompiler: true,
+  // fără antetul „X-Powered-By: Next.js” (nu ajută pe nimeni în afară de cine caută versiuni vulnerabile)
+  poweredByHeader: false,
   // Navigare instant: paginile (dinamice) vizitate sau prefetch-uite la intenție se păstrează în browser 30 s / 60 s; acțiunile de server
   // care schimbă date (revalidatePath) golesc singure acest cache, deci nu apar date vechi după o modificare.
   experimental: {
@@ -9,6 +11,22 @@ const nextConfig = {
     // pozele de contor trimise prin acțiuni de server pot depăși limita implicită de 1 MB (serverul le face WebP)
     serverActions: { bodySizeLimit: "25mb" },
     proxyClientMaxBodySize: "25mb",
+  },
+  // Antete de securitate pe toate răspunsurile. Content-Security-Policy (cu nonce per cerere) se pune în proxy.ts, nu aici.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=(), interest-cohort=()" },
+          { key: "Strict-Transport-Security", value: "max-age=31536000" },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+        ],
+      },
+    ];
   },
   // Portalul client: „tickets” → „cereri”. Linkurile vechi (din emailuri deja trimise) merg în continuare.
   async redirects() {

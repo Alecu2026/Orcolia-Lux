@@ -10,6 +10,7 @@ import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
 import type { Messages } from "@/lib/i18n/messages/ro";
 import { getT } from "@/lib/i18n/server-t";
+import { dashCached } from "@/lib/dashboard-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -46,11 +47,9 @@ async function StatsSection({
   m: Messages;
 }) {
   const t = await getT();
-  const stats = await dashboardStats(user.id, user.teamIds, user.role, {
-    scope: user.taskViewScope,
-    teamIds: user.taskViewTeamIds,
-    memberIds: user.taskViewMemberIds,
-  });
+  // pe utilizator, în memorie (vezi lib/dashboard-cache.ts): cheia conține tot ce schimbă cifrele
+  const view = { scope: user.taskViewScope, teamIds: user.taskViewTeamIds, memberIds: user.taskViewMemberIds };
+  const stats = await dashCached(`stats:${JSON.stringify([user.id, user.role, user.teamIds, view])}`, () => dashboardStats(user.id, user.teamIds, user.role, view));
   const isAdmin = user.role === "ADMIN";
   const d = m.dashboard;
   const cards = [
@@ -123,7 +122,7 @@ async function TasksSection({
   dateLocale: string;
 }) {
   const effectiveScope = (scope === "all" ? "all" : "mine") as "all" | "mine";
-  const result = await listTasks({
+  const filter = {
     scope: effectiveScope,
     userId: user.id,
     teamIds: user.teamIds,
@@ -132,7 +131,8 @@ async function TasksSection({
     sort: (sort === "dueAsc" || sort === "dueDesc" ? sort : undefined),
     page,
     pageSize,
-  });
+  } as const;
+  const result = await dashCached(`list:${JSON.stringify(filter)}`, () => listTasks({ ...filter }));
 
   const { items, totalPages } = result;
   const pageButtons = buildPageButtons(page, totalPages);
@@ -154,7 +154,7 @@ async function TasksSection({
             const due = t.dueAt ? new Date(t.dueAt) : null;
             const overdue = due && due < new Date() && t.status !== "DONE" && t.status !== "CANCELLED";
             return (
-              <Link key={t.id} href={`/tasks?open=${t.id}`} className="card tap flex items-center gap-2.5 px-3 py-2.5 hover:border-brand">
+              <Link key={t.id} href={`/tasks?open=${t.id}`} prefetch={false} className="card tap flex items-center gap-2.5 px-3 py-2.5 hover:border-brand">
                 <span className={`size-2.5 shrink-0 rounded-full ${dot}`} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{t.title}</span>
                 {prioLabel && prioCls && (

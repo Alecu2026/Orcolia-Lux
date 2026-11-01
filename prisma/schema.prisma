@@ -154,6 +154,19 @@ model User {
   taskViewTeamIds   String[] @db.ObjectId
   taskViewMemberIds String[] @db.ObjectId
 
+  // --- Autentificare în doi pași (TOTP, RFC 6238), doar la intrarea în cont ---
+  // Secretul activ, criptat (AES-GCM, lib/secret-box.ts); null = 2FA oprit.
+  totpSecret     String?
+  totpEnabledAt  DateTime?
+  // Secret generat la configurare, încă neconfirmat cu un cod (se șterge la confirmare / anulare).
+  totpPending    String?
+  // Ultimul interval de 30 s acceptat: un cod deja folosit nu mai poate fi refolosit (replay).
+  totpLastStep   Int?
+  // Coduri de recuperare: doar hash-uri sha256 (cele folosite se șterg).
+  totpRecovery   String[] @default([])
+  // Dispozitive pe care s-a mai intrat în cont (hash-ul cookie-ului de dispozitiv, ultimele ~20): o intrare dintr-un dispozitiv nou trimite o notificare.
+  knownDevices   String[] @default([])
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -406,6 +419,8 @@ model Task {
   @@index([seq])
   @@index([categoryId])
   @@index([clientId, status])
+  @@index([extraAssigneeIds]) // „ale mele” – fără ele $or parcurge toată colecția (creat și la rulare de lib/queries/tasks.ts)
+  @@index([extraTeamIds])
   @@index([type, status])
   @@index([updatedAt])
   @@index([emailThreadId])
@@ -893,6 +908,7 @@ model Appointment {
   @@index([clientId])
   @@index([nextReminderAt])
   @@index([assigneeId, dateKey])
+  @@index([startAt]) // calendarul pentru toți utilizatorii (creat și la rulare de lib/queries/appointments.ts)
 }
 
 model Reminder {
@@ -1213,6 +1229,7 @@ model NotifyCall {
   updatedAt  DateTime  @updatedAt
 
   @@index([createdAt])
+  @@index([updatedAt]) // diferența pentru /pbx (creat și la rulare de lib/services/pbx-data.ts)
   @@index([clientId, createdAt])
   @@index([campaignId])
   @@index([callId])
@@ -1364,6 +1381,11 @@ model MeterReading {
   source       String?
   /// consumul mediu lunar al contorului (m³) în momentul citirii — baza verificării „peste / sub medie”; lipsă = istoric insuficient
   avgConsum    Float?
+  /// plătitorul a confirmat citirea din emailul de verificare (se șterge la orice schimbare a indexului)
+  verifiedAt   DateTime?
+  /// plătitorul a contestat citirea din emailul de verificare („nu e corectă / nu eu am trimis-o”); personalul e anunțat
+  disputedAt   DateTime?
+  disputeNote  String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

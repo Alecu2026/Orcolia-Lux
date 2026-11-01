@@ -224,39 +224,64 @@ export async function getApaCanalConsumptionHistory(clientId: string, limit = 6,
  */
 export async function getApaCanalMonthlyForForm(clientId: string, issueDate: Date): Promise<ConsumptionPoint[]> {
   if (DEMO) return [];
+  if (!/^[0-9a-f]{24}$/i.test(clientId)) return [];
   const start = new Date(Date.UTC(issueDate.getUTCFullYear(), issueDate.getUTCMonth() - 11, 1));
   const end = new Date(Date.UTC(issueDate.getUTCFullYear(), issueDate.getUTCMonth() + 1, 1)); // exclusiv
-  // fără liniile facturilor (o interogare în plus): se citesc mai jos doar pentru facturile fără consum salvat în grafic
-  const invoices = await prisma.invoice.findMany({
-    where: { clientId, kind: "APA_CANAL", issueDate: { gte: start, lt: end } },
-    orderBy: { issueDate: "desc" },
-    select: { id: true, issueDate: true, monthlyConsumption: true },
-  });
+  // Facturile lunilor și, odată cu ele, cantitățile din liniile „alimentare cu apă” (pentru lunile fără valoare în grafic), într-un SINGUR drum către baza de date ($lookup) — nu două interogări la rând.
+  const raw = (await prisma.invoice.aggregateRaw({
+    pipeline: [
+      { $match: { clientId: { $oid: clientId }, kind: "APA_CANAL", issueDate: { $gte: { $date: start.toISOString() }, $lt: { $date: end.toISOString() } } } },
+      { $sort: { issueDate: -1 } },
+      {
+        $lookup: {
+          from: "InvoiceItem",
+          let: { id: "$_id" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$invoiceId", "$$id"] }, description: { $regex: "alimentare cu ap[aă]", $options: "i" } } },
+            { $sort: { position: 1 } },
+            { $project: { _id: 0, quantity: 1 } },
+          ],
+          as: "apa",
+        },
+      },
+      { $project: { issueDate: 1, monthlyConsumption: 1, apa: 1 } },
+    ],
+  })) as unknown as { _id: unknown; issueDate: unknown; monthlyConsumption?: unknown; apa?: { quantity?: unknown }[] }[];
+  const num = (v: unknown): number | null => {
+    if (typeof v === "number") return Number.isFinite(v) ? v : null;
+    if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      const n = Number(o.$numberDouble ?? o.$numberInt ?? o.$numberLong ?? o.$numberDecimal ?? NaN);
+      return Number.isFinite(n) ? n : null;
+    }
+    return null;
+  };
+  const dateOf = (v: unknown): Date => {
+    const d = (v as { $date?: unknown } | null)?.$date ?? v;
+    if (typeof d === "string" || typeof d === "number") return new Date(d);
+    const n = (d as { $numberLong?: string } | undefined)?.$numberLong;
+    return new Date(n ? Number(n) : NaN);
+  };
+  const invoices = raw.map((r) => ({ issueDate: dateOf(r.issueDate), monthlyConsumption: r.monthlyConsumption ?? null, apa: r.apa ?? [] }));
   const ownValue = (inv: (typeof invoices)[number]): number | null => {
     const month = inv.issueDate.getUTCMonth() + 1;
-    const points = Array.isArray(inv.monthlyConsumption) ? (inv.monthlyConsumption as ConsumptionPoint[]) : [];
+    const points = Array.isArray(inv.monthlyConsumption) ? (inv.monthlyConsumption as { label: unknown; value: unknown }[]) : [];
     const own = points.find((p) => String(p.label) === String(month)) ?? points[0];
     return own != null && Number.isFinite(Number(own.value)) ? Number(own.value) : null;
   };
-  // facturile care contează (prima de fiecare lună, cea mai recentă) și nu au valoare în grafic au nevoie de cantitatea „alimentare cu apă”
-  const seen = new Set<number>();
-  const needItems: string[] = [];
-  for (const inv of invoices) {
-    const month = inv.issueDate.getUTCMonth() + 1;
-    if (seen.has(month)) continue;
-    seen.add(month);
-    if (ownValue(inv) == null) needItems.push(inv.id);
-  }
-  const apaQty = new Map<string, number>();
-  if (needItems.length > 0) {
-    const lines = await prisma.invoiceItem.findMany({ where: { invoiceId: { in: needItems } }, select: { invoiceId: true, description: true, quantity: true }, orderBy: { position: "asc" } });
-    for (const it of lines) if (!apaQty.has(it.invoiceId) && /alimentare cu ap[aă]/i.test(it.description) && Number.isFinite(it.quantity)) apaQty.set(it.invoiceId, it.quantity);
-  }
+  // prima linie „alimentare cu apă” (după poziție) cu cantitate numerică
+  const apaQty = (inv: (typeof invoices)[number]): number | null => {
+    for (const l of inv.apa) {
+      const q = num(l.quantity);
+      if (q != null) return q;
+    }
+    return null;
+  };
   const byMonth = new Map<number, number>();
   for (const inv of invoices) {
     const month = inv.issueDate.getUTCMonth() + 1;
     if (byMonth.has(month)) continue; // prima întâlnită = cea mai recentă pentru luna aceea (orderBy desc)
-    const value = ownValue(inv) ?? apaQty.get(inv.id) ?? null;
+    const value = ownValue(inv) ?? apaQty(inv);
     if (value != null) byMonth.set(month, value);
   }
   return [...byMonth.entries()].map(([m, v]) => ({ label: String(m), value: v }));

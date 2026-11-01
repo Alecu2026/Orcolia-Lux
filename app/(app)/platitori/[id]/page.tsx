@@ -21,6 +21,7 @@ import { plainMeter } from "@/lib/meters";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import PayerIssues from "@/app/components/PayerIssues";
 import { listClientIssues } from "@/lib/services/meter-issues";
+import type { IssueRegisterRow } from "@/lib/meter-issues";
 import { dateTag } from "@/lib/i18n/t";
 
 export const dynamic = "force-dynamic";
@@ -33,15 +34,14 @@ export default async function PayerDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const tr = await getT();
-  const dateLoc = dateTag(await getLocaleFromCookie());
-  const user = await requirePermission("payers.view");
-  const { id } = await params;
+  const [tr, locale, user, { id }] = await Promise.all([getT(), getLocaleFromCookie(), requirePermission("payers.view"), params]);
+  const dateLoc = dateTag(locale);
+  if (!/^[0-9a-f]{24}$/i.test(id)) notFound();
 
-  const payer = await getPayer(id);
+  // Tot ce are nevoie pagina pornește odată, în paralel (un singur drum către baza de date, nu patru la rând); neregulile contoarelor pornesc tot acum și sunt doar așteptate mai jos, în bloc.
+  const issuesP = listClientIssues(id).catch(() => [] as IssueRegisterRow[]);
+  const [payer, invoices, tickets, notes] = await Promise.all([getPayer(id), getPayerInvoices(id), getPayerTickets(id), listPayerNotes(id)]);
   if (!payer) notFound();
-
-  const [invoices, tickets, notes] = await Promise.all([getPayerInvoices(id), getPayerTickets(id), listPayerNotes(id)]);
   const last = invoices[0];
 
   return (
@@ -150,7 +150,7 @@ export default async function PayerDetailPage({
           </Suspense>
 
           <Suspense fallback={<Skeleton className="h-16" />}>
-            <PayerIssuesBlock clientId={payer.id} canManage={can(user, "meters.manage")} title={tr("Nereguli contoare")} />
+            <PayerIssuesBlock issues={issuesP} canManage={can(user, "meters.manage")} title={tr("Nereguli contoare")} />
           </Suspense>
 
           <CollapsibleSection
@@ -241,8 +241,8 @@ export default async function PayerDetailPage({
 }
 
 /** Neregulile contoarelor plătitorului (deschise primele), cu cine remediază, secția și termenul. */
-async function PayerIssuesBlock({ clientId, canManage, title }: { clientId: string; canManage: boolean; title: string }) {
-  const issues = await listClientIssues(clientId).catch(() => []);
+async function PayerIssuesBlock({ issues: pending, canManage, title }: { issues: Promise<IssueRegisterRow[]>; canManage: boolean; title: string }) {
+  const issues = await pending;
   return (
     <CollapsibleSection id="payer-issues" title={title} count={issues.filter((i) => !i.resolvedAt).length}>
       <PayerIssues issues={issues} canManage={canManage} />

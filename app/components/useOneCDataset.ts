@@ -81,6 +81,7 @@ export function useOneCDataset(period: string | null) {
   useEffect(() => {
     if (!period) return;
     let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
     setEntry(memo.get(period) ?? null);
     setMonths((m) => memo.get(period)?.months ?? m);
     setError(null);

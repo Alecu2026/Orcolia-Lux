@@ -118,6 +118,7 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
   useEffect(() => {
     if (!serverMode) return;
     const id = ++reqId.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
     setSrvLoading(true);
     setSrvError(null);
     fetch(`/api/platitori/tabel?${queryString({ page: String(page), perPage: String(effPerPage) }, applied)}`)
@@ -163,6 +164,7 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
   const end = virt ? Math.min(pageRows.length, Math.ceil((scrollTop + VIEW_H) / ROW_H) + OVER) : pageRows.length;
   useEffect(() => {
     if (box.current) box.current.scrollTop = 0;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
     setScrollTop(0);
   }, [curPage, perPage, sort, dir, onlyDiff, period, dFilters]);
 

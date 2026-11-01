@@ -96,6 +96,7 @@ export default function ApaCanalApiSync() {
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
       setReport(null);
       setStats(null);
       setApplied(null);
@@ -111,6 +112,7 @@ export default function ApaCanalApiSync() {
   // Un cronometru vizibil cât timp durează testarea/extragerea — altfel, din reclamație, nu se vedea
   // dacă aplicația mai lucrează sau s-a blocat ("nu îmi dă mesaj dacă a mers sau nu").
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
     if (busy !== "test" && busy !== "sync") { setElapsed(0); return; }
     const t0 = Date.now();
     const iv = setInterval(() => setElapsed(Math.round((Date.now() - t0) / 1000)), 1000);

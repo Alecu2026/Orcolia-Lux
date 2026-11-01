@@ -46,6 +46,7 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
 
   // la schimbarea contorului formularul pornește de la zero (cu indexul trimis deja din portal, dacă există)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
     setValue(m?.thisMonth?.source === "PORTAL" ? nf(m.thisMonth.value) : "");
     setKind(""); setNote(""); setPhoto(null); setPreview(null); setConfirm(null); setMsg(null);
     if (fileRef.current) fileRef.current.value = "";
@@ -91,6 +92,7 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
       }
       if (res.issueError) { ok = false; text += ` ${t("Starea contorului nu s-a salvat: {error}", { error: t(res.issueError) })}`; }
       else if (res.issueSaved) text += ` ${t("Starea contorului a fost transmisă.")}`;
+      if (res.verifyEmail) text += ` ${t("Ți-am trimis un email la {email} ca să verifici citirea.", { email: res.verifyEmail })}`;
       setMsg({ ok, text: multi ? `${t("Contor")} ${m.contor}: ${text}` : text });
       router.refresh();
     } catch {

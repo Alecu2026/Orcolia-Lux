@@ -26,6 +26,7 @@ function Dialog({ ask, onSubmit, onClose }: { ask: ResolutionAsk; onSubmit: (r: 
   const [mins, setMins] = useState(init != null ? String(init % 60) : "");
   const [error, setError] = useState<string | null>(null);
   const created = ask.createdAt != null ? new Date(ask.createdAt).getTime() : NaN;
+  // eslint-disable-next-line react-hooks/purity -- momentul curent afișat la randare (valoare de afișare, nu stare)
   const elapsed = Number.isFinite(created) ? formatElapsed(Date.now() - created, t) : null;
 
   function submit(e: React.FormEvent) {

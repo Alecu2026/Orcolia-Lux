@@ -11,6 +11,11 @@ export default function PrintButton({ token, origin }: { token: string; origin: 
     setDownloading(true);
     try {
       const res = await fetch(`/api/invoice/public/${token}/pdf`);
+      if (res.status === 503 || res.status === 429) {
+        // serverul e ocupat cu multe PDF-uri (sau prea multe cereri de la aceeași adresă): nu e o defecțiune, se reîncearcă peste câteva secunde
+        alert(t("Serverul generează acum multe PDF-uri. Încearcă din nou peste câteva secunde."));
+        return;
+      }
       if (!res.ok) throw new Error(t("Eșec generare PDF"));
       const blob = await res.blob();
       const match = res.headers.get("Content-Disposition")?.match(/filename="(.+)"/);

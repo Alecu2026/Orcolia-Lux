@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { blockedInImpersonation, requireUser, type CurrentUser } from "@/lib/dal";
 import { hashPassword } from "@/lib/password";
+import { validateNewPassword } from "@/lib/password-policy";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
 import { createVerificationCode, consumeVerificationCode } from "@/lib/services/verification-codes";
@@ -87,7 +88,8 @@ export async function confirmMyPasswordChange(
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
   if (!/^\d{6}$/.test(code)) return { error: "Cod invalid — introdu cele 6 cifre primite pe email." };
-  if (newPassword.length < 8) return { error: "Parola: minim 8 caractere." };
+  const weak = validateNewPassword(newPassword, { email: user.email, name: user.name });
+  if (weak) return { error: weak };
   if (newPassword !== confirmPassword) return { error: "Parolele nu coincid." };
 
   const valid = await consumeVerificationCode(user.id, "PASSWORD_CHANGE", code);

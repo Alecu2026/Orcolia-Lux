@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { DEMO, demoClients } from "../demo";
 import { clientNamesFor } from "./client-names";
+import { searchClientIndex } from "../services/client-search";
 
 export type ClientListItem = {
   id: string;
@@ -112,6 +113,9 @@ export async function searchClients(_userId: string, q: string, limit = 8) {
       .slice(0, limit)
       .map((c) => ({ id: c.id, name: c.name, phone: c.phone }));
   }
+  // Din indexul din memorie (vezi lib/services/client-search.ts); dacă nu e la zi (tocmai s-a scris un client) — din baza de date, ca până acum.
+  const hit = searchClientIndex(search, limit);
+  if (hit) return hit;
   return prisma.client.findMany({
     where: {
       OR: [

@@ -10,8 +10,16 @@ import { logAudit } from "@/lib/services/audit";
 import { PROJECT_SPEC, diffFields, resolveIdNames } from "@/lib/services/audit-diff";
 import { notifyUsers, observerRecipients } from "@/lib/services/notifications";
 import type { ProjectStatus } from "@prisma/client";
+import { crmClientOptions } from "@/lib/queries/clients";
 
 export type ProjectState = { ok?: boolean; error?: string; id?: string } | undefined;
+
+/** Clienții pentru lista din fereastra de editare a unui proiect: se cer abia când se deschide fereastra (nu se trimit cu fiecare vizită a paginii proiectului). */
+export async function projectClientOptionsAction(): Promise<{ id: string; name: string }[]> {
+  const user = await requireUser();
+  if (!can(user, "projects.edit")) return [];
+  return crmClientOptions();
+}
 
 const actor = (u: CurrentUser) => ({ id: u.id, name: u.name, role: u.role, isSuperAdmin: u.isSuperAdmin });
 

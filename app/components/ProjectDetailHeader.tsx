@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { updateProject, deleteProject, type ProjectState } from "@/app/actions/projects";
+import { updateProject, deleteProject, projectClientOptionsAction, type ProjectState } from "@/app/actions/projects";
 import { IconPencil, IconTrash, IconX } from "./icons";
 import ProjectMapPickerDynamic from "./ProjectMapPickerDynamic";
 import { useMessages, useT } from "@/lib/i18n/context";
@@ -42,6 +42,16 @@ export default function ProjectDetailHeader({
   const router = useRouter();
   const m = useMessages();
   const [open, setOpen] = useState(false);
+  // pagina primește doar clientul proiectului; lista completă (poate fi de mii) se aduce o singură dată, când se deschide fereastra de editare
+  const [clientOpts, setClientOpts] = useState<Opt[]>(clients);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
+
+  function openEdit() {
+    setOpen(true);
+    if (clientsLoaded) return;
+    setClientsLoaded(true);
+    projectClientOptionsAction().then((list) => { if (list.length) setClientOpts(list); }).catch(() => setClientsLoaded(false));
+  }
 
   function handleDelete() {
     if (!confirm(m.projects.deleteConfirm)) return;
@@ -67,7 +77,7 @@ export default function ProjectDetailHeader({
             <>
               <button
                 type="button"
-                onClick={() => setOpen(true)}
+                onClick={openEdit}
                 className="tap grid size-9 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)]"
                 title={m.projects.editTitle}
               >
@@ -91,7 +101,7 @@ export default function ProjectDetailHeader({
           project={project}
           users={users}
           teams={teams}
-          clients={clients}
+          clients={clientOpts}
           onClose={() => setOpen(false)}
           onSaved={() => { setOpen(false); router.refresh(); }}
         />

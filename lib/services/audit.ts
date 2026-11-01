@@ -3,6 +3,7 @@ import { after } from "next/server";
 import { headers } from "next/headers";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
+import { clientIp } from "../request-ip";
 import type { AuditDetails } from "../audit-meta";
 
 export type AuditActor = {
@@ -37,7 +38,7 @@ export async function logAudit(actor: AuditActor, input: AuditInput): Promise<vo
   let path: string | null = null;
   try {
     const h = await headers();
-    ip = h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? h.get("x-real-ip") ?? null;
+    ip = await clientIp(); // adresa reală (după proxy-urile de încredere), nu prima valoare din antet, care poate fi falsificată
     userAgent = h.get("user-agent");
     // pagina din care s-a făcut acțiunea (la acțiunile de server, Referer = pagina deschisă în browser)
     const ref = h.get("referer");

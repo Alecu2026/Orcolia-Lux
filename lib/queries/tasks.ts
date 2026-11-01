@@ -6,6 +6,7 @@ import type { Prisma, TaskStatus, TaskType, TaskPriority } from "@prisma/client"
 import { canAny, type PermissionSubject } from "../permissions";
 import { allClientNames, clientNamesFor } from "./client-names";
 import { lookupEpoch } from "../lookup-memory";
+import { ensureIndex } from "../log-count";
 import { TASK_PRIORITY_LIST, TASK_STATUS_LIST, type TaskNames, type TaskTuple } from "../task-dataset";
 
 export type TaskRow = {
@@ -377,10 +378,20 @@ function buildWhere(filter: TaskFilter): Prisma.TaskWhereInput {
   return where;
 }
 
+/**
+ * „Ale mele" înseamnă asignat direct SAU printre asignații / echipele suplimentare: fără indexuri pe cele două liste, condiția `$or` parcurge TOATĂ colecția de sarcini (la fiecare Dashboard și listă).
+ * Indexurile se creează o singură dată pe proces, direct în baza de date (nu e nevoie de `db push`).
+ */
+function ensureTaskIndexes(): void {
+  ensureIndex("Task", { extraAssigneeIds: 1 }, "Task_extraAssigneeIds_idx");
+  ensureIndex("Task", { extraTeamIds: 1 }, "Task_extraTeamIds_idx");
+}
+
 export async function listTasks(
   filter: TaskFilter,
 ): Promise<{ items: TaskRow[]; hasMore: boolean; page: number; total: number; totalPages: number }> {
   if (DEMO) return { items: [], hasMore: false, page: 1, total: 0, totalPages: 0 };
+  ensureTaskIndexes();
 
   const page = Math.max(1, filter.page ?? 1);
   const pageSize = filter.pageSize ?? PAGE_SIZE;
@@ -607,6 +618,8 @@ export async function tasksDueBetween(opts: {
   clientId?: string;
   categoryId?: string;
   types?: TaskType[];
+  /** Vederea „Lună” are nevoie doar de titlu, stare, tip și moment: mai puține câmpuri (și fără hărțile de nume) = mult mai ieftin la mii de rânduri. */
+  lean?: boolean;
 }): Promise<CalendarTask[]> {
   if (DEMO) return [];
   const where = buildWhere({
@@ -624,6 +637,14 @@ export async function tasksDueBetween(opts: {
   });
   if (opts.types?.length) where.type = { in: opts.types };
   where.dueAt = { gte: opts.from, lte: opts.to };
+  if (opts.lean) {
+    const rows = await prisma.task.findMany({ where, select: { id: true, title: true, type: true, status: true, dueAt: true }, orderBy: { dueAt: "asc" } });
+    return rows.map((r) => ({
+      id: r.id, seq: null, title: r.title, type: r.type, status: r.status, priority: "MEDIUM" as TaskPriority, dueAt: r.dueAt as Date,
+      creatorId: "", assigneeId: null, assigneeName: null, teamId: null, projectId: null, clientId: null,
+    }));
+  }
+  // Fără relațiile `assignee` / `project` (fiecare însemna o interogare în plus, pe niveluri, peste mii de rânduri): numele și clientul proiectului vin din hărțile din memorie.
   const rows = await prisma.task.findMany({
     where,
     select: {
@@ -638,11 +659,10 @@ export async function tasksDueBetween(opts: {
       assigneeId: true,
       teamId: true,
       projectId: true,
-      assignee: { select: { name: true } },
-      project: { select: { clientId: true } },
     },
     orderBy: { dueAt: "asc" },
   });
+  const lk = await lookupsFor({ users: rows.map((r) => r.assigneeId), projects: rows.map((r) => r.projectId) });
   return rows.map((r) => ({
     id: r.id,
     seq: r.seq ?? null,
@@ -653,10 +673,10 @@ export async function tasksDueBetween(opts: {
     dueAt: r.dueAt as Date,
     creatorId: r.creatorId,
     assigneeId: r.assigneeId ?? null,
-    assigneeName: r.assignee?.name ?? null,
+    assigneeName: r.assigneeId ? (lk.users.get(r.assigneeId) ?? null) : null,
     teamId: r.teamId ?? null,
     projectId: r.projectId ?? null,
-    clientId: r.project?.clientId ?? null,
+    clientId: r.projectId ? (lk.projects.get(r.projectId)?.clientId ?? null) : null,
   }));
 }
 
@@ -769,6 +789,7 @@ export async function dashboardStats(
       ticketsOpen: 0, tasksOpen: 0, projectsActive: 0,
     };
   }
+  ensureTaskIndexes();
   const mineWhere: Prisma.TaskWhereInput = {
     OR: [
       { assigneeId: userId },

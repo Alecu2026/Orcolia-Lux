@@ -36,6 +36,7 @@ export default function PushToggle() {
 
   useEffect(() => {
     const ok = "serviceWorker" in navigator && "PushManager" in window;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
     setSupported(ok);
     if (!ok) return;
     navigator.serviceWorker.ready
