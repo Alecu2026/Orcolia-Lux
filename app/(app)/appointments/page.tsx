@@ -35,7 +35,7 @@ export default async function AppointmentsPage({
     tz,
     reminderEmail: settings.defaultReminderEmail,
     reminderTelegram: settings.defaultReminderTelegram,
-    reminderOffsets: settings.reminderOffsets,
+    reminderOffsets: [], // fără remindere standard: la o programare nouă nu e bifat nimic, se aleg per programare
     assignees: people.map((u) => ({ id: u.id, name: u.name, me: u.id === user.id })).sort((a, b) => a.name.localeCompare(b.name)),
   };
 

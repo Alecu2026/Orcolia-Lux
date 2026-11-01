@@ -5,7 +5,6 @@ import { useOnActionResult } from "@/lib/use-action-result";
 import { useRouter } from "next/navigation";
 import { updateSettings, type SettingsState } from "@/app/actions/settings";
 import type { Settings } from "@/lib/queries/settings";
-import ReminderOffsetPicker from "./ReminderOffsetPicker";
 import { useMessages, useT } from "@/lib/i18n/context";
 
 const input =
@@ -20,7 +19,6 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
     updateSettings,
     undefined,
   );
-  const [reminderOffsets, setReminderOffsets] = useState<string[]>(settings.reminderOffsets);
   const [selectedTheme, setSelectedTheme] = useState(settings.theme);
 
   useOnActionResult(state, (s) => {
@@ -49,10 +47,6 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className={label}>{m.settings.timezone}</label>
-          <input name="timezone" defaultValue={settings.timezone} className={input} />
-        </div>
-        <div>
           <label className={label}>{m.settings.themeLabel}</label>
           <select name="theme" value={selectedTheme} onChange={(e) => setSelectedTheme(e.target.value)} className={input}>
             <option value="system">{m.settings.themeSystem}</option>
@@ -62,7 +56,7 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={label}>{m.settings.workdayStart}</label>
           <input type="time" name="workdayStart" defaultValue={settings.workdayStart} className={input} />
@@ -71,22 +65,6 @@ export default function SettingsForm({ settings }: { settings: Settings }) {
           <label className={label}>{m.settings.workdayEnd}</label>
           <input type="time" name="workdayEnd" defaultValue={settings.workdayEnd} className={input} />
         </div>
-        <div className="col-span-2 sm:col-span-1">
-          <label className={label}>{m.settings.slotMin}</label>
-          <input type="number" name="slotMinutes" min={0} step="any" inputMode="decimal" defaultValue={settings.slotMinutes} className={input} />
-        </div>
-      </div>
-
-      <div>
-        <label className={label}>{m.settings.remindersLabel}</label>
-        <ReminderOffsetPicker
-          name="reminderOffsets"
-          value={reminderOffsets}
-          onChange={setReminderOffsets}
-        />
-        <p className="mt-1 text-xs text-ink-soft">
-          {m.settings.remindersHint}
-        </p>
       </div>
 
       <div className="flex flex-wrap gap-4">

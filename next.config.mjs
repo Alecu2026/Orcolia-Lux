@@ -37,20 +37,12 @@ const nextConfig = {
   },
   // Parser MIME pentru emailurile primite (IMAP): se încarcă din node_modules, nu se împachetează în bundle.
   serverExternalPackages: ["mailparser", "pdfkit"],
-  // playwright-core loads browsers.json + other data files at runtime via a
-  // dynamic path Vercel's file tracer doesn't statically detect, so without
-  // this the deployed function is missing them and Chromium fails to launch.
   outputFileTracingIncludes: {
     // Decontarea PDF (pdfkit): fonturile din assets/fonts și datele pdfkit se citesc din disc la rulare
     "/api/portal/decontare/pdf": ["node_modules/pdfkit/**", "assets/fonts/**"],
-    // Cheia e un glob (picomatch) potrivit cu ruta — parantezele pătrate din
-    // "[token]" trebuie escapate, altfel picomatch le tratează ca o clasă de
-    // caractere (`[token]` = un singur caracter dintre t/o/k/e/n), nu ca
-    // literalul rutei, iar regula nu se aplică niciodată.
-    "/api/invoice/public/\\[token\\]/pdf": [
-      "node_modules/playwright-core/**",
-      "node_modules/@sparticuz/chromium/**",
-    ],
+    // Factura publică PDF (pdfkit, fără Chromium): aceleași fonturi și date pdfkit citite la rulare.
+    // Cheia e un glob (picomatch) potrivit cu ruta — parantezele pătrate din "[token]" trebuie escapate, altfel picomatch le tratează ca o clasă de caractere, nu ca literalul rutei.
+    "/api/invoice/public/\\[token\\]/pdf": ["node_modules/pdfkit/**", "node_modules/sharp/**", "assets/fonts/**"],
   },
 };
 

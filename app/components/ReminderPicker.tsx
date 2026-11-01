@@ -54,6 +54,8 @@ export default function ReminderPicker({ interval, schedule, startAt, noOnce = f
   const [time, setTime] = useState(init && "time" in init ? init.time : "09:00");
   const [offsets, setOffsets] = useState<number[]>(init?.kind === "before" ? init.offsets : [1440, 180]);
   const [customN, setCustomN] = useState(1);
+  // „Alt prag” stă ascuns (ocupă loc) până se apasă „+ Adaugă prag nou”; după adăugare se strânge la loc
+  const [showCustom, setShowCustom] = useState(false);
   const [customU, setCustomU] = useState<"minutes" | "hours" | "days">("hours");
   const [days, setDays] = useState<number[]>(init?.kind === "weekly" ? init.days : [1]);
   const [monthDay, setMonthDay] = useState<number>(init?.kind === "monthly" ? init.day : 1);
@@ -93,7 +95,10 @@ export default function ReminderPicker({ interval, schedule, startAt, noOnce = f
   const toggleOffset = (n: number) => setOffsets((cur) => (cur.includes(n) ? cur.filter((x) => x !== n) : [...cur, n].sort((a, b) => b - a)));
   const addCustom = () => {
     const min = Math.round(customN) * (customU === "days" ? 1440 : customU === "hours" ? 60 : 1);
-    if (Number.isInteger(min) && min >= 1 && min <= MAX_BEFORE_MIN) setOffsets((cur) => (cur.includes(min) ? cur : [...cur, min].sort((a, b) => b - a)));
+    if (Number.isInteger(min) && min >= 1 && min <= MAX_BEFORE_MIN) {
+      setOffsets((cur) => (cur.includes(min) ? cur : [...cur, min].sort((a, b) => b - a)));
+      setShowCustom(false);
+    }
   };
 
   const fixedLabel: Record<number, string> = {
@@ -155,8 +160,14 @@ export default function ReminderPicker({ interval, schedule, startAt, noOnce = f
                     {offsetLabel(n, t)}
                   </button>
                 ))}
+                {!showCustom && (
+                  <button type="button" onClick={() => setShowCustom(true)} className={chip(false)} data-add-threshold="">
+                    + {t("Adaugă prag nou")}
+                  </button>
+                )}
               </div>
-              <div className="mt-2 flex flex-wrap items-end gap-2">
+              {showCustom && (
+              <div className="mt-2 flex flex-wrap items-end gap-2" data-custom-threshold="">
                 <label className="text-[11px] font-semibold text-ink-soft">
                   {t("Alt prag")}
                   <input type="number" min={1} step={1} value={customN} onChange={(e) => setCustomN(Number(e.target.value))} className={`${inp} mt-0.5 w-20`} />
@@ -167,7 +178,9 @@ export default function ReminderPicker({ interval, schedule, startAt, noOnce = f
                   <option value="days">{t("zile")}</option>
                 </select>
                 <button type="button" onClick={addCustom} className="tap h-9 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-semibold text-brand hover:bg-brand-soft">{t("Adaugă")}</button>
+                <button type="button" onClick={() => setShowCustom(false)} aria-label={t("Renunță")} className="tap h-9 cursor-pointer rounded-lg px-2 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]">{t("Renunță")}</button>
               </div>
+              )}
             </div>
           )}
 

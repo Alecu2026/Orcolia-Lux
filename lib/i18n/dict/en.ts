@@ -3035,4 +3035,5 @@ export const EN: Record<string, string> = {
   "De exemplu: indexul real este 1234, sau nu eu am trimis citirea.": "For example: the real reading is 1234, or I did not send this reading.",
   "Trimite contestația": "Send the dispute",
   "Prea multe încercări. Încearcă din nou peste un minut.": "Too many attempts. Try again in a minute.",
+  "Adaugă prag nou": "Add a new threshold",
 };

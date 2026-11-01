@@ -3035,4 +3035,5 @@ export const RU: Record<string, string> = {
   "De exemplu: indexul real este 1234, sau nu eu am trimis citirea.": "Например: реальные показания 1234, или это не я передавал показания.",
   "Trimite contestația": "Отправить возражение",
   "Prea multe încercări. Încearcă din nou peste un minut.": "Слишком много попыток. Повторите через минуту.",
+  "Adaugă prag nou": "Добавить новый порог",
 };

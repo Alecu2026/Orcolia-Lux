@@ -6,7 +6,6 @@ import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { settingsSchema, categorySchema } from "@/lib/validation";
 import { DEMO } from "@/lib/demo";
-import { sanitizeReminderPresets } from "@/lib/reminder-presets";
 import type { StatusConfig } from "@/lib/ticket-status-config";
 import { DEFAULT_STATUS_CONFIGS, parseStatusConfigs } from "@/lib/ticket-status-config";
 import type { TaskStatus } from "@prisma/client";
@@ -133,18 +132,13 @@ export async function updateSettings(
   const user = await requireUser();
   if (DEMO) return { error: DEMO_MSG };
 
-  const offsets = sanitizeReminderPresets(formData.getAll("reminderOffsets").map(String));
-
   const parsed = settingsSchema.safeParse({
-    timezone: formData.get("timezone") ?? "Europe/Bucharest",
     locale: formData.get("locale") ?? "ro",
     theme: formData.get("theme") ?? "system",
     workdayStart: formData.get("workdayStart") ?? "09:00",
     workdayEnd: formData.get("workdayEnd") ?? "18:00",
-    slotMinutes: formData.get("slotMinutes") ?? 30,
     defaultReminderEmail: formData.get("defaultReminderEmail") === "on",
     defaultReminderTelegram: formData.get("defaultReminderTelegram") === "on",
-    reminderOffsets: offsets.length ? offsets : ["DAY_BEFORE_8AM", "H3"],
     emailFromName: formData.get("emailFromName") ?? "",
     emailFromAddr: formData.get("emailFromAddr") ?? "",
   });
@@ -158,28 +152,22 @@ export async function updateSettings(
     where: { userId: user.id },
     create: {
       userId: user.id,
-      timezone: d.timezone,
       locale: d.locale,
       theme: d.theme,
       workdayStart: d.workdayStart,
       workdayEnd: d.workdayEnd,
-      slotMinutes: d.slotMinutes,
       defaultReminderEmail: d.defaultReminderEmail,
       defaultReminderTelegram: d.defaultReminderTelegram,
-      reminderOffsets: d.reminderOffsets,
       emailFromName: d.emailFromName || null,
       emailFromAddr: d.emailFromAddr || null,
     },
     update: {
-      timezone: d.timezone,
       locale: d.locale,
       theme: d.theme,
       workdayStart: d.workdayStart,
       workdayEnd: d.workdayEnd,
-      slotMinutes: d.slotMinutes,
       defaultReminderEmail: d.defaultReminderEmail,
       defaultReminderTelegram: d.defaultReminderTelegram,
-      reminderOffsets: d.reminderOffsets,
       emailFromName: d.emailFromName || null,
       emailFromAddr: d.emailFromAddr || null,
     },
