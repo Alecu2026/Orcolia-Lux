@@ -86,7 +86,7 @@ export default function LorawanPanel({ initial }: { initial: LorawanStatus }) {
                 {new Date(st.lastRunAt).toLocaleString(tag, { dateStyle: "medium", timeStyle: "short" })} · {st.lastTrigger === "manual" ? t("pornită manual") : t("automat")} · {Math.round(st.durationMs / 1000)} s
               </p>
             )}
-            {st.message && !st.running && <p className={`mt-1 text-sm ${st.lastOk ? "" : "text-st-cancelled"}`}>{st.message}</p>}
+            {st.message && <p className={`mt-1 text-sm ${st.lastOk || st.running ? "" : "text-st-cancelled"}`}>{st.message}</p>}
           </div>
           {st.activated && (
             <button

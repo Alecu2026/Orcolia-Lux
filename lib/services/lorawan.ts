@@ -27,7 +27,9 @@ const LOCK_MIN = 6;
 const BUDGET_MS = 230_000;
 const BULK_SIZE = 500;
 const RETRY_MIN = 30;
-const FETCH_TIMEOUT_MS = 90_000;
+const FETCH_TIMEOUT_MS = 60_000;
+/** Dacă extragerea nu s-a terminat până aici, scrie în stare unde a rămas (platforma oprește funcția la 300 s fără să lase vreo urmă). */
+const WATCHDOG_MS = 265_000;
 const UNMATCHED_KEEP = 200;
 /** Un contor care nu mai apare în lista LoRaWAN de atâtea zile nu mai e considerat LoRaWAN (iese din blocaj). */
 const FORGET_AFTER_DAYS = 45;
@@ -68,6 +70,27 @@ async function fetchRows(): Promise<ReturnType<typeof parseLorawan>> {
   const res = await fetch(env.lorawan.url, { headers: { token: env.lorawan.token, accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`Serverul LoRaWAN a răspuns ${res.status}.`);
   return parseLorawan(await res.json());
+}
+
+/**
+ * Indexurile citirilor: dacă baza de date a fost creată fără `prisma db push`, citirile nu au indexul (contor + lună) pe care îl așteaptă schema, iar fiecare căutare / upsert ar parcurge toată colecția
+ * (mii de contoare × zeci de mii de citiri = minute). Se creează o singură dată, cu aceleași nume ca în schemă (o rulare viitoare de `db push` le găsește deja); dacă există, nu se întâmplă nimic.
+ */
+async function ensureIndexes(): Promise<void> {
+  const wanted: { key: Record<string, 1>; name: string; unique?: boolean }[] = [
+    { key: { meterId: 1, period: 1 }, name: "MeterReading_meterId_period_key", unique: true },
+    { key: { period: 1, readAt: 1 }, name: "MeterReading_period_readAt_idx" },
+  ];
+  const res = (await prisma.$runCommandRaw({ listIndexes: "MeterReading" }).catch(() => null)) as { cursor?: { firstBatch?: { key: Record<string, number> }[] } } | null;
+  const have = new Set((res?.cursor?.firstBatch ?? []).map((i) => JSON.stringify(i.key)));
+  for (const w of wanted) {
+    if (have.has(JSON.stringify(w.key))) continue;
+    await prisma.$runCommandRaw({ createIndexes: "MeterReading", indexes: [{ key: w.key, name: w.name, ...(w.unique ? { unique: true } : {}) }] }).catch(async (e) => {
+      console.error(`[lorawan] indexul ${w.name}:`, String(e?.message ?? e).slice(0, 160));
+      // există dubluri (nu ar trebui): măcar un index obișnuit, ca să nu mai fie căutări prin toată colecția
+      if (w.unique) await prisma.$runCommandRaw({ createIndexes: "MeterReading", indexes: [{ key: w.key, name: "MeterReading_meterId_period_idx" }] }).catch(() => {});
+    });
+  }
 }
 
 /** EJSON pentru comenzile brute MongoDB (`$runCommandRaw`): date și ObjectId. */
@@ -115,9 +138,28 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
   const day = dayKey(now);
   const scheduled = trigger !== "manual";
   let partial = false;
+  // etapele: se notează în stare („În curs: …”, vizibil în pagina LoRaWAN) și în jurnal, cu durata fiecăreia — ca o blocare să se vadă unde s-a întâmplat
+  const timings: string[] = [];
+  let stage = "pornire";
+  let stageStart = Date.now();
+  const mark = async (next: string) => {
+    timings.push(`${stage} ${((Date.now() - stageStart) / 1000).toFixed(1)} s`);
+    stage = next;
+    stageStart = Date.now();
+    console.log(`[lorawan] etapa „${next}” (după ${((Date.now() - t0) / 1000).toFixed(1)} s)`);
+    await prisma.lorawanState.update({ where: { id: STATE_ID }, data: { message: `În curs: ${next}…` } }).catch(() => {});
+  };
+  const watchdog = setTimeout(() => {
+    const message = `Oprită: nu s-a terminat în ${Math.round(WATCHDOG_MS / 1000)} s, a rămas la etapa „${stage}” (de ${Math.round((Date.now() - stageStart) / 1000)} s). ${timings.join(", ")}`;
+    console.error(`[lorawan] ${message}`);
+    void prisma.lorawanState.update({ where: { id: STATE_ID }, data: { lastRunAt: new Date(), lastOk: false, lastTrigger: trigger, message: message.slice(0, 400), durationMs: Date.now() - t0, lockUntil: EPOCH, ...(scheduled ? { retryAt: new Date(Date.now() + 60_000) } : {}) } }).catch(() => {});
+  }, WATCHDOG_MS);
   try {
+    await mark("descărcarea listei LoRaWAN");
     const parsed = await fetchRows();
+    await mark("lista de contoare din CRM");
     const snap = await getMeterSnap();
+    await mark("potrivirea cu contoarele din CRM");
     // contoarele CRM după număr (exact, apoi fără zerourile din față); doar cele din exportul 1C, nu rândurile „doar Axioma”
     const exact = new Map<string, CrmRow[]>();
     const loose = new Map<string, CrmRow[]>();
@@ -168,6 +210,9 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
       }
     }
 
+    await mark("verificarea indexurilor");
+    await ensureIndexes();
+    await mark("citirea datelor existente");
     // ce există deja (o singură interogare pe fiecare): contoarele marcate, citirile lunii și cele din lunile dinainte (pentru indexul anterior)
     const [marked, readings, before] = await Promise.all([
       prisma.lorawanMeter.findMany({ select: { id: true, volume: true, ts: true, period: true, status: true, updatedAt: true } }),
@@ -182,6 +227,7 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
       if (!cur || r.readAt > cur.readAt) lastBefore.set(r.meterId, r);
     }
 
+    await mark("calcul în memorie");
     // totul se calculează în memorie; scrierile pleacă apoi în blocuri
     const readingOps: object[] = [];
     const markOps: object[] = [];
@@ -241,19 +287,25 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
       }
     }
     // întâi citirile, apoi marcajele (un marcaj spune „citirea lunii e salvată”); la limita de timp se oprește și se salvează ce s-a făcut
+    await mark(`scrierea a ${readingOps.length} citiri`);
     const deadline = t0 + BUDGET_MS;
     const wr = await bulkUpsert("MeterReading", readingOps, deadline);
     stats.errors += wr.failed;
     stats.saved -= readingOps.length - wr.sent + wr.failed; // doar ce a fost trimis și acceptat
     if (wr.sent < readingOps.length) partial = true;
-    else if ((await bulkUpsert("LorawanMeter", markOps, deadline)).sent < markOps.length) partial = true;
+    else {
+      await mark(`marcarea a ${markOps.length} contoare`);
+      if ((await bulkUpsert("LorawanMeter", markOps, deadline)).sent < markOps.length) partial = true;
+    }
     for (const id of touched) invalidatePortalClient(id || null); // plătitorul vede imediat citirea în portal
 
     await prisma.lorawanMeter.deleteMany({ where: { updatedAt: { lt: new Date(Date.now() - FORGET_AFTER_DAYS * 86_400_000) } } });
     invalidateLorawanMap();
+    await mark("marcarea plătitorilor");
     await syncPayerFlags().catch((e) => console.error("[lorawan] marcajul plătitorilor:", e));
 
-    const message = `${stats.received} contoare primite: ${stats.saved} citiri salvate, ${stats.unchanged} neschimbate, ${stats.stale} ignorate (transmisie din altă lună), ${stats.placeholders} fără nicio transmisie, ${stats.unmatched} negăsite în CRM${stats.errors ? `, ${stats.errors} erori` : ""}.${partial ? " Oprită la limita de timp: apasă din nou (sau așteaptă următoarea pornire) ca să continue de unde a rămas." : ""}`;
+    await mark("gata");
+    const message = `${stats.received} contoare primite: ${stats.saved} citiri salvate, ${stats.unchanged} neschimbate, ${stats.stale} ignorate (transmisie din altă lună), ${stats.placeholders} fără nicio transmisie, ${stats.unmatched} negăsite în CRM${stats.errors ? `, ${stats.errors} erori` : ""}.${partial ? " Oprită la limita de timp: apasă din nou (sau așteaptă următoarea pornire) ca să continue de unde a rămas." : ""} (${timings.slice(1).join(", ")})`;
     const durationMs = Date.now() - t0;
     await prisma.lorawanState.update({
       where: { id: STATE_ID },
@@ -274,7 +326,7 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
     console.log(`[lorawan] ${message} (${durationMs} ms, ${trigger})`);
     return { ok: true, message, stats };
   } catch (e) {
-    const error = e instanceof Error ? e.message : String(e);
+    const error = `${e instanceof Error ? e.message : String(e)} (etapa „${stage}”)`;
     console.error("[lorawan] extragerea a eșuat:", error);
     await prisma.lorawanState
       .update({
@@ -283,6 +335,8 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
       })
       .catch(() => {});
     return { ok: false, error };
+  } finally {
+    clearTimeout(watchdog);
   }
 }
 
