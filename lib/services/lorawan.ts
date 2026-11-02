@@ -7,10 +7,10 @@ import { getMeterSnap } from "./meter-cache";
 import { saveReading } from "./meter-readings";
 import { invalidateLorawanMap } from "./lorawan-map";
 import { currentPeriod, READING_TZ } from "../meter-readings";
-import { LORAWAN_HOUR, LORAWAN_SOURCE, normalizeMeterName, parseLorawan, stripLeadingZeros, type LorawanRow, type LorawanStats, type LorawanStatus } from "../lorawan";
+import { LORAWAN_HOUR, LORAWAN_MINUTE, LORAWAN_SOURCE, normalizeMeterName, parseLorawan, stripLeadingZeros, type LorawanRow, type LorawanStats, type LorawanStatus } from "../lorawan";
 
 /**
- * Extragerea contoarelor LoRaWAN: o dată pe zi, la 23:00 (ora firmei), se citește lista de la serverul de noduri (`[{ name, volume_m3, ts }]`). Pentru fiecare contor:
+ * Extragerea contoarelor LoRaWAN: o dată pe zi, la 23:30 (ora firmei), se citește lista de la serverul de noduri (`[{ name, volume_m3, ts }]`). Pentru fiecare contor:
  *  1. numele fără „S” se caută între contoarele ACTIVE din CRM (exportul 1C); plătitorul vine odată cu contorul (același abonat ca în lista de contoare);
  *  2. dacă transmisia NU e din luna curentă (fusul firmei), contorul se ignoră (rămâne doar marcat LoRaWAN);
  *  3. altfel indexul se salvează ca citire a lunii (MeterReading, sursa „LORAWAN”): se actualizează zilnic, nu suprascrie o citire făcută de cititor și nu poate fi modificat manual.
@@ -33,9 +33,13 @@ export type Trigger = "timer" | "cron" | "manual";
 export type LorawanRun = { ok: true; message: string; stats: LorawanStats } | { ok: false; error: string };
 
 const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: READING_TZ, year: "numeric", month: "2-digit", day: "2-digit" });
-const hourFmt = new Intl.DateTimeFormat("en-GB", { timeZone: READING_TZ, hour: "2-digit", hourCycle: "h23" });
+const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: READING_TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const dayKey = (d: Date) => dayFmt.format(d);
-const hourOf = (d: Date) => Number(hourFmt.format(d));
+/** Minutele scurse de la miezul nopții, în fusul firmei. */
+const minuteOfDay = (d: Date) => {
+  const [h, m] = timeFmt.format(d).split(":").map(Number);
+  return h * 60 + m;
+};
 
 export const lorawanConfigured = () => !!env.lorawan.token;
 
@@ -205,9 +209,9 @@ export async function runLorawanSync(trigger: Trigger): Promise<LorawanRun> {
   }
 }
 
-/** Apelată din temporizatorul serverului (în fiecare minut): după ora 23:00 (ora firmei) pornește extragerea zilei, o singură dată pe zi. */
+/** Apelată din temporizatorul serverului (în fiecare minut): după 23:30 (ora firmei) pornește extragerea zilei, o singură dată pe zi. */
 export async function checkLorawanSchedule(now: Date = new Date()): Promise<void> {
-  if (DEMO || !lorawanConfigured() || hourOf(now) < LORAWAN_HOUR) return;
+  if (DEMO || !lorawanConfigured() || minuteOfDay(now) < LORAWAN_HOUR * 60 + LORAWAN_MINUTE) return;
   const st = await prisma.lorawanState.findUnique({ where: { id: STATE_ID }, select: { lastRunDay: true, retryAt: true, lockUntil: true } });
   if (st && (st.lastRunDay === dayKey(now) || st.retryAt > now || st.lockUntil > now)) return;
   await runLorawanSync("timer");

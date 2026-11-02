@@ -14,7 +14,7 @@ export async function lorawanStatusAction(): Promise<LorawanStatus | null> {
   return getLorawanStatus();
 }
 
-/** Pornește acum o extragere (în fundal: durează zeci de secunde sau minute). Cea de la 23:00 rămâne neschimbată. */
+/** Pornește acum o extragere (în fundal: durează zeci de secunde sau minute). Cea de la 23:30 rămâne neschimbată. */
 export async function runLorawanAction(): Promise<{ ok: boolean; error?: string }> {
   const user = await requireUser();
   if (!can(user, "meters.manage")) return { ok: false, error: "Fără permisiune." };

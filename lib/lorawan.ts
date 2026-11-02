@@ -4,8 +4,9 @@
  * în CRM contoarele nu au prefixul „S”, deci se scoate. Doar transmisiile din luna curentă (fusul firmei) se păstrează ca citiri; restul se ignoră.
  */
 
-/** Ora (în fusul firmei) la care pornește extragerea zilnică. */
+/** Momentul (ora:minutul, în fusul firmei) de la care pornește extragerea zilnică. */
 export const LORAWAN_HOUR = 23;
+export const LORAWAN_MINUTE = 30;
 /** Sursa afișată în lista de contoare și pe citiri. */
 export const LORAWAN_LABEL = "LoRaWAN";
 /** Valoarea `source` a citirilor salvate din LoRaWAN (MeterReading.source). */

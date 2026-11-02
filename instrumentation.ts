@@ -33,7 +33,7 @@ export function register() {
               metrology.checkMetrologyExpiry().catch((e) => console.error("[startup] verificările metrologice:", e)),
               // termenele de remediere ale neregulilor de contor (cu 3 zile înainte și la depășire)
               issues.checkMeterIssueDeadlines().catch((e) => console.error("[startup] termenele neregulilor de contor:", e)),
-              // contoarele LoRaWAN: o dată pe zi, după ora 23:00 (ora firmei) — cele mai multe verificări costă doar o comparație de oră
+              // contoarele LoRaWAN: o dată pe zi, după ora 23:30 (ora firmei) — cele mai multe verificări costă doar o comparație de oră
               lorawan.checkLorawanSchedule().catch((e) => console.error("[startup] contoarele LoRaWAN:", e)),
             ]),
           ),

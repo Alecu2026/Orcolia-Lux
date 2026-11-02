@@ -3036,7 +3036,7 @@ export const RU: Record<string, string> = {
   "Trimite contestația": "Отправить возражение",
   "Prea multe încercări. Încearcă din nou peste un minut.": "Слишком много попыток. Повторите через минуту.",
   "Adaugă prag nou": "Добавить новый порог",
-  "Contoarele care transmit automat indexul. Extragerea pornește singură în fiecare zi la 23:00.": "Счётчики, автоматически передающие показания. Выгрузка запускается сама каждый день в 23:00.",
+  "Contoarele care transmit automat indexul. Extragerea pornește singură în fiecare zi la 23:30.": "Счётчики, автоматически передающие показания. Выгрузка запускается сама каждый день в 23:00.",
   "Contor LoRaWAN": "Счётчик LoRaWAN",
   "Extragerea nu e configurată: lipsește LORAWAN_TOKEN în configurația serverului.": "Выгрузка не настроена: в конфигурации сервера нет LORAWAN_TOKEN.",
   "Extragerea rulează…": "Выгрузка выполняется…",
