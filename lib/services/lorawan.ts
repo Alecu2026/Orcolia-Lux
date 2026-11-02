@@ -4,10 +4,10 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { env } from "../env";
 import { getMeterSnap } from "./meter-cache";
-import { saveReading } from "./meter-readings";
+import { invalidatePortalClient } from "../portal-cache";
 import { invalidateLorawanMap } from "./lorawan-map";
 import { invalidatePayers } from "./payer-cache";
-import { currentPeriod, READING_TZ } from "../meter-readings";
+import { currentPeriod, shiftPeriod, READING_TZ } from "../meter-readings";
 import { LORAWAN_HOUR, LORAWAN_MINUTE, LORAWAN_SOURCE, normalizeMeterName, parseLorawan, stripLeadingZeros, type LorawanRow, type LorawanStats, type LorawanStatus } from "../lorawan";
 
 /**
@@ -21,14 +21,16 @@ import { LORAWAN_HOUR, LORAWAN_MINUTE, LORAWAN_SOURCE, normalizeMeterName, parse
 
 const STATE_ID = "main";
 const EPOCH = new Date("1970-01-01T00:00:00.000Z");
-const LOCK_MIN = 20;
+/** Blocajul expiră singur: dacă funcția e oprită de platformă (limita de timp), după atât se poate porni din nou. */
+const LOCK_MIN = 6;
+/** Cât lucrează o extragere înainte să se oprească singură și să salveze ce a făcut (funcțiile Vercel au maximum 300 s); restul se continuă la următoarea pornire. */
+const BUDGET_MS = 230_000;
+const BULK_SIZE = 500;
 const RETRY_MIN = 30;
 const FETCH_TIMEOUT_MS = 90_000;
-const SAVE_CONCURRENCY = 4;
 const UNMATCHED_KEEP = 200;
 /** Un contor care nu mai apare în lista LoRaWAN de atâtea zile nu mai e considerat LoRaWAN (iese din blocaj). */
 const FORGET_AFTER_DAYS = 45;
-const ACTOR = { id: null, name: "LoRaWAN" } as const;
 
 /**
  * Plătitorii cu cel puțin un contor LoRaWAN primesc marcajul `meterLorawan` (filtrul „Contor LoRaWAN” din Plătitori / Notificări). Se scriu doar diferențele; dacă s-a schimbat ceva,
@@ -68,14 +70,21 @@ async function fetchRows(): Promise<ReturnType<typeof parseLorawan>> {
   return parseLorawan(await res.json());
 }
 
-/** Rulează `fn` pe fiecare element, cel mult `n` deodată. */
-async function pool<T>(items: T[], n: number, fn: (it: T) => Promise<void>): Promise<void> {
-  let i = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(n, items.length) }, async () => {
-      while (i < items.length) await fn(items[i++]);
-    }),
-  );
+/** EJSON pentru comenzile brute MongoDB (`$runCommandRaw`): date și ObjectId. */
+const D = (d: Date) => ({ $date: d.toISOString() });
+const OID = (id: string | null) => (id && /^[0-9a-f]{24}$/i.test(id) ? { $oid: id } : null);
+
+/** Trimite upsert-urile în blocuri (o comandă la 500 de documente, nu o interogare pe contor): mii de contoare se salvează în secunde, nu în minute. */
+async function bulkUpsert(collection: string, updates: object[], deadline: number): Promise<{ failed: number; sent: number }> {
+  let failed = 0;
+  let sent = 0;
+  for (let i = 0; i < updates.length && Date.now() < deadline; i += BULK_SIZE) {
+    const part = updates.slice(i, i + BULK_SIZE);
+    const res = (await prisma.$runCommandRaw({ update: collection, updates: part, ordered: false })) as { writeErrors?: unknown[]; ok?: number };
+    failed += res.writeErrors?.length ?? 0;
+    sent += part.length;
+  }
+  return { failed, sent };
 }
 
 async function claim(): Promise<boolean> {
@@ -105,6 +114,7 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
   const period = currentPeriod(now);
   const day = dayKey(now);
   const scheduled = trigger !== "manual";
+  let partial = false;
   try {
     const parsed = await fetchRows();
     const snap = await getMeterSnap();
@@ -158,56 +168,92 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
       }
     }
 
-    // ce există deja: contoarele marcate și citirile lunii (o singură interogare pe fiecare)
-    const [marked, readings] = await Promise.all([
+    // ce există deja (o singură interogare pe fiecare): contoarele marcate, citirile lunii și cele din lunile dinainte (pentru indexul anterior)
+    const [marked, readings, before] = await Promise.all([
       prisma.lorawanMeter.findMany({ select: { id: true, volume: true, ts: true, period: true, status: true, updatedAt: true } }),
       prisma.meterReading.findMany({ where: { period }, select: { meterId: true, value: true, source: true } }),
+      prisma.meterReading.findMany({ where: { period: { in: [shiftPeriod(period, 1), shiftPeriod(period, 2), shiftPeriod(period, 3)] } }, select: { meterId: true, value: true, readAt: true } }),
     ]);
     const markedBy = new Map(marked.map((m) => [m.id, m]));
     const readBy = new Map(readings.map((r) => [r.meterId, r]));
+    const lastBefore = new Map<string, { value: number; readAt: Date }>();
+    for (const r of before) {
+      const cur = lastBefore.get(r.meterId);
+      if (!cur || r.readAt > cur.readAt) lastBefore.set(r.meterId, r);
+    }
 
-    await pool(known, SAVE_CONCURRENCY, async ({ row, lw, current }) => {
+    // totul se calculează în memorie; scrierile pleacă apoi în blocuri
+    const readingOps: object[] = [];
+    const markOps: object[] = [];
+    const touched = new Set<string>();
+    const nowMs = now.getTime();
+    for (const { row, lw, current } of known) {
       let savedPeriod: string | null = markedBy.get(row.id)?.period ?? null;
-      try {
-        if (current) {
-          const ex = readBy.get(row.id);
-          if (ex && ex.source == null) {
-            stats.skippedField++;
-          } else if (ex && ex.source === LORAWAN_SOURCE && ex.value === lw.volume) {
-            stats.unchanged++;
-            savedPeriod = period;
-          } else {
-            const res = await saveReading(ACTOR, { meterId: row.id, value: lw.volume, lat: null, lng: null, accuracy: null, confirmed: true, readAt: lw.ts, source: LORAWAN_SOURCE });
-            if (res.ok) {
-              stats.saved++;
-              savedPeriod = period;
-              if (res.reading.prevValue != null && res.reading.value < res.reading.prevValue) stats.lowerThanPrev++;
-            } else {
-              stats.errors++;
-              if (stats.errors <= 5) console.error(`[lorawan] contor ${lw.name}: ${res.error}`);
+      if (current) {
+        const ex = readBy.get(row.id);
+        if (ex && ex.source == null) {
+          stats.skippedField++;
+        } else if (ex && ex.source === LORAWAN_SOURCE && ex.value === lw.volume) {
+          stats.unchanged++;
+          savedPeriod = period;
+        } else if (lw.ts.getTime() > nowMs + 10 * 60_000) {
+          stats.errors++; // ora transmisiei e în viitor (ceasul dispozitivului)
+        } else {
+          // indexul anterior: cel mai recent între 1C și o citire dintr-o lună dinainte
+          let prev: number | null = row.curr;
+          let prevDate = row.currDate;
+          const lf = lastBefore.get(row.id);
+          if (lf) {
+            const fd = lf.readAt.toISOString().slice(0, 10);
+            if (!prevDate || fd > prevDate) {
+              prev = lf.value;
+              prevDate = fd;
             }
           }
+          if (prev != null && lw.volume < prev) stats.lowerThanPrev++;
+          readingOps.push({
+            q: { meterId: row.id, period },
+            u: {
+              $set: {
+                contor: row.contor, clientId: OID(row.clientId), value: lw.volume, prevValue: prev, readAt: D(lw.ts), lat: null, lng: null, accuracy: null, distanceM: null,
+                userId: null, userName: "LoRaWAN", source: LORAWAN_SOURCE, verifiedAt: null, disputedAt: null, disputeNote: null, updatedAt: D(now),
+              },
+              $setOnInsert: { createdAt: D(now), avgConsum: null },
+            },
+            upsert: true,
+          });
+          stats.saved++;
+          savedPeriod = period;
+          touched.add(row.clientId ?? "");
         }
-        const status = current ? "matched" : "stale";
-        const cur = markedBy.get(row.id);
-        if (!cur || cur.volume !== lw.volume || cur.ts.getTime() !== lw.ts.getTime() || cur.period !== savedPeriod || cur.status !== status) {
-          const data = { contor: lw.name, clientId: row.clientId, volume: lw.volume, ts: lw.ts, period: savedPeriod, status } satisfies Prisma.LorawanMeterUncheckedUpdateInput;
-          await prisma.lorawanMeter.upsert({ where: { id: row.id }, create: { id: row.id, ...data }, update: data });
-        } else if (Date.now() - cur.updatedAt.getTime() > 7 * 86_400_000) {
-          // neschimbat de mult: se reînnoiește „văzut”, ca să nu fie uitat după 45 de zile
-          await prisma.lorawanMeter.update({ where: { id: row.id }, data: { updatedAt: new Date() } });
-        }
-      } catch (e) {
-        stats.errors++;
-        if (stats.errors <= 5) console.error(`[lorawan] contor ${lw.name}:`, e);
       }
-    });
+      const status = current ? "matched" : "stale";
+      const cur = markedBy.get(row.id);
+      if (!cur || cur.volume !== lw.volume || cur.ts.getTime() !== lw.ts.getTime() || cur.period !== savedPeriod || cur.status !== status) {
+        markOps.push({
+          q: { _id: row.id },
+          u: { $set: { contor: lw.name, clientId: OID(row.clientId), volume: lw.volume, ts: D(lw.ts), period: savedPeriod, status, updatedAt: D(now) }, $setOnInsert: { createdAt: D(now) } },
+          upsert: true,
+        });
+      } else if (nowMs - cur.updatedAt.getTime() > 7 * 86_400_000) {
+        // neschimbat de mult: se reînnoiește „văzut”, ca să nu fie uitat după 45 de zile
+        markOps.push({ q: { _id: row.id }, u: { $set: { updatedAt: D(now) } }, upsert: false });
+      }
+    }
+    // întâi citirile, apoi marcajele (un marcaj spune „citirea lunii e salvată”); la limita de timp se oprește și se salvează ce s-a făcut
+    const deadline = t0 + BUDGET_MS;
+    const wr = await bulkUpsert("MeterReading", readingOps, deadline);
+    stats.errors += wr.failed;
+    stats.saved -= readingOps.length - wr.sent + wr.failed; // doar ce a fost trimis și acceptat
+    if (wr.sent < readingOps.length) partial = true;
+    else if ((await bulkUpsert("LorawanMeter", markOps, deadline)).sent < markOps.length) partial = true;
+    for (const id of touched) invalidatePortalClient(id || null); // plătitorul vede imediat citirea în portal
 
     await prisma.lorawanMeter.deleteMany({ where: { updatedAt: { lt: new Date(Date.now() - FORGET_AFTER_DAYS * 86_400_000) } } });
     invalidateLorawanMap();
     await syncPayerFlags().catch((e) => console.error("[lorawan] marcajul plătitorilor:", e));
 
-    const message = `${stats.received} contoare primite: ${stats.saved} citiri salvate, ${stats.unchanged} neschimbate, ${stats.stale} ignorate (transmisie din altă lună), ${stats.placeholders} fără nicio transmisie, ${stats.unmatched} negăsite în CRM${stats.errors ? `, ${stats.errors} erori` : ""}.`;
+    const message = `${stats.received} contoare primite: ${stats.saved} citiri salvate, ${stats.unchanged} neschimbate, ${stats.stale} ignorate (transmisie din altă lună), ${stats.placeholders} fără nicio transmisie, ${stats.unmatched} negăsite în CRM${stats.errors ? `, ${stats.errors} erori` : ""}.${partial ? " Oprită la limita de timp: apasă din nou (sau așteaptă următoarea pornire) ca să continue de unde a rămas." : ""}`;
     const durationMs = Date.now() - t0;
     await prisma.lorawanState.update({
       where: { id: STATE_ID },
@@ -220,8 +266,9 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
         stats: stats as unknown as Prisma.InputJsonValue,
         unmatched,
         lockUntil: EPOCH,
-        ...(scheduled ? { lastRunDay: day, retryAt: EPOCH } : {}),
-        ...(opts.activate ? { activatedAt: new Date() } : {}),
+        // o extragere oprită la limita de timp nu activează și nu marchează ziua ca făcută: se reia (cele deja salvate se sar)
+        ...(scheduled ? (partial ? { retryAt: new Date(Date.now() + 60_000) } : { lastRunDay: day, retryAt: EPOCH }) : {}),
+        ...(opts.activate && !partial ? { activatedAt: new Date() } : {}),
       },
     });
     console.log(`[lorawan] ${message} (${durationMs} ms, ${trigger})`);
