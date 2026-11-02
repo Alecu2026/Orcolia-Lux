@@ -19,6 +19,17 @@ export type LorawanParsed = { rows: LorawanRow[]; invalid: number; duplicates: n
 /** Numărul contorului ca în CRM: fără spații și fără prefixul „S” al LoRaWAN. */
 export const normalizeMeterName = (raw: string): string => raw.trim().replace(/^s(?=\d)/i, "");
 
+/**
+ * Blocurile de cifre dintr-un număr de contor din CRM, fără zerourile din față — pentru potrivirea „include”: în CRM numărul apare adesea cu zerouri în față și cu text după el
+ * („09840657-WC”, „09840658-BUC”, „09840659 buc”, „10022612wc”, „007142-BAIE”). Se iau doar blocurile de cel puțin 5 cifre (un „-9” de la capăt nu e un număr de contor), iar potrivirea
+ * e pe BLOC ÎNTREG (nu subșir): „1910021990” nu conține contorul „10021990”.
+ */
+export function meterDigitCores(n: string): string[] {
+  const out = new Set<string>();
+  for (const m of n.matchAll(/\d{5,}/g)) out.add(m[0].replace(/^0+(?=.)/, ""));
+  return [...out];
+}
+
 /** Același număr fără zerourile din față — pentru potrivirea când unul dintre sisteme nu le scrie. */
 export const stripLeadingZeros = (n: string): string => n.replace(/^0+(?=.)/, "");
 
@@ -66,6 +77,8 @@ export type LorawanStats = {
   unmatched: number;
   /// găsite în CRM fără plătitor legat
   noPayer: number;
+  /** numere LoRaWAN potrivite cu contoare din CRM care au text lângă număr (-wc, -bc, buc, zerouri în față…): numărul simplu nu există în CRM */
+  bySuffix: number;
   /// număr de contor care apare la mai multe contoare active din CRM (s-a luat primul cu plătitor)
   ambiguous: number;
   saved: number;

@@ -3088,4 +3088,6 @@ export const EN: Record<string, string> = {
   "Extragerea LoRaWAN nu e activată. Activeaz-o din pagina LoRaWAN.": "LoRaWAN extraction is not activated. Activate it from the LoRaWAN page.",
   "Extragerea e deja activată.": "The extraction is already activated.",
   "Contoarele care transmit automat indexul. După activare, extragerea pornește singură în fiecare zi la 23:30.": "Meters that transmit their reading automatically. After activation, the extraction runs by itself every day at 23:30.",
+  "Potrivite prin sufix": "Matched by suffix",
+  "Contoare din CRM cu sufix (-wc, -bc) după număr: citirea LoRaWAN s-a atribuit lor": "CRM meters with a suffix (-wc, -bc) after the number: the LoRaWAN reading was assigned to them",
 };

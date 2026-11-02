@@ -111,6 +111,7 @@ export default function LorawanPanel({ initial }: { initial: LorawanStatus }) {
           {cell(t("Ignorate (altă lună)"), s.stale, t("Ultima transmisie nu e din luna curentă"))}
           {cell(t("Fără nicio transmisie"), s.placeholders ?? 0, t("Înregistrate pe serverul LoRaWAN, dar cu 0 m³ la o dată fixă: nu au transmis niciodată"))}
           {cell(t("Negăsite în CRM"), s.unmatched)}
+          {(s.bySuffix ?? 0) > 0 && cell(t("Potrivite prin sufix"), s.bySuffix, t("Contoare din CRM cu sufix (-wc, -bc) după număr: citirea LoRaWAN s-a atribuit lor"))}
           {cell(t("Scoase din uz în CRM"), s.removed)}
           {cell(t("Fără plătitor"), s.noPayer, t("Contorul există în CRM, dar nu e legat de un plătitor"))}
           {cell(t("Citite deja în teren"), s.skippedField, t("Luna are o citire făcută de cititor: nu se suprascrie"))}

@@ -8,7 +8,7 @@ import { invalidatePortalClient } from "../portal-cache";
 import { invalidateLorawanMap } from "./lorawan-map";
 import { invalidatePayers } from "./payer-cache";
 import { currentPeriod, shiftPeriod, READING_TZ } from "../meter-readings";
-import { LORAWAN_HOUR, LORAWAN_MINUTE, LORAWAN_SOURCE, normalizeMeterName, parseLorawan, stripLeadingZeros, type LorawanRow, type LorawanStats, type LorawanStatus } from "../lorawan";
+import { LORAWAN_HOUR, LORAWAN_MINUTE, LORAWAN_SOURCE, normalizeMeterName, parseLorawan, meterDigitCores, stripLeadingZeros, type LorawanRow, type LorawanStats, type LorawanStatus } from "../lorawan";
 
 /**
  * Extragerea contoarelor LoRaWAN: o dată pe zi, la 23:30 (ora firmei), se citește lista de la serverul de noduri (`[{ name, volume_m3, ts }]`). Pentru fiecare contor:
@@ -163,14 +163,24 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
     // contoarele CRM după număr (exact, apoi fără zerourile din față); doar cele din exportul 1C, nu rândurile „doar Axioma”
     const exact = new Map<string, CrmRow[]>();
     const loose = new Map<string, CrmRow[]>();
+    // contoarele cu text lângă număr („…-wc”, „…-bc”, „… buc”, zerouri în față) după blocurile lor de cifre: se folosesc doar când numărul simplu nu există în CRM
+    const decorated = new Map<string, CrmRow[]>();
     const removed = new Set<string>();
     for (const r of snap.rows) {
       if (r.source !== "1c") continue;
       const c = normalizeMeterName(r.contor);
       if (!c) continue;
+      const cores = meterDigitCores(c);
+      // „simplu” = doar cifre (cu sau fără zerouri în față); orice altceva are text lângă număr
+      const isPlain = /^\d+$/.test(c);
       if (r.removedAt) {
         removed.add(c);
         removed.add(stripLeadingZeros(c));
+        for (const k of cores) removed.add(k);
+        continue;
+      }
+      if (!isPlain) {
+        for (const k of cores) (decorated.get(k) ?? decorated.set(k, []).get(k)!).push(r);
         continue;
       }
       (exact.get(c) ?? exact.set(c, []).get(c)!).push(r);
@@ -178,7 +188,7 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
       (loose.get(z) ?? loose.set(z, []).get(z)!).push(r);
     }
 
-    const stats: LorawanStats = { received: parsed.rows.length + parsed.invalid + parsed.duplicates, invalid: parsed.invalid, placeholders: 0, stale: 0, matched: 0, removed: 0, unmatched: 0, noPayer: 0, ambiguous: 0, saved: 0, unchanged: 0, skippedField: 0, lowerThanPrev: 0, errors: 0 };
+    const stats: LorawanStats = { received: parsed.rows.length + parsed.invalid + parsed.duplicates, invalid: parsed.invalid, placeholders: 0, stale: 0, matched: 0, removed: 0, unmatched: 0, noPayer: 0, bySuffix: 0, ambiguous: 0, saved: 0, unchanged: 0, skippedField: 0, lowerThanPrev: 0, errors: 0 };
     const unmatched: string[] = [];
     const known: { row: CrmRow; lw: LorawanRow; current: boolean }[] = [];
     for (const lw of parsed.rows) {
@@ -190,7 +200,11 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
       const z = stripLeadingZeros(lw.name);
       // fără zerourile din față doar dacă toate rândurile potrivite au același număr (altfel ar fi o potrivire nesigură)
       const lz = loose.get(z);
-      const hits = exact.get(lw.name) ?? (lz && new Set(lz.map((r) => r.contor.trim())).size === 1 ? lz : undefined);
+      const plain = exact.get(lw.name) ?? (lz && new Set(lz.map((r) => r.contor.trim())).size === 1 ? lz : undefined);
+      // niciun contor cu numărul simplu: se caută cele care îl conțin (-wc, -bc, buc, zerouri în față…) — tot ale aceluiași proprietar
+      const bySfx = plain?.length ? undefined : decorated.get(z);
+      const hits = plain?.length ? plain : bySfx;
+      if (bySfx?.length) stats.bySuffix++;
       if (!hits?.length) {
         if (removed.has(lw.name) || removed.has(z)) stats.removed++;
         else {
@@ -305,7 +319,7 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
     await syncPayerFlags().catch((e) => console.error("[lorawan] marcajul plătitorilor:", e));
 
     await mark("gata");
-    const message = `${stats.received} contoare primite: ${stats.saved} citiri salvate, ${stats.unchanged} neschimbate, ${stats.stale} ignorate (transmisie din altă lună), ${stats.placeholders} fără nicio transmisie, ${stats.unmatched} negăsite în CRM${stats.errors ? `, ${stats.errors} erori` : ""}.${partial ? " Oprită la limita de timp: apasă din nou (sau așteaptă următoarea pornire) ca să continue de unde a rămas." : ""} (${timings.slice(1).join(", ")})`;
+    const message = `${stats.received} contoare primite: ${stats.saved} citiri salvate, ${stats.unchanged} neschimbate, ${stats.stale} ignorate (transmisie din altă lună),${stats.bySuffix ? ` ${stats.bySuffix} potrivite prin număr cu text lângă el (-wc, -bc…),` : ""} ${stats.placeholders} fără nicio transmisie, ${stats.unmatched} negăsite în CRM${stats.errors ? `, ${stats.errors} erori` : ""}.${partial ? " Oprită la limita de timp: apasă din nou (sau așteaptă următoarea pornire) ca să continue de unde a rămas." : ""} (${timings.slice(1).join(", ")})`;
     const durationMs = Date.now() - t0;
     await prisma.lorawanState.update({
       where: { id: STATE_ID },
