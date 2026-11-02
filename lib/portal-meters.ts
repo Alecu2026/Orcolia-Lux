@@ -13,8 +13,8 @@ export type PortalReadingDto = {
   consum: number | null;
   readAt: string;
   photoUrl: string | null;
-  /** „PORTAL” = trimisă de plătitor; „FIELD” = citită de cititor. */
-  source: "PORTAL" | "FIELD";
+  /** „PORTAL” = trimisă de plătitor; „FIELD” = citită de cititor; „LORAWAN” = primită automat de la contor. */
+  source: "PORTAL" | "FIELD" | "LORAWAN";
 };
 
 export type PortalMeterDto = {
@@ -32,6 +32,8 @@ export type PortalMeterDto = {
   openIssues: { kind: IssueKind; note: string | null; reportedAt: string }[];
   /** Citirile ultimelor luni (cele mai noi primele), fără luna curentă. */
   history: PortalReadingDto[];
+  /** Contorul transmite automat prin LoRaWAN: plătitorul nu trimite indexul (nu se poate modifica manual). */
+  auto: boolean;
   /** Scadența următoarei verificări metrologice („YYYY-MM-DD”, ultima verificare + 5 ani); null = necunoscută. */
   metroDue: string | null;
 };

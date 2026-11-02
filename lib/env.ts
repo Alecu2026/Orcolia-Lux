@@ -67,6 +67,8 @@ export const env = {
   },
 
   cronSecret: optional("CRON_SECRET"),
+  // Contoarele LoRaWAN: adresa serverului de noduri și codul de acces (antet `token`). Fără LORAWAN_TOKEN extragerea nu pornește.
+  lorawan: { url: optional("LORAWAN_URL", "https://node.dns.accahul.md/tocrm"), token: optional("LORAWAN_TOKEN") },
   emailInboundSecret: optional("EMAIL_INBOUND_SECRET"),
 
   smtp: {

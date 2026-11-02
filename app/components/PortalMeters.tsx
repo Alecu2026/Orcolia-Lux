@@ -172,10 +172,10 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
             {m.thisMonth ? (
               <p className="font-semibold tabular-nums">
                 {nf(m.thisMonth.value)} m³
-                <span className="ml-1 text-xs font-normal text-ink-soft">({fmtDay(m.thisMonth.readAt)} · {m.thisMonth.source === "PORTAL" ? t("trimisă de tine") : t("citită de cititor")})</span>
+                <span className="ml-1 text-xs font-normal text-ink-soft">({fmtDay(m.thisMonth.readAt)} · {m.thisMonth.source === "PORTAL" ? t("trimisă de tine") : m.thisMonth.source === "LORAWAN" ? t("primită automat (LoRaWAN)") : t("citită de cititor")})</span>
               </p>
             ) : (
-              <p className="font-semibold text-st-progress">{t("încă netrimisă")}</p>
+              <p className="font-semibold text-st-progress">{m.auto ? t("încă nu a sosit") : t("încă netrimisă")}</p>
             )}
           </div>
           {m.openIssues.length > 0 && (
@@ -189,7 +189,9 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
           )}
         </div>
 
-        {doneByField ? (
+        {m.auto ? (
+          <p className="rounded-xl bg-brand-soft/60 p-3 text-sm" data-portal-lorawan="">{t("Acest contor transmite automat indexul (LoRaWAN). Nu trebuie să trimiți citirea.")}</p>
+        ) : doneByField ? (
           <p className="rounded-xl bg-brand-soft/60 p-3 text-sm">{t("Pentru luna aceasta citirea a fost deja înregistrată de cititor. Mulțumim!")}</p>
         ) : (
           <form

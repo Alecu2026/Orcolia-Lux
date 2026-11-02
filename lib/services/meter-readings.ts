@@ -9,6 +9,8 @@ import { getMeterDetail } from "../queries/meters";
 import { invalidatePortalClient } from "../portal-cache";
 import { isEstimatedSource } from "../meters";
 import { queueReadingVerification } from "./reading-verify";
+import { getLorawanMap } from "./lorawan-map";
+import { LORAWAN_SOURCE } from "../lorawan";
 import type { FieldList } from "../meter-routes";
 import {
   AVG_MIN_READINGS,
@@ -108,8 +110,9 @@ export async function listMeterReadings(meterId: string, limit = 36): Promise<Re
 export async function getFieldList(): Promise<FieldList> {
   const period = currentPeriod();
   if (DEMO) return { period, rows: [], routes: [] };
-  const [snap, recent, locs, routes, openIssues] = await Promise.all([
+  const [snap, lw, recent, locs, routes, openIssues] = await Promise.all([
     getMeterSnap(),
+    getLorawanMap(),
     // luna aceasta + cele două dinainte: citirile din teren mai noi decât indexul din 1C
     prisma.meterReading.findMany({
       where: { period: { gte: shiftPeriod(period, 2) } },
@@ -161,6 +164,8 @@ export async function getFieldList(): Promise<FieldList> {
       cur?.avgConsum ?? null,
       // ultimul index cunoscut e calculat (estimat) în 1C și nu a fost înlocuit de o citire din teren mai nouă
       !useField && isEstimatedSource(r.sursa) ? 1 : 0,
+      // contor care transmite automat prin LoRaWAN: nu se citește și nu se editează manual
+      lw.map.has(r.id) ? 1 : 0,
     ];
   });
   return { period, rows, routes: routes.filter((r) => r.active) };
@@ -180,12 +185,15 @@ export type SaveInput = {
   readAt?: Date | null;
   /** Vine din coada de pe telefon: o citire mai recentă deja salvată nu se suprascrie cu una mai veche. */
   fromQueue?: boolean;
-  /** „PORTAL”: citirea o trimite plătitorul din portal — nu suprascrie o citire făcută de cititor în aceeași lună. */
-  source?: "PORTAL";
+  /** „PORTAL”: citirea o trimite plătitorul din portal — nu suprascrie o citire făcută de cititor în aceeași lună. „LORAWAN”: citirea vine automat de la contor (lib/services/lorawan.ts). */
+  source?: "PORTAL" | "LORAWAN";
 };
 
 /** O citire din coada offline nu poate avea ora în viitor și nici să fie mai veche de atât. */
 export const QUEUE_MAX_AGE_DAYS = 40;
+
+/** Mesajul pentru o încercare de a citi / corecta manual un contor LoRaWAN. */
+export const LORAWAN_LOCKED_ERROR = "Contorul transmite automat prin LoRaWAN: indexul nu se poate citi sau modifica manual.";
 
 /** Salvează (sau corectează) citirea de luna aceasta a unui contor. */
 export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveReadingResult> {
@@ -196,6 +204,8 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
   const row = snap.rows.find((r) => r.id === input.meterId);
   if (!row) return { ok: false, error: "Contorul nu există în lista curentă." };
   if (row.removedAt) return { ok: false, error: "Contorul este scos din uz." };
+  // contoarele care transmit prin LoRaWAN nu se citesc și nu se corectează manual (nici de cititor, nici de plătitor): indexul vine singur
+  if (input.source !== LORAWAN_SOURCE && (await getLorawanMap()).map.has(input.meterId)) return { ok: false, error: LORAWAN_LOCKED_ERROR };
 
   const now = new Date();
   let takenAt = now;
@@ -222,8 +232,10 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     }
   }
   const v = round3(value);
-  // media lunară a contorului: baza verificării „peste / sub medie” și se păstrează pe citire (pentru semnalarea ei în liste)
-  const avg = prev != null ? await getMeterAverage(input.meterId, period).catch(() => null) : null;
+  // citirea existentă a lunii (dacă e): regula portalului / LoRaWAN de mai jos și emailul de verificare către titular, la o modificare
+  const cur = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { source: true, value: true, avgConsum: true } });
+  // media lunară a contorului: baza verificării „peste / sub medie” și se păstrează pe citire (pentru semnalarea ei în liste); la actualizarea zilnică LoRaWAN se păstrează media deja calculată
+  const avg = prev == null ? null : input.source === LORAWAN_SOURCE && cur?.avgConsum != null ? { avg: cur.avgConsum, count: 0 } : await getMeterAverage(input.meterId, period).catch(() => null);
   if (!input.confirmed && prev != null) {
     if (v < prev) return { ok: false, error: "Indexul este mai mic decât cel anterior.", confirm: "lower" };
     const chk = checkConsum(round3(v - prev), avg?.avg);
@@ -246,10 +258,10 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     if (lastLoc?.lat != null && lastLoc.lng != null) distanceM = Math.round(distanceMeters(lat, lng, lastLoc.lat, lastLoc.lng));
   }
 
-  // citirea existentă a lunii (dacă e): regula portalului de mai jos și emailul de verificare către titular, la o modificare
-  const cur = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { source: true, value: true } });
   // plătitorul își poate corecta propria citire din portal, dar nu o citire făcută de cititor / operator
   if (input.source === "PORTAL" && cur && cur.source !== "PORTAL") return { ok: false, error: "Pentru luna aceasta citirea a fost deja înregistrată de cititor." };
+  // citirea automată nu înlocuiește una făcută de un cititor / operator în aceeași lună
+  if (input.source === LORAWAN_SOURCE && cur && cur.source == null) return { ok: false, error: "Pentru luna aceasta citirea a fost deja înregistrată de cititor." };
   const changed = !!cur && cur.value !== v;
   const data = {
     contor: row.contor,
@@ -283,7 +295,7 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
   const location = await updateMeterLocation(actor, row, { address: input.address ?? null, lat, lng, accuracy });
   invalidatePortalClient(row.clientId); // plătitorul vede imediat citirea în portal
   // email de verificare către titular: citire nouă din portal, sau index schimbat (de plătitor în portal / de un angajat peste citirea trimisă de plătitor)
-  const ownerNotice = !!row.clientId && (cur ? changed && (input.source === "PORTAL" || cur.source === "PORTAL") : input.source === "PORTAL");
+  const ownerNotice = !!row.clientId && input.source !== LORAWAN_SOURCE && (cur ? changed && (input.source === "PORTAL" || cur.source === "PORTAL") : input.source === "PORTAL");
   let ownerEmailTo: string | null = null;
   if (ownerNotice && row.clientId) {
     ownerEmailTo = await queueReadingVerification({

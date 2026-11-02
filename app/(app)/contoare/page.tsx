@@ -75,12 +75,22 @@ export default async function MetersPage({
           <h1 className="text-xl font-bold">{t("Contoare")}</h1>
           <p className="mt-0.5 text-sm text-ink-soft">{t("Toate contoarele de apă — click pe un rând pentru citiri, calcul și abonat. Contoarele de la aceeași adresă apar toate.")}</p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        {can(user, "meters.manage") && (
+          <Link
+            href="/contoare/lorawan"
+            className="tap inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]"
+          >
+            📡 LoRaWAN
+          </Link>
+        )}
         <Link
           href="/platitori"
           className="tap inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]"
         >
           {t("Plătitori")}
         </Link>
+        </div>
       </div>
       <MetersManager initial={{ filters, page, perPage, items, total }} serverFailed={failed} warming={warming} canTask={can(user, "tasks.create")} canEditInvoices={can(user, "invoices.edit")} canRead={can(user, "meters.read")} canExport={can(user, "meters.export")} />
     </div>

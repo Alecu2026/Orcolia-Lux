@@ -8,6 +8,8 @@ import { buildMeterStatic, parseMeterId } from "../queries/meters";
 import { getSectorMap } from "./meter-route-data";
 import { getPayerSnap, type PayerSnap } from "./payer-cache";
 import { getMetrologyMap } from "./metrology";
+import { getLorawanMap } from "./lorawan-map";
+import { LORAWAN_LABEL } from "../lorawan";
 import { invalidateOneC } from "./onec-cache";
 import {
   decodeMeters,
@@ -189,7 +191,7 @@ let jl1: { key: string; snap: MeterSnap } | null = null;
 let jBuilding: { key: string; p: Promise<MeterSnap> } | null = null;
 
 /** Alipește datele plătitorului la fiecare contor (după client; dacă legătura lipsește — după contul personal sau contract). */
-function join(rows: MeterStatic[], pay: PayerSnap, sectors: Map<string, string>, metro: Map<string, string>): MeterTuple[] {
+function join(rows: MeterStatic[], pay: PayerSnap, sectors: Map<string, string>, metro: Map<string, string>, lw: Map<string, unknown>): MeterTuple[] {
   const byId = new Map(pay.rows.map((r) => [r.id, r]));
   const bySeries = new Map<string, string>();
   const byContract = new Map<string, string>();
@@ -213,6 +215,8 @@ function join(rows: MeterStatic[], pay: PayerSnap, sectors: Map<string, string>,
       sectors.get(parseMeterId(s[0])?.subKey ?? "") ?? null,
       metro.get(s[0]) ?? null,
     ];
+    // contor LoRaWAN: sursa devine „LoRaWAN”. Indexul rămâne cel din 1C — citirea automată a lunii se vede în Citiri teren și în fișa contorului (aici ar încurca indexul anterior folosit la calcule)
+    if (lw.has(s[0])) t[17] = LORAWAN_LABEL;
     return t;
   });
   return sortMeterTuples(out);
@@ -220,13 +224,13 @@ function join(rows: MeterStatic[], pay: PayerSnap, sectors: Map<string, string>,
 
 /** Lista curentă de contoare, gata de filtrat (în memorie) și de trimis browserului (gzip). Refăcută doar când se schimbă un strat. */
 export async function getMeterSnap(): Promise<MeterSnap> {
-  const [st, pay, metro] = await Promise.all([getMeterStatic(), getPayerSnap(), getMetrologyMap()]);
-  const key = `${st.version}.${pay.version}.${metro.version}`;
+  const [st, pay, metro, lw] = await Promise.all([getMeterStatic(), getPayerSnap(), getMetrologyMap(), getLorawanMap()]);
+  const key = `${st.version}.${pay.version}.${metro.version}.${lw.version}`;
   if (jl1 && jl1.key === key) return jl1.snap;
   if (jBuilding && jBuilding.key === key) return jBuilding.p;
   const p = (async () => {
     const t0 = Date.now();
-    const tuples = join(st.rows, pay, await getSectorMap(st.version), metro.map);
+    const tuples = join(st.rows, pay, await getSectorMap(st.version), metro.map, lw.map);
     const gz = gzipSync(Buffer.from(JSON.stringify({ v: 1, at: st.builtAt, sorted: true, rows: tuples }), "utf8"), { level: 6 });
     const snap: MeterSnap = { version: createHash("sha1").update(key).digest("hex").slice(0, 16), builtAt: st.builtAt, gz, rows: decodeMeters(tuples, true) };
     jl1 = { key, snap };

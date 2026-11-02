@@ -1470,3 +1470,44 @@ model RoleTemplate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+/// Contoare din CRM care transmit automat prin LoRaWAN (extragere zilnică la 23:00 din serverul de noduri). Cheia = id-ul contorului din CRM (vezi lib/queries/meters.ts).
+/// Un contor intră aici la prima potrivire cu numărul primit (fără prefixul „S”), chiar dacă ultima transmisie e dintr-o lună mai veche (atunci citirea se ignoră, dar sursa rămâne LoRaWAN
+/// și contorul rămâne needitabil manual).
+model LorawanMeter {
+  id        String   @id @map("_id")
+  /// numărul contorului ca în CRM
+  contor    String
+  clientId  String?  @db.ObjectId
+  /// ultimul volum primit (m³) și momentul transmisiei
+  volume    Float
+  ts        DateTime
+  /// luna ultimei citiri salvate din acest contor („YYYY-MM”); lipsă = nicio citire salvată
+  period    String?
+  /// la ultima extragere: matched (transmisie din luna curentă) | stale (transmisie din altă lună: ignorată)
+  status    String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([contor])
+}
+
+/// Starea extragerii LoRaWAN (un singur rând, id „main”).
+model LorawanState {
+  id          String    @id @map("_id")
+  /// ziua (în fusul firmei, „YYYY-MM-DD”) pentru care extragerea automată s-a terminat cu succes
+  lastRunDay  String    @default("")
+  lastRunAt   DateTime?
+  lastOk      Boolean   @default(true)
+  lastTrigger String    @default("")
+  message     String    @default("")
+  durationMs  Int       @default(0)
+  /// contoare numărate la ultima extragere (primite, potrivite, citiri salvate, ignorate…)
+  stats       Json?
+  /// primele nume de contoare primite care nu există în CRM
+  unmatched   Json?
+  /// o extragere cu eșec se reia după acest moment
+  retryAt     DateTime  @default("1970-01-01T00:00:00.000Z")
+  /// blocaj între instanțe: nimeni nu pornește o extragere cât e în viitor
+  lockUntil   DateTime  @default("1970-01-01T00:00:00.000Z")
+}

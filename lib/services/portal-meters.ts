@@ -2,7 +2,8 @@ import "server-only";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { getMeterSnap } from "./meter-cache";
-import { getReading, saveReading } from "./meter-readings";
+import { getReading, saveReading, LORAWAN_LOCKED_ERROR } from "./meter-readings";
+import { getLorawanMap } from "./lorawan-map";
 import { reportIssue } from "./meter-issues";
 import { uploadReadingPhoto } from "./meter-photo";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "./notifications";
@@ -33,7 +34,7 @@ const dto = (r: { id: string; period: string; value: number; prevValue: number |
   consum: r.prevValue != null ? Math.round((r.value - r.prevValue) * 1000) / 1000 : null,
   readAt: r.readAt.toISOString(),
   photoUrl: r.photoUrl,
-  source: r.source === "PORTAL" ? "PORTAL" : "FIELD",
+  source: r.source === "PORTAL" ? "PORTAL" : r.source === "LORAWAN" ? "LORAWAN" : "FIELD",
 });
 
 /** Contoarele plătitorului cu ultimul index, citirea lunii curente, neregulile deschise și istoricul. */
@@ -43,7 +44,8 @@ export async function listPortalMeters(clientId: string): Promise<{ period: stri
   const rows = await ownedRows(clientId);
   if (rows.length === 0) return { period, meters: [] };
   const ids = rows.map((r) => r.id);
-  const [readings, issues] = await Promise.all([
+  const [lw, readings, issues] = await Promise.all([
+    getLorawanMap(),
     prisma.meterReading.findMany({
       where: { meterId: { in: ids }, period: { gte: shiftPeriod(period, HISTORY_MONTHS) } },
       select: { id: true, meterId: true, period: true, value: true, prevValue: true, readAt: true, photoUrl: true, source: true },
@@ -72,6 +74,7 @@ export async function listPortalMeters(clientId: string): Promise<{ period: stri
           .filter((i) => i.meterId === r.id)
           .map((i) => ({ kind: isIssueKind(i.kind) ? i.kind : "OTHER", note: i.note, reportedAt: i.reportedAt.toISOString() })),
         history: before.map(dto),
+        auto: lw.map.has(r.id),
         metroDue: r.metroDue,
       };
     })
@@ -87,6 +90,7 @@ export async function submitPortalReading(client: Client, input: PortalReadingIn
   const rows = await ownedRows(client.id);
   const row = rows.find((r) => r.id === input.meterId);
   if (!row) return { ok: false, error: "Contor invalid." };
+  if ((await getLorawanMap()).map.has(row.id)) return { ok: false, error: LORAWAN_LOCKED_ERROR };
   const kind = input.issueKind;
   if (kind && !(PORTAL_ISSUE_KINDS as string[]).includes(kind)) return { ok: false, error: "Stare invalidă." };
   if (kind === "OTHER" && !input.issueNote.trim()) return { ok: false, error: "Descrie problema." };

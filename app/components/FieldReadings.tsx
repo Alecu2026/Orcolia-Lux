@@ -753,7 +753,7 @@ const FieldTr = memo(function FieldTr({ r, onOpen, compact }: { r: FieldRow; onO
           {r.consum != null ? `${sus === "lower" || sus === "high" || sus === "low" ? "⚠ " : ""}${num(r.consum)} m³` : <Dash />}
         </div>
         <div role="cell" className={CELL}>{r.readAt ? dt(r.readAt) : <Dash />}</div>
-        <div role="cell" className={CELL} title={r.by ?? ""}>{r.by ? <>{r.portal && <span title={t("Trimisă de plătitor din portal")} className="mr-1 rounded bg-brand/15 px-1 text-[10px] font-semibold text-brand">🌐</span>}{r.by}</> : <Dash />}</div>
+        <div role="cell" className={CELL} title={r.by ?? ""}>{r.by ? <>{r.auto && <span title={t("Contor LoRaWAN")} className="mr-1 rounded bg-brand/15 px-1 text-[10px] font-semibold text-brand">📡</span>}{r.portal && <span title={t("Trimisă de plătitor din portal")} className="mr-1 rounded bg-brand/15 px-1 text-[10px] font-semibold text-brand">🌐</span>}{r.by}</> : <Dash />}</div>
         <div role="cell" className={`${CELL} text-center`}>{r.photo ? "📷" : <Dash />}</div>
         <div role="cell" className={`${num_} ${sus === "far" ? "font-semibold text-st-cancelled" : "text-ink-soft"}`} title={sus === "far" ? suspectLabel("far", t) : undefined}>
           {r.distanceM != null ? `${sus === "far" ? "⚠ " : ""}${num(r.distanceM)} m` : <Dash />}
@@ -1012,6 +1012,7 @@ function ReadingDialog({
           onClose={onClose}
           openIssue={row.issue}
           onIssue={onIssue}
+          auto={row.auto}
         />
         {canViewMeter && (
           <Link href={`/contoare/${encodeURIComponent(row.id)}`} className="mt-3 block text-center text-xs text-brand underline">

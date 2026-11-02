@@ -84,7 +84,7 @@ export function parseIndex(raw: string): number | null {
  */
 /** 16 sector („Участок” din 1C), 17 neregula deschisă (cod, vezi lib/meter-issues.ts) sau null. */
 /** 18 (1 = citirea lunii vine din portal, trimisă de plătitor) 19 (consumul mediu lunar al contorului la citire, m³) și 20 (1 = ultimul index cunoscut e calculat / estimat, nu citit) lipsesc în listele salvate pe telefon mai vechi. */
-export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null, string | null, string | null, (0 | 1)?, (number | null)?, (0 | 1)?];
+export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null, string | null, string | null, (0 | 1)?, (number | null)?, (0 | 1)?, (0 | 1)?];
 
 export type FieldRow = {
   id: string;
@@ -106,6 +106,8 @@ export type FieldRow = {
   consum: number | null;
   /** Consumul mediu lunar al contorului la momentul citirii (m³), sau null dacă nu era destul istoric. */
   avg: number | null;
+  /** Contorul transmite automat prin LoRaWAN: nu se citește și nu se editează manual. */
+  auto: boolean;
   /** Ultimul index cunoscut e calculat (estimat), nu citit de un controlor — contorul merită citit și verificat. */
   estimated: boolean;
   /** Citirea de luna aceasta are locație GPS. */
@@ -161,6 +163,7 @@ export function decodeField(t: FieldTuple[]): FieldRow[] {
     consum: fieldConsum(x[6], x[4]),
     avg: x[19] ?? null,
     estimated: x[20] === 1,
+    auto: x[21] === 1,
     geo: x[11] === 1,
     lat: x[12] ?? null,
     lng: x[13] ?? null,

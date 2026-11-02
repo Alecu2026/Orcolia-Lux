@@ -52,6 +52,7 @@ export default function ReadingForm({
   onQueued,
   openIssue = null,
   onIssue,
+  auto = false,
 }: {
   meterId: string;
   /** Adresa contorului — se arată ca să fie clar unde se face citirea (locația GPS se salvează împreună cu indexul). */
@@ -84,6 +85,8 @@ export default function ReadingForm({
   openIssue?: string | null;
   /** Neregula a fost raportată (rândul din listă se marchează). */
   onIssue?: (kind: string) => void;
+  /** Contorul transmite automat prin LoRaWAN: indexul nu se introduce și nu se corectează manual. */
+  auto?: boolean;
 }) {
   const t = useT();
   const toast = useToast();
@@ -387,6 +390,20 @@ export default function ReadingForm({
           : geo.state === "unavailable"
             ? t("Acest telefon nu poate furniza locația.")
             : t("Nu am putut obține locația.");
+
+  if (auto) {
+    return (
+      <div className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-3 text-sm" data-lorawan-locked="">
+        <p className="font-semibold">{t("Contor LoRaWAN")}</p>
+        <p className="mt-1 text-ink-soft">{t("Acest contor transmite automat indexul (LoRaWAN); nu se citește și nu se modifică manual.")}</p>
+        {onClose && (
+          <button type="button" onClick={onClose} className="tap mt-3 h-9 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-semibold hover:bg-[var(--color-surface)]">
+            {t("Închide")}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -11,6 +11,7 @@ import ReadingForm from "./ReadingForm";
 import MeterIssuesPanel from "./MeterIssuesPanel";
 import MetrologyEditor from "./MetrologyEditor";
 import { currentPeriod, type ReadingDto } from "@/lib/meter-readings";
+import { LORAWAN_LABEL } from "@/lib/lorawan";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 
@@ -375,6 +376,9 @@ function FieldReadingSection({
               <span className="text-ink-soft">{t("Încă necitit luna aceasta.")}</span>
             )}
           </span>
+          {row.sursa === LORAWAN_LABEL ? (
+            <span className="shrink-0 rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold text-brand" title={t("Acest contor transmite automat indexul (LoRaWAN); nu se citește și nu se modifică manual.")}>LoRaWAN</span>
+          ) : (
           <button
             type="button"
             disabled={pending}
@@ -383,6 +387,7 @@ function FieldReadingSection({
           >
             {cur ? t("Corectează citirea") : t("Introdu citirea")}
           </button>
+          )}
         </div>
       )}
     </Section>
