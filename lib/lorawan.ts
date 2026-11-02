@@ -64,6 +64,8 @@ export function parseLorawan(payload: unknown): LorawanParsed {
 
 export type LorawanStats = {
   received: number;
+  /** rânduri repetate din feed (același număr de mai multe ori): se ia o singură dată; „received” le include, deci received − duplicates = numere distincte (+ invalide) */
+  duplicates?: number;
   invalid: number;
   /// contoare înregistrate pe serverul de noduri, dar care n-au transmis niciodată (0 m³, dată de pornire din altă lună): nu se marchează și nu se numără ca LoRaWAN
   placeholders: number;

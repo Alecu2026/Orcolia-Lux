@@ -20,6 +20,8 @@ export type ChatState = {
   canWrite: boolean;
   /** Dacă nu poate scrie: motivul, afișat în locul căsuței de scris. */
   writeBlockedReason: string | null;
+  /** Clientul poate redeschide cererea (e finalizată)? */
+  canReopen: boolean;
   /** Numele celui care citește (operatorul sau clientul). */
   viewerName: string;
   /** Până când a citit CEALALTĂ parte conversația (ISO) — pentru „Văzut". */

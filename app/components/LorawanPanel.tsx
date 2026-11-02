@@ -106,7 +106,8 @@ export default function LorawanPanel({ initial }: { initial: LorawanStatus }) {
 
       {s && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {cell(t("Primite"), s.received)}
+          {cell(t("Primite"), s.received, t("Rânduri primite de la serverul LoRaWAN (cu repetările)"))}
+          {(s.duplicates ?? 0) > 0 && cell(t("Repetate în feed"), s.duplicates ?? 0, t("Același număr apare de mai multe ori în feed (ex. contoarele fără nicio transmisie apar de 3 ori); se ia o singură dată"))}
           {cell(t("Citiri salvate"), s.saved, t("Indexuri noi sau schimbate față de ieri"))}
           {cell(t("Neschimbate"), s.unchanged)}
           {cell(t("Ignorate (altă lună)"), s.stale, t("Ultima transmisie nu e din luna curentă"))}

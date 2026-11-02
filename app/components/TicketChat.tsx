@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CHAT_MAX_BODY, CHAT_POLL_MS, type ChatMessage, type ChatSender, type ChatState } from "@/lib/ticket-chat-shared";
 import { useLocale, useT } from "@/lib/i18n/context";
@@ -60,11 +61,14 @@ export default function TicketChat({
 }) {
   const t = useT();
   const tag = dateTag(useLocale());
+  const router = useRouter();
   const own: ChatSender = viewer === "client" ? "CLIENT" : "STAFF";
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<Pending[]>([]);
-  const [meta, setMeta] = useState<Pick<ChatState, "status" | "canWrite" | "writeBlockedReason" | "peerReadAt" | "viewerName"> | null>(null);
+  const [meta, setMeta] = useState<Pick<ChatState, "status" | "canWrite" | "canReopen" | "writeBlockedReason" | "peerReadAt" | "viewerName"> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [newBelow, setNewBelow] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -81,7 +85,7 @@ export default function TicketChat({
   }, []);
 
   const applyState = useCallback((st: ChatState, replace: boolean) => {
-    setMeta({ status: st.status, canWrite: st.canWrite, writeBlockedReason: st.writeBlockedReason, peerReadAt: st.peerReadAt, viewerName: st.viewerName });
+    setMeta({ status: st.status, canWrite: st.canWrite, canReopen: st.canReopen, writeBlockedReason: st.writeBlockedReason, peerReadAt: st.peerReadAt, viewerName: st.viewerName });
     setLoadError(null);
     if (st.messages.length > 0) {
       const last = st.messages[st.messages.length - 1].createdAt;
@@ -182,6 +186,24 @@ export default function TicketChat({
     void sendBody(body, tempId);
   }
 
+  async function reopen() {
+    setReopening(true);
+    setReopenError(null);
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}/reopen`, { method: "POST" });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(j?.error ?? t("Eroare {n}", { n: res.status }));
+      }
+      await poll(true);
+      router.refresh(); // pagina cererii își schimbă statusul
+    } catch (e) {
+      setReopenError(e instanceof Error ? t(e.message) : t("Nu am putut redeschide cererea."));
+    } finally {
+      setReopening(false);
+    }
+  }
+
   function retry(p: Pending) {
     setPending((list) => list.map((x) => (x.tempId === p.tempId ? { ...x, failed: false } : x)));
     void sendBody(p.body, p.tempId);
@@ -207,7 +229,7 @@ export default function TicketChat({
         <div ref={listRef} onScroll={onScroll} className={`${heightClass} overflow-y-auto overscroll-contain px-3 py-3`}>
           {!meta && !loadError && <p className="py-10 text-center text-sm text-ink-soft">{t("Se încarcă conversația…")}</p>}
           {loadError && <p className="py-10 text-center text-sm text-st-cancelled">{loadError}</p>}
-          {meta && items.length === 0 && <p className="py-10 text-center text-sm text-ink-soft">{t("Încă nu e niciun mesaj. Scrie primul mesaj mai jos.")}</p>}
+          {meta && meta.canWrite && items.length === 0 && <p className="py-10 text-center text-sm text-ink-soft">{t("Încă nu e niciun mesaj. Scrie primul mesaj mai jos.")}</p>}
 
           {items.map((it, i) => {
             const prev = items[i - 1];
@@ -269,12 +291,25 @@ export default function TicketChat({
         )}
       </div>
 
-      {meta?.status === "DONE" && viewer === "client" && meta.canWrite && (
-        <p className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-1.5 text-center text-[11px] text-ink-soft">{t("Cerere finalizată. Dacă scrii un mesaj, se redeschide.")}</p>
-      )}
-
       {meta && !meta.canWrite ? (
-        <p className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-3 text-center text-xs text-ink-soft">{meta.writeBlockedReason ?? t("Nu poți scrie aici.")}</p>
+        <div className="border-t border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-3 text-center text-xs text-ink-soft" data-chat-blocked="">
+          <p>{meta.writeBlockedReason ? t(meta.writeBlockedReason) : t("Nu poți scrie aici.")}</p>
+          {meta.canReopen && (
+            <>
+              <p className="mt-1">{t("Dacă problema nu e rezolvată sau ai o întrebare nouă, redeschide cererea.")}</p>
+              <button
+                type="button"
+                onClick={() => void reopen()}
+                disabled={reopening}
+                data-chat-reopen=""
+                className="tap mt-2 h-10 cursor-pointer rounded-xl border border-brand/50 px-4 text-sm font-semibold text-brand hover:bg-brand-soft disabled:opacity-50"
+              >
+                {reopening ? t("Se redeschide…") : t("Redeschide cererea")}
+              </button>
+              {reopenError && <p className="mt-1 text-st-cancelled">{reopenError}</p>}
+            </>
+          )}
+        </div>
       ) : (
         <form
           onSubmit={(e) => { e.preventDefault(); send(); }}

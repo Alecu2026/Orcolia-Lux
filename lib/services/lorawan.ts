@@ -208,7 +208,7 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
     const snap = await getMeterSnap();
     await mark("potrivirea cu contoarele din CRM");
     const classify = buildMatcher(snap.rows, period);
-    const stats: LorawanStats = { received: parsed.rows.length + parsed.invalid + parsed.duplicates, invalid: parsed.invalid, placeholders: 0, stale: 0, matched: 0, removed: 0, unmatched: 0, noPayer: 0, bySuffix: 0, ambiguous: 0, saved: 0, unchanged: 0, skippedField: 0, lowerThanPrev: 0, errors: 0 };
+    const stats: LorawanStats = { received: parsed.rows.length + parsed.invalid + parsed.duplicates, invalid: parsed.invalid, duplicates: parsed.duplicates, placeholders: 0, stale: 0, matched: 0, removed: 0, unmatched: 0, noPayer: 0, bySuffix: 0, ambiguous: 0, saved: 0, unchanged: 0, skippedField: 0, lowerThanPrev: 0, errors: 0 };
     const unmatched: string[] = [];
     const known: { row: CrmRow; lw: LorawanRow; current: boolean }[] = [];
     for (const lw of parsed.rows) {

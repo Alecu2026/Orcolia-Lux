@@ -49,7 +49,8 @@ export async function resolveChatAccess(taskId: string, as: "staff" | "client"):
   if (!client) return { ok: false, status: 401, error: "Autentificare necesară." };
   const task = await loadTask(taskId);
   if (!task || task.type !== "TICKET" || task.clientId !== client.id) return { ok: false, status: 404, error: "Cerere inexistentă." };
-  const blockedReason = task.status === "CANCELLED" ? "Cererea a fost anulat — nu mai poți scrie aici." : null;
+  // cerere finalizată: clientul nu mai scrie în ea, dar o poate redeschide (reopenByClient)
+  const blockedReason = task.status === "CANCELLED" ? "Cererea a fost anulat — nu mai poți scrie aici." : task.status === "DONE" ? "Cererea dvs. a fost finalizată." : null;
   return { ok: true, viewer: { kind: "client", id: client.id, name: client.name, canWrite: blockedReason == null, blockedReason }, task };
 }
 
@@ -81,6 +82,7 @@ export function chatState(access: Extract<ChatAccess, { ok: true }>, messages: C
     status: task.status,
     canWrite: viewer.canWrite,
     writeBlockedReason: viewer.blockedReason,
+    canReopen: viewer.kind === "client" && task.status === "DONE",
     viewerName: viewer.name,
     peerReadAt: peerRead ? peerRead.toISOString() : null,
   };
@@ -103,7 +105,7 @@ export async function markChatRead(access: Extract<ChatAccess, { ok: true }>): P
   }
 }
 
-/** Salvează un mesaj nou și actualizează tichetul (ultimul mesaj, marcajul de citire al autorului, redeschiderea dacă era finalizat). */
+/** Salvează un mesaj nou și actualizează tichetul (ultimul mesaj, marcajul de citire al autorului). */
 export async function postChatMessage(access: Extract<ChatAccess, { ok: true }>, body: string): Promise<ChatMessage> {
   const { viewer, task } = access;
   const sender: ChatSender = viewer.kind === "client" ? "CLIENT" : "STAFF";
@@ -124,11 +126,55 @@ export async function postChatMessage(access: Extract<ChatAccess, { ok: true }>,
       chatLastMsgAt: msg.createdAt,
       chatLastSender: sender,
       ...(sender === "STAFF" ? { chatStaffReadAt: msg.createdAt } : { chatClientReadAt: msg.createdAt }),
-      // un client care scrie la un tichet finalizat îl redeschide
-      ...(sender === "CLIENT" && task.status === "DONE" ? { status: "NEW" as const } : {}),
     },
   });
   return toMsg(msg);
+}
+
+/**
+ * Clientul redeschide o cerere finalizată: status NOU, fără dată de închidere; rămâne în jurnalul cererii, iar echipa (asignații,
+ * altfel adminii) primește notificare. Condiționat pe status (updateMany) ca două apăsări deodată să redeschidă o singură dată.
+ */
+export async function reopenByClient(access: Extract<ChatAccess, { ok: true }>): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { viewer, task } = access;
+  if (viewer.kind !== "client") return { ok: false, error: "Doar clientul poate redeschide cererea." };
+  const r = await prisma.task.updateMany({
+    where: { id: task.id, type: "TICKET", clientId: viewer.id, status: "DONE" },
+    data: { status: "NEW", closedAt: null },
+  });
+  if (r.count === 0) return { ok: false, error: "Cererea nu este finalizată." };
+  await prisma.taskActivity
+    .create({ data: { taskId: task.id, userId: task.creatorId, action: "STATUS_CHANGED", fromStatus: "DONE", toStatus: "NEW", note: `Redeschisă de client: ${viewer.name}` } })
+    .catch((e) => console.error("[ticket-chat] jurnalizarea redeschiderii a eșuat:", e));
+  return { ok: true };
+}
+
+/** După redeschidere: anunță echipa (în aplicație, push și Telegram). Rulează în `after`, erorile doar se loghează. */
+export async function notifyReopened(access: Extract<ChatAccess, { ok: true }>): Promise<void> {
+  const { viewer, task } = access;
+  try {
+    const assigned = [task.assigneeId, ...task.extraAssigneeIds].filter((x): x is string => !!x);
+    const ids = assigned.length
+      ? assigned
+      : [...new Set([
+          ...(await filteredAdminRecipients({ eventKeys: ["ticket.message", "ticket.portal"] })),
+          ...(await observerRecipients("ticket.message")),
+        ])];
+    if (!ids.length) return;
+    await notifyUsers(
+      ids,
+      {
+        title: `🔄 ${viewer.name} a redeschis cererea${task.seq != null ? ` #${task.seq}` : ""}`,
+        body: excerpt(task.title),
+        url: `/tickets/${task.id}`,
+        taskId: task.id,
+        seq: task.seq,
+      },
+      { telegram: true },
+    );
+  } catch (e) {
+    console.error("[ticket-chat] notificarea redeschiderii a eșuat:", e);
+  }
 }
 
 const EMAIL_COOLDOWN_MS = 90_000;
