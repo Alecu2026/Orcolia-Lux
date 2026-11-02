@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { lookupEpoch } from "../lookup-memory";
+import { ensureIndex } from "../log-count";
 import { taskEpoch } from "../task-epoch";
 import { PROJECT_DATASET_MAX, decodeProjects, type ProjectCountsPayload, type ProjectItem, type ProjectPayload, type ProjectTuple } from "../projects-snapshot";
 
@@ -65,11 +66,19 @@ async function buildCounts(): Promise<CountsSnap> {
   const startedAt = Date.now();
   const map = new Map<string, number>();
   if (!DEMO) {
-    // $exists + hint pe indexul projectId: parcurge doar cheile indexului (fără documentele sarcinilor)
-    const res = (await prisma.task.aggregateRaw({
-      pipeline: [{ $match: { projectId: { $exists: true, $ne: null } } }, { $group: { _id: "$projectId", n: { $sum: 1 } } }],
-      options: { hint: { projectId: 1 } },
-    })) as unknown as { _id: { $oid?: string } | string; n: number }[];
+    // Indexul pe projectId lipsește dacă baza de date a fost creată fără `db push`: se creează o singură dată (în fundal), iar până atunci agregarea merge fără indicație de index
+    // (o „hint” spre un index inexistent ar da eroare și ar strica pagina Proiecte).
+    ensureIndex("Task", { projectId: 1 }, "Task_projectId_idx");
+    const pipeline = [{ $match: { projectId: { $exists: true, $ne: null } } }, { $group: { _id: "$projectId", n: { $sum: 1 } } }];
+    type Row = { _id: { $oid?: string } | string; n: number };
+    let res: Row[];
+    try {
+      // $exists + hint pe indexul projectId: parcurge doar cheile indexului (fără documentele sarcinilor)
+      res = (await prisma.task.aggregateRaw({ pipeline, options: { hint: { projectId: 1 } } })) as unknown as Row[];
+    } catch (e) {
+      if (!/hint|index/i.test(String((e as Error)?.message ?? e))) throw e;
+      res = (await prisma.task.aggregateRaw({ pipeline })) as unknown as Row[];
+    }
     for (const r of res) {
       const id = typeof r._id === "string" ? r._id : r._id?.$oid;
       if (id) map.set(id, Number(r.n) || 0);
