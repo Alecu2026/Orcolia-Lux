@@ -8,6 +8,7 @@ import { invalidatePortalClient } from "../portal-cache";
 import { invalidateLorawanMap } from "./lorawan-map";
 import { invalidatePayers } from "./payer-cache";
 import { currentPeriod, shiftPeriod, READING_TZ } from "../meter-readings";
+import type { DiagKind, DiagTuple, LorawanDiag } from "../lorawan";
 import { LORAWAN_HOUR, LORAWAN_MINUTE, LORAWAN_SOURCE, normalizeMeterName, parseLorawan, meterDigitCores, stripLeadingZeros, type LorawanRow, type LorawanStats, type LorawanStatus } from "../lorawan";
 
 /**
@@ -119,6 +120,52 @@ async function claim(): Promise<boolean> {
 
 type CrmRow = Awaited<ReturnType<typeof getMeterSnap>>["rows"][number];
 
+/** Cum se potrivește un număr din feedul LoRaWAN cu contoarele din CRM (aceeași logică la extragere și în pagina de diagnostic). */
+export type Classified = { kind: "placeholder" } | { kind: "unmatched" } | { kind: "removed" } | { kind: "found"; hits: CrmRow[]; viaSuffix: boolean };
+
+export function buildMatcher(rows: CrmRow[], period: string): (lw: LorawanRow) => Classified {
+  // contoarele CRM după număr (exact, apoi fără zerourile din față); doar cele din exportul 1C, nu rândurile „doar Axioma”
+  const exact = new Map<string, CrmRow[]>();
+  const loose = new Map<string, CrmRow[]>();
+  // contoarele cu text lângă număr („…-wc”, „…-bc”, „… buc”, zerouri în față) după blocurile lor de cifre: se folosesc doar când numărul simplu nu există în CRM
+  const decorated = new Map<string, CrmRow[]>();
+  const removed = new Set<string>();
+  for (const r of rows) {
+    if (r.source !== "1c") continue;
+    const c = normalizeMeterName(r.contor);
+    if (!c) continue;
+    const cores = meterDigitCores(c);
+    // „simplu” = doar cifre (cu sau fără zerouri în față); orice altceva are text lângă număr
+    const isPlain = /^\d+$/.test(c);
+    if (r.removedAt) {
+      removed.add(c);
+      removed.add(stripLeadingZeros(c));
+      for (const k of cores) removed.add(k);
+      continue;
+    }
+    if (!isPlain) {
+      for (const k of cores) (decorated.get(k) ?? decorated.set(k, []).get(k)!).push(r);
+      continue;
+    }
+    (exact.get(c) ?? exact.set(c, []).get(c)!).push(r);
+    const z = stripLeadingZeros(c);
+    (loose.get(z) ?? loose.set(z, []).get(z)!).push(r);
+  }
+  return (lw) => {
+    // serverul de noduri listează și contoarele care n-au transmis încă niciodată: 0 m³ la o dată fixă dintr-o altă lună (ex. 01.01, ora 00:00) — nu sunt contoare active
+    if (lw.volume === 0 && currentPeriod(lw.ts) !== period) return { kind: "placeholder" };
+    const z = stripLeadingZeros(lw.name);
+    // fără zerourile din față doar dacă toate rândurile potrivite au același număr (altfel ar fi o potrivire nesigură)
+    const lz = loose.get(z);
+    const plain = exact.get(lw.name) ?? (lz && new Set(lz.map((r) => r.contor.trim())).size === 1 ? lz : undefined);
+    // niciun contor cu numărul simplu: se caută cele care îl conțin (-wc, -bc, buc, zerouri în față…) — tot ale aceluiași proprietar
+    const bySfx = plain?.length ? undefined : decorated.get(z);
+    const hits = plain?.length ? plain : bySfx;
+    if (!hits?.length) return removed.has(lw.name) || removed.has(z) ? { kind: "removed" } : { kind: "unmatched" };
+    return { kind: "found", hits, viaSuffix: !!bySfx?.length };
+  };
+}
+
 export const NOT_ACTIVATED_ERROR = "Extragerea LoRaWAN nu e activată. Activeaz-o din pagina LoRaWAN.";
 
 const isActivated = async () => !!(await prisma.lorawanState.findUnique({ where: { id: STATE_ID }, select: { activatedAt: true } }))?.activatedAt;
@@ -160,59 +207,27 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
     await mark("lista de contoare din CRM");
     const snap = await getMeterSnap();
     await mark("potrivirea cu contoarele din CRM");
-    // contoarele CRM după număr (exact, apoi fără zerourile din față); doar cele din exportul 1C, nu rândurile „doar Axioma”
-    const exact = new Map<string, CrmRow[]>();
-    const loose = new Map<string, CrmRow[]>();
-    // contoarele cu text lângă număr („…-wc”, „…-bc”, „… buc”, zerouri în față) după blocurile lor de cifre: se folosesc doar când numărul simplu nu există în CRM
-    const decorated = new Map<string, CrmRow[]>();
-    const removed = new Set<string>();
-    for (const r of snap.rows) {
-      if (r.source !== "1c") continue;
-      const c = normalizeMeterName(r.contor);
-      if (!c) continue;
-      const cores = meterDigitCores(c);
-      // „simplu” = doar cifre (cu sau fără zerouri în față); orice altceva are text lângă număr
-      const isPlain = /^\d+$/.test(c);
-      if (r.removedAt) {
-        removed.add(c);
-        removed.add(stripLeadingZeros(c));
-        for (const k of cores) removed.add(k);
-        continue;
-      }
-      if (!isPlain) {
-        for (const k of cores) (decorated.get(k) ?? decorated.set(k, []).get(k)!).push(r);
-        continue;
-      }
-      (exact.get(c) ?? exact.set(c, []).get(c)!).push(r);
-      const z = stripLeadingZeros(c);
-      (loose.get(z) ?? loose.set(z, []).get(z)!).push(r);
-    }
-
+    const classify = buildMatcher(snap.rows, period);
     const stats: LorawanStats = { received: parsed.rows.length + parsed.invalid + parsed.duplicates, invalid: parsed.invalid, placeholders: 0, stale: 0, matched: 0, removed: 0, unmatched: 0, noPayer: 0, bySuffix: 0, ambiguous: 0, saved: 0, unchanged: 0, skippedField: 0, lowerThanPrev: 0, errors: 0 };
     const unmatched: string[] = [];
     const known: { row: CrmRow; lw: LorawanRow; current: boolean }[] = [];
     for (const lw of parsed.rows) {
-      // serverul de noduri listează și contoarele care n-au transmis încă niciodată: 0 m³ la o dată fixă dintr-o altă lună (ex. 01.01, ora 00:00) — nu sunt contoare active
-      if (lw.volume === 0 && currentPeriod(lw.ts) !== period) {
+      const c = classify(lw);
+      if (c.kind === "placeholder") {
         stats.placeholders++;
         continue;
       }
-      const z = stripLeadingZeros(lw.name);
-      // fără zerourile din față doar dacă toate rândurile potrivite au același număr (altfel ar fi o potrivire nesigură)
-      const lz = loose.get(z);
-      const plain = exact.get(lw.name) ?? (lz && new Set(lz.map((r) => r.contor.trim())).size === 1 ? lz : undefined);
-      // niciun contor cu numărul simplu: se caută cele care îl conțin (-wc, -bc, buc, zerouri în față…) — tot ale aceluiași proprietar
-      const bySfx = plain?.length ? undefined : decorated.get(z);
-      const hits = plain?.length ? plain : bySfx;
-      if (bySfx?.length) stats.bySuffix++;
-      if (!hits?.length) {
-        if (removed.has(lw.name) || removed.has(z)) stats.removed++;
-        else {
-          stats.unmatched++;
-          if (unmatched.length < UNMATCHED_KEEP) unmatched.push(lw.name);
-        }
+      if (c.kind === "removed") {
+        stats.removed++;
         continue;
       }
+      if (c.kind === "unmatched") {
+        stats.unmatched++;
+        if (unmatched.length < UNMATCHED_KEEP) unmatched.push(lw.name);
+        continue;
+      }
+      if (c.viaSuffix) stats.bySuffix++;
+      const hits = c.hits;
       if (new Set(hits.map((r) => r.clientId ?? r.id)).size > 1) stats.ambiguous++;
       const current = currentPeriod(lw.ts) === period;
       if (!current) stats.stale++;
@@ -361,6 +376,36 @@ export async function checkLorawanSchedule(now: Date = new Date()): Promise<void
   if (!st?.activatedAt) return; // până la „Activează” (pagina LoRaWAN) nu pornește nimic singur
   if ((st.lastRunDay === dayKey(now) || st.retryAt > now || st.lockUntil > now)) return;
   await runLorawanSync("timer");
+}
+
+/**
+ * Diagnostic: toate numerele din feedul LoRaWAN (descărcat acum) cu rezultatul potrivirii cu CRM-ul — găsit (cu contorul și plătitorul), ignorat (altă lună), fără transmisii, negăsit, scos din uz.
+ * Doar citire: nu scrie nimic. Se folosește în pagina LoRaWAN ca să se vadă de ce un contor a fost sau nu potrivit.
+ */
+export async function getLorawanDiagnostics(): Promise<LorawanDiag> {
+  if (DEMO) return { at: Date.now(), period: currentPeriod(), rows: [] };
+  if (!lorawanConfigured()) throw new Error("Lipsește LORAWAN_TOKEN în configurația serverului.");
+  const period = currentPeriod();
+  const [parsed, snap, readings] = await Promise.all([fetchRows(), getMeterSnap(), prisma.meterReading.findMany({ where: { period }, select: { meterId: true, value: true, source: true } })]);
+  const readBy = new Map(readings.map((r) => [r.meterId, r]));
+  const classify = buildMatcher(snap.rows, period);
+  const fmt = (n: number) => n.toLocaleString("ro-RO", { maximumFractionDigits: 3 });
+  const rows: DiagTuple[] = [];
+  for (const lw of [...parsed.rows].sort((a, b) => a.name.localeCompare(b.name))) {
+    const ts = lw.ts.getTime();
+    const c = classify(lw);
+    if (c.kind !== "found") {
+      rows.push([lw.name, lw.volume, ts, c.kind, "", "", "", "", "", "", ""]);
+      continue;
+    }
+    const kind: DiagKind = currentPeriod(lw.ts) === period ? "ok" : "stale";
+    for (const r of c.hits) {
+      const rd = readBy.get(r.id);
+      const read = rd ? `${rd.source === LORAWAN_SOURCE ? "LoRaWAN" : rd.source === "PORTAL" ? "portal" : "cititor"} ${fmt(rd.value)}` : "";
+      rows.push([lw.name, lw.volume, ts, kind, r.contor, r.id, r.clientId ?? "", r.name ?? "", r.address ?? "", read, c.viaSuffix ? "cu text" : "exact"]);
+    }
+  }
+  return { at: Date.now(), period, rows };
 }
 
 export async function getLorawanStatus(): Promise<LorawanStatus> {

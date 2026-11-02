@@ -3,8 +3,8 @@
 import { after } from "next/server";
 import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
-import type { LorawanStatus } from "@/lib/lorawan";
-import { getLorawanStatus, lorawanConfigured, runLorawanSync } from "@/lib/services/lorawan";
+import type { LorawanDiag, LorawanStatus } from "@/lib/lorawan";
+import { getLorawanDiagnostics, getLorawanStatus, lorawanConfigured, runLorawanSync } from "@/lib/services/lorawan";
 import { logAudit } from "@/lib/services/audit";
 
 /** Starea extragerii LoRaWAN, pentru pagina „LoRaWAN” (se reîmprospătează cât rulează o extragere). */
@@ -42,4 +42,15 @@ export async function runLorawanAction(): Promise<{ ok: boolean; error?: string 
     await runLorawanSync("manual");
   });
   return { ok: true };
+}
+
+/** Toate contoarele din feed cu rezultatul potrivirii (găsite / negăsite / ignorate …), pentru depanare. Doar citire. */
+export async function lorawanDiagAction(): Promise<{ ok: true; diag: LorawanDiag } | { ok: false; error: string }> {
+  const user = await requireUser();
+  if (!can(user, "meters.manage")) return { ok: false, error: "Fără permisiune." };
+  try {
+    return { ok: true, diag: await getLorawanDiagnostics() };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Nu am putut citi feedul LoRaWAN." };
+  }
 }

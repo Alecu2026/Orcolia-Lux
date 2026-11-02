@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { activateLorawanAction, lorawanStatusAction, runLorawanAction } from "@/app/actions/lorawan";
 import type { LorawanStatus } from "@/lib/lorawan";
+import LorawanDiagTable from "./LorawanDiagTable";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 
@@ -119,6 +120,8 @@ export default function LorawanPanel({ initial }: { initial: LorawanStatus }) {
           {cell(t("Erori"), s.errors)}
         </div>
       )}
+
+      <LorawanDiagTable />
 
       {st.unmatched.length > 0 && (
         <details className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">

@@ -105,3 +105,9 @@ export type LorawanStatus = {
   /// câte contoare sunt marcate LoRaWAN în CRM
   known: number;
 };
+
+/** Rezultatul potrivirii unui număr din feed, pentru pagina de diagnostic. */
+export type DiagKind = "ok" | "stale" | "placeholder" | "unmatched" | "removed";
+/** [număr LoRaWAN, volum m³, ultima transmisie (ms), rezultat, contor în CRM, id contor, id plătitor, plătitor, adresă, citirea lunii curente („LoRaWAN 131,5” / „cititor …” / „portal …”), potrivire („exact” / „cu text”)] */
+export type DiagTuple = [string, number, number, DiagKind, string, string, string, string, string, string, string];
+export type LorawanDiag = { at: number; period: string; rows: DiagTuple[] };
