@@ -44,6 +44,10 @@ export type NotifyFilters = {
   notifiedTo: string;
   /** "YYYY-MM-DD" — contor instalat la sau după data asta. */
   installedFrom: string;
+  /** „YYYY-MM-DD”: consumatori NOI = plătitori adăugați în CRM (din 1C) de la această dată. */
+  newFrom: string;
+  /** „YYYY-MM-DD”: locuri de consum NOI = începutul consumului (din 1C) de la această dată. */
+  placeFrom: string;
   sort: "" | "debtDesc" | "debtAsc" | "installDesc" | "installAsc";
   /** "1" = doar numele cu „?" (litere românești pierdute la importul din 1C). */
   nameFix: "" | "1";
@@ -63,7 +67,7 @@ export type NotifyFilters = {
 
 export const EMPTY_FILTERS: NotifyFilters = {
   q: "", street: "", month: "", account: "", sector: "", usector: "", uloc: "", invoiceStatus: "", debt: "",
-  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", sort: "", nameFix: "", invoices: "", estimated: "", lorawan: "", contractExp: "", metrologyExp: "", meterIssues: "",
+  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", newFrom: "", placeFrom: "", sort: "", nameFix: "", invoices: "", estimated: "", lorawan: "", contractExp: "", metrologyExp: "", meterIssues: "",
 };
 
 /** „Toate" = o pagină cât toată lista (plafon de siguranță; sunt ~19.000 de plătitori). */
@@ -166,6 +170,8 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     notifiedFrom,
     notifiedTo,
     installedFrom: /^\d{4}-\d{2}-\d{2}$/.test(installedFrom) ? installedFrom : "",
+    newFrom: day("newFrom"),
+    placeFrom: day("placeFrom"),
     sort: ONE_OF(get(src, "sort"), ["debtDesc", "debtAsc", "installDesc", "installAsc"] as const),
     nameFix: ONE_OF(get(src, "nameFix"), ["1"] as const),
     invoices: ONE_OF(get(src, "invoices"), ["none"] as const),
@@ -416,7 +422,7 @@ export type SnapInvoice = NonNullable<PayerRow["latestInvoice"]>;
  * trecere simplă prin 19.000 de rânduri cu comparații pe numere (fără parsare de date, fără șiruri): _h = text de căutare, _he/_hp = are email /
  * telefon, _nm = ultima notificare (ms, 0 = niciodată), _st = sector (0 necunoscut, 1 privat, 2 comunal), _dk = soldul facturii afișate (NaN = fără factură).
  */
-export type SnapRow = PayerRow & { sector: string | null; /** sectorul din 1C („Участок”) */ uch: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number; /** ultima citire a contorului e calculată (estimată) */ estimated: boolean; /** are cel puțin un contor LoRaWAN */ lorawan: boolean };
+export type SnapRow = PayerRow & { sector: string | null; /** sectorul din 1C („Участок”) */ uch: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number; /** ultima citire a contorului e calculată (estimată) */ estimated: boolean; /** are cel puțin un contor LoRaWAN */ lorawan: boolean; /** „YYYY-MM-DD” — adăugat în CRM (consumator nou) */ addedOn: string | null; /** „YYYY-MM-DD” — începutul consumului din 1C (loc de consum nou) */ placeStart: string | null };
 
 const SECTOR_CODE = (s: string | null): 0 | 1 | 2 => (s === "Sector privat" ? 1 : s === "Sector comunal" ? 2 : 0);
 
@@ -451,6 +457,10 @@ export type SnapTuple = [
   issueDue?: string | null,
   /** are un contor LoRaWAN (1 = da) */
   lorawan?: 0 | 1,
+  /** „YYYY-MM-DD” — când a fost adăugat în CRM (consumator nou) */
+  added?: string | null,
+  /** „YYYY-MM-DD” — începutul consumului din 1C (loc de consum nou) */
+  placeStart?: string | null,
 ];
 /** Factura unei luni: [clientId, număr, status, total, valută, scadență ms]. */
 export type MonthTuple = [clientId: string, number: string, status: string, total: number, currency: string, dueMs: number | null];
@@ -488,6 +498,8 @@ export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[
     _dk: t[8] == null ? NaN : (t[10] ?? 0),
     estimated: t[18] === 1,
     lorawan: t[23] === 1,
+    addedOn: t[24] ?? null,
+    placeStart: t[25] ?? null,
     contractExpiresAt: t[19] ?? null,
     metrologyDueAt: t[20] ?? null,
     issuesOpen: t[21] ?? 0,
@@ -620,6 +632,8 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
     if (f.invoices === "none" && r.latestInvoice) continue;
     if (f.estimated === "yes" ? !r.estimated : f.estimated === "no" ? r.estimated : false) continue;
     if (f.lorawan === "yes" ? !r.lorawan : f.lorawan === "no" ? r.lorawan : false) continue;
+    if (f.newFrom && !(r.addedOn && r.addedOn >= f.newFrom)) continue;
+    if (f.placeFrom && !(r.placeStart && r.placeStart >= f.placeFrom)) continue;
     if (f.contractExp && !matchesContractFilter(r.contractExpiresAt, f.contractExp, today)) continue;
     if (f.metrologyExp && !matchesMetrologyFilter(r.metrologyDueAt, f.metrologyExp, today)) continue;
     if (f.meterIssues && !matchesPayerIssueFilter(r.issuesOpen, r.issueDueAt, f.meterIssues, today)) continue;

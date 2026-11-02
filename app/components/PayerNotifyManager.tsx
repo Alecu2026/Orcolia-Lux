@@ -799,6 +799,22 @@ export default function PayerNotifyManager({
           aria-label={t("Contor instalat după data")}
           className={txtFld(filters.installedFrom)}
         />
+        <DateFilterInput
+          label={t("Consumator nou")}
+          value={filters.newFrom}
+          onChange={(e) => setFilter({ newFrom: e.target.value })}
+          title={t("Consumatori noi: adăugați în CRM de la data")}
+          aria-label={t("Consumatori noi: adăugați în CRM de la data")}
+          className={txtFld(filters.newFrom)}
+        />
+        <DateFilterInput
+          label={t("Loc de consum nou")}
+          value={filters.placeFrom}
+          onChange={(e) => setFilter({ placeFrom: e.target.value })}
+          title={t("Locuri de consum noi: începutul consumului de la data")}
+          aria-label={t("Locuri de consum noi: începutul consumului de la data")}
+          className={txtFld(filters.placeFrom)}
+        />
         <select value={filters.sort} onChange={(e) => setFilter({ sort: e.target.value as NotifyFilters["sort"] })} className={fld(filters.sort)} aria-label={t("Sortare")}>
           <option value="">{t("Sortare: nume (A-Z)")}</option>
           <option value="debtDesc">{t("Sold: descrescător")}</option>

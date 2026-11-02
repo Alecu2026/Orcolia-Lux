@@ -3111,4 +3111,8 @@ export const RU: Record<string, string> = {
   "Neimplementat": "Не реализовано",
   "Punct necunoscut.": "Неизвестный пункт.",
   "Nu am putut salva bifa.": "Не удалось сохранить отметку.",
+  "Consumator nou": "Новый потребитель",
+  "Consumatori noi: adăugați în CRM de la data": "Новые потребители: добавлены в CRM с даты",
+  "Loc de consum nou": "Новое место потребления",
+  "Locuri de consum noi: începutul consumului de la data": "Новые места потребления: начало потребления с даты",
 };

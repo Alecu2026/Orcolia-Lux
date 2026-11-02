@@ -85,6 +85,23 @@ export async function filtersToListOptsAsync(f: NotifyFilters): Promise<ListPaye
       sectorIds.push(r.id);
     }
   }
+  // consumatori noi (adăugați în CRM de la data aleasă) și locuri de consum noi (începutul consumului din 1C): id-urile care se potrivesc, intersectate cu sectorul / localitatea
+  const restrict = async (ids: string[] | null, next: Promise<string[]> | null): Promise<string[] | null> => {
+    if (!next) return ids;
+    const set = new Set(await next);
+    return ids ? ids.filter((id) => set.has(id)) : [...set];
+  };
+  sectorIds = await restrict(
+    await restrict(
+      sectorIds,
+      f.newFrom
+        ? prisma.client.findMany({ where: { createdAt: { gte: dayBoundsUtc(f.newFrom, NOTIFY_TZ).start } }, select: { id: true } }).then((rows) => rows.map((r) => r.id))
+        : null,
+    ),
+    f.placeFrom
+      ? prisma.oneCRecord.findMany({ where: { clientId: { not: null }, inceputConsum: { gte: f.placeFrom } }, select: { clientId: true } }).then((rows) => [...new Set(rows.map((r) => r.clientId).filter((x): x is string => !!x))])
+      : null,
+  );
   if (!crit) return sectorIds ? { ...opts, idsIn: sectorIds } : opts;
   const ids = await notifiedClientIds(crit);
   if (!sectorIds) return crit.negate ? { ...opts, idsNotIn: ids } : { ...opts, idsIn: ids };

@@ -304,6 +304,24 @@ async function installDateMap(): Promise<Map<string, string | null>> {
   return m;
 }
 
+/**
+ * Începutul consumului din 1C („НачалоПотребления”) al fiecărui plătitor, din ultima lui înregistrare 1C: baza filtrului „Loc de consum nou”.
+ * Proiecție mică (id + două câmpuri), ca la sector / instalare.
+ */
+export async function placeStartMap(): Promise<Map<string, string>> {
+  if (DEMO) return new Map();
+  const rows = await prisma.oneCRecord.findMany({ where: { clientId: { not: null } }, select: { clientId: true, inceputConsum: true, dataDoc: true } });
+  const best = new Map<string, { d: string; s: string }>();
+  for (const r of rows) {
+    const s = r.inceputConsum?.slice(0, 10);
+    if (!r.clientId || !s) continue;
+    const d = r.dataDoc ?? "";
+    const cur = best.get(r.clientId);
+    if (!cur || d >= cur.d) best.set(r.clientId, { d, s });
+  }
+  return new Map([...best].map(([id, v]) => [id, v.s]));
+}
+
 let sectorMemo: { at: number; map: Map<string, string> } | null = null;
 /**
  * Sectorul din 1C („Участок”) al fiecărui plătitor, din ultima lui înregistrare 1C (OneCRecord). Doar plătitorii cu sector completat.
@@ -347,7 +365,7 @@ function sortByInstall<T extends { id: string; name: string }>(
 
 const PAYER_SELECT = {
   id: true, name: true, meterSeries: true, apaCanalContract: true, email: true, phone: true,
-  portalPasswordHash: true, consumAddress: true, lastNotifiedAt: true, contractExpiresAt: true, metrologyDueAt: true, meterIssuesOpen: true, meterIssueDueAt: true,
+  portalPasswordHash: true, consumAddress: true, lastNotifiedAt: true, contractExpiresAt: true, metrologyDueAt: true, meterIssuesOpen: true, meterIssueDueAt: true, createdAt: true,
 } as const;
 const INVOICE_SELECT = { clientId: true, number: true, status: true, grandTotal: true, currency: true, dueDate: true, issueDate: true } as const;
 
@@ -800,11 +818,12 @@ async function latestInvoiceStatsFromRows(): Promise<{ latest: Map<string, Lates
  */
 export async function getPayerSnapshot(): Promise<SnapTuple[]> {
   if (DEMO) return [];
-  const [clients, stats, installBy, sectorBy] = await Promise.all([
+  const [clients, stats, installBy, sectorBy, placeBy] = await Promise.all([
     prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true, meterReadingEstimated: true, meterLorawan: true } }),
     latestInvoiceStats(),
     installDateMap(),
     payerSectorMap(true),
+    placeStartMap(),
   ]);
   const { latest, count } = stats && stats.latest.size > 0 ? stats : await latestInvoiceStatsFromRows();
   return clients.map((c): SnapTuple => {
@@ -816,6 +835,7 @@ export async function getPayerSnapshot(): Promise<SnapTuple[]> {
       c.consumAddress, c.lastNotifiedAt ? c.lastNotifiedAt.getTime() : null, installBy.get(c.id) ?? null, c.lastInvoiceSectorNr,
       sectorBy.get(c.id) ?? null, c.meterReadingEstimated ? 1 : 0, contractKey(c.contractExpiresAt), contractKey(c.metrologyDueAt),
       c.meterIssuesOpen ?? 0, contractKey(c.meterIssueDueAt), c.meterLorawan ? 1 : 0,
+      c.createdAt.toISOString().slice(0, 10), placeBy.get(c.id) ?? null,
     ];
   });
 }
