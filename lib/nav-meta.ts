@@ -28,6 +28,7 @@ export const NAV_META: NavMeta[] = [
   { href: "/admin/audit-logs", labelKey: "auditLogs", perm: "audit.view" },
   { href: "/admin/jurnal-notificari", labelKey: "deliveryLogs", perm: "audit.view" },
   { href: "/admin/rute-citiri", labelKey: "readingRoutes", perm: "meters.manage" },
+  { href: "/contract", labelKey: "tender", perm: "users.manage" },
   { href: "/telegram", labelKey: "telegram" },
   { href: "/settings", labelKey: "settings" },
 ];

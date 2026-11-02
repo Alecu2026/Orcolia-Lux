@@ -1515,3 +1515,11 @@ model LorawanState {
   /// blocaj între instanțe: nimeni nu pornește o extragere cât e în viitor
   lockUntil   DateTime  @default("1970-01-01T00:00:00.000Z")
 }
+
+/// Bifele paginii „Caiet de sarcini” (lib/tender-spec.ts): un rând = un punct bifat de echipă. Cheia = id-ul punctului; bifa scoasă șterge rândul.
+model TenderCheck {
+  id        String   @id @map("_id")
+  byId      String?  @db.ObjectId
+  byName    String   @default("")
+  updatedAt DateTime @updatedAt
+}

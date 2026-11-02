@@ -21,6 +21,7 @@
     auditLogs: "Audit Logs",
     deliveryLogs: "Jurnal notificări",
     readingRoutes: "Rute de citire",
+    tender: "Caiet de sarcini",
     telegram: "Telegram",
     settings: "Setări",
     impersonate: "Simulare login",

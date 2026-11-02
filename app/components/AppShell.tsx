@@ -71,6 +71,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
   "/admin/audit-logs": shieldIcon(),
   "/admin/jurnal-notificari": bellIcon(),
   "/admin/rute-citiri": pinIcon(),
+  "/contract": checklistIcon(),
   "/telegram": sendIcon(),
   "/settings": gearIcon(),
 };
