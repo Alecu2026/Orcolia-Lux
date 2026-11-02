@@ -3081,4 +3081,11 @@ export const EN: Record<string, string> = {
   "📡 Doar LoRaWAN (automate)": "📡 LoRaWAN only (automatic)",
   "📡 LoRaWAN (automate)": "📡 LoRaWAN (automatic)",
   "primite luna aceasta (pe rute și fără rută)": "received this month (on routes and without a route)",
+  "Extragerea LoRaWAN nu e activată încă": "LoRaWAN extraction is not activated yet",
+  "Prima apăsare citește acum toate contoarele LoRaWAN, le potrivește cu cele din CRM și salvează citirile lunii curente. Dacă reușește, extragerea automată zilnică (23:30) pornește de-acum, iar acest buton dispare.": "The first press now reads all LoRaWAN meters, matches them with the CRM meters and saves the current month's readings. If it succeeds, the daily automatic extraction (23:30) starts from now on and this button disappears.",
+  "Se activează…": "Activating…",
+  "Activează LoRaWAN": "Activate LoRaWAN",
+  "Extragerea LoRaWAN nu e activată. Activeaz-o din pagina LoRaWAN.": "LoRaWAN extraction is not activated. Activate it from the LoRaWAN page.",
+  "Extragerea e deja activată.": "The extraction is already activated.",
+  "Contoarele care transmit automat indexul. După activare, extragerea pornește singură în fiecare zi la 23:30.": "Meters that transmit their reading automatically. After activation, the extraction runs by itself every day at 23:30.",
 };

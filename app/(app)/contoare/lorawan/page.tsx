@@ -16,7 +16,7 @@ export default async function LorawanPage() {
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">LoRaWAN</h1>
-          <p className="mt-0.5 text-sm text-ink-soft">{t("Contoarele care transmit automat indexul. Extragerea pornește singură în fiecare zi la 23:30.")}</p>
+          <p className="mt-0.5 text-sm text-ink-soft">{t("Contoarele care transmit automat indexul. După activare, extragerea pornește singură în fiecare zi la 23:30.")}</p>
         </div>
         <Link href="/contoare" className="tap inline-flex h-9 items-center rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]">
           {t("Contoare")}

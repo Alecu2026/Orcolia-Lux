@@ -87,9 +87,18 @@ async function claim(): Promise<boolean> {
 
 type CrmRow = Awaited<ReturnType<typeof getMeterSnap>>["rows"][number];
 
-export async function runLorawanSync(trigger: Trigger): Promise<LorawanRun> {
+export const NOT_ACTIVATED_ERROR = "Extragerea LoRaWAN nu e activată. Activeaz-o din pagina LoRaWAN.";
+
+const isActivated = async () => !!(await prisma.lorawanState.findUnique({ where: { id: STATE_ID }, select: { activatedAt: true } }))?.activatedAt;
+
+/**
+ * `activate`: prima extragere pornită de administrator („Activează”) — dacă reușește, extragerea automată (zilnic la 23:30 / ruta cron) se pornește de-acum.
+ * Până la activare, temporizatorul și ruta cron nu fac nimic.
+ */
+export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolean } = {}): Promise<LorawanRun> {
   if (DEMO) return { ok: false, error: "Mod demo." };
   if (!lorawanConfigured()) return { ok: false, error: "Lipsește LORAWAN_TOKEN în configurația serverului." };
+  if (trigger !== "manual" && !(await isActivated())) return { ok: false, error: NOT_ACTIVATED_ERROR };
   if (!(await claim())) return { ok: false, error: "O extragere LoRaWAN rulează deja." };
   const t0 = Date.now();
   const now = new Date();
@@ -212,6 +221,7 @@ export async function runLorawanSync(trigger: Trigger): Promise<LorawanRun> {
         unmatched,
         lockUntil: EPOCH,
         ...(scheduled ? { lastRunDay: day, retryAt: EPOCH } : {}),
+        ...(opts.activate ? { activatedAt: new Date() } : {}),
       },
     });
     console.log(`[lorawan] ${message} (${durationMs} ms, ${trigger})`);
@@ -232,18 +242,20 @@ export async function runLorawanSync(trigger: Trigger): Promise<LorawanRun> {
 /** Apelată din temporizatorul serverului (în fiecare minut): după 23:30 (ora firmei) pornește extragerea zilei, o singură dată pe zi. */
 export async function checkLorawanSchedule(now: Date = new Date()): Promise<void> {
   if (DEMO || !lorawanConfigured() || minuteOfDay(now) < LORAWAN_HOUR * 60 + LORAWAN_MINUTE) return;
-  const st = await prisma.lorawanState.findUnique({ where: { id: STATE_ID }, select: { lastRunDay: true, retryAt: true, lockUntil: true } });
-  if (st && (st.lastRunDay === dayKey(now) || st.retryAt > now || st.lockUntil > now)) return;
+  const st = await prisma.lorawanState.findUnique({ where: { id: STATE_ID }, select: { lastRunDay: true, retryAt: true, lockUntil: true, activatedAt: true } });
+  if (!st?.activatedAt) return; // până la „Activează” (pagina LoRaWAN) nu pornește nimic singur
+  if ((st.lastRunDay === dayKey(now) || st.retryAt > now || st.lockUntil > now)) return;
   await runLorawanSync("timer");
 }
 
 export async function getLorawanStatus(): Promise<LorawanStatus> {
-  const empty: LorawanStatus = { configured: lorawanConfigured(), lastRunAt: null, lastOk: true, lastTrigger: "", message: "", durationMs: 0, running: false, stats: null, unmatched: [], known: 0 };
+  const empty: LorawanStatus = { configured: lorawanConfigured(), activated: false, lastRunAt: null, lastOk: true, lastTrigger: "", message: "", durationMs: 0, running: false, stats: null, unmatched: [], known: 0 };
   if (DEMO) return empty;
   const [st, known] = await Promise.all([prisma.lorawanState.findUnique({ where: { id: STATE_ID } }), prisma.lorawanMeter.count()]);
   if (!st) return { ...empty, known };
   return {
     configured: lorawanConfigured(),
+    activated: !!st.activatedAt,
     lastRunAt: st.lastRunAt ? st.lastRunAt.toISOString() : null,
     lastOk: st.lastOk,
     lastTrigger: st.lastTrigger,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { lorawanStatusAction, runLorawanAction } from "@/app/actions/lorawan";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { activateLorawanAction, lorawanStatusAction, runLorawanAction } from "@/app/actions/lorawan";
 import type { LorawanStatus } from "@/lib/lorawan";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
@@ -13,26 +13,36 @@ export default function LorawanPanel({ initial }: { initial: LorawanStatus }) {
   const [st, setSt] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /** O extragere tocmai pornită: starea se verifică la câteva secunde până apare rezultatul ei (jobul din fundal poate începe cu o clipă de întârziere). */
+  const [watching, setWatching] = useState(false);
+  const startedAt = useRef(0);
 
   const refresh = useCallback(async () => {
     const s = await lorawanStatusAction().catch(() => null);
-    if (s) setSt(s);
+    if (s) {
+      setSt(s);
+      // gata: nu mai rulează și există un rezultat mai nou decât momentul pornirii (sau au trecut 10 minute)
+      if (!s.running && ((s.lastRunAt && new Date(s.lastRunAt).getTime() >= startedAt.current - 2000) || Date.now() - startedAt.current > 600_000)) setWatching(false);
+    }
     return s;
   }, []);
 
   useEffect(() => {
-    if (!st.running) return;
+    if (!st.running && !watching) return;
     const id = setInterval(() => void refresh(), 3000);
     return () => clearInterval(id);
-  }, [st.running, refresh]);
+  }, [st.running, watching, refresh]);
 
-  const run = async () => {
+  const run = async (activate = false) => {
     setBusy(true);
     setErr(null);
-    const r = await runLorawanAction().catch(() => ({ ok: false, error: "Nu am putut porni extragerea." }));
+    const r = await (activate ? activateLorawanAction() : runLorawanAction()).catch(() => ({ ok: false, error: "Nu am putut porni extragerea." }));
     if (!r.ok) setErr(t(r.error ?? "Nu am putut porni extragerea."));
-    else setSt((s) => ({ ...s, running: true }));
-    await refresh();
+    else {
+      startedAt.current = Date.now();
+      setWatching(true);
+      setSt((s) => ({ ...s, running: true }));
+    }
     setBusy(false);
   };
 
@@ -49,6 +59,22 @@ export default function LorawanPanel({ initial }: { initial: LorawanStatus }) {
     <div className="flex flex-col gap-4" data-lorawan-panel="">
       {!st.configured && <p className="rounded-xl bg-st-progress/10 p-3 text-sm font-medium text-st-progress">{t("Extragerea nu e configurată: lipsește LORAWAN_TOKEN în configurația serverului.")}</p>}
 
+      {!st.activated && (
+        <div className="rounded-2xl border border-brand/40 bg-brand-soft/40 p-4" data-lorawan-activate="">
+          <p className="text-sm font-semibold">{t("Extragerea LoRaWAN nu e activată încă")}</p>
+          <p className="mt-1 text-sm text-ink-soft">{t("Prima apăsare citește acum toate contoarele LoRaWAN, le potrivește cu cele din CRM și salvează citirile lunii curente. Dacă reușește, extragerea automată zilnică (23:30) pornește de-acum, iar acest buton dispare.")}</p>
+          <button
+            type="button"
+            onClick={() => void run(true)}
+            disabled={busy || watching || st.running || !st.configured}
+            data-lorawan-activate-btn=""
+            className="tap mt-3 h-10 cursor-pointer rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-50"
+          >
+            {st.running || watching ? t("Se activează…") : t("Activează LoRaWAN")}
+          </button>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
@@ -62,14 +88,16 @@ export default function LorawanPanel({ initial }: { initial: LorawanStatus }) {
             )}
             {st.message && !st.running && <p className={`mt-1 text-sm ${st.lastOk ? "" : "text-st-cancelled"}`}>{st.message}</p>}
           </div>
-          <button
-            type="button"
-            onClick={() => void run()}
-            disabled={busy || st.running || !st.configured}
-            className="tap h-10 cursor-pointer rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-50"
-          >
-            {st.running ? t("Rulează…") : t("Rulează acum")}
-          </button>
+          {st.activated && (
+            <button
+              type="button"
+              onClick={() => void run()}
+              disabled={busy || watching || st.running || !st.configured}
+              className="tap h-10 cursor-pointer rounded-xl bg-brand px-4 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-50"
+            >
+              {st.running || watching ? t("Rulează…") : t("Rulează acum")}
+            </button>
+          )}
         </div>
         {err && <p className="mt-2 text-sm text-st-cancelled">{err}</p>}
         <p className="mt-2 text-xs text-ink-soft">{t("Contoare marcate LoRaWAN în CRM")}: <b>{nf(st.known)}</b></p>

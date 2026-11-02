@@ -79,6 +79,8 @@ export type LorawanStats = {
 
 export type LorawanStatus = {
   configured: boolean;
+  /** administratorul a pornit prima extragere („Activează”): de atunci rulează și cea automată zilnică */
+  activated: boolean;
   lastRunAt: string | null;
   lastOk: boolean;
   lastTrigger: string;

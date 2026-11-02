@@ -1508,6 +1508,8 @@ model LorawanState {
   stats       Json?
   /// primele nume de contoare primite care nu există în CRM
   unmatched   Json?
+  /// momentul activării: până atunci extragerea automată (23:30 / cron) nu pornește; prima extragere o face administratorul din pagina LoRaWAN („Activează”)
+  activatedAt DateTime?
   /// o extragere cu eșec se reia după acest moment
   retryAt     DateTime  @default("1970-01-01T00:00:00.000Z")
   /// blocaj între instanțe: nimeni nu pornește o extragere cât e în viitor
