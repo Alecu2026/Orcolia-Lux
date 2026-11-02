@@ -752,6 +752,11 @@ export default function PayerNotifyManager({
           <option value="">{t("Facturi: toate")}</option>
           <option value="none">{t("Fără nicio factură")}</option>
         </select>
+        <select value={filters.lorawan} onChange={(e) => setFilter({ lorawan: e.target.value as NotifyFilters["lorawan"] })} className={fld(filters.lorawan)} aria-label={t("Contor LoRaWAN")}>
+          <option value="">{t("Contor: toate")}</option>
+          <option value="yes">{t("📡 Cu contor LoRaWAN (automat)")}</option>
+          <option value="no">{t("Fără contor LoRaWAN")}</option>
+        </select>
         <select value={filters.estimated} onChange={(e) => setFilter({ estimated: e.target.value as NotifyFilters["estimated"] })} className={fld(filters.estimated)} aria-label={t("Citire estimată")}>
           <option value="">{t("Estimare: toate")}</option>
           <option value="yes">{t("Citire estimată (calculată)")}</option>

@@ -1,7 +1,7 @@
 // Contoarele pe hartă: forma compactă a unui punct, starea (citit / necitit / neregulă) și filtrele (cod partajat server / browser).
 
 /** [id, contor, abonat, adresă, lat, lng, precizie (m), index citit luna aceasta, momentul citirii (ms), sector, neregulă, id rută, cine a citit, portal (0/1), suspect (0 nimic, 1 mai mic, 2 prea mare, 3 departe, 4 prea mic față de medie)] */
-export type MeterPinTuple = [string, string, string, string | null, number, number, number | null, number | null, number | null, string | null, string | null, string | null, string | null, 0 | 1, 0 | 1 | 2 | 3 | 4];
+export type MeterPinTuple = [string, string, string, string | null, number, number, number | null, number | null, number | null, string | null, string | null, string | null, string | null, 0 | 1 | 2, 0 | 1 | 2 | 3 | 4];
 
 export type MeterPinsResponse = {
   /** luna curentă „YYYY-MM” */
@@ -27,6 +27,8 @@ export type MeterPin = {
   routeId: string | null;
   by: string | null;
   portal: boolean;
+  /** Contor LoRaWAN (transmite automat). */
+  auto: boolean;
   suspect: 0 | 1 | 2 | 3 | 4;
   /** stare pentru culoare: neregulă (roșu) / citit luna aceasta (verde) / necitit */
   st: "issue" | "read" | "unread";
@@ -58,6 +60,7 @@ export function decodePins(t: MeterPinTuple[]): MeterPin[] {
     routeId: x[11],
     by: x[12],
     portal: x[13] === 1,
+    auto: x[13] === 2,
     suspect: x[14],
     st: x[10] ? "issue" : x[7] != null ? "read" : "unread",
     locality: x[3] ? x[3].split(",")[0].trim() : "",
@@ -76,7 +79,7 @@ export type MeterMapFilters = {
   /** id rută, „none” = fără rută */
   route: string;
   by: string;
-  source: "" | "portal" | "field";
+  source: "" | "portal" | "field" | "lorawan";
   /** precizia locației */
   accuracy: "" | "precise" | "fuzzy";
   suspect: "" | "any" | "lower" | "high" | "low" | "far";
@@ -96,7 +99,7 @@ export function filterPins(pins: MeterPin[], f: MeterMapFilters): MeterPin[] {
     if (f.locality && p.locality !== f.locality) return false;
     if (f.route === "none" ? p.routeId : f.route ? p.routeId !== f.route : false) return false;
     if (f.by && p.by !== f.by) return false;
-    if (f.source === "portal" ? !(p.value != null && p.portal) : f.source === "field" ? !(p.value != null && !p.portal) : false) return false;
+    if (f.source === "portal" ? !(p.value != null && p.portal) : f.source === "field" ? !(p.value != null && !p.portal && !p.auto) : f.source === "lorawan" ? !p.auto : false) return false;
     if (f.accuracy === "precise" ? !(p.acc != null && p.acc <= PIN_PRECISE_M) : f.accuracy === "fuzzy" ? !(p.acc == null || p.acc > PIN_FUZZY_M) : false) return false;
     if (f.suspect === "any" ? !p.suspect : f.suspect === "lower" ? p.suspect !== 1 : f.suspect === "high" ? p.suspect !== 2 : f.suspect === "far" ? p.suspect !== 3 : f.suspect === "low" ? p.suspect !== 4 : false) return false;
     for (const tk of tokens) if (!p._h.includes(tk)) return false;

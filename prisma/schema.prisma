@@ -724,6 +724,8 @@ model Client {
   meterNumber            String?
   meterCurrReading       Float?
   meterReadingEstimated  Boolean @default(false)
+  /// plătitorul are cel puțin un contor LoRaWAN (transmite automat); se actualizează la extragerea zilnică (lib/services/lorawan.ts)
+  meterLorawan           Boolean @default(false)
   consumAddress          String?
 
   /// Data expirării contractului plătitorului (introdusă manual; doar data, la 00:00 UTC): baza notificărilor „expiră în 30 / 10 zile” către plătitor și către personal.

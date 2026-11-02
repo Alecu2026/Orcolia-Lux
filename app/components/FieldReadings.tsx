@@ -484,6 +484,7 @@ export default function FieldReadings({
           <option value="">{t("Sursa: toate")}</option>
           <option value="portal">{t("🌐 Din portal (plătitor)")}</option>
           <option value="field">{t("Cititor (în teren)")}</option>
+          <option value="lorawan">{t("📡 LoRaWAN (automat)")}</option>
         </select>
         <select value={filters.photo} onChange={(e) => setFilter({ photo: e.target.value as FieldFilters["photo"] })} className={fld(filters.photo)} aria-label={t("Poză")}>
           <option value="">{t("Poză: toate")}</option>

@@ -51,6 +51,8 @@ export type NotifyFilters = {
   invoices: "" | "none";
   /** "yes" = plătitori la care ultima citire a contorului e calculată (estimată), nu citită; "no" = cu citire reală. */
   estimated: "" | "yes" | "no";
+  /** "yes" = plătitori cu cel puțin un contor LoRaWAN (transmite automat); "no" = fără. */
+  lorawan: "" | "yes" | "no";
   /** Contractul plătitorului: fără dată / expirat / expiră în 10 sau 30 de zile. */
   contractExp: ContractExpFilter;
   /** Verificarea metrologică a contoarelor (cea mai apropiată scadență): fără dată / expirată / expiră în 10, 30 sau 60 de zile. */
@@ -61,7 +63,7 @@ export type NotifyFilters = {
 
 export const EMPTY_FILTERS: NotifyFilters = {
   q: "", street: "", month: "", account: "", sector: "", usector: "", uloc: "", invoiceStatus: "", debt: "",
-  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", sort: "", nameFix: "", invoices: "", estimated: "", contractExp: "", metrologyExp: "", meterIssues: "",
+  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", sort: "", nameFix: "", invoices: "", estimated: "", lorawan: "", contractExp: "", metrologyExp: "", meterIssues: "",
 };
 
 /** „Toate" = o pagină cât toată lista (plafon de siguranță; sunt ~19.000 de plătitori). */
@@ -168,6 +170,7 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     nameFix: ONE_OF(get(src, "nameFix"), ["1"] as const),
     invoices: ONE_OF(get(src, "invoices"), ["none"] as const),
     estimated: ONE_OF(get(src, "estimated"), ["yes", "no"] as const),
+    lorawan: ONE_OF(get(src, "lorawan"), ["yes", "no"] as const),
     contractExp: ONE_OF(get(src, "contractExp"), ["none", "expired", "10d", "30d"] as const),
     metrologyExp: ONE_OF(get(src, "metrologyExp"), METROLOGY_FILTER_VALUES),
     meterIssues: ONE_OF(get(src, "meterIssues"), PAYER_ISSUE_FILTER_VALUES),
@@ -413,7 +416,7 @@ export type SnapInvoice = NonNullable<PayerRow["latestInvoice"]>;
  * trecere simplă prin 19.000 de rânduri cu comparații pe numere (fără parsare de date, fără șiruri): _h = text de căutare, _he/_hp = are email /
  * telefon, _nm = ultima notificare (ms, 0 = niciodată), _st = sector (0 necunoscut, 1 privat, 2 comunal), _dk = soldul facturii afișate (NaN = fără factură).
  */
-export type SnapRow = PayerRow & { sector: string | null; /** sectorul din 1C („Участок”) */ uch: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number; /** ultima citire a contorului e calculată (estimată) */ estimated: boolean };
+export type SnapRow = PayerRow & { sector: string | null; /** sectorul din 1C („Участок”) */ uch: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number; /** ultima citire a contorului e calculată (estimată) */ estimated: boolean; /** are cel puțin un contor LoRaWAN */ lorawan: boolean };
 
 const SECTOR_CODE = (s: string | null): 0 | 1 | 2 => (s === "Sector privat" ? 1 : s === "Sector comunal" ? 2 : 0);
 
@@ -446,6 +449,8 @@ export type SnapTuple = [
   issuesOpen?: number,
   /** „YYYY-MM-DD” — cel mai apropiat termen de remediere dintre neregulile deschise */
   issueDue?: string | null,
+  /** are un contor LoRaWAN (1 = da) */
+  lorawan?: 0 | 1,
 ];
 /** Factura unei luni: [clientId, număr, status, total, valută, scadență ms]. */
 export type MonthTuple = [clientId: string, number: string, status: string, total: number, currency: string, dueMs: number | null];
@@ -482,6 +487,7 @@ export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[
     _st: SECTOR_CODE(t[16]),
     _dk: t[8] == null ? NaN : (t[10] ?? 0),
     estimated: t[18] === 1,
+    lorawan: t[23] === 1,
     contractExpiresAt: t[19] ?? null,
     metrologyDueAt: t[20] ?? null,
     issuesOpen: t[21] ?? 0,
@@ -613,6 +619,7 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
     if (f.installedFrom && !(r.installedAt && r.installedAt >= f.installedFrom)) continue;
     if (f.invoices === "none" && r.latestInvoice) continue;
     if (f.estimated === "yes" ? !r.estimated : f.estimated === "no" ? r.estimated : false) continue;
+    if (f.lorawan === "yes" ? !r.lorawan : f.lorawan === "no" ? r.lorawan : false) continue;
     if (f.contractExp && !matchesContractFilter(r.contractExpiresAt, f.contractExp, today)) continue;
     if (f.metrologyExp && !matchesMetrologyFilter(r.metrologyDueAt, f.metrologyExp, today)) continue;
     if (f.meterIssues && !matchesPayerIssueFilter(r.issuesOpen, r.issueDueAt, f.meterIssues, today)) continue;

@@ -27,6 +27,7 @@ export function filtersToListOpts(f: NotifyFilters): ListPayersOpts {
     needsNameFix: f.nameFix === "1" || undefined,
     noInvoices: f.invoices === "none" || undefined,
     estimated: f.estimated || undefined,
+    lorawan: f.lorawan || undefined,
     contractExp: f.contractExp || undefined,
     metrologyExp: f.metrologyExp || undefined,
     meterIssues: f.meterIssues || undefined,

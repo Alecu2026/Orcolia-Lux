@@ -124,6 +124,9 @@ export type RouteStat = {
   dueToday: number;
   /** contoare cu neregulă deschisă pe rută */
   issues: number;
+  /** contoare LoRaWAN pe rută (transmit automat: nu intră în „planificat” al cititorului) și câte au primit citirea lunii */
+  auto: number;
+  autoRead: number;
   /** momentul ultimei citiri din lună pe această rută (ms), sau null */
   lastAt: number | null;
 };
@@ -137,6 +140,9 @@ export type ReaderStat = {
   readByOthers: number;
   unread: number;
   dueToday: number;
+  /** contoare LoRaWAN pe rutele lui și câte au primit citirea lunii (nu intră în „planificat”) */
+  auto: number;
+  autoRead: number;
   /** citiri făcute de el în afara rutelor lui (sau fără rută) */
   readElsewhere: number;
   /** cele mai noi / cele mai vechi citiri din lună, ms */
@@ -151,7 +157,7 @@ export type RouteReport = {
   routes: RouteStat[];
   readers: ReaderStat[];
   /** contoare active fără rută */
-  noRoute: { total: number; read: number };
+  noRoute: { total: number; read: number; auto: number; autoRead: number };
   totalMeters: number;
 };
 

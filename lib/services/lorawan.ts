@@ -6,6 +6,7 @@ import { env } from "../env";
 import { getMeterSnap } from "./meter-cache";
 import { saveReading } from "./meter-readings";
 import { invalidateLorawanMap } from "./lorawan-map";
+import { invalidatePayers } from "./payer-cache";
 import { currentPeriod, READING_TZ } from "../meter-readings";
 import { LORAWAN_HOUR, LORAWAN_MINUTE, LORAWAN_SOURCE, normalizeMeterName, parseLorawan, stripLeadingZeros, type LorawanRow, type LorawanStats, type LorawanStatus } from "../lorawan";
 
@@ -28,6 +29,24 @@ const UNMATCHED_KEEP = 200;
 /** Un contor care nu mai apare în lista LoRaWAN de atâtea zile nu mai e considerat LoRaWAN (iese din blocaj). */
 const FORGET_AFTER_DAYS = 45;
 const ACTOR = { id: null, name: "LoRaWAN" } as const;
+
+/**
+ * Plătitorii cu cel puțin un contor LoRaWAN primesc marcajul `meterLorawan` (filtrul „Contor LoRaWAN” din Plătitori / Notificări). Se scriu doar diferențele; dacă s-a schimbat ceva,
+ * lista de plătitori din memorie se reface.
+ */
+async function syncPayerFlags(): Promise<void> {
+  const [meters, flagged] = await Promise.all([prisma.lorawanMeter.findMany({ select: { clientId: true } }), prisma.client.findMany({ where: { meterLorawan: true }, select: { id: true } })]);
+  const want = new Set(meters.map((m) => m.clientId).filter((x): x is string => !!x));
+  const have = new Set(flagged.map((c) => c.id));
+  const on = [...want].filter((id) => !have.has(id));
+  const off = [...have].filter((id) => !want.has(id));
+  const chunk = async (ids: string[], value: boolean) => {
+    for (let i = 0; i < ids.length; i += 300) await prisma.client.updateMany({ where: { id: { in: ids.slice(i, i + 300) } }, data: { meterLorawan: value } });
+  };
+  await chunk(on, true);
+  await chunk(off, false);
+  if (on.length || off.length) await invalidatePayers();
+}
 
 export type Trigger = "timer" | "cron" | "manual";
 export type LorawanRun = { ok: true; message: string; stats: LorawanStats } | { ok: false; error: string };
@@ -177,6 +196,7 @@ export async function runLorawanSync(trigger: Trigger): Promise<LorawanRun> {
 
     await prisma.lorawanMeter.deleteMany({ where: { updatedAt: { lt: new Date(Date.now() - FORGET_AFTER_DAYS * 86_400_000) } } });
     invalidateLorawanMap();
+    await syncPayerFlags().catch((e) => console.error("[lorawan] marcajul plătitorilor:", e));
 
     const message = `${stats.received} contoare primite: ${stats.saved} citiri salvate, ${stats.unchanged} neschimbate, ${stats.stale} ignorate (transmisie din altă lună), ${stats.placeholders} fără nicio transmisie, ${stats.unmatched} negăsite în CRM${stats.errors ? `, ${stats.errors} erori` : ""}.`;
     const durationMs = Date.now() - t0;

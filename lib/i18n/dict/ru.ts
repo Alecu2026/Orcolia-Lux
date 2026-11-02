@@ -3073,4 +3073,12 @@ export const RU: Record<string, string> = {
   "Nu am putut porni extragerea.": "Не удалось запустить выгрузку.",
   "Fără nicio transmisie": "Без передач",
   "Înregistrate pe serverul LoRaWAN, dar cu 0 m³ la o dată fixă: nu au transmis niciodată": "Зарегистрированы на сервере LoRaWAN, но с 0 м³ на фиксированную дату: ни разу не передавали",
+  "📡 LoRaWAN (automat)": "📡 LoRaWAN (автоматически)",
+  "📡 Cu contor LoRaWAN (automat)": "📡 Со счётчиком LoRaWAN (автоматически)",
+  "Fără contor LoRaWAN": "Без счётчика LoRaWAN",
+  "Contoare: de citit (fără LoRaWAN)": "Счётчики: к снятию (без LoRaWAN)",
+  "Toate (cu LoRaWAN)": "Все (с LoRaWAN)",
+  "📡 Doar LoRaWAN (automate)": "📡 Только LoRaWAN (автоматические)",
+  "📡 LoRaWAN (automate)": "📡 LoRaWAN (автоматические)",
+  "primite luna aceasta (pe rute și fără rută)": "получено в этом месяце (на маршрутах и без маршрута)",
 };

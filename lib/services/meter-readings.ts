@@ -165,7 +165,7 @@ export async function getFieldList(): Promise<FieldList> {
       // ultimul index cunoscut e calculat (estimat) în 1C și nu a fost înlocuit de o citire din teren mai nouă
       !useField && isEstimatedSource(r.sursa) ? 1 : 0,
       // contor care transmite automat prin LoRaWAN: nu se citește și nu se editează manual
-      lw.map.has(r.id) ? 1 : 0,
+      lw.map.has(r.id) ? (cur?.source === LORAWAN_SOURCE ? 2 : 1) : 0,
     ];
   });
   return { period, rows, routes: routes.filter((r) => r.active) };

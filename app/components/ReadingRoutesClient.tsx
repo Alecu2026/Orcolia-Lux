@@ -169,9 +169,16 @@ export default function ReadingRoutesClient({ initial, canExport = true }: { ini
 
 // ── Planificat vs citit ───────────────────────────────────────────────────────────────────────────────────────────
 
-type ReportF = { q: string; reader: string; state: "" | WindowState; progress: "" | "lt25" | "lt50" | "lt75" | "lt100" | "done"; unread: boolean; behind: boolean; issues: boolean };
-const EMPTY_REPORT_F: ReportF = { q: "", reader: "", state: "", progress: "", unread: false, behind: false, issues: false };
-const reportActive = (f: ReportF) => (f.q ? 1 : 0) + (f.reader ? 1 : 0) + (f.state ? 1 : 0) + (f.progress ? 1 : 0) + (f.unread ? 1 : 0) + (f.behind ? 1 : 0) + (f.issues ? 1 : 0);
+type ReportF = { q: string; reader: string; state: "" | WindowState; progress: "" | "lt25" | "lt50" | "lt75" | "lt100" | "done"; unread: boolean; behind: boolean; issues: boolean; /** contoarele LoRaWAN: „” = nu intră în planificat (nu le citește nimeni), „all” = incluse, „only” = doar ele */ auto?: "" | "all" | "only" };
+const EMPTY_REPORT_F: ReportF = { q: "", reader: "", state: "", progress: "", unread: false, behind: false, issues: false, auto: "" };
+
+/** Cifrele unei rute / unui cititor după alegerea „Contoare”: obișnuite (implicit), obișnuite + LoRaWAN, sau doar LoRaWAN (primite automat, nimic de citit). */
+function withAuto<T extends { planned: number; readByReader: number; readByOthers: number; unread: number; dueToday: number; auto: number; autoRead: number }>(r: T, mode: ReportF["auto"]): T {
+  if (mode === "all") return { ...r, planned: r.planned + r.auto, readByOthers: r.readByOthers + r.autoRead, unread: r.unread + r.auto - r.autoRead };
+  if (mode === "only") return { ...r, planned: r.auto, readByReader: 0, readByOthers: r.autoRead, unread: r.auto - r.autoRead, dueToday: 0 };
+  return r;
+}
+const reportActive = (f: ReportF) => (f.auto ? 1 : 0) + (f.q ? 1 : 0) + (f.reader ? 1 : 0) + (f.state ? 1 : 0) + (f.progress ? 1 : 0) + (f.unread ? 1 : 0) + (f.behind ? 1 : 0) + (f.issues ? 1 : 0);
 
 function ReportTab({ data, tag, canExport }: { data: RoutesBundle; tag: string; canExport: boolean }) {
   const t = useT();
@@ -186,9 +193,12 @@ function ReportTab({ data, tag, canExport }: { data: RoutesBundle; tag: string; 
   const pctR = (r: RouteStat) => (r.planned ? (r.readByReader + r.readByOthers) / r.planned : null);
   const behindR = (r: RouteStat) => r.dueToday > 0 && r.readByReader + r.readByOthers < r.dueToday;
 
+  const autoMode = f.auto ?? "";
+  const viewRoutes = useMemo(() => report.routes.map((r) => withAuto(r, autoMode)), [report.routes, autoMode]);
+  const viewReaders = useMemo(() => report.readers.map((r) => withAuto(r, autoMode)), [report.readers, autoMode]);
   const routes = useMemo(() => {
     const q = norm(dq).split(/\s+/).filter(Boolean);
-    const out = report.routes.filter((r) => {
+    const out = viewRoutes.filter((r) => {
       if (q.length && !q.every((w) => norm(`${r.name} ${r.readerName ?? ""}`).includes(w))) return false;
       if (f.reader === "none" ? r.readerId : f.reader ? r.readerId !== f.reader : false) return false;
       if (f.state && r.state !== f.state) return false;
@@ -204,11 +214,11 @@ function ReportTab({ data, tag, canExport }: { data: RoutesBundle; tag: string; 
       unread: (r) => r.unread, pct: (r) => pctR(r), issues: (r) => r.issues, lastAt: (r) => r.lastAt, window: (r) => r.startDay,
     };
     return [...out].sort((a, b) => cmp(a, b, get[routeSort.key] ?? get.name, routeSort.dir));
-  }, [report.routes, dq, f, routeSort]);
+  }, [viewRoutes, dq, f, routeSort]);
 
   const readers = useMemo(() => {
     const q = norm(dq).split(/\s+/).filter(Boolean);
-    const out = report.readers.filter((r) => {
+    const out = viewReaders.filter((r) => {
       if (q.length && !q.every((w) => norm(r.readerId ? r.readerName : t("Fără cititor")).includes(w))) return false;
       if (f.reader === "none" ? r.readerId : f.reader ? r.readerId !== f.reader : false) return false;
       if (f.unread && r.unread <= 0) return false;
@@ -222,7 +232,7 @@ function ReportTab({ data, tag, canExport }: { data: RoutesBundle; tag: string; 
     };
     return [...out].sort((a, b) => cmp(a, b, get[readerSort.key] ?? get.name, readerSort.dir));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report.readers, dq, f, readerSort]);
+  }, [viewReaders, dq, f, readerSort]);
 
   // totaluri pe rutele filtrate
   const planned = routes.reduce((s, r) => s + r.planned, 0);
@@ -230,6 +240,10 @@ function ReportTab({ data, tag, canExport }: { data: RoutesBundle; tag: string; 
   const due = routes.reduce((s, r) => s + r.dueToday, 0);
   const late = routes.filter((r) => r.state === "late").reduce((s, r) => s + r.unread, 0);
   const nActive = reportActive(f);
+  // contoarele LoRaWAN pe toate rutele (nu doar cele filtrate) + fără rută
+  const autoTotal = report.routes.reduce((n, r) => n + r.auto, 0) + report.noRoute.auto;
+  const autoRead = report.routes.reduce((n, r) => n + r.autoRead, 0) + report.noRoute.autoRead;
+  const noRoute = autoMode === "all" ? { total: report.noRoute.total + report.noRoute.auto, read: report.noRoute.read + report.noRoute.autoRead } : autoMode === "only" ? { total: report.noRoute.auto, read: report.noRoute.autoRead } : report.noRoute;
   const readerOptions = useMemo(() => users.filter((u) => report.routes.some((r) => r.readerId === u.id) || report.readers.some((r) => r.readerId === u.id)), [users, report]);
 
   function exportCsv() {
@@ -268,6 +282,11 @@ function ReportTab({ data, tag, canExport }: { data: RoutesBundle; tag: string; 
           <option value="none">{t("Fără cititor")}</option>
           {readerOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
+        <select value={autoMode} onChange={(e) => setF({ ...f, auto: e.target.value as ReportF["auto"] })} className={fld(!!autoMode)} aria-label={t("Contoare")}>
+          <option value="">{t("Contoare: de citit (fără LoRaWAN)")}</option>
+          <option value="all">{t("Toate (cu LoRaWAN)")}</option>
+          <option value="only">{t("📡 Doar LoRaWAN (automate)")}</option>
+        </select>
         <select value={f.state} onChange={(e) => setF({ ...f, state: e.target.value as ReportF["state"] })} className={fld(!!f.state)} aria-label={t("Stare")}>
           <option value="">{t("Stare: toate")}</option>
           <option value="before">{t("încă nu a început")}</option>
@@ -292,11 +311,12 @@ function ReportTab({ data, tag, canExport }: { data: RoutesBundle; tag: string; 
         <span className="text-[11px] text-ink-soft">{t("{n} din {total} rute", { n: routes.length, total: report.routes.length })}</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className={`grid grid-cols-2 gap-2 ${autoTotal > 0 ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
         <Stat label={t("Planificate (pe rute)")} value={nf(planned)} />
         <Stat label={t("Citite")} value={`${nf(read)} · ${planned ? Math.round((read / planned) * 100) : 0}%`} tone={read >= due ? "ok" : "warn"} sub={t("până azi ar fi trebuit {n}", { n: nf(due) })} />
         <Stat label={t("Necitite după termen")} value={nf(late)} tone={late > 0 ? "bad" : "ok"} />
-        <Stat label={t("Contoare fără rută")} value={nf(report.noRoute.total)} sub={report.noRoute.read ? t("{n} citite", { n: nf(report.noRoute.read) }) : undefined} tone={report.noRoute.total > 0 ? "warn" : "ok"} />
+        <Stat label={t("Contoare fără rută")} value={nf(noRoute.total)} sub={noRoute.read ? t("{n} citite", { n: nf(noRoute.read) }) : undefined} tone={noRoute.total > 0 ? "warn" : "ok"} />
+        {autoTotal > 0 && <Stat label={t("📡 LoRaWAN (automate)")} value={`${nf(autoRead)} / ${nf(autoTotal)}`} sub={t("primite luna aceasta (pe rute și fără rută)")} />}
       </div>
 
       <div className="card overflow-hidden">

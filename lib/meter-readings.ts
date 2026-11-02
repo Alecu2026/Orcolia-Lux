@@ -84,7 +84,7 @@ export function parseIndex(raw: string): number | null {
  */
 /** 16 sector („Участок” din 1C), 17 neregula deschisă (cod, vezi lib/meter-issues.ts) sau null. */
 /** 18 (1 = citirea lunii vine din portal, trimisă de plătitor) 19 (consumul mediu lunar al contorului la citire, m³) și 20 (1 = ultimul index cunoscut e calculat / estimat, nu citit) lipsesc în listele salvate pe telefon mai vechi. */
-export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null, string | null, string | null, (0 | 1)?, (number | null)?, (0 | 1)?, (0 | 1)?];
+export type FieldTuple = [string, string, string, string | null, number | null, string | null, number | null, number | null, 0 | 1, string | null, number | null, 0 | 1, number | null, number | null, 0 | 1, number | null, string | null, string | null, (0 | 1)?, (number | null)?, (0 | 1)?, (0 | 1 | 2)?];
 
 export type FieldRow = {
   id: string;
@@ -108,6 +108,8 @@ export type FieldRow = {
   avg: number | null;
   /** Contorul transmite automat prin LoRaWAN: nu se citește și nu se editează manual. */
   auto: boolean;
+  /** Citirea lunii curente a venit automat de la contor (LoRaWAN). */
+  autoRead: boolean;
   /** Ultimul index cunoscut e calculat (estimat), nu citit de un controlor — contorul merită citit și verificat. */
   estimated: boolean;
   /** Citirea de luna aceasta are locație GPS. */
@@ -163,7 +165,8 @@ export function decodeField(t: FieldTuple[]): FieldRow[] {
     consum: fieldConsum(x[6], x[4]),
     avg: x[19] ?? null,
     estimated: x[20] === 1,
-    auto: x[21] === 1,
+    auto: (x[21] ?? 0) >= 1,
+    autoRead: x[21] === 2,
     geo: x[11] === 1,
     lat: x[12] ?? null,
     lng: x[13] ?? null,
@@ -187,8 +190,8 @@ export type FieldFilters = {
   /** „unread” = necitite luna aceasta (implicit), „read” = citite, „all” = toate. */
   status: "unread" | "read" | "all";
   photo: "" | "yes" | "no";
-  /** Cine a făcut citirea: toți / plătitorul din portal / cititor (utilizator). */
-  source: "" | "portal" | "field";
+  /** Cine a făcut citirea: toți / plătitorul din portal / cititor (utilizator) / contor LoRaWAN (automat). */
+  source: "" | "portal" | "field" | "lorawan";
   /** De verificat: consum negativ / neobișnuit de mare sau de mic față de medie / zero, sau citit departe de locația anterioară. */
   check: "" | "lower" | "high" | "low" | "zero" | "far";
   /** Cine a citit (numele). */
@@ -245,7 +248,7 @@ export function sanitizeFieldFilters(raw: Record<string, unknown>): FieldFilters
     route: typeof raw.route === "string" && /^([0-9a-f]{24}|none|mine)$/i.test(raw.route) ? raw.route : "",
     issue: oneOf(raw.issue, ["", "any", "serious"] as const, ""),
     estimated: oneOf(raw.estimated, ["", "yes", "no"] as const, ""),
-    source: oneOf(raw.source, ["", "portal", "field"] as const, ""),
+    source: oneOf(raw.source, ["", "portal", "field", "lorawan"] as const, ""),
     sort: oneOf(raw.sort, ["", "contor", "name", "readDesc", "consumDesc", "consumAsc", "lastOld"] as const, ""),
   };
 }
@@ -309,7 +312,8 @@ export function filterField(rows: FieldRow[], f: FieldFilters, mineRoutes?: Set<
     if (f.status === "unread" ? r.value != null : f.status === "read" ? r.value == null : false) return false;
     if (f.photo === "yes" ? !r.photo : f.photo === "no" ? r.photo : false) return false;
     if (f.by && r.by !== f.by) return false;
-    if (f.source === "portal" ? !(r.value != null && r.portal) : f.source === "field" ? !(r.value != null && !r.portal) : false) return false;
+    // „LoRaWAN” = contoarele care transmit automat (cu sau fără citire luna aceasta — combinat cu „Citite / Necitite”); „Cititor” nu le include
+    if (f.source === "portal" ? !(r.value != null && r.portal) : f.source === "field" ? !(r.value != null && !r.portal && !r.autoRead) : f.source === "lorawan" ? !r.auto : false) return false;
     if (f.locality && r.locality !== f.locality) return false;
     if (f.address === "has" ? !r.address : f.address === "none" ? !!r.address : false) return false;
     if (f.route) {

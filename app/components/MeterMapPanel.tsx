@@ -117,6 +117,7 @@ export default function MeterMapPanel({
                   <option value="">{t("Sursa: toate")}</option>
                   <option value="portal">{t("🌐 Din portal (plătitor)")}</option>
                   <option value="field">{t("Cititor (în teren)")}</option>
+                  <option value="lorawan">{t("📡 LoRaWAN (automat)")}</option>
                 </select>
                 <select value={filters.accuracy} onChange={(e) => set({ accuracy: e.target.value as MeterMapFilters["accuracy"] })} className={sel(!!filters.accuracy)} aria-label={t("Precizia locației")}>
                   <option value="">{t("Precizie: toate")}</option>

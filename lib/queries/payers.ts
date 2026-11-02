@@ -84,6 +84,8 @@ export type ListPayersOpts = {
   noInvoices?: boolean;
   /** "yes" = ultima citire a contorului e calculată (estimată); "no" = citită. */
   estimated?: "yes" | "no";
+  /** "yes" = are cel puțin un contor LoRaWAN; "no" = nu are. */
+  lorawan?: "yes" | "no";
   /** Contractul: fără dată / expirat / expiră în 10 sau 30 de zile. */
   contractExp?: ContractExpFilter;
   /** Verificarea metrologică (cea mai apropiată scadență a contoarelor): fără dată / expirată / expiră în 10, 30 sau 60 de zile. */
@@ -272,6 +274,7 @@ export async function buildPayerWhere(opts: ListPayersOpts = {}): Promise<Prisma
       ...contractWhere(opts.contractExp),
       ...metrologyWhere(opts.metrologyExp),
       ...issuesWhere(opts.meterIssues),
+      ...(opts.lorawan === "yes" ? [{ meterLorawan: true }] : opts.lorawan === "no" ? [{ meterLorawan: { not: true } }] : []),
       ...(opts.estimated === "yes" ? [{ meterReadingEstimated: true }] : opts.estimated === "no" ? [{ meterReadingEstimated: { not: true } }] : []),
       ...(opts.idsIn ? [{ id: { in: opts.idsIn } }] : []),
       ...(opts.idsNotIn?.length ? [{ id: { notIn: opts.idsNotIn } }] : []),
@@ -798,7 +801,7 @@ async function latestInvoiceStatsFromRows(): Promise<{ latest: Map<string, Lates
 export async function getPayerSnapshot(): Promise<SnapTuple[]> {
   if (DEMO) return [];
   const [clients, stats, installBy, sectorBy] = await Promise.all([
-    prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true, meterReadingEstimated: true } }),
+    prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true, meterReadingEstimated: true, meterLorawan: true } }),
     latestInvoiceStats(),
     installDateMap(),
     payerSectorMap(true),
@@ -812,7 +815,7 @@ export async function getPayerSnapshot(): Promise<SnapTuple[]> {
       inv?.number ?? null, inv?.status ?? null, inv?.grandTotal ?? null, inv?.currency ?? null, inv?.dueDate ? inv.dueDate.getTime() : null,
       c.consumAddress, c.lastNotifiedAt ? c.lastNotifiedAt.getTime() : null, installBy.get(c.id) ?? null, c.lastInvoiceSectorNr,
       sectorBy.get(c.id) ?? null, c.meterReadingEstimated ? 1 : 0, contractKey(c.contractExpiresAt), contractKey(c.metrologyDueAt),
-      c.meterIssuesOpen ?? 0, contractKey(c.meterIssueDueAt),
+      c.meterIssuesOpen ?? 0, contractKey(c.meterIssueDueAt), c.meterLorawan ? 1 : 0,
     ];
   });
 }

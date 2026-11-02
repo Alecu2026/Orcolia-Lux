@@ -125,10 +125,10 @@ export async function getRouteReport(listPromise?: ReturnType<typeof getFieldLis
   const issueMeters = new Set(issues.map((i) => i.meterId));
   const routeById = new Map(routes.map((r) => [r.id, r]));
 
-  type Acc = { planned: number; byReader: number; byOthers: number; issues: number; lastAt: number | null };
+  type Acc = { planned: number; byReader: number; byOthers: number; issues: number; lastAt: number | null; auto: number; autoRead: number };
   const acc = new Map<string, Acc>();
-  for (const r of routes) acc.set(r.id, { planned: 0, byReader: 0, byOthers: 0, issues: 0, lastAt: null });
-  const noRoute = { total: 0, read: 0 };
+  for (const r of routes) acc.set(r.id, { planned: 0, byReader: 0, byOthers: 0, issues: 0, lastAt: null, auto: 0, autoRead: 0 });
+  const noRoute = { total: 0, read: 0, auto: 0, autoRead: 0 };
   // cine a citit în afara rutelor lui + primul / ultimul moment al lunii
   const elsewhere = new Map<string, number>();
   const span = new Map<string, { first: number; last: number; name: string; n: number }>();
@@ -147,6 +147,18 @@ export async function getRouteReport(listPromise?: ReturnType<typeof getFieldLis
         s.last = Math.max(s.last, t);
         s.n++;
       }
+    }
+    const isAuto = (row[21] ?? 0) >= 1; // contor LoRaWAN
+    if (isAuto) {
+      if (!rid) {
+        noRoute.auto++;
+        if (rd) noRoute.autoRead++;
+      } else {
+        const a = acc.get(rid)!;
+        a.auto++;
+        if (rd) a.autoRead++;
+      }
+      continue;
     }
     if (!rid) {
       noRoute.total++;
@@ -195,24 +207,28 @@ export async function getRouteReport(listPromise?: ReturnType<typeof getFieldLis
         dueToday: plannedByToday(a.planned, r, today.day),
         issues: a.issues,
         lastAt: a.lastAt,
+        auto: a.auto,
+        autoRead: a.autoRead,
       };
     });
 
   const readers = new Map<string, ReaderStat>();
   for (const s of stats) {
     const k = s.readerId ?? "";
-    const cur = readers.get(k) ?? { readerId: s.readerId, readerName: s.readerId ? (s.readerName ?? "—") : "", routes: 0, planned: 0, readByReader: 0, readByOthers: 0, unread: 0, dueToday: 0, readElsewhere: 0, firstAt: null, lastAt: null };
+    const cur = readers.get(k) ?? { readerId: s.readerId, readerName: s.readerId ? (s.readerName ?? "—") : "", routes: 0, planned: 0, readByReader: 0, readByOthers: 0, unread: 0, dueToday: 0, readElsewhere: 0, auto: 0, autoRead: 0, firstAt: null, lastAt: null };
     cur.routes++;
     cur.planned += s.planned;
     cur.readByReader += s.readByReader;
     cur.readByOthers += s.readByOthers;
     cur.unread += s.unread;
     cur.dueToday += s.dueToday;
+    cur.auto += s.auto;
+    cur.autoRead += s.autoRead;
     readers.set(k, cur);
   }
   // cine a citit fără să aibă vreo rută
   for (const [id, s] of span) {
-    if (!readers.has(id)) readers.set(id, { readerId: id, readerName: nameOf.get(id) ?? s.name, routes: 0, planned: 0, readByReader: 0, readByOthers: 0, unread: 0, dueToday: 0, readElsewhere: 0, firstAt: null, lastAt: null });
+    if (!readers.has(id)) readers.set(id, { readerId: id, readerName: nameOf.get(id) ?? s.name, routes: 0, planned: 0, readByReader: 0, readByOthers: 0, unread: 0, dueToday: 0, readElsewhere: 0, auto: 0, autoRead: 0, firstAt: null, lastAt: null });
   }
   for (const [id, r] of readers) {
     if (!id) continue;
