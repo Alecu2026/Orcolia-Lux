@@ -352,6 +352,8 @@ model Task {
   portalTemplateId String? @db.ObjectId
   /// Tipul serviciului la care se referă cererea: WATER (apă), SEWER (canalizare) sau BOTH (apă + canalizare); gol = nespecificat (cererile mai vechi). Vezi lib/service-type.ts.
   serviceType String?
+  /// Categoria consumatorului: HOUSEHOLD (casnic) sau NON_HOUSEHOLD (non casnic); gol = nespecificat. Vezi lib/consumer-type.ts.
+  consumerType String?
   /// Data executării cererii (doar data, 00:00 UTC): completată de echipă; la finalizarea unei cereri rămâne data zilei dacă nu e deja setată.
   executedAt DateTime?
   /// Închiderea unei cereri: ce s-a făcut („Măsuri luate”), cât a durat rezolvarea (minute, introdus de executant) și când s-a închis (Finalizat / Anulat; gol la redeschidere).

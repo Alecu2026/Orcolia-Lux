@@ -21,7 +21,7 @@ const SCOPE_KEYS = ["mine", "all", "created"] as const;
 export default async function TicketsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; ptpl?: string; service?: string; deadline?: string; client?: string; title?: string; desc?: string; template?: string; phone?: string; at?: string }>;
+  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; ptpl?: string; service?: string; consumerType?: string; deadline?: string; client?: string; title?: string; desc?: string; template?: string; phone?: string; at?: string }>;
 }) {
   const user = await requirePermission("tickets.view");
   const sp = await searchParams;
@@ -114,6 +114,7 @@ export default async function TicketsPage({
           status: sp.status ?? (sp.sg ? `g:${sp.sg}` : undefined),
           ptpl: sp.ptpl,
           service: sp.service,
+          consumerType: sp.consumerType,
           deadline: sp.deadline,
           assignee: sp.assignee,
           prio: sp.prio,

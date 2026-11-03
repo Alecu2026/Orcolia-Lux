@@ -70,12 +70,17 @@ export function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: n
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-/** Indexul scris de utilizator („1234,5" sau „1234.5") → număr, sau null dacă nu e valid. */
+/** Indexul scris de cititor / de plătitor → număr ÎNTREG de m³ (fără virgulă sau punct), sau null dacă nu e valid. */
 export function parseIndex(raw: string): number | null {
-  const s = raw.trim().replace(/\s+/g, "").replace(",", ".");
-  if (!/^\d{1,8}(\.\d{1,3})?$/.test(s)) return null;
+  const s = raw.trim().replace(/\s+/g, "");
+  if (!/^\d{1,8}$/.test(s)) return null;
   const n = Number(s);
   return Number.isFinite(n) && n >= 0 && n <= MAX_INDEX ? n : null;
+}
+
+/** Ce se păstrează dintr-un text scris / lipit în câmpul indexului: doar cifre, tăiat la primul separator zecimal („1234,5” → „1234”; altfel ar ieși 12345). */
+export function sanitizeIndexInput(raw: string): string {
+  return raw.split(/[.,]/)[0].replace(/\D/g, "").slice(0, 8);
 }
 
 /**

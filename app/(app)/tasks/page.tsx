@@ -21,7 +21,7 @@ const SCOPE_KEYS = ["mine", "all", "created"] as const;
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; service?: string; client?: string; title?: string; desc?: string; template?: string; phone?: string; at?: string }>;
+  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; service?: string; consumerType?: string; client?: string; title?: string; desc?: string; template?: string; phone?: string; at?: string }>;
 }) {
   const user = await requirePermission("tasks.view");
   const sp = await searchParams;
@@ -113,6 +113,7 @@ export default async function TasksPage({
           proj: sp.proj,
           status: sp.status,
           service: sp.service,
+          consumerType: sp.consumerType,
           assignee: sp.assignee,
           prio: sp.prio,
           due: sp.due,

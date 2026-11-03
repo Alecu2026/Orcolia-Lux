@@ -55,6 +55,7 @@ import type { CategoryLite } from "./types";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 import { SERVICE_TYPES, SERVICE_TYPE_LABEL, serviceTypeLabel } from "@/lib/service-type";
+import { CONSUMER_TYPES, CONSUMER_TYPE_LABEL, consumerTypeLabel } from "@/lib/consumer-type";
 import { DEADLINE_FILTER_OPTIONS, deadlineState } from "@/lib/task-deadline";
 
 const PRIO_RANK = { LOW: 1, MEDIUM: 2, HIGH: 3, URGENT: 4 } as const;
@@ -472,6 +473,18 @@ export default function TasksTable({
         />
       ),
     },
+    {
+      key: "consumerType", label: "Tip consumator", minW: 100, maxW: 130, sort: (t: Task) => consumerTypeLabel(t.consumerType) || null,
+      render: (t: Task) => (
+        <EditableSelect
+          value={t.consumerType ?? ""}
+          disabled={!canEditRow(t)}
+          options={CONSUMER_TYPES.map((k) => ({ value: k, label: CONSUMER_TYPE_LABEL[k] }))}
+          onChange={(v) => patchTask(t, { consumerType: v || null }, { consumerType: v || null })}
+          display={t.consumerType ? <span>{tr(consumerTypeLabel(t.consumerType))}</span> : dash}
+        />
+      ),
+    },
     ...(ticketMode
       ? [
           {
@@ -709,6 +722,7 @@ export default function TasksTable({
           return !!mem && ((!!t.assigneeId && mem.includes(t.assigneeId)) || t.extraAssigneeIds.some((id) => mem.includes(id)));
         },
       },
+      { kind: "select", key: "consumerType", label: "Tip consumator", options: CONSUMER_TYPES.map((k) => ({ value: k, label: CONSUMER_TYPE_LABEL[k] })), test: (t, v) => t.consumerType === v },
       { kind: "select", key: "service", label: "Tip serviciu", options: SERVICE_TYPES.map((k) => ({ value: k, label: SERVICE_TYPE_LABEL[k] })), test: (t, v) => t.serviceType === v },
       { kind: "select", key: "proj", label: m.tasks.filterProject, options: projects.map((x) => ({ value: x.id, label: x.name })), test: (t, v) => t.projectId === v },
       ...(clients.length ? [{ kind: "select" as const, key: "client", label: m.tasks.filterClient, options: clients.map((x) => ({ value: x.id, label: x.name })), test: (t: Task, v: string) => t.clientId === v }] : []),

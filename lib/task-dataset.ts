@@ -44,6 +44,7 @@ export type TaskTuple = [
   string | null, // 32 șablonul de cerere din portal (id) — lipsește în listele salvate înainte de această versiune
   string | null, // 33 tipul serviciului (WATER / SEWER / BOTH) — lipsește în listele salvate înainte de această versiune
   number | null, // 34 când s-a finalizat / anulat (ms) — lipsește în listele salvate înainte de această versiune
+  string | null, // 35 categoria consumatorului (HOUSEHOLD / NON_HOUSEHOLD) — lipsește în listele salvate înainte de această versiune
 ];
 
 export type TaskNames = {
@@ -99,6 +100,8 @@ export type DecodedTask = {
   serviceType: string | null;
   /** Când s-a finalizat / anulat (ISO); gol = deschisă sau închisă înainte să se păstreze data. */
   closedAt: string | null;
+  /** Categoria consumatorului: HOUSEHOLD / NON_HOUSEHOLD; gol = nespecificat. */
+  consumerType: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -153,6 +156,7 @@ export function decodeTasks(tuples: TaskTuple[], names: TaskNames): DecodedTask[
       portalTemplateId: r[32] ?? null,
       serviceType: r[33] ?? null,
       closedAt: r[34] == null ? null : new Date(r[34]).toISOString(),
+      consumerType: r[35] ?? null,
       extraAssigneeIds: r[16],
       extraTeamIds: r[17],
       assignmentSettingsJson: r[18],

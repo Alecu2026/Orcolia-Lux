@@ -3232,4 +3232,10 @@ export const EN: Record<string, string> = {
   "Expirate (nerezolvate, termen depășit)": "Expired (unresolved, past the deadline)",
   "Rezolvate în termen": "Resolved on time",
   "Rezolvate după termen": "Resolved after the deadline",
+  "Index invalid. Scrie un număr întreg (m³), fără virgulă, ex. 1234.": "Invalid index. Enter a whole number (m³), without a decimal comma, e.g. 1234.",
+  "ex. 1234": "e.g. 1234",
+  "Tip consumator": "Consumer type",
+  "Tip consumator: nespecificat": "Consumer type: not specified",
+  "Casnic": "Household",
+  "Non casnic": "Non-household",
 };

@@ -41,6 +41,7 @@ import { hasPayerVariables, type TemplatePrefill } from "@/lib/task-template";
 import { resolveTemplateTextAction } from "@/app/actions/task-templates";
 import { useT } from "@/lib/i18n/context";
 import { SERVICE_TYPES, SERVICE_TYPE_LABEL } from "@/lib/service-type";
+import { CONSUMER_TYPES, CONSUMER_TYPE_LABEL } from "@/lib/consumer-type";
 
 export type HistoryRow = {
   id: string;
@@ -102,6 +103,8 @@ export type Task = {
   serviceType?: string | null;
   /** Când s-a finalizat / anulat (pentru filtrul „Situație termen”). */
   closedAt?: string | Date | null;
+  /** Categoria consumatorului: HOUSEHOLD (casnic) / NON_HOUSEHOLD (non casnic); gol = nespecificat. */
+  consumerType?: string | null;
   assigneeName: string | null;
   teamName: string | null;
   projectName: string | null;
@@ -196,6 +199,17 @@ function ServiceTypeSelect({ defaultValue }: { defaultValue: string }) {
     <select name="serviceType" defaultValue={defaultValue} aria-label={t("Tip serviciu")} data-service-type className={dlgInput}>
       <option value="">{t("Tip serviciu: nespecificat")}</option>
       {SERVICE_TYPES.map((k) => <option key={k} value={k}>{t(SERVICE_TYPE_LABEL[k])}</option>)}
+    </select>
+  );
+}
+
+/** Casnic / non casnic; gol = nespecificat. */
+function ConsumerTypeSelect({ defaultValue }: { defaultValue: string }) {
+  const t = useT();
+  return (
+    <select name="consumerType" defaultValue={defaultValue} aria-label={t("Tip consumator")} data-consumer-type className={dlgInput}>
+      <option value="">{t("Tip consumator: nespecificat")}</option>
+      {CONSUMER_TYPES.map((k) => <option key={k} value={k}>{t(CONSUMER_TYPE_LABEL[k])}</option>)}
     </select>
   );
 }
@@ -1218,7 +1232,10 @@ export function EditDialog({
             </select>
           )}
           <AddressInput defaultValue={task.address ?? ""} className={dlgInput} onChange={(v) => { addressRef.current = v; }} />
-          <ServiceTypeSelect defaultValue={task.serviceType ?? ""} />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <ServiceTypeSelect defaultValue={task.serviceType ?? ""} />
+            <ConsumerTypeSelect defaultValue={task.consumerType ?? ""} />
+          </div>
           {!canAssign && (
             <AssignmentLocked
               users={users}
@@ -1430,7 +1447,10 @@ export function CreateDialog({
             </select>
           )}
           <AddressInput defaultValue={prefill?.address ?? initialAddress ?? ""} className={dlgInput} />
-          <ServiceTypeSelect defaultValue="" />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <ServiceTypeSelect defaultValue="" />
+            <ConsumerTypeSelect defaultValue="" />
+          </div>
           {canAssign && <MultiAssignPicker users={users} teams={teams} initialAssigneeIds={prefill?.assigneeIds} initialTeamIds={prefill?.teamIds} />}
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.dueDate}</label>

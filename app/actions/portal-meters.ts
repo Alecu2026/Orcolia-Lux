@@ -21,7 +21,7 @@ export async function submitPortalReadingAction(formData: FormData): Promise<Por
   const meterId = String(formData.get("meterId") ?? "");
   if (!meterId || meterId.length > 300) return { ok: false, error: "Contor invalid." };
   const value = parseIndex(String(formData.get("value") ?? ""));
-  if (value == null) return { ok: false, error: "Index invalid. Scrie un număr (m³), ex. 1234,5." };
+  if (value == null) return { ok: false, error: "Index invalid. Scrie un număr întreg (m³), fără virgulă, ex. 1234." };
   const file = formData.get("photo");
   const res = await submitPortalReading(client, {
     meterId,

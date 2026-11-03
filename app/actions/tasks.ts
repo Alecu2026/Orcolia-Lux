@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/dal";
 import { parseServiceType } from "@/lib/service-type";
+import { parseConsumerType } from "@/lib/consumer-type";
 import { canWorkOnTaskById } from "@/lib/services/task-access";
 import { can, canAny, canUseAllScope, canEditTask, canViewTask, canViewTaskData } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
@@ -174,6 +175,7 @@ export async function createTaskAction(
         categoryId: (formData.get("categoryId") as string) || null,
         address: String(formData.get("address") ?? "").trim().slice(0, 300) || null,
         serviceType: parseServiceType(formData.get("serviceType")),
+        consumerType: parseConsumerType(formData.get("consumerType")),
         reminderIntervalMinutes,
         reminderSchedule,
         bypassQuietHours: formData.get("bypassQuietHours") === "on",
@@ -382,6 +384,7 @@ export async function updateTaskAction(
       categoryId: (formData.get("categoryId") as string) || null,
       ...(formData.has("address") ? { address: String(formData.get("address") ?? "").trim().slice(0, 300) || null } : {}),
       ...(formData.has("serviceType") ? { serviceType: parseServiceType(formData.get("serviceType")) } : {}),
+      ...(formData.has("consumerType") ? { consumerType: parseConsumerType(formData.get("consumerType")) } : {}),
       priority,
       dueAt,
       reminderIntervalMinutes,
@@ -413,6 +416,8 @@ export type TaskFieldPatch = {
   consumerName?: string | null;
   /** WATER / SEWER / BOTH; gol = nespecificat. */
   serviceType?: string | null;
+  /** HOUSEHOLD / NON_HOUSEHOLD; gol = nespecificat. */
+  consumerType?: string | null;
   /** "YYYY-MM-DD" (sau null/"" = fără termen) + ora opțională "HH:mm", în fusul Europe/Bucharest. */
   dueDate?: string | null;
   dueTime?: string | null;
@@ -483,6 +488,7 @@ export async function updateTaskFieldAction(id: string, patch: TaskFieldPatch): 
     if ("address" in patch) input.address = String(patch.address ?? "").trim().slice(0, 300) || null;
     if ("consumerName" in patch) input.consumerName = String(patch.consumerName ?? "").replace(/\s+/g, " ").trim().slice(0, 150) || null;
     if ("serviceType" in patch) input.serviceType = parseServiceType(patch.serviceType);
+    if ("consumerType" in patch) input.consumerType = parseConsumerType(patch.consumerType);
     if ("dueDate" in patch) {
       const d = String(patch.dueDate ?? "").trim();
       const t = String(patch.dueTime ?? "").trim();

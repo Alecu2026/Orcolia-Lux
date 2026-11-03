@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { resendPortalConfirmationAction, submitPortalReadingAction } from "@/app/actions/portal-meters";
 import { ISSUE_LABELS } from "@/lib/meter-issues";
 import { PORTAL_ISSUE_KINDS, type PortalMeterDto } from "@/lib/portal-meters";
-import { JUMP_CONFIRM_M3, parseIndex } from "@/lib/meter-readings";
+import { JUMP_CONFIRM_M3, parseIndex, sanitizeIndexInput } from "@/lib/meter-readings";
 import { optimizeImage } from "@/lib/image-optimize";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
@@ -71,7 +71,7 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
   // la schimbarea contorului formularul pornește de la zero (cu indexul trimis deja din portal, dacă există)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
-    setValue(m?.thisMonth?.source === "PORTAL" ? nf(m.thisMonth.value) : "");
+    setValue(m?.thisMonth?.source === "PORTAL" ? String(Math.trunc(m.thisMonth.value)) : "");
     setKind(""); setNote(""); setPhoto(null); setPreview(null); setConfirm(null); setMsg(null); setGeoState("idle"); geoRef.current = null;
     if (fileRef.current) fileRef.current.value = "";
   }, [m?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -86,7 +86,7 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
 
   async function submit(confirmed: boolean) {
     const v = parseIndex(value);
-    if (v == null) { setMsg({ ok: false, text: t("Index invalid. Scrie un număr (m³), ex. 1234,5.") }); return; }
+    if (v == null) { setMsg({ ok: false, text: t("Index invalid. Scrie un număr întreg (m³), fără virgulă, ex. 1234.") }); return; }
     if (!photo) { setMsg({ ok: false, text: t("Poza contorului este obligatorie: fotografiază cadranul cu indexul.") }); return; }
     setPending(true); setMsg(null);
     try {
@@ -245,9 +245,12 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
               {multi ? t("Indexul contorului {contor} (m³)", { contor: m.contor }) : t("Indexul contorului (m³)")}
               <input
                 value={value}
-                onChange={(e) => { setValue(e.target.value); setConfirm(null); }}
-                inputMode="decimal"
-                placeholder={m.lastIndex != null ? `≥ ${nf(m.lastIndex)}` : t("ex. 1234,5")}
+                onChange={(e) => { setValue(sanitizeIndexInput(e.target.value)); setConfirm(null); }}
+                onKeyDown={(e) => { if (e.key === "," || e.key === ".") e.preventDefault(); }}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                data-index-input
+                placeholder={m.lastIndex != null ? `≥ ${nf(Math.ceil(m.lastIndex))}` : t("ex. 1234")}
                 className={`${inp} mt-1 text-lg font-semibold tabular-nums`}
                 required
               />

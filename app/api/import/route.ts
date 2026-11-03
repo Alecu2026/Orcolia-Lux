@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/dal";
 import { SERVICE_TYPES, SERVICE_TYPE_LABEL } from "@/lib/service-type";
+import { CONSUMER_TYPES, CONSUMER_TYPE_LABEL } from "@/lib/consumer-type";
 import { prisma } from "@/lib/prisma";
 import { parseWorkbook, parseJsonRows, parseRoDateKey, parseTime, mapLabel, ImportResult } from "@/lib/import-utils";
 import { can } from "@/lib/permissions";
@@ -240,6 +241,15 @@ export async function POST(req: Request) {
       const serviceTypeVal = serviceRaw
         ? SERVICE_TYPES.find((k) => k === serviceRaw.toUpperCase() || SERVICE_TYPE_LABEL[k].toLowerCase() === serviceRaw.replace(/\s+/g, " ").toLowerCase()) ?? null
         : null;
+      // „Tip consumator”: Casnic / Non casnic (sau codul HOUSEHOLD / NON_HOUSEHOLD); gol = nespecificat
+      const consumerRaw = (r["Tip consumator"] ?? "").trim();
+      const consumerTypeVal = consumerRaw
+        ? CONSUMER_TYPES.find((k) => k === consumerRaw.toUpperCase().replace(/\s+/g, "_") || CONSUMER_TYPE_LABEL[k].toLowerCase() === consumerRaw.replace(/\s+/g, " ").toLowerCase()) ?? null
+        : null;
+      if (consumerRaw && !consumerTypeVal) {
+        result.failed.push({ row: rowNum, error: `Tip consumator '${consumerRaw}' nu este valid. Valori: Casnic, Non casnic.` });
+        continue;
+      }
       if (serviceRaw && !serviceTypeVal) {
         result.failed.push({ row: rowNum, error: `Tip serviciu '${serviceRaw}' nu este valid. Valori: Apă, Canalizare, Apă + canalizare.` });
         continue;
@@ -266,6 +276,7 @@ export async function POST(req: Request) {
           categoryId: categoryId ?? null,
           address: r["Adresă"]?.trim() || null,
           serviceType: serviceTypeVal,
+          consumerType: consumerTypeVal,
         });
 
         // Aplică status și/sau client dacă diferă de default

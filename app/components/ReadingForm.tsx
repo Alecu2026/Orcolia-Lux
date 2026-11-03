@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { meterAverageAction, reportMeterIssueAction, saveMeterReadingAction, uploadMeterPhotoAction } from "@/app/actions/meter-readings";
 import { ISSUE_KINDS, ISSUE_LABELS, MAX_ISSUE_NOTE, isIssueKind } from "@/lib/meter-issues";
-import { MAX_ADDRESS, MAX_LOC_ACCURACY, checkConsum, deviationPct, mapsUrl, parseIndex, type ConsumAvg, type MeterLocationDto, type ReadingDto } from "@/lib/meter-readings";
+import { MAX_ADDRESS, MAX_LOC_ACCURACY, checkConsum, deviationPct, mapsUrl, parseIndex, sanitizeIndexInput, type ConsumAvg, type MeterLocationDto, type ReadingDto } from "@/lib/meter-readings";
 import { optimizeImage } from "@/lib/image-optimize";
 import { thumbUrl } from "@/lib/files-url";
 import { useLocale, useT } from "@/lib/i18n/context";
@@ -95,7 +95,7 @@ export default function ReadingForm({
   const addrId = useId();
   const nf = (n: number) => n.toLocaleString(tag, { maximumFractionDigits: 3 });
   const [addr, setAddr] = useState(address ?? "");
-  const [value, setValue] = useState(initialValue != null ? String(initialValue).replace(".", ",") : "");
+  const [value, setValue] = useState(initialValue != null ? String(Math.trunc(initialValue)) : "");
   const [geo, setGeo] = useState<Geo>({ state: "asking" });
   const [saved, setSaved] = useState<ReadingDto | null>(null);
   /** Citirea e salvată doar pe telefon (fără internet) și așteaptă trimiterea. */
@@ -273,7 +273,7 @@ export default function ReadingForm({
     }
     if (parsed == null) {
       if (!issueKind) {
-        setErr(t("Index invalid. Scrie un număr (m³), ex. 1234,5."));
+        setErr(t("Index invalid. Scrie un număr întreg (m³), fără virgulă, ex. 1234."));
         return;
       }
       // doar neregula, fără index (ex. contor inaccesibil)
@@ -463,9 +463,11 @@ export default function ReadingForm({
       <input
         id={idxId}
         value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && !busy && void save()}
-        inputMode="decimal"
+        onChange={(e) => setValue(sanitizeIndexInput(e.target.value))}
+        onKeyDown={(e) => { if (e.key === "," || e.key === ".") e.preventDefault(); else if (e.key === "Enter" && !busy) void save(); }}
+        inputMode="numeric"
+        pattern="[0-9]*"
+        data-index-input
         autoFocus
         autoComplete="off"
         placeholder={prev != null ? nf(prev) : "0"}
