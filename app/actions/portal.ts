@@ -33,9 +33,11 @@ export async function createPortalTicket(
   // secția responsabilă vine din șablon, citit aici pe server (nu din formular): clientul nu poate alege cine primește cererea
   const templateId = String(formData.get("templateId") ?? "");
   let sectionId: string | null = null;
+  let portalTemplateId: string | null = null;
   if (/^[0-9a-f]{24}$/i.test(templateId)) {
     const tpl = await prisma.portalRequestTemplate.findUnique({ where: { id: templateId }, select: { name: true, teamId: true } });
     sectionId = tpl?.teamId ?? null;
+    if (tpl) portalTemplateId = templateId; // se păstrează pe cerere: filtrul „Șablon din portal” din Cereri
     if (tpl && isPetitionName(tpl.name)) {
       const starter = DEFAULT_PORTAL_TEMPLATES.find((x) => isPetitionName(x.name))?.description.trim() ?? "";
       const body = description.startsWith(starter) ? description.slice(starter.length) : description;
@@ -69,6 +71,7 @@ export async function createPortalTicket(
       priority: "MEDIUM",
       creatorId: systemUser.id,
       ...(team ? { teamId: team.id } : {}),
+      ...(portalTemplateId ? { portalTemplateId } : {}),
       clientId: client.id,
       address,
       consumerName,

@@ -157,6 +157,7 @@ export default function TasksTable({
   presetValues,
   dataset,
   templates = [],
+  portalTemplates = [],
   canAssign = false,
   canClose = false,
 }: {
@@ -200,6 +201,8 @@ export default function TasksTable({
   dataset?: { total: number };
   /** Șabloanele acestui tip (task-uri sau tichete) și dacă utilizatorul poate seta responsabili în ele. */
   templates?: TaskTemplate[];
+  /** Șabloanele de cereri din portal (id + nume): filtrul „Șablon din portal” din Cereri. */
+  portalTemplates?: { id: string; name: string }[];
   canAssign?: boolean;
   /** „Închidere / finalizare": poate finaliza / anula chiar și task-uri la care nu lucrează. */
   canClose?: boolean;
@@ -676,6 +679,18 @@ export default function TasksTable({
       { kind: "select", key: "team", label: m.tasks.filterTeam, options: teams.map((x) => ({ value: x.id, label: x.name })), test: (t, v) => t.teamId === v || t.extraTeamIds.includes(v) },
       { kind: "select", key: "proj", label: m.tasks.filterProject, options: projects.map((x) => ({ value: x.id, label: x.name })), test: (t, v) => t.projectId === v },
       ...(clients.length ? [{ kind: "select" as const, key: "client", label: m.tasks.filterClient, options: clients.map((x) => ({ value: x.id, label: x.name })), test: (t: Task, v: string) => t.clientId === v }] : []),
+      // cererile pe șabloanele din portal: potrivire pe șablonul salvat pe cerere; la cererile mai vechi (fără șablon salvat) după titlu, care pornește din numele șablonului
+      ...(ticketMode && portalTemplates.length
+        ? [{
+            kind: "select" as const, key: "ptpl", label: "Șablon din portal",
+            options: portalTemplates.map((x) => ({ value: x.id, label: x.name })),
+            test: (t: Task, v: string) => {
+              if (t.portalTemplateId) return t.portalTemplateId === v;
+              const name = portalTemplates.find((x) => x.id === v)?.name.trim().toLowerCase();
+              return !!name && t.title.trim().toLowerCase().startsWith(name);
+            },
+          }]
+        : []),
       ...(categories.length ? [{ kind: "select" as const, key: "category", label: m.tasks.filterCategory, options: categories.map((x) => ({ value: x.id, label: x.name })), test: (t: Task, v: string) => t.categoryId === v }] : []),
       {
         kind: "select", key: "due", label: m.tasks.filterDue,
@@ -701,7 +716,7 @@ export default function TasksTable({
       { kind: "date", key: "from", label: "Termen de la", test: (t, v) => { const k = dueKey(t); return !!k && k >= v; } },
       { kind: "date", key: "to", label: "Termen până la", test: (t, v) => { const k = dueKey(t); return !!k && k <= v; } },
     ];
-  }, [m, users, teams, projects, clients, categories, ticketMode]);
+  }, [m, users, teams, projects, clients, categories, ticketMode, portalTemplates]);
 
   const current = openId ? rows.find((t) => t.id === openId) ?? null : null;
 

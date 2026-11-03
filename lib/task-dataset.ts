@@ -41,6 +41,7 @@ export type TaskTuple = [
   number | null, // 29 timp de rezolvare (minute) — lipsește în listele salvate înainte de această versiune
   number | null, // 30 nota de feedback a clientului (1–5) — lipsește în listele salvate înainte de această versiune
   string | null, // 31 comentariul de feedback — lipsește în listele salvate înainte de această versiune
+  string | null, // 32 șablonul de cerere din portal (id) — lipsește în listele salvate înainte de această versiune
 ];
 
 export type TaskNames = {
@@ -91,6 +92,7 @@ export type DecodedTask = {
   /** Nota (1–5) și comentariul lăsate de client după închiderea cererii. */
   feedbackRating: number | null;
   feedbackComment: string | null;
+  portalTemplateId: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -142,6 +144,7 @@ export function decodeTasks(tuples: TaskTuple[], names: TaskNames): DecodedTask[
       resolutionMinutes: r[29] ?? null,
       feedbackRating: r[30] ?? null,
       feedbackComment: r[31] ?? null,
+      portalTemplateId: r[32] ?? null,
       extraAssigneeIds: r[16],
       extraTeamIds: r[17],
       assignmentSettingsJson: r[18],

@@ -348,6 +348,8 @@ model Task {
   address    String?
   /// Numele consumatorului pentru care se depune cererea (la cererile din portal: completat de client, implicit numele lui).
   consumerName String?
+  /// Șablonul de cerere din portal din care a pornit cererea (PortalRequestTemplate); gol la cererile mai vechi sau create în CRM — pentru filtrul „Șablon din portal” din Cereri.
+  portalTemplateId String? @db.ObjectId
   /// Data executării cererii (doar data, 00:00 UTC): completată de echipă; la finalizarea unei cereri rămâne data zilei dacă nu e deja setată.
   executedAt DateTime?
   /// Închiderea unei cereri: ce s-a făcut („Măsuri luate”), cât a durat rezolvarea (minute, introdus de executant) și când s-a închis (Finalizat / Anulat; gol la redeschidere).

@@ -39,6 +39,8 @@ export type TaskRow = {
   /** Nota (1–5) și comentariul lăsate de client după închiderea cererii. */
   feedbackRating: number | null;
   feedbackComment: string | null;
+  /** Șablonul de cerere din portal din care a pornit cererea (gol la cele vechi / din CRM). */
+  portalTemplateId: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -83,6 +85,7 @@ const TASK_SELECT = {
   resolutionMinutes: true,
   feedbackRating: true,
   feedbackComment: true,
+  portalTemplateId: true,
   extraAssigneeIds: true,
   extraTeamIds: true,
   assignmentSettingsJson: true,
@@ -195,6 +198,7 @@ function toRow(t: TaskDbRow, l: Lookups): TaskRow {
     resolutionMinutes: t.resolutionMinutes ?? null,
     feedbackRating: t.feedbackRating ?? null,
     feedbackComment: t.feedbackComment ?? null,
+    portalTemplateId: t.portalTemplateId ?? null,
     extraAssigneeIds: t.extraAssigneeIds ?? [],
     extraTeamIds: t.extraTeamIds ?? [],
     assignmentSettingsJson: t.assignmentSettingsJson ?? null,
@@ -529,6 +533,7 @@ function toTuple(t: TaskDbRow): TaskTuple {
     t.resolutionMinutes ?? null,
     t.feedbackRating ?? null,
     t.feedbackComment ?? null,
+    t.portalTemplateId ?? null,
   ];
 }
 

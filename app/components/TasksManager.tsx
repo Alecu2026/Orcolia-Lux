@@ -95,6 +95,8 @@ export type Task = {
   resolutionMinutes?: number | null;
   feedbackRating?: number | null;
   feedbackComment?: string | null;
+  /** Șablonul de cerere din portal din care a pornit cererea (filtrul „Șablon din portal”). */
+  portalTemplateId?: string | null;
   assigneeName: string | null;
   teamName: string | null;
   projectName: string | null;

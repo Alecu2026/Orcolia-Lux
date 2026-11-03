@@ -9,6 +9,7 @@ import { projectOptions } from "@/lib/queries/projects";
 import { crmClientOptionsPlus } from "@/lib/queries/clients";
 import { listCategories } from "@/lib/queries/categories";
 import { listTaskTemplates } from "@/lib/queries/task-templates";
+import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { payerAddress } from "@/lib/queries/payer-address";
 import TasksTable from "@/app/components/TasksTable";
@@ -20,7 +21,7 @@ const SCOPE_KEYS = ["mine", "all", "created"] as const;
 export default async function TicketsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; client?: string; title?: string; desc?: string; template?: string; phone?: string; at?: string }>;
+  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; ptpl?: string; client?: string; title?: string; desc?: string; template?: string; phone?: string; at?: string }>;
 }) {
   const user = await requirePermission("tickets.view");
   const sp = await searchParams;
@@ -39,7 +40,7 @@ export default async function TicketsPage({
   const initialOpenId = typeof sp.open === "string" && sp.open ? sp.open : undefined;
 
   // Toate tichetele din „scope" odată; filtrarea/sortarea/paginarea (inclusiv Active/Noi/Închise) rulează în browser.
-  const [result, users, teams, projects, clients, categories, templates] = await Promise.all([
+  const [result, users, teams, projects, clients, categories, templates, portalTemplates] = await Promise.all([
     listTasksForPage(
       {
         scope,
@@ -56,6 +57,8 @@ export default async function TicketsPage({
     crmClientOptionsPlus(sp.client && /^[0-9a-f]{24}$/i.test(sp.client) ? sp.client : null), // + clientul din apel (plătitorii nu sunt în lista CRM)
     listCategories(),
     listTaskTemplates("TICKET"),
+    // șabloanele de cereri din portal: filtrul „Șablon din portal”
+    prisma.portalRequestTemplate.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }).catch(() => []),
   ]);
 
   const SCOPES = [
@@ -73,6 +76,7 @@ export default async function TicketsPage({
         items={result.items}
         dataset={result.dataset ? { total: result.total } : undefined}
         templates={templates}
+        portalTemplates={portalTemplates}
         canAssign={can(user, "tasks.assign")}
         canClose={can(user, "tasks.close")}
         scope={scope}
@@ -106,6 +110,7 @@ export default async function TicketsPage({
           q: sp.q,
           proj: sp.proj,
           status: sp.status ?? (sp.sg ? `g:${sp.sg}` : undefined),
+          ptpl: sp.ptpl,
           assignee: sp.assignee,
           prio: sp.prio,
           due: sp.due,

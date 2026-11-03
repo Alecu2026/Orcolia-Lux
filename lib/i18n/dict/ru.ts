@@ -3193,4 +3193,5 @@ export const RU: Record<string, string> = {
   "Secția mea": "Мой отдел",
   "Secțiile mele": "Мои отделы",
   "Doar „Nereguli contoare” (vizualizare, rezolvare, editare; implicit doar secția lui, cu posibilitatea de a alege și alte secții)": "Только «Нарушения счётчиков» (просмотр, решение, редактирование; по умолчанию только их отдел, с возможностью выбрать и другие отделы)",
+  "Șablon din portal": "Шаблон портала",
 };
