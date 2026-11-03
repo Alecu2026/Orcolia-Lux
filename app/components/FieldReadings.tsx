@@ -615,10 +615,18 @@ export default function FieldReadings({
         ) : null}
         {canExport && <button
           type="button"
+          title={t("Trimite citirile către 1C (în pregătire: deocamdată nu face nimic)")}
+          data-send-1c=""
+          className="tap ml-auto inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-brand/50 bg-[var(--color-surface)] px-2 text-[12px] font-medium text-brand hover:bg-brand-soft"
+        >
+          {t("Trimite către 1C")}
+        </button>}
+        {canExport && <button
+          type="button"
           onClick={exportCsv}
           disabled={list.length === 0}
           title={t("Descarcă lista filtrată (CSV, se deschide în Excel)")}
-          className="tap ml-auto inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[12px] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40"
+          className="tap inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[12px] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40"
         >
           ⬇ {t("Export (cu filtrele)")}
         </button>}

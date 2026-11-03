@@ -3194,4 +3194,6 @@ export const EN: Record<string, string> = {
   "Secțiile mele": "My sections",
   "Doar „Nereguli contoare” (vizualizare, rezolvare, editare; implicit doar secția lui, cu posibilitatea de a alege și alte secții)": "Only “Meter irregularities” (view, resolve, edit; by default only their own section, with the option to pick other sections too)",
   "Șablon din portal": "Portal template",
+  "Trimite către 1C": "Send to 1C",
+  "Trimite citirile către 1C (în pregătire: deocamdată nu face nimic)": "Send the readings to 1C (in preparation: it does nothing for now)",
 };
