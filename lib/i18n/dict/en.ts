@@ -3086,7 +3086,6 @@ export const EN: Record<string, string> = {
   "Contoare din CRM cu sufix (-wc, -bc) după număr: citirea LoRaWAN s-a atribuit lor": "CRM meters with a suffix (-wc, -bc) after the number: the LoRaWAN reading was assigned to them",
   "Acoperire în CRM": "CRM coverage",
   "Acoperire în CRM: toate": "CRM coverage: all",
-  "BD Contract 3 WSS Cahul Rural — Section VII, Particular Technical Specifications. Bifați punctele împreună: se salvează pentru toată echipa.": "BD Contract 3 WSS Cahul Rural — Section VII, Particular Technical Specifications. Tick the points together: they are saved for the whole team.",
   "Bifare": "Ticked",
   "Bifat de {name}": "Ticked by {name}",
   "Bifate": "Ticked",
@@ -3252,4 +3251,8 @@ export const EN: Record<string, string> = {
   "Cerințele contractului": "Contract requirements",
   "Puncte adiționale din contract": "Additional items in the contract",
   "Adăugate de noi": "Added by us",
+  "BD Contract 3 WSS Cahul Rural — Section VII, Particular Technical Specifications. Bifele sunt comune pentru toată echipa și le modifică doar {email}.": "BD Contract 3 WSS Cahul Rural — Section VII, Particular Technical Specifications. The ticks are shared by the whole team and only {email} can change them.",
+  "Doar {email} poate modifica bifele.": "Only {email} can change the ticks.",
+  "Bifele pot fi modificate doar de {email}. Tu le poți vedea și exporta în PDF.": "The ticks can only be changed by {email}. You can view them and export them to PDF.",
+  "Nu ai dreptul să modifici bifele.": "You are not allowed to change the ticks.",
 };

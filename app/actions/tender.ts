@@ -5,6 +5,7 @@ import { DEMO } from "@/lib/demo";
 import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { SPEC_IDS } from "@/lib/tender-spec";
+import { canEditTenderChecks } from "@/lib/tender-editor";
 
 /** Bifele „Caiet de sarcini”: id punct → cine a bifat și când. Comune pentru toată echipa. */
 export type TenderChecks = Record<string, { by: string; at: string }>;
@@ -27,6 +28,8 @@ export async function tenderChecksAction(): Promise<TenderChecks | null> {
 export async function setTenderCheckAction(id: string, done: boolean): Promise<{ ok: true; entry: { by: string; at: string } | null } | { ok: false; error: string }> {
   const user = await requireUser();
   if (!can(user, "users.manage")) return { ok: false, error: "Fără permisiune." };
+  // bifele le modifică doar contul din lib/tender-editor.ts (ceilalți le văd)
+  if (!canEditTenderChecks(user.email)) return { ok: false, error: "Nu ai dreptul să modifici bifele." };
   if (DEMO) return { ok: false, error: "Mod demo." };
   if (typeof id !== "string" || !SPEC_IDS.has(id)) return { ok: false, error: "Punct necunoscut." };
   if (!done) {

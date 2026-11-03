@@ -3086,7 +3086,6 @@ export const RU: Record<string, string> = {
   "Contoare din CRM cu sufix (-wc, -bc) după număr: citirea LoRaWAN s-a atribuit lor": "Счётчики в CRM с суффиксом (-wc, -bc) после номера: показание LoRaWAN присвоено им",
   "Acoperire în CRM": "Покрытие в CRM",
   "Acoperire în CRM: toate": "Покрытие в CRM: все",
-  "BD Contract 3 WSS Cahul Rural — Section VII, Particular Technical Specifications. Bifați punctele împreună: se salvează pentru toată echipa.": "BD Contract 3 WSS Cahul Rural — Section VII, Particular Technical Specifications. Отмечайте пункты вместе: они сохраняются для всей команды.",
   "Bifare": "Отметка",
   "Bifat de {name}": "Отметил(а): {name}",
   "Bifate": "Отмечены",
@@ -3252,4 +3251,8 @@ export const RU: Record<string, string> = {
   "Cerințele contractului": "Требования контракта",
   "Puncte adiționale din contract": "Дополнительные пункты контракта",
   "Adăugate de noi": "Добавлено нами",
+  "BD Contract 3 WSS Cahul Rural — Section VII, Particular Technical Specifications. Bifele sunt comune pentru toată echipa și le modifică doar {email}.": "BD Contract 3 WSS Cahul Rural — Section VII, Particular Technical Specifications. Отметки общие для всей команды, изменять их может только {email}.",
+  "Doar {email} poate modifica bifele.": "Изменять отметки может только {email}.",
+  "Bifele pot fi modificate doar de {email}. Tu le poți vedea și exporta în PDF.": "Отметки может изменять только {email}. Вы можете просматривать их и экспортировать в PDF.",
+  "Nu ai dreptul să modifici bifele.": "У вас нет права изменять отметки.",
 };

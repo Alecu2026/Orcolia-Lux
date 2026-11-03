@@ -33,7 +33,7 @@ function Bar({ done, total }: { done: number; total: number }) {
 }
 
 /** Caietul de sarcini: punctele contractului (engleză + română) de bifat împreună, cu „i” = unde se găsește în CRM și cum e implementat. */
-export default function TenderChecklist({ initial }: { initial: TenderChecks }) {
+export default function TenderChecklist({ initial, canEdit, editorEmail }: { initial: TenderChecks; canEdit: boolean; editorEmail: string }) {
   const t = useT();
   const tag = dateTag(useLocale());
   const [checks, setChecks] = useState<TenderChecks>(initial);
@@ -77,6 +77,7 @@ export default function TenderChecklist({ initial }: { initial: TenderChecks }) 
   }, [refresh]);
 
   const toggle = async (id: string, done: boolean) => {
+    if (!canEdit) return;
     setErr(null);
     busy.current.add(id);
     const before = checks[id];
@@ -203,6 +204,7 @@ export default function TenderChecklist({ initial }: { initial: TenderChecks }) 
         )}
         <span className="text-[11px] text-ink-soft">{t("{n} puncte afișate", { n: shown })}</span>
       </div>
+      {!canEdit && <p className="rounded-lg bg-[var(--color-surface-2)] px-3 py-2 text-xs text-ink-soft" data-tender-readonly="">{t("Bifele pot fi modificate doar de {email}. Tu le poți vedea și exporta în PDF.", { email: editorEmail })}</p>}
       {err && <p className="rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">{err}</p>}
 
       {groups.map(({ g, items }) => {
@@ -239,7 +241,9 @@ export default function TenderChecklist({ initial }: { initial: TenderChecks }) 
                             checked={!!c}
                             onChange={(e) => void toggle(it.id, e.target.checked)}
                             aria-label={it.en}
-                            className="mt-0.5 size-5 shrink-0 cursor-pointer accent-[var(--color-brand)]"
+                            disabled={!canEdit}
+                            title={canEdit ? undefined : t("Doar {email} poate modifica bifele.", { email: editorEmail })}
+                            className="mt-0.5 size-5 shrink-0 cursor-pointer accent-[var(--color-brand)] disabled:cursor-not-allowed"
                           />
                           <div className="min-w-0 flex-1">
                             <p className={`text-sm font-medium ${c ? "text-ink-soft" : ""}`}>{it.en}</p>
