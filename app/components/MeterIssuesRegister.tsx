@@ -22,10 +22,13 @@ const VIRT_MIN = 60; // peste atâtea rânduri pe pagină se desenează doar cel
 // Contor, Abonat, Tip, Responsabil, Secția, Termen de remediere, Stare, Rezolvat de, Raportat, Adresă, acțiuni
 const COLS_HEAD = [104, 158, 150, 92, 112, 196, 92, 176, 88, 190];
 /** Lățimea coloanei de acțiuni: butoanele stau pe un singur rând, deci coloana trebuie să le încapă (Editează 92 + Rezolvată 104 + Cerere 84 + spații). */
-const actionsWidth = (manage: boolean, ticket: boolean) => (manage ? 204 : 0) + (ticket ? 92 : 0) + 16;
+const actionsWidth = (edit: boolean, resolve: boolean, ticket: boolean) => {
+  const w = [edit ? 76 : 0, resolve ? 84 : 0, ticket ? 68 : 0].filter(Boolean);
+  return w.reduce((a, b) => a + b, 0) + Math.max(0, w.length - 1) * 4 + 12;
+};
 
 /** Butoanele din rândul neregulii: text pe un singur rând, aceeași înălțime, fără să se strângă (altfel textul trecea pe al doilea rând și ieșea din chenar). */
-const ACT_BTN = "tap inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap rounded-lg border bg-[var(--color-surface)] px-2.5 text-[11px] font-medium leading-none";
+const ACT_BTN = "tap inline-flex h-6 shrink-0 cursor-pointer items-center gap-0.5 whitespace-nowrap rounded-md border bg-[var(--color-surface)] px-1.5 text-[10px] font-medium leading-none";
 
 const fld = (active: string | boolean) =>
   `h-8 min-w-0 rounded-lg border px-2 text-xs outline-none focus:border-brand ${active ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"}`;
@@ -199,13 +202,13 @@ export default function MeterIssuesRegister({
     return `/tickets?${sp.toString()}`;
   };
 
-  const cols = [...COLS_HEAD, actionsWidth(canManage, canTicket)];
+  const cols = [...COLS_HEAD, actionsWidth(canManage, canManage || ownTeamIds.length > 0, canTicket)];
   const grid = cols.map((w) => `${w}px`).join(" ");
   const gridW = cols.reduce((a, b) => a + b, 0);
 
-  const actions = (r: IssueRow) =>
+  const actions = (r: IssueRow, wrap = false) =>
     canManage || canTicket || canResolve(r) ? (
-      <span className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      <span className={`flex items-center gap-1 ${wrap ? "flex-wrap" : "flex-nowrap"}`} onClick={(e) => e.stopPropagation()}>
         {canManage && <button type="button" onClick={() => setEdit(r)} className={`${ACT_BTN} border-[var(--color-line)] text-ink hover:bg-[var(--color-surface-2)]`} data-act="edit"><span aria-hidden>✎</span>{t("Editează")}</button>}
         {canResolve(r) && (
           <button type="button" disabled={busy === r.id} onClick={() => void resolve(r)} className={`${ACT_BTN} border-st-done/50 text-st-done hover:bg-st-done/10 disabled:opacity-50`} data-act="resolve"><span aria-hidden>✓</span>{t("Rezolvată")}</button>
@@ -357,7 +360,7 @@ export default function MeterIssuesRegister({
             </dl>
             {r.note && <p className="mt-1 text-xs">{r.note}</p>}
             {!r._o && <p className="mt-1 text-xs text-st-done" data-resolved-card="">✓ {t("Rezolvată de")} <b>{r.resolvedName || "—"}</b>{r.resolvedAt ? ` · ${dmy(r.resolvedAt)}` : ""}{r.resolvedNote ? ` — ${r.resolvedNote}` : ""}</p>}
-            {(canManage || canTicket || canResolve(r)) && <div className="mt-2">{actions(r)}</div>}
+            {(canManage || canTicket || canResolve(r)) && <div className="mt-2">{actions(r, true)}</div>}
           </div>
         ))}
         {pageRows.length === 0 && <div className="card p-8 text-center text-ink-soft">{t("Nicio neregulă cu filtrele acestea.")}</div>}

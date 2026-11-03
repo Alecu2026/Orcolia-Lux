@@ -308,7 +308,7 @@ async function saveReadingImpl(actor: Actor, input: SaveInput): Promise<SaveRead
     create: { meterId: input.meterId, period, ...data },
     update: data,
   });
-  const location = await updateMeterLocation(actor, row, { address: input.address ?? null, lat, lng, accuracy });
+  const location = await updateMeterLocation(actor, row, { address: input.address ?? null, lat, lng, accuracy, fillOnly: input.source === "PORTAL" });
   invalidatePortalClient(row.clientId); // plătitorul vede imediat citirea în portal
   // email de verificare către titular: citire nouă din portal, sau index schimbat (de plătitor în portal / de un angajat peste citirea trimisă de plătitor)
   const ownerNotice = !!row.clientId && !input.verified && input.source !== LORAWAN_SOURCE && (cur ? changed && (input.source === "PORTAL" || cur.source === "PORTAL") : input.source === "PORTAL");
@@ -337,14 +337,14 @@ async function saveReadingImpl(actor: Actor, input: SaveInput): Promise<SaveRead
 async function updateMeterLocation(
   actor: Actor,
   row: { id: string; contor: string; address: string | null },
-  input: { address: string | null; lat: number | null; lng: number | null; accuracy: number | null },
+  input: { address: string | null; lat: number | null; lng: number | null; accuracy: number | null; /** Citirea vine de la plătitor (telefonul lui nu e neapărat lângă contor): completează locația doar dacă contorul n-are niciuna, nu o înlocuiește pe cea salvată de un cititor. */ fillOnly?: boolean },
 ): Promise<MeterLocationDto> {
   const cur = await prisma.meterLocation.findUnique({ where: { meterId: row.id } });
   const addr = (input.address ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_ADDRESS) || null;
   const data: { address?: string; lat?: number; lng?: number; accuracy?: number | null } = {};
   if (addr && !row.address && addr !== (cur?.address ?? null)) data.address = addr;
   if (input.lat != null && input.lng != null && (input.accuracy == null || input.accuracy <= MAX_LOC_ACCURACY)) {
-    const better = cur?.lat == null || cur.lng == null || (input.accuracy != null && (cur.accuracy == null || input.accuracy <= cur.accuracy));
+    const better = cur?.lat == null || cur.lng == null || (!input.fillOnly && input.accuracy != null && (cur.accuracy == null || input.accuracy <= cur.accuracy));
     if (better) {
       data.lat = input.lat;
       data.lng = input.lng;
