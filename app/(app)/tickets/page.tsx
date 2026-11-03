@@ -4,7 +4,7 @@ import { listTasksForPage, taskViewFilter } from "@/lib/queries/tasks";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
 import { userOptions } from "@/lib/queries/users";
-import { teamOptions } from "@/lib/queries/teams";
+import { teamOptions, listTeams } from "@/lib/queries/teams";
 import { projectOptions } from "@/lib/queries/projects";
 import { crmClientOptionsPlus } from "@/lib/queries/clients";
 import { listCategories } from "@/lib/queries/categories";
@@ -21,7 +21,7 @@ const SCOPE_KEYS = ["mine", "all", "created"] as const;
 export default async function TicketsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; ptpl?: string; client?: string; title?: string; desc?: string; template?: string; phone?: string; at?: string }>;
+  searchParams: Promise<{ scope?: string; create?: string; project?: string; open?: string; q?: string; proj?: string; status?: string; assignee?: string; prio?: string; due?: string; sg?: string; ptpl?: string; service?: string; deadline?: string; client?: string; title?: string; desc?: string; template?: string; phone?: string; at?: string }>;
 }) {
   const user = await requirePermission("tickets.view");
   const sp = await searchParams;
@@ -40,7 +40,7 @@ export default async function TicketsPage({
   const initialOpenId = typeof sp.open === "string" && sp.open ? sp.open : undefined;
 
   // Toate tichetele din „scope" odată; filtrarea/sortarea/paginarea (inclusiv Active/Noi/Închise) rulează în browser.
-  const [result, users, teams, projects, clients, categories, templates, portalTemplates] = await Promise.all([
+  const [result, users, teams, teamList, projects, clients, categories, templates, portalTemplates] = await Promise.all([
     listTasksForPage(
       {
         scope,
@@ -53,6 +53,7 @@ export default async function TicketsPage({
     ),
     userOptions(),
     teamOptions(),
+    listTeams(),
     projectOptions(),
     crmClientOptionsPlus(sp.client && /^[0-9a-f]{24}$/i.test(sp.client) ? sp.client : null), // + clientul din apel (plătitorii nu sunt în lista CRM)
     listCategories(),
@@ -82,6 +83,7 @@ export default async function TicketsPage({
         scope={scope}
         users={users}
         teams={teams}
+        teamMembers={Object.fromEntries(teamList.map((x) => [x.id, x.memberIds]))}
         projects={projects}
         clients={clients}
         categories={categories}
@@ -111,6 +113,8 @@ export default async function TicketsPage({
           proj: sp.proj,
           status: sp.status ?? (sp.sg ? `g:${sp.sg}` : undefined),
           ptpl: sp.ptpl,
+          service: sp.service,
+          deadline: sp.deadline,
           assignee: sp.assignee,
           prio: sp.prio,
           due: sp.due,

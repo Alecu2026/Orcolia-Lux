@@ -7,6 +7,7 @@ import { createPortalTicket, type PortalTicketState } from "@/app/actions/portal
 import { useT } from "@/lib/i18n/context";
 import type { PortalTemplate } from "@/lib/portal-template";
 import { isPetitionName } from "@/lib/portal-default-templates";
+import { SERVICE_TYPES, SERVICE_TYPE_LABEL } from "@/lib/service-type";
 
 const input =
   "w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
@@ -113,6 +114,13 @@ export default function PortalNewTicketForm({
           <input name="consumerName" value={consumerName} onChange={(e) => setConsumerName(e.target.value)} required maxLength={150} className={`${input} mt-1 font-normal`} />
         </label>
       </div>
+      <label className="text-xs font-semibold text-ink-soft">
+        {t("Tip serviciu")}
+        <select name="serviceType" defaultValue="" data-service-type className={`${input} mt-1 font-normal`}>
+          <option value="">{t("Tip serviciu: nespecificat")}</option>
+          {SERVICE_TYPES.map((k) => <option key={k} value={k}>{t(SERVICE_TYPE_LABEL[k])}</option>)}
+        </select>
+      </label>
       <div className="grid gap-1 rounded-xl bg-[var(--color-surface-2)] px-3 py-2 text-xs text-ink-soft sm:grid-cols-2">
         <p>{t("Data depunerii")}: <b className="text-ink">{today}</b> <span>({t("automat")})</span></p>
         <p>{t("Data executării")}: <span>{t("o stabilește echipa")}</span></p>

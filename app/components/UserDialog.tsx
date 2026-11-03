@@ -28,6 +28,8 @@ export type UserRow = {
   taskViewScope: string;
   taskViewTeamIds: string[];
   taskViewMemberIds: string[];
+  /** Secțiile/echipele din care face parte (membru). */
+  teamIds?: string[];
   totp?: boolean;
   /** Aspectul tabelelor setat de administrator (vezi lib/table-look.ts). */
   tableLook?: unknown;
@@ -124,6 +126,8 @@ export default function UserDialog({
   const [viewTouched, setViewTouched] = useState(false);
   const [viewTeams, setViewTeams] = useState<Set<string>>(() => new Set(user?.taskViewTeamIds ?? []));
   const [viewMembers, setViewMembers] = useState<Set<string>>(() => new Set(user?.taskViewMemberIds ?? []));
+  // Secțiile/echipele din care face parte: devine membru, deci primește cererile și notificările lor.
+  const [memberTeams, setMemberTeams] = useState<Set<string>>(() => new Set(user?.teamIds ?? []));
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   /** Aspectul tabelelor pentru acest utilizator (setat de administrator): îl vede exact așa, iar cu „Personalizare tabele” îl poate schimba singur. */
@@ -246,6 +250,8 @@ export default function UserDialog({
       if (notifyScope === "TEAMS") for (const id of notifyTeams) fd.append("notifyTeamIds", id);
       if (notifyScope === "MEMBERS") for (const id of notifyMembers) fd.append("notifyMemberIds", id);
     }
+    fd.set("teamsSent", "1");
+    for (const id of memberTeams) fd.append("teamIds", id);
     fd.set("tableLook", JSON.stringify(look));
     fd.set("taskViewScope", viewMode === "ALL" ? "ALL" : "RESTRICTED");
     if (viewMode === "CUSTOM") {
@@ -348,6 +354,12 @@ export default function UserDialog({
                 <input value={telegram} onChange={(e) => mark(setTelegram)(e.target.value)} inputMode="numeric" autoComplete="off" className={`${input} mt-1 font-normal text-ink`} placeholder="123456789" />
               </label>
               <p className="mt-1 text-xs text-ink-soft">{m.users.telegramHint}</p>
+            </div>
+
+            <div data-user-teams>
+              <p className="mb-1 text-xs font-semibold text-ink-soft">{t("Secție / echipă")}</p>
+              <PickList items={teams} selected={memberTeams} onToggle={(id, on) => { setTouched(true); setMemberTeams((p) => toggleIn(p, id, on)); }} empty={m.users.noTeams} />
+              <p className="mt-1 text-[11px] text-ink-soft">{t("Persoana face parte din secțiile bifate: primește cererile și notificările lor, iar în filtre cererile se repartizează pe secții.")}</p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">

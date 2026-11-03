@@ -42,6 +42,8 @@ export type TaskTuple = [
   number | null, // 30 nota de feedback a clientului (1–5) — lipsește în listele salvate înainte de această versiune
   string | null, // 31 comentariul de feedback — lipsește în listele salvate înainte de această versiune
   string | null, // 32 șablonul de cerere din portal (id) — lipsește în listele salvate înainte de această versiune
+  string | null, // 33 tipul serviciului (WATER / SEWER / BOTH) — lipsește în listele salvate înainte de această versiune
+  number | null, // 34 când s-a finalizat / anulat (ms) — lipsește în listele salvate înainte de această versiune
 ];
 
 export type TaskNames = {
@@ -93,6 +95,10 @@ export type DecodedTask = {
   feedbackRating: number | null;
   feedbackComment: string | null;
   portalTemplateId: string | null;
+  /** Tipul serviciului: WATER / SEWER / BOTH; gol = nespecificat. */
+  serviceType: string | null;
+  /** Când s-a finalizat / anulat (ISO); gol = deschisă sau închisă înainte să se păstreze data. */
+  closedAt: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -145,6 +151,8 @@ export function decodeTasks(tuples: TaskTuple[], names: TaskNames): DecodedTask[
       feedbackRating: r[30] ?? null,
       feedbackComment: r[31] ?? null,
       portalTemplateId: r[32] ?? null,
+      serviceType: r[33] ?? null,
+      closedAt: r[34] == null ? null : new Date(r[34]).toISOString(),
       extraAssigneeIds: r[16],
       extraTeamIds: r[17],
       assignmentSettingsJson: r[18],

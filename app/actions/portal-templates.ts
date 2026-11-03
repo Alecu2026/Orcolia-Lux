@@ -9,6 +9,7 @@ import { invalidatePortalTemplates, listPortalTemplates } from "@/lib/queries/po
 import {
   PORTAL_TEMPLATE_MAX,
   PORTAL_TEMPLATE_MAX_DESCRIPTION,
+  PORTAL_TEMPLATE_MAX_DUE_DAYS,
   PORTAL_TEMPLATE_MAX_NAME,
   PORTAL_TEMPLATE_MAX_TITLE,
   type PortalTemplate,
@@ -35,7 +36,7 @@ function refresh() {
 }
 
 /** Creează (fără `id`) sau modifică (cu `id`) un șablon de cerere pentru clienți. Întoarce lista actualizată. */
-export async function savePortalTemplateAction(input: { id?: string; name: string; title: string; description: string; teamId?: string | null }): Promise<PortalTemplateResult> {
+export async function savePortalTemplateAction(input: { id?: string; name: string; title: string; description: string; teamId?: string | null; dueDays?: number | string | null }): Promise<PortalTemplateResult> {
   try {
     const g = await guard();
     if (!g.ok) return g;
@@ -51,14 +52,21 @@ export async function savePortalTemplateAction(input: { id?: string; name: strin
     const rawTeam = str(input?.teamId).trim();
     if (rawTeam && !(ID_RE.test(rawTeam) && (await prisma.team.findUnique({ where: { id: rawTeam }, select: { id: true } })))) return { ok: false, error: "Secția aleasă nu mai există." };
     const teamId = rawTeam || null;
+    // termenul prestabilit (zile calendaristice): gol = fără termen; altfel număr întreg între 1 și 365
+    const rawDays = typeof input?.dueDays === "number" ? String(input.dueDays) : str(input?.dueDays).trim();
+    let dueDays: number | null = null;
+    if (rawDays) {
+      if (!/^\d{1,3}$/.test(rawDays) || Number(rawDays) < 1 || Number(rawDays) > PORTAL_TEMPLATE_MAX_DUE_DAYS) return { ok: false, error: `Termenul trebuie să fie un număr de zile între 1 și ${PORTAL_TEMPLATE_MAX_DUE_DAYS} (sau gol, fără termen).` };
+      dueDays = Number(rawDays);
+    }
     if (input?.id) {
       if (!ID_RE.test(input.id)) return { ok: false, error: "Șablon invalid." };
-      const done = await prisma.portalRequestTemplate.update({ where: { id: input.id }, data: { name, title, description, teamId } }).catch(() => null);
+      const done = await prisma.portalRequestTemplate.update({ where: { id: input.id }, data: { name, title, description, teamId, dueDays } }).catch(() => null);
       if (!done) return { ok: false, error: "Șablonul nu mai există." };
     } else {
       if ((await prisma.portalRequestTemplate.count()) >= PORTAL_TEMPLATE_MAX) return { ok: false, error: `Maximum ${PORTAL_TEMPLATE_MAX} de șabloane.` };
       const last = await prisma.portalRequestTemplate.findFirst({ orderBy: { sortOrder: "desc" }, select: { sortOrder: true } });
-      await prisma.portalRequestTemplate.create({ data: { name, title, description, teamId, sortOrder: (last?.sortOrder ?? 0) + 1 } });
+      await prisma.portalRequestTemplate.create({ data: { name, title, description, teamId, dueDays, sortOrder: (last?.sortOrder ?? 0) + 1 } });
     }
     refresh();
     return { ok: true, templates: await listPortalTemplates() };

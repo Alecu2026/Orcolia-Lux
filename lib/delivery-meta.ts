@@ -2,10 +2,10 @@
 
 export const DELIVERY_CHANNELS = ["EMAIL", "SMS", "CALL", "TELEGRAM", "PUSH", "INAPP"] as const;
 /** Canalele jurnalului „Notificări plătitori”. */
-export const PAYER_CHANNELS = ["EMAIL", "SMS", "CALL"] as const;
+export const PAYER_CHANNELS = ["EMAIL", "SMS", "CALL", "PDF"] as const;
 export type DeliveryChannelKey = (typeof DELIVERY_CHANNELS)[number];
-export const CHANNEL_LABEL: Record<string, string> = { EMAIL: "Email", SMS: "SMS", CALL: "Apel vocal", TELEGRAM: "Telegram", PUSH: "Push", INAPP: "În aplicație" };
-export const CHANNEL_ICON: Record<string, string> = { EMAIL: "✉️", SMS: "💬", CALL: "📞", TELEGRAM: "✈️", PUSH: "🔔", INAPP: "📥" };
+export const CHANNEL_LABEL: Record<string, string> = { EMAIL: "Email", SMS: "SMS", CALL: "Apel vocal", TELEGRAM: "Telegram", PUSH: "Push", INAPP: "În aplicație", PDF: "PDF (tipărit)" };
+export const CHANNEL_ICON: Record<string, string> = { EMAIL: "✉️", SMS: "💬", CALL: "📞", TELEGRAM: "✈️", PUSH: "🔔", INAPP: "📥", PDF: "📄" };
 
 export const DELIVERY_STATUSES = ["SENT", "FAILED", "SKIPPED"] as const;
 export const STATUS_LABEL: Record<string, string> = { SENT: "Trimis", FAILED: "Eșuat", SKIPPED: "Omis" };
@@ -21,6 +21,7 @@ export const CHANNEL_CLS: Record<string, string> = {
   TELEGRAM: "bg-cyan-100 text-cyan-800",
   PUSH: "bg-purple-100 text-purple-700",
   INAPP: "bg-slate-100 text-slate-700",
+  PDF: "bg-rose-100 text-rose-800",
 };
 
 export const KIND_LABEL: Record<string, string> = {
@@ -124,7 +125,7 @@ export function sanitizeDeliveryState(raw: Record<string, unknown>): DeliveryFil
   const src = str(raw.source, 30);
   return {
     q: str(raw.q),
-    channel: one(raw.channel, DELIVERY_CHANNELS),
+    channel: one(raw.channel, [...DELIVERY_CHANNELS, "PDF"] as const),
     status: one(raw.status, DELIVERY_STATUSES),
     kind: one(raw.kind, KIND_OPTIONS.map((k) => k.key)),
     source: SOURCE_OPTIONS.some((s) => s.key === src) ? src : "",

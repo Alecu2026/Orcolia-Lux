@@ -40,6 +40,7 @@ import type { AssignmentSetting } from "@/lib/services/tasks";
 import { hasPayerVariables, type TemplatePrefill } from "@/lib/task-template";
 import { resolveTemplateTextAction } from "@/app/actions/task-templates";
 import { useT } from "@/lib/i18n/context";
+import { SERVICE_TYPES, SERVICE_TYPE_LABEL } from "@/lib/service-type";
 
 export type HistoryRow = {
   id: string;
@@ -97,6 +98,10 @@ export type Task = {
   feedbackComment?: string | null;
   /** Șablonul de cerere din portal din care a pornit cererea (filtrul „Șablon din portal”). */
   portalTemplateId?: string | null;
+  /** Tipul serviciului: WATER (apă) / SEWER (canalizare) / BOTH (apă + canalizare); gol = nespecificat. */
+  serviceType?: string | null;
+  /** Când s-a finalizat / anulat (pentru filtrul „Situație termen”). */
+  closedAt?: string | Date | null;
   assigneeName: string | null;
   teamName: string | null;
   projectName: string | null;
@@ -183,6 +188,17 @@ const fldCls = (val: string) =>
   }`;
 const dlgInput =
   "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
+
+/** Tipul serviciului la care se referă cererea (apă / canalizare / apă + canalizare); gol = nespecificat. */
+function ServiceTypeSelect({ defaultValue }: { defaultValue: string }) {
+  const t = useT();
+  return (
+    <select name="serviceType" defaultValue={defaultValue} aria-label={t("Tip serviciu")} data-service-type className={dlgInput}>
+      <option value="">{t("Tip serviciu: nespecificat")}</option>
+      {SERVICE_TYPES.map((k) => <option key={k} value={k}>{t(SERVICE_TYPE_LABEL[k])}</option>)}
+    </select>
+  );
+}
 
 export default function TasksManager({
   items,
@@ -1202,6 +1218,7 @@ export function EditDialog({
             </select>
           )}
           <AddressInput defaultValue={task.address ?? ""} className={dlgInput} onChange={(v) => { addressRef.current = v; }} />
+          <ServiceTypeSelect defaultValue={task.serviceType ?? ""} />
           {!canAssign && (
             <AssignmentLocked
               users={users}
@@ -1413,6 +1430,7 @@ export function CreateDialog({
             </select>
           )}
           <AddressInput defaultValue={prefill?.address ?? initialAddress ?? ""} className={dlgInput} />
+          <ServiceTypeSelect defaultValue="" />
           {canAssign && <MultiAssignPicker users={users} teams={teams} initialAssigneeIds={prefill?.assigneeIds} initialTeamIds={prefill?.teamIds} />}
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.dueDate}</label>

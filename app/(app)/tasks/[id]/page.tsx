@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireAnyPermission } from "@/lib/dal";
 import { can, canEditTask, canViewTask, canWorkOnTask } from "@/lib/permissions";
 import { getTask, getTaskComments, ticketCreatorName } from "@/lib/queries/tasks";
+import { serviceTypeLabel } from "@/lib/service-type";
 import { dateKeyOf, formatDate, formatTime } from "@/lib/date";
 import { userOptions } from "@/lib/queries/users";
 import { teamOptions } from "@/lib/queries/teams";
@@ -346,6 +347,7 @@ export default async function TaskDetailPage({
           <MetaRow label={tr("Creat de")} value={ticketCreatorName(task)} />
           {task.type === "TICKET" && task.address && <MetaRow label={tr("Adresă")} value={task.address} />}
           {task.type === "TICKET" && task.consumerName && <MetaRow label={tr("Nume consumator")} value={task.consumerName} />}
+          {serviceTypeLabel(task.serviceType) && <MetaRow label={tr("Tip serviciu")} value={tr(serviceTypeLabel(task.serviceType))} />}
           {task.type === "TICKET" && (
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">{tr("Data executării")}</p>

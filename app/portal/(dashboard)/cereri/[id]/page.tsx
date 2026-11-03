@@ -9,6 +9,7 @@ import TicketChat from "@/app/components/TicketChat";
 import TicketFeedback from "@/app/components/TicketFeedback";
 import { IconChevronLeft } from "@/app/components/icons";
 import { getT } from "@/lib/i18n/server-t";
+import { serviceTypeLabel } from "@/lib/service-type";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export default async function PortalTicketPage({ params }: { params: Promise<{ i
 
   const t = await prisma.task.findFirst({
     where: { id, clientId: client.id, type: "TICKET" },
-    select: { id: true, seq: true, title: true, description: true, status: true, createdAt: true, address: true, consumerName: true, executedAt: true, measuresTaken: true, resolutionMinutes: true, feedbackRating: true, feedbackComment: true },
+    select: { id: true, seq: true, title: true, description: true, status: true, createdAt: true, address: true, consumerName: true, serviceType: true, executedAt: true, measuresTaken: true, resolutionMinutes: true, feedbackRating: true, feedbackComment: true },
   });
   if (!t) notFound();
 
@@ -66,6 +67,12 @@ export default async function PortalTicketPage({ params }: { params: Promise<{ i
           <div className="col-span-2 min-w-0">
             <p className="text-[11px] text-ink-soft">{tr("Nume consumator")}</p>
             <p className="font-medium">{t.consumerName}</p>
+          </div>
+        )}
+        {serviceTypeLabel(t.serviceType) && (
+          <div className="col-span-2 min-w-0">
+            <p className="text-[11px] text-ink-soft">{tr("Tip serviciu")}</p>
+            <p className="font-medium">{tr(serviceTypeLabel(t.serviceType))}</p>
           </div>
         )}
         <div>

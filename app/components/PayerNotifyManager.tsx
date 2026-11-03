@@ -605,7 +605,7 @@ export default function PayerNotifyManager({
   );
   // Actualizare optimistă: imediat ce un lot a plecat, „Ultima notificare" se vede în tabel, fără reîncărcare.
   const onSent = useCallback((results: RecipientResult[]) => {
-    const sent = new Set(results.filter((r) => r.email.status === "sent" || r.sms.status === "sent").map((r) => r.id)); // apelul nu intră aici: abia pus în coadă, „Ultima notificare" se marchează când se sună
+    const sent = new Set(results.filter((r) => r.email.status === "sent" || r.sms.status === "sent" || r.pdf?.status === "sent").map((r) => r.id)); // apelul nu intră aici: abia pus în coadă, „Ultima notificare" se marchează când se sună
     if (sent.size === 0) return;
     sentSomething.current = true;
     const now = new Date().toISOString();
@@ -725,10 +725,11 @@ export default function PayerNotifyManager({
           {NOTIFIED_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
         </select>
         <select value={viaChannel(filters.via)} onChange={(e) => setFilter({ via: composeVia(e.target.value, viaMode(filters.via)) })} className={fld(viaChannel(filters.via))} aria-label={t("Canal notificare")} title={t("Canalul pe care s-a trimis (sau nu) notificarea; se combină cu perioada de mai jos")}>
-          <option value="">{t("Canal: email, SMS, apel")}</option>
+          <option value="">{t("Canal: email, SMS, apel, PDF")}</option>
           <option value="EMAIL">{t("Email")}</option>
           <option value="SMS">{t("SMS")}</option>
           <option value="CALL">{t("Apel")}</option>
+          <option value="PDF">{t("PDF (tipărit)")}</option>
         </select>
         <select value={viaMode(filters.via)} onChange={(e) => setFilter({ via: composeVia(viaChannel(filters.via), e.target.value) })} className={fld(viaMode(filters.via))} aria-label={t("Notificați sau nu")} title={t("Cine a primit notificarea, sau cine NU a primit-o (pe canalul ales, în perioada aleasă)")}>
           <option value="">{t("Notificați / nenotificați")}</option>

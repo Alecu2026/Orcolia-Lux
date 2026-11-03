@@ -19,6 +19,8 @@ export type UserRow = {
   taskViewScope: string;
   taskViewTeamIds: string[];
   taskViewMemberIds: string[];
+  /** Secțiile/echipele din care face parte (aceleași cu membrii din pagina Echipe). */
+  teamIds: string[];
   /** Autentificarea în doi pași (TOTP) e activă pe cont. */
   totp?: boolean;
 };
@@ -39,13 +41,14 @@ const USER_SELECT = {
   taskViewScope: true,
   taskViewTeamIds: true,
   taskViewMemberIds: true,
+  teamIds: true,
   tableLook: true,
 } as const;
 
 export async function listUsers(): Promise<UserRow[]> {
   if (DEMO) {
     return [
-      { id: "demo-user", name: "Cont Demo", email: "demo@local", role: "ADMIN", isActive: true, isSuperAdmin: true, permissions: [], notifyEvents: [], telegramChatId: null, notifyScope: "ALL", notifyTeamIds: [], notifyMemberIds: [], taskViewScope: "ALL", taskViewTeamIds: [], taskViewMemberIds: [] },
+      { id: "demo-user", name: "Cont Demo", email: "demo@local", role: "ADMIN", isActive: true, isSuperAdmin: true, permissions: [], notifyEvents: [], telegramChatId: null, notifyScope: "ALL", notifyTeamIds: [], notifyMemberIds: [], taskViewScope: "ALL", taskViewTeamIds: [], taskViewMemberIds: [], teamIds: [] },
     ];
   }
   const rows = await prisma.user.findMany({

@@ -35,10 +35,10 @@ export type NotifyFilters = {
   /** Când a fost notificat ultima dată (din jurnalul de trimiteri). */
   notified: "" | "never" | "7d" | "30d" | "not7d" | "not30d";
   /**
-   * Canalul prin care a fost (sau NU a fost) notificat plătitorul, din jurnalul de trimiteri: "EMAIL" | "SMS" | "CALL" | "ANY" (orice canal);
+   * Canalul prin care a fost (sau NU a fost) notificat plătitorul, din jurnalul de trimiteri: "EMAIL" | "SMS" | "CALL" | "PDF" | "ANY" (orice canal);
    * prefix "!" = NU a fost notificat (ex. "!SMS"). Se combină cu perioada de mai jos; fără perioadă = oricând.
    */
-  via: "" | "ANY" | "EMAIL" | "SMS" | "CALL" | "!ANY" | "!EMAIL" | "!SMS" | "!CALL";
+  via: "" | "ANY" | "EMAIL" | "SMS" | "CALL" | "PDF" | "!ANY" | "!EMAIL" | "!SMS" | "!CALL" | "!PDF";
   /** "YYYY-MM-DD" — perioada personalizată pentru `via` (inclusiv ambele capete; oricare poate lipsi). */
   notifiedFrom: string;
   notifiedTo: string;
@@ -99,29 +99,31 @@ export const VIA_OPTIONS: { value: Exclude<NotifyFilters["via"], "">; label: str
   { value: "EMAIL", label: "Notificați prin email" },
   { value: "SMS", label: "Notificați prin SMS" },
   { value: "CALL", label: "Notificați prin apel" },
+  { value: "PDF", label: "Notificați prin PDF (tipărit)" },
   { value: "!ANY", label: "Nenotificați (orice canal)" },
   { value: "!EMAIL", label: "Nenotificați prin email" },
   { value: "!SMS", label: "Nenotificați prin SMS" },
   { value: "!CALL", label: "Nenotificați prin apel" },
+  { value: "!PDF", label: "Nenotificați prin PDF (tipărit)" },
 ];
 
 /** „via" e compus din două alegeri: canalul (EMAIL/SMS/CALL) și dacă s-a primit sau nu notificare ("!" în față). */
-export const viaChannel = (via: NotifyFilters["via"]): "" | "EMAIL" | "SMS" | "CALL" => {
+export const viaChannel = (via: NotifyFilters["via"]): "" | "EMAIL" | "SMS" | "CALL" | "PDF" => {
   const c = via.replace(/^!/, "");
-  return c === "EMAIL" || c === "SMS" || c === "CALL" ? c : "";
+  return c === "EMAIL" || c === "SMS" || c === "CALL" || c === "PDF" ? c : "";
 };
 export const viaMode = (via: NotifyFilters["via"]): "" | "yes" | "no" => (!via ? "" : via.startsWith("!") ? "no" : "yes");
 export const composeVia = (channel: string, mode: string): NotifyFilters["via"] =>
   (!channel && !mode ? "" : `${mode === "no" ? "!" : ""}${channel || "ANY"}`) as NotifyFilters["via"];
 
 /** Criteriul „canal + perioadă" din filtre (null = inactiv). Perioada fără canal înseamnă „orice canal". */
-export type NotifyCriterion = { negate: boolean; channel: "EMAIL" | "SMS" | "CALL" | null; from: string; to: string };
+export type NotifyCriterion = { negate: boolean; channel: "EMAIL" | "SMS" | "CALL" | "PDF" | null; from: string; to: string };
 export function notifyCriterion(f: Pick<NotifyFilters, "via" | "notifiedFrom" | "notifiedTo">): NotifyCriterion | null {
   if (!f.via && !f.notifiedFrom && !f.notifiedTo) return null;
   const via = f.via || "ANY";
   const negate = via.startsWith("!");
   const ch = negate ? via.slice(1) : via;
-  return { negate, channel: ch === "ANY" ? null : (ch as "EMAIL" | "SMS" | "CALL"), from: f.notifiedFrom, to: f.notifiedTo };
+  return { negate, channel: ch === "ANY" ? null : (ch as "EMAIL" | "SMS" | "CALL" | "PDF"), from: f.notifiedFrom, to: f.notifiedTo };
 }
 /** Cheie stabilă pentru memorarea mulțimii de plătitori (nu depinde de „!"): aceeași mulțime pentru „notificați" și „nenotificați". */
 export const notifyCriterionKey = (c: NotifyCriterion) => `${c.channel ?? "ANY"}|${c.from}|${c.to}`;
@@ -166,7 +168,7 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     contact: ONE_OF(get(src, "contact"), ["email", "phone", "both", "any", "none", "noemail", "nophone"] as const),
     kind: ONE_OF(get(src, "kind"), ["person", "company"] as const),
     notified: ONE_OF(get(src, "notified"), ["never", "7d", "30d", "not7d", "not30d"] as const),
-    via: ONE_OF(get(src, "via"), ["ANY", "EMAIL", "SMS", "CALL", "!ANY", "!EMAIL", "!SMS", "!CALL"] as const),
+    via: ONE_OF(get(src, "via"), ["ANY", "EMAIL", "SMS", "CALL", "PDF", "!ANY", "!EMAIL", "!SMS", "!CALL", "!PDF"] as const),
     notifiedFrom,
     notifiedTo,
     installedFrom: /^\d{4}-\d{2}-\d{2}$/.test(installedFrom) ? installedFrom : "",
@@ -390,6 +392,8 @@ export function agoLabel(d: string | Date | null, t: (ro: string, v?: Record<str
 export const NOTIFY_CHUNK_SIZE = 25;
 /** Plafon de siguranță pentru o singură campanie. */
 export const NOTIFY_MAX_RECIPIENTS = 25_000;
+/** Câte foi (plătitori) are un fișier PDF de tipărit; o campanie mai mare se împarte în mai multe fișiere. */
+export const NOTIFY_PDF_PART_SIZE = 500;
 export const NOTIFY_MAX_SUBJECT = 200;
 export const NOTIFY_MAX_EMAIL_BODY = 5_000;
 export const NOTIFY_MAX_SMS_BODY = 1_000;

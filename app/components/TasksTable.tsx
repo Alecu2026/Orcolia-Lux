@@ -54,6 +54,8 @@ import { useMessages } from "@/lib/i18n/context";
 import type { CategoryLite } from "./types";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
+import { SERVICE_TYPES, SERVICE_TYPE_LABEL, serviceTypeLabel } from "@/lib/service-type";
+import { DEADLINE_FILTER_OPTIONS, deadlineState } from "@/lib/task-deadline";
 
 const PRIO_RANK = { LOW: 1, MEDIUM: 2, HIGH: 3, URGENT: 4 } as const;
 /** Prioritatea ca etichetă colorată (se vede și pe rânduri colorate / cu zebră): urgent roșu, ridicată portocaliu, medie albastru, scăzută gri. */
@@ -127,6 +129,7 @@ export default function TasksTable({
   scope,
   users,
   teams,
+  teamMembers = {},
   projects,
   clients = [],
   categories = [],
@@ -165,6 +168,8 @@ export default function TasksTable({
   scope: string;
   users: Opt[];
   teams: Opt[];
+  /** Membrii fiecărei secții (id echipă → id-urile persoanelor): filtrul „Echipă” include și cererile atribuite direct unui membru al secției. */
+  teamMembers?: Record<string, string[]>;
   projects: Opt[];
   clients?: Opt[];
   categories?: CategoryLite[];
@@ -318,7 +323,8 @@ export default function TasksTable({
     setStatusPending(id);
     inflight.current++;
     touch(id);
-    setRows((cur) => cur.map((t) => (t.id === id ? { ...t, status: next } : t))); // optimist
+    // optimist; data închiderii (pentru „Situație termen”) se pune la închidere și se șterge la redeschidere, ca pe server
+    setRows((cur) => cur.map((t) => (t.id === id ? { ...t, status: next, closedAt: next === "DONE" || next === "CANCELLED" ? new Date().toISOString() : null } : t)));
     setTaskStatus(id, next, resolution)
       .then((res) => {
         if (res?.error) {
@@ -452,6 +458,18 @@ export default function TasksTable({
       key: "address", label: "Adresă", minW: 150, maxW: 220, sort: (t) => t.address,
       render: (t) => (
         <EditableText value={t.address ?? ""} allowEmpty disabled={!canEditRow(t)} onSave={(v) => patchTask(t, { address: v || null }, { address: v || null })} display={t.address ? <span title={t.address}>{t.address}</span> : undefined} />
+      ),
+    },
+    {
+      key: "service", label: "Tip serviciu", minW: 110, maxW: 150, sort: (t: Task) => serviceTypeLabel(t.serviceType) || null,
+      render: (t: Task) => (
+        <EditableSelect
+          value={t.serviceType ?? ""}
+          disabled={!canEditRow(t)}
+          options={SERVICE_TYPES.map((k) => ({ value: k, label: SERVICE_TYPE_LABEL[k] }))}
+          onChange={(v) => patchTask(t, { serviceType: v || null }, { serviceType: v || null })}
+          display={t.serviceType ? <span>{tr(serviceTypeLabel(t.serviceType))}</span> : dash}
+        />
       ),
     },
     ...(ticketMode
@@ -659,6 +677,12 @@ export default function TasksTable({
       },
       ...(ticketMode
         ? [
+            // situația față de termen: anulate / expirate (nerezolvate, termen depășit) / rezolvate în termen / rezolvate după termen
+            {
+              kind: "select" as const, key: "deadline", label: "Situație termen",
+              options: DEADLINE_FILTER_OPTIONS,
+              test: (t: Task, v: string) => deadlineState(t) === v,
+            },
             {
               kind: "select" as const, key: "executed", label: "Executare",
               options: [{ value: "yes", label: "Executate (cu data executării)" }, { value: "no", label: "Neexecutate (fără dată)" }],
@@ -676,7 +700,16 @@ export default function TasksTable({
         options: users.map((u) => ({ value: u.id, label: u.name })),
         test: (t, v) => t.assigneeId === v || t.extraAssigneeIds.includes(v),
       },
-      { kind: "select", key: "team", label: m.tasks.filterTeam, options: teams.map((x) => ({ value: x.id, label: x.name })), test: (t, v) => t.teamId === v || t.extraTeamIds.includes(v) },
+      // secția = cererile atribuite secției ȘI cele atribuite direct unei persoane care face parte din ea (ca să se vadă câte a rezolvat fiecare secție)
+      {
+        kind: "select", key: "team", label: m.tasks.filterTeam, options: teams.map((x) => ({ value: x.id, label: x.name })),
+        test: (t, v) => {
+          if (t.teamId === v || t.extraTeamIds.includes(v)) return true;
+          const mem = teamMembers[v];
+          return !!mem && ((!!t.assigneeId && mem.includes(t.assigneeId)) || t.extraAssigneeIds.some((id) => mem.includes(id)));
+        },
+      },
+      { kind: "select", key: "service", label: "Tip serviciu", options: SERVICE_TYPES.map((k) => ({ value: k, label: SERVICE_TYPE_LABEL[k] })), test: (t, v) => t.serviceType === v },
       { kind: "select", key: "proj", label: m.tasks.filterProject, options: projects.map((x) => ({ value: x.id, label: x.name })), test: (t, v) => t.projectId === v },
       ...(clients.length ? [{ kind: "select" as const, key: "client", label: m.tasks.filterClient, options: clients.map((x) => ({ value: x.id, label: x.name })), test: (t: Task, v: string) => t.clientId === v }] : []),
       // cererile pe șabloanele din portal: potrivire pe șablonul salvat pe cerere; la cererile mai vechi (fără șablon salvat) după titlu, care pornește din numele șablonului
@@ -716,7 +749,7 @@ export default function TasksTable({
       { kind: "date", key: "from", label: "Termen de la", test: (t, v) => { const k = dueKey(t); return !!k && k >= v; } },
       { kind: "date", key: "to", label: "Termen până la", test: (t, v) => { const k = dueKey(t); return !!k && k <= v; } },
     ];
-  }, [m, users, teams, projects, clients, categories, ticketMode, portalTemplates]);
+  }, [m, users, teams, teamMembers, projects, clients, categories, ticketMode, portalTemplates]);
 
   const current = openId ? rows.find((t) => t.id === openId) ?? null : null;
 

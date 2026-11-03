@@ -75,7 +75,7 @@ export async function resolveNotifyFilterAction(rawFilters: unknown): Promise<Re
 // ── Trimitere (în loturi, apelată în buclă de client) ─────────────────────────────────────────
 
 export type ChannelOutcome = { status: "sent" | "failed" | "skipped"; detail?: string };
-export type RecipientResult = { id: string; name: string; email: ChannelOutcome; sms: ChannelOutcome; call: ChannelOutcome };
+export type RecipientResult = { id: string; name: string; email: ChannelOutcome; sms: ChannelOutcome; call: ChannelOutcome; /** Foaia PDF de tipărit (generată separat, vezi /api/platitori/notificari/pdf). */ pdf?: ChannelOutcome };
 
 export type SendChunkInput = {
   /** Generat pe client, identic pentru toate loturile unei trimiteri — face retrimiterea unui lot idempotentă. */

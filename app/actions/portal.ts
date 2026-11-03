@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { requireClient } from "@/lib/client-dal";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "@/lib/services/notifications";
 import { auditPortalAction } from "@/lib/services/impersonation";
+import { parseServiceType, serviceTypeLabel } from "@/lib/service-type";
+import { addDaysToKey, todayKey, zonedToUtc } from "@/lib/date";
 import { DEFAULT_PORTAL_TEMPLATES, PETITION_MIN_CHARS, PORTAL_REQUEST_MAX_ADDRESS, PORTAL_REQUEST_MAX_CONSUMER, isPetitionName } from "@/lib/portal-default-templates";
 
 export type PortalTicketState = { ok?: boolean; error?: string } | undefined;
@@ -34,9 +36,12 @@ export async function createPortalTicket(
   const templateId = String(formData.get("templateId") ?? "");
   let sectionId: string | null = null;
   let portalTemplateId: string | null = null;
+  let dueAt: Date | null = null;
   if (/^[0-9a-f]{24}$/i.test(templateId)) {
-    const tpl = await prisma.portalRequestTemplate.findUnique({ where: { id: templateId }, select: { name: true, teamId: true } });
+    const tpl = await prisma.portalRequestTemplate.findUnique({ where: { id: templateId }, select: { name: true, teamId: true, dueDays: true } });
     sectionId = tpl?.teamId ?? null;
+    // termenul prestabilit din Setări = scadența cererii: ziua depunerii + N zile calendaristice (data, fără oră: se socotește până la sfârșitul zilei)
+    if (tpl?.dueDays && tpl.dueDays > 0) dueAt = zonedToUtc(addDaysToKey(todayKey("Europe/Bucharest"), tpl.dueDays), "00:00", "Europe/Bucharest");
     if (tpl) portalTemplateId = templateId; // se păstrează pe cerere: filtrul „Șablon din portal” din Cereri
     if (tpl && isPetitionName(tpl.name)) {
       const starter = DEFAULT_PORTAL_TEMPLATES.find((x) => isPetitionName(x.name))?.description.trim() ?? "";
@@ -72,9 +77,11 @@ export async function createPortalTicket(
       creatorId: systemUser.id,
       ...(team ? { teamId: team.id } : {}),
       ...(portalTemplateId ? { portalTemplateId } : {}),
+      ...(dueAt ? { dueAt } : {}),
       clientId: client.id,
       address,
       consumerName,
+      serviceType: parseServiceType(formData.get("serviceType")),
       // Solicitantul real (clientul nu e utilizator): apare la „Creat de” în loc de administratorul-substitut.
       fromName: client.name,
       fromEmail: client.email ?? null,
@@ -93,7 +100,7 @@ export async function createPortalTicket(
           ids,
           {
             title: `📨 Cerere nouă de la ${client.name}: ${title}`,
-            body: `${team ? `Secția: ${team.name}\n` : ""}Adresă: ${address}\nConsumator: ${consumerName}`,
+            body: `${team ? `Secția: ${team.name}\n` : ""}Adresă: ${address}\nConsumator: ${consumerName}${parseServiceType(formData.get("serviceType")) ? `\nServiciu: ${serviceTypeLabel(formData.get("serviceType"))}` : ""}`,
             url: `/tickets/${ticket.id}`,
             taskId: ticket.id,
             seq: ticket.seq,

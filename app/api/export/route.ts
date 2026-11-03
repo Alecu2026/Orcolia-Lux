@@ -1,4 +1,6 @@
 import { getCurrentUser } from "@/lib/dal";
+import { serviceTypeLabel } from "@/lib/service-type";
+import { DEADLINE_LABEL, deadlineState } from "@/lib/task-deadline";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
 import { listClients } from "@/lib/queries/clients";
 import { mineWhere } from "@/lib/queries/appointments";
@@ -129,7 +131,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
     const clientIds = [...new Set(items.map((t) => t.clientId).filter(Boolean) as string[])];
     const clientNameMap = await clientNamesFor(clientIds); // id-in cu mii de id-uri e lent: pentru liste mari se citește harta numelor
 
-    const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Proiect", "Client", "Adresă", "Nume consumator", "Categorie", "Scadent", "Data executării", "Măsuri luate", "Timp de rezolvare", "Feedback client (1-5)", "Comentariu feedback", "Progres (%)", "Creat la", "Creat de", "Descriere"];
+    const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Proiect", "Client", "Adresă", "Nume consumator", "Tip serviciu", "Categorie", "Scadent", "Situație termen", "Data finalizării", "Data executării", "Măsuri luate", "Timp de rezolvare", "Feedback client (1-5)", "Comentariu feedback", "Progres (%)", "Creat la", "Creat de", "Descriere"];
     const rows = items.map((t) => ({
       "#": t.seq ?? "",
       "Titlu": t.title,
@@ -142,8 +144,11 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
       "Client": t.clientId ? (clientNameMap.get(t.clientId) ?? "") : "",
       "Adresă": t.address ?? "",
       "Nume consumator": t.consumerName ?? "",
+      "Tip serviciu": serviceTypeLabel(t.serviceType),
       "Categorie": t.categoryName ?? "",
       "Scadent": fmtDate(t.dueAt),
+      "Situație termen": DEADLINE_LABEL[deadlineState(t)],
+      "Data finalizării": t.closedAt ? fmtDate(t.closedAt) : "",
       "Data executării": t.executedOn ? t.executedOn.split("-").reverse().join(".") : "",
       "Măsuri luate": t.measuresTaken ?? "",
       "Timp de rezolvare": t.resolutionMinutes != null ? formatMinutes(t.resolutionMinutes) : "",

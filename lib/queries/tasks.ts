@@ -19,6 +19,8 @@ export type TaskRow = {
   priority: TaskPriority;
   progress: number;
   dueAt: Date | null;
+  /** Când s-a finalizat / anulat (gol la cele deschise sau închise înainte să se păstreze data). */
+  closedAt: Date | null;
   reminderIntervalMinutes: number | null;
   /** Reamintire programată (JSON), vezi lib/reminder-schedule.ts. */
   reminderSchedule: string | null;
@@ -41,6 +43,8 @@ export type TaskRow = {
   feedbackComment: string | null;
   /** Șablonul de cerere din portal din care a pornit cererea (gol la cele vechi / din CRM). */
   portalTemplateId: string | null;
+  /** Tipul serviciului: WATER (apă) / SEWER (canalizare) / BOTH (apă + canalizare); gol = nespecificat. */
+  serviceType: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -69,6 +73,7 @@ const TASK_SELECT = {
   priority: true,
   progress: true,
   dueAt: true,
+  closedAt: true,
   reminderIntervalMinutes: true,
   reminderSchedule: true,
   creatorId: true,
@@ -86,6 +91,7 @@ const TASK_SELECT = {
   feedbackRating: true,
   feedbackComment: true,
   portalTemplateId: true,
+  serviceType: true,
   extraAssigneeIds: true,
   extraTeamIds: true,
   assignmentSettingsJson: true,
@@ -181,6 +187,7 @@ function toRow(t: TaskDbRow, l: Lookups): TaskRow {
     priority: t.priority,
     progress: t.progress,
     dueAt: t.dueAt,
+    closedAt: t.closedAt ?? null,
     reminderIntervalMinutes: t.reminderIntervalMinutes ?? null,
     reminderSchedule: t.reminderSchedule ? JSON.stringify(t.reminderSchedule) : null,
     creatorId: t.creatorId,
@@ -199,6 +206,7 @@ function toRow(t: TaskDbRow, l: Lookups): TaskRow {
     feedbackRating: t.feedbackRating ?? null,
     feedbackComment: t.feedbackComment ?? null,
     portalTemplateId: t.portalTemplateId ?? null,
+    serviceType: t.serviceType ?? null,
     extraAssigneeIds: t.extraAssigneeIds ?? [],
     extraTeamIds: t.extraTeamIds ?? [],
     assignmentSettingsJson: t.assignmentSettingsJson ?? null,
@@ -534,6 +542,8 @@ function toTuple(t: TaskDbRow): TaskTuple {
     t.feedbackRating ?? null,
     t.feedbackComment ?? null,
     t.portalTemplateId ?? null,
+    t.serviceType ?? null,
+    t.closedAt ? t.closedAt.getTime() : null,
   ];
 }
 

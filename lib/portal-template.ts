@@ -1,7 +1,8 @@
 /** Șablon de cerere pentru clienții din cabinetul personal (creat de administrator). Cod comun server + browser. */
-export type PortalTemplate = { id: string; name: string; title: string; description: string; /** secția (echipa) responsabilă; null = administratorii */ teamId: string | null };
+export type PortalTemplate = { id: string; name: string; title: string; description: string; /** secția (echipa) responsabilă; null = administratorii */ teamId: string | null; /** termen prestabilit de rezolvare (zile calendaristice de la depunere) = scadența cererii; null = fără termen */ dueDays: number | null };
 
 export const PORTAL_TEMPLATE_MAX = 50;
 export const PORTAL_TEMPLATE_MAX_NAME = 80;
 export const PORTAL_TEMPLATE_MAX_TITLE = 200;
 export const PORTAL_TEMPLATE_MAX_DESCRIPTION = 2000;
+export const PORTAL_TEMPLATE_MAX_DUE_DAYS = 365;

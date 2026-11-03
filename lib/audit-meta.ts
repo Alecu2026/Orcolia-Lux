@@ -84,6 +84,7 @@ export const ACTION_LABELS: Record<string, string> = {
   "user.activate": "Activare utilizator",
   "user.deactivate": "Dezactivare utilizator",
   "user.permissions_change": "Schimbare permisiuni",
+  "user.teams_change": "Schimbare secții",
   "user.superadmin_change": "Schimbare super-admin",
 
   "settings.update": "Modificare setări",
@@ -155,6 +156,7 @@ const SHORT_LABELS: Record<string, string> = {
   "user.activate": "Utilizator activat",
   "user.deactivate": "Utilizator dezactivat",
   "user.permissions_change": "Permisiuni schimbate",
+  "user.teams_change": "Secții schimbate",
   "user.superadmin_change": "Super-admin schimbat",
   "settings.update": "Setări modificate",
   "settings.auto_notify": "Notificări automate modificate",

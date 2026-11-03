@@ -350,6 +350,8 @@ model Task {
   consumerName String?
   /// Șablonul de cerere din portal din care a pornit cererea (PortalRequestTemplate); gol la cererile mai vechi sau create în CRM — pentru filtrul „Șablon din portal” din Cereri.
   portalTemplateId String? @db.ObjectId
+  /// Tipul serviciului la care se referă cererea: WATER (apă), SEWER (canalizare) sau BOTH (apă + canalizare); gol = nespecificat (cererile mai vechi). Vezi lib/service-type.ts.
+  serviceType String?
   /// Data executării cererii (doar data, 00:00 UTC): completată de echipă; la finalizarea unei cereri rămâne data zilei dacă nu e deja setată.
   executedAt DateTime?
   /// Închiderea unei cereri: ce s-a făcut („Măsuri luate”), cât a durat rezolvarea (minute, introdus de executant) și când s-a închis (Finalizat / Anulat; gol la redeschidere).
@@ -1203,6 +1205,8 @@ model PortalRequestTemplate {
   description String   @default("")
   /// Secția (echipa) care se ocupă de acest tip de cerere: tichetul i se atribuie și doar membrii ei sunt notificați; gol = administratorii
   teamId      String?  @db.ObjectId
+  /// Termenul prestabilit de rezolvare, în zile calendaristice de la depunere: devine scadența cererii create din acest șablon; gol = fără termen
+  dueDays     Int?
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

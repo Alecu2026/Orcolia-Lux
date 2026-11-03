@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/dal";
+import { SERVICE_TYPES, SERVICE_TYPE_LABEL } from "@/lib/service-type";
 import { prisma } from "@/lib/prisma";
 import { parseWorkbook, parseJsonRows, parseRoDateKey, parseTime, mapLabel, ImportResult } from "@/lib/import-utils";
 import { can } from "@/lib/permissions";
@@ -234,6 +235,15 @@ export async function POST(req: Request) {
         continue;
       }
       const consumerName = (r["Nume consumator"] ?? "").replace(/\s+/g, " ").trim().slice(0, 150);
+      // „Tip serviciu”: eticheta din export (Apă / Canalizare / Apă + canalizare) sau codul (WATER / SEWER / BOTH); gol = nespecificat
+      const serviceRaw = (r["Tip serviciu"] ?? "").trim();
+      const serviceTypeVal = serviceRaw
+        ? SERVICE_TYPES.find((k) => k === serviceRaw.toUpperCase() || SERVICE_TYPE_LABEL[k].toLowerCase() === serviceRaw.replace(/\s+/g, " ").toLowerCase()) ?? null
+        : null;
+      if (serviceRaw && !serviceTypeVal) {
+        result.failed.push({ row: rowNum, error: `Tip serviciu '${serviceRaw}' nu este valid. Valori: Apă, Canalizare, Apă + canalizare.` });
+        continue;
+      }
       // „Măsuri luate” + „Timp de rezolvare” (doar cereri): același format ca în aplicație („2 h 30 min”, „1:30”, „90”)
       const measuresRaw = (r["Măsuri luate"] ?? "").replace(/\r\n/g, "\n").trim().slice(0, MEASURES_MAX);
       const minutesRaw = (r["Timp de rezolvare"] ?? "").trim();
@@ -255,6 +265,7 @@ export async function POST(req: Request) {
           projectId: projectId ?? null,
           categoryId: categoryId ?? null,
           address: r["Adresă"]?.trim() || null,
+          serviceType: serviceTypeVal,
         });
 
         // Aplică status și/sau client dacă diferă de default

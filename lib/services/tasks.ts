@@ -21,6 +21,7 @@ import { env } from "../env";
 import { absoluteUrl } from "../storage";
 import { notifyUsers, observerRecipients, filteredAdminRecipients } from "./notifications";
 import { Prisma } from "@prisma/client";
+import { parseServiceType, SERVICE_TYPE_LABEL } from "../service-type";
 import type { TaskStatus, TaskType, TaskPriority, CreatedFrom } from "@prisma/client";
 import { computeNextRun, parseReminderSchedule, type ReminderSchedule } from "../reminder-schedule";
 
@@ -72,6 +73,8 @@ export type CreateTaskInput = {
   categoryId?: string | null;
   /** Adresa locului intervenției (text). */
   address?: string | null;
+  /** Tipul serviciului (WATER / SEWER / BOTH), gol = nespecificat. */
+  serviceType?: string | null;
   reminderIntervalMinutes?: number | null;
   /** Reamintire programată (are prioritate față de intervalul fix). */
   reminderSchedule?: ReminderSchedule | null;
@@ -397,6 +400,7 @@ export async function createTask(
       projectId: input.projectId || null,
       categoryId: input.categoryId || null,
       address: input.address?.trim().slice(0, 300) || null,
+      serviceType: parseServiceType(input.serviceType),
       clientId,
       createdFrom: source,
       status,
@@ -1006,6 +1010,8 @@ export type UpdateTaskInput = {
   address?: string | null;
   /** Numele consumatorului pentru care s-a depus cererea. */
   consumerName?: string | null;
+  /** Tipul serviciului (WATER / SEWER / BOTH), gol = nespecificat. */
+  serviceType?: string | null;
   priority?: TaskPriority;
   dueAt?: Date | null;
   reminderIntervalMinutes?: number | null;
@@ -1030,7 +1036,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
     select: {
       id: true, seq: true, title: true, type: true,
       description: true, priority: true, dueAt: true,
-      assigneeId: true, teamId: true, projectId: true, address: true, consumerName: true,
+      assigneeId: true, teamId: true, projectId: true, address: true, consumerName: true, serviceType: true,
       creatorId: true, extraAssigneeIds: true, extraTeamIds: true,
       assignee: { select: { name: true, teamIds: true } },
       team: { select: { name: true } },
@@ -1067,6 +1073,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
   if ("categoryId" in input) data.categoryId = input.categoryId || null;
   if ("address" in input) data.address = input.address?.trim().slice(0, 300) || null;
   if ("consumerName" in input) data.consumerName = input.consumerName?.replace(/\s+/g, " ").trim().slice(0, 150) || null;
+  if ("serviceType" in input) data.serviceType = parseServiceType(input.serviceType);
   if (input.priority !== undefined) data.priority = input.priority;
   if ("dueAt" in input) {
     data.dueAt = input.dueAt ?? null;
@@ -1170,6 +1177,11 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
     if ("consumerName" in input) {
       const nn = input.consumerName?.replace(/\s+/g, " ").trim().slice(0, 150) || null;
       if (nn !== (task.consumerName ?? null)) changes.push({ field: "Nume consumator", from: task.consumerName ?? null, to: nn });
+    }
+    if ("serviceType" in input) {
+      const ns = parseServiceType(input.serviceType);
+      const lbl = (v: string | null | undefined) => { const k = parseServiceType(v); return k ? SERVICE_TYPE_LABEL[k] : null; };
+      if (ns !== parseServiceType(task.serviceType)) changes.push({ field: "Tip serviciu", from: lbl(task.serviceType), to: lbl(ns) });
     }
     if ("categoryId" in input) {
       const nc = input.categoryId || null;

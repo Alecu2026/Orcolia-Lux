@@ -13,6 +13,7 @@ import {
   NOTIFY_MAX_EMAIL_BODY,
   NOTIFY_MAX_SMS_BODY,
   NOTIFY_MAX_SUBJECT,
+  NOTIFY_PDF_PART_SIZE,
   NOTIFY_PRESETS,
   NOTIFY_TOKENS,
   renderTemplate,
@@ -34,8 +35,10 @@ export type Recipient = { id: string; flags: number };
 type Phase = "compose" | "confirm" | "sending" | "done";
 type Channel = { sent: number; failed: number; skipped: number };
 type Failure = { id: string; name: string; channel: "Email" | "SMS" | "Apel"; detail: string };
-type Field = "subject" | "email" | "sms" | "call";
-type Draft = { subject: string; email: string; sms: string; ascii: boolean; call?: string; voice?: string };
+type Field = "subject" | "email" | "sms" | "call" | "pdftitle" | "pdf";
+type Draft = { subject: string; email: string; sms: string; ascii: boolean; call?: string; voice?: string; pdfTitle?: string; pdf?: string };
+/** Un fișier PDF de tipărit (o parte din campanie): câte o foaie pe plătitor. */
+type PdfPart = { n: number; from: number; to: number; count: number; url: string };
 
 const DRAFT_KEY = "payer-notify-draft";
 const TEST_PHONE_KEY = "payer-notify-test-phone";
@@ -105,6 +108,8 @@ export default function PayerNotifyDialog({
   const [useEmail, setUseEmail] = useState(canEmail);
   const [useSms, setUseSms] = useState(canSms && !canEmail);
   const [useCall, setUseCall] = useState(false);
+  // PDF tipărit: nu are nevoie de email/telefon, deci e disponibil pentru oricine din listă.
+  const [usePdf, setUsePdf] = useState(false);
   // Fereastra se montează doar după un click (nu la SSR), deci putem citi ciorna direct la inițializare.
   const [saved] = useState(readDraft);
   const [subject, setSubject] = useState(saved?.subject ?? "");
@@ -113,6 +118,10 @@ export default function PayerNotifyDialog({
   const [ascii, setAscii] = useState(saved?.ascii !== false);
   const [callBody, setCallBody] = useState(saved?.call ?? "");
   const [voice, setVoice] = useState(saved?.voice || DEFAULT_VOICE);
+  const [pdfTitle, setPdfTitle] = useState(saved?.pdfTitle ?? "");
+  const [pdfBody, setPdfBody] = useState(saved?.pdf ?? "");
+  const [pdfParts, setPdfParts] = useState<PdfPart[]>([]);
+  const [pdfPreviewing, setPdfPreviewing] = useState(false);
 
   const [testPhone, setTestPhone] = useState(readTestPhone);
   const [testing, setTesting] = useState(false);
@@ -124,25 +133,34 @@ export default function PayerNotifyDialog({
   const [emailStats, setEmailStats] = useState<Channel>({ sent: 0, failed: 0, skipped: 0 });
   const [smsStats, setSmsStats] = useState<Channel>({ sent: 0, failed: 0, skipped: 0 });
   const [callStats, setCallStats] = useState<Channel>({ sent: 0, failed: 0, skipped: 0 });
+  const [pdfStats, setPdfStats] = useState<Channel>({ sent: 0, failed: 0, skipped: 0 });
   const [failures, setFailures] = useState<Failure[]>([]);
   const [runError, setRunError] = useState<string | null>(null);
   const [resumeAt, setResumeAt] = useState<number | null>(null);
   const [stopped, setStopped] = useState(false);
 
   const stopRef = useRef(false);
+  /** La „Reia”: de unde se continuă — lotul de mesaje digitale sau partea de PDF. */
+  const resumeStage = useRef<"digital" | "pdf">("digital");
+  const pdfUrls = useRef<string[]>([]);
   const campaignRef = useRef("");
   const lastField = useRef<Field>("email");
   const subjectRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLTextAreaElement>(null);
   const smsRef = useRef<HTMLTextAreaElement>(null);
   const callRef = useRef<HTMLTextAreaElement>(null);
+  const pdfTitleRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLTextAreaElement>(null);
 
   // Ciorna (subiect/mesaje) și numărul de test se păstrează între sesiuni — operatorul retrimite des același text.
   useEffect(() => {
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ subject, email: emailBody, sms: smsBody, ascii, call: callBody, voice }));
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ subject, email: emailBody, sms: smsBody, ascii, call: callBody, voice, pdfTitle, pdf: pdfBody }));
     } catch {}
-  }, [subject, emailBody, smsBody, ascii, callBody, voice]);
+  }, [subject, emailBody, smsBody, ascii, callBody, voice, pdfTitle, pdfBody]);
+
+  // adresele blob ale PDF-urilor generate se eliberează la închiderea ferestrei
+  useEffect(() => () => { for (const u of pdfUrls.current) URL.revokeObjectURL(u); }, []);
 
   const sending = phase === "sending";
   useEffect(() => {
@@ -165,6 +183,9 @@ export default function PayerNotifyDialog({
     setEmailBody(p.email);
     setSmsBody(p.sms);
     setCallBody(p.call);
+    // foaia tipărită pornește de la textul de email (același ton, variabile la fel)
+    setPdfTitle(p.subject);
+    setPdfBody(p.email);
     if (p.voice) setVoice(p.voice);
     // șablonul are mesaj de apel → pornește canalul (dacă e disponibil), ca operatorul să-l vadă imediat
     if (p.call.trim() && canCall) setUseCall(true);
@@ -173,7 +194,7 @@ export default function PayerNotifyDialog({
   function saveAsTemplate() {
     const name = tplName.trim();
     if (!name) return;
-    if (!emailBody.trim() && !smsBody.trim() && !callBody.trim()) { setFormError(tr("Scrie întâi un mesaj pe care să-l salvezi.")); return; }
+    if (!emailBody.trim() && !smsBody.trim() && !callBody.trim() && !pdfBody.trim()) { setFormError(tr("Scrie întâi un mesaj pe care să-l salvezi.")); return; }
     onSaveTemplate({ name, subject, email: emailBody, sms: smsBody, call: callBody, voice });
     setSavingTpl(false);
     setTplName("");
@@ -184,8 +205,8 @@ export default function PayerNotifyDialog({
   function insertToken(token: string) {
     const text = `{${token}}`;
     const field = lastField.current;
-    const el = field === "subject" ? subjectRef.current : field === "sms" ? smsRef.current : field === "call" ? callRef.current : emailRef.current;
-    const set = field === "subject" ? setSubject : field === "sms" ? setSmsBody : field === "call" ? setCallBody : setEmailBody;
+    const el = field === "subject" ? subjectRef.current : field === "sms" ? smsRef.current : field === "call" ? callRef.current : field === "pdftitle" ? pdfTitleRef.current : field === "pdf" ? pdfRef.current : emailRef.current;
+    const set = field === "subject" ? setSubject : field === "sms" ? setSmsBody : field === "call" ? setCallBody : field === "pdftitle" ? setPdfTitle : field === "pdf" ? setPdfBody : setEmailBody;
     if (!el) return;
     const start = el.selectionStart ?? el.value.length;
     const end = el.selectionEnd ?? start;
@@ -197,8 +218,9 @@ export default function PayerNotifyDialog({
   }
 
   function validate(): string | null {
-    if (!useEmail && !useSms && !useCall) return tr("Alege cel puțin un canal (email, SMS sau apel).");
+    if (!useEmail && !useSms && !useCall && !usePdf) return tr("Alege cel puțin un canal (email, SMS, apel sau PDF).");
     if (useCall && !callBody.trim()) return tr("Scrie mesajul apelului.");
+    if (usePdf && !pdfBody.trim()) return tr("Scrie textul PDF-ului.");
     if (useEmail) {
       if (!subject.trim()) return tr("Scrie subiectul emailului.");
       if (!emailBody.trim()) return tr("Scrie mesajul emailului.");
@@ -256,7 +278,47 @@ export default function PayerNotifyDialog({
     if (bad.length) setFailures((p) => [...p, ...bad].slice(0, 500));
   }
 
-  async function run(startAt: number) {
+  const hasDigital = useEmail || useSms || useCall;
+  const pdfPartCount = Math.ceil(recipients.length / NOTIFY_PDF_PART_SIZE);
+  const workTotal = recipients.length * ((hasDigital ? 1 : 0) + (usePdf ? 1 : 0));
+
+  /** Cere serverului PDF-ul unei părți (sau doar foaia primului plătitor, la previzualizare). */
+  async function fetchPdf(ids: string[], part: number, preview: boolean): Promise<{ blob: Blob; count: number }> {
+    const res = await fetch("/api/platitori/notificari/pdf", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ campaignId: campaignRef.current || "preview-0000", part, totalPlanned: recipients.length, ids, title: pdfTitle, body: pdfBody, preview }),
+    });
+    if (!res.ok) {
+      let msg = "";
+      try { msg = ((await res.json()) as { error?: string }).error ?? ""; } catch {}
+      throw new Error(msg || tr("Nu am putut genera PDF-ul. Încearcă din nou."));
+    }
+    return { blob: await res.blob(), count: Number(res.headers.get("X-Notice-Count")) || ids.length };
+  }
+
+  async function previewPdf() {
+    const err = !pdfBody.trim() ? tr("Scrie textul PDF-ului.") : null;
+    if (err) { setFormError(err); return; }
+    setFormError(null);
+    setPdfPreviewing(true);
+    // fereastra se deschide acum (din click), altfel browserul blochează popup-ul după așteptarea răspunsului
+    const w = window.open("", "_blank");
+    try {
+      const { blob } = await fetchPdf([recipients[0].id], 0, true);
+      const url = URL.createObjectURL(blob);
+      pdfUrls.current.push(url);
+      if (w) w.location.href = url;
+      else window.open(url, "_blank");
+    } catch (e) {
+      w?.close();
+      setFormError(e instanceof Error ? e.message : tr("Nu am putut genera PDF-ul. Încearcă din nou."));
+    } finally {
+      setPdfPreviewing(false);
+    }
+  }
+
+  async function run(startAt: number, stage: "digital" | "pdf" = hasDigital ? "digital" : "pdf") {
     if (!campaignRef.current) {
       campaignRef.current = typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
@@ -272,9 +334,10 @@ export default function PayerNotifyDialog({
     const chunks: string[][] = [];
     for (let i = 0; i < ids.length; i += NOTIFY_CHUNK_SIZE) chunks.push(ids.slice(i, i + NOTIFY_CHUNK_SIZE));
 
-    for (let i = startAt; i < chunks.length; i++) {
+    if (stage === "digital" && hasDigital) for (let i = startAt; i < chunks.length; i++) {
       if (stopRef.current) {
         setStopped(true);
+        resumeStage.current = "digital";
         setResumeAt(i);
         setPhase("done");
         return;
@@ -289,6 +352,7 @@ export default function PayerNotifyDialog({
         });
         if (!res.ok) {
           setRunError(res.error);
+          resumeStage.current = "digital";
           setResumeAt(i);
           setPhase("done");
           return;
@@ -300,16 +364,49 @@ export default function PayerNotifyDialog({
         // Fără reîncercare automată: lotul poate fi deja plecat. „Reia" retrimite același lot cu aceeași
         // campanie, iar serverul omite destinatarii deja marcați ca trimiși în ea.
         setRunError(tr("Conexiune întreruptă în timpul trimiterii. Verifică conexiunea și apasă „Reia”."));
+        resumeStage.current = "digital";
         setResumeAt(i);
         setPhase("done");
         return;
+      }
+    }
+
+    // PDF tipărit: câte un fișier la fiecare NOTIFY_PDF_PART_SIZE plătitori, o foaie pe plătitor
+    if (usePdf) {
+      const first = stage === "pdf" ? startAt : 0;
+      for (let n = first; n < pdfPartCount; n++) {
+        if (stopRef.current) {
+          setStopped(true);
+          resumeStage.current = "pdf";
+          setResumeAt(n);
+          setPhase("done");
+          return;
+        }
+        const from = n * NOTIFY_PDF_PART_SIZE;
+        const part = ids.slice(from, from + NOTIFY_PDF_PART_SIZE);
+        try {
+          const { blob, count } = await fetchPdf(part, n, false);
+          const url = URL.createObjectURL(blob);
+          pdfUrls.current.push(url);
+          setPdfParts((p) => [...p.filter((x) => x.n !== n + 1), { n: n + 1, from: from + 1, to: from + part.length, count, url }].sort((a, b) => a.n - b.n));
+          setPdfStats((s) => ({ ...s, sent: s.sent + count, skipped: s.skipped + (part.length - count) }));
+          // „Ultima notificare” se actualizează în tabel, ca la celelalte canale
+          onSent(part.map((id) => ({ id, name: "", email: { status: "skipped" }, sms: { status: "skipped" }, call: { status: "skipped" }, pdf: { status: "sent" } })));
+          setProcessed((hasDigital ? ids.length : 0) + Math.min(ids.length, (n + 1) * NOTIFY_PDF_PART_SIZE));
+        } catch (e) {
+          setRunError(e instanceof Error ? e.message : tr("Nu am putut genera PDF-ul. Încearcă din nou."));
+          resumeStage.current = "pdf";
+          setResumeAt(n);
+          setPhase("done");
+          return;
+        }
       }
     }
     setPhase("done");
   }
 
   const total = recipients.length;
-  const pct = total ? Math.round((processed / total) * 100) : 0;
+  const pct = workTotal ? Math.round((processed / workTotal) * 100) : 0;
   const failedIds = [...new Set(failures.map((f) => f.id))];
 
   return (
@@ -362,6 +459,14 @@ export default function PayerNotifyDialog({
                 disabled={!canCall}
                 hint={!callEnabled ? tr("Apel neconfigurat") : smsCount === 0 ? tr("nimeni nu are telefon") : `${nf(smsCount)} ${tr("destinatari")}`}
                 onChange={setUseCall}
+              />
+              <ChannelToggle
+                label="PDF"
+                icon="📄"
+                checked={usePdf}
+                disabled={total === 0}
+                hint={`${nf(total)} ${tr("foi de tipărit (una pe plătitor)")}`}
+                onChange={setUsePdf}
               />
             </div>
 
@@ -477,6 +582,38 @@ export default function PayerNotifyDialog({
               </div>
             )}
 
+            {usePdf && (
+              <div className="flex flex-col gap-2" data-pdf-section>
+                <label className="text-xs font-semibold text-ink-soft">{tr("PDF tipărit — titlul foii")}</label>
+                <input
+                  ref={pdfTitleRef}
+                  value={pdfTitle}
+                  maxLength={NOTIFY_MAX_SUBJECT}
+                  onFocus={() => (lastField.current = "pdftitle")}
+                  onChange={(e) => setPdfTitle(e.target.value)}
+                  placeholder={tr("Titlul foii (opțional)")}
+                  className={`${inputCls} h-11`}
+                />
+                <label className="text-xs font-semibold text-ink-soft">{tr("PDF tipărit — textul foii")}</label>
+                <textarea
+                  ref={pdfRef}
+                  value={pdfBody}
+                  maxLength={NOTIFY_MAX_EMAIL_BODY}
+                  onFocus={() => (lastField.current = "pdf")}
+                  onChange={(e) => setPdfBody(e.target.value)}
+                  rows={6}
+                  placeholder={tr("Scrie mesajul… folosește {nume}, {suma} etc.", { nume: "{nume}", suma: "{suma}" })}
+                  className={`${inputCls} py-2.5`}
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-soft">
+                  <span>{tr("Fiecare plătitor primește o foaie A4 separată, cu numele, contul și adresa lui; fișierele au câte cel mult {n} foi.", { n: nf(NOTIFY_PDF_PART_SIZE) })}</span>
+                  <button type="button" onClick={previewPdf} disabled={pdfPreviewing} data-pdf-preview className="tap h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 font-medium text-ink hover:bg-brand-soft disabled:opacity-50">
+                    {pdfPreviewing ? tr("Se generează…") : tr("Previzualizează foaia primului plătitor")}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Previzualizare */}
             {(useEmail || useSms) && (
               <div className="rounded-xl border border-dashed border-[var(--color-line)] p-3">
@@ -553,6 +690,11 @@ export default function PayerNotifyDialog({
                     {total - smsCount > 0 && <span className="text-ink-soft"> ({tr("{n} fără telefon valid vor fi omiși", { n: nf(total - smsCount) })})</span>}
                   </li>
                 )}
+                {usePdf && (
+                  <li data-confirm-pdf>
+                    <b>{nf(total)}</b> {tr("foi PDF de tipărit (câte una pe plătitor), în {k} fișier(e)", { k: nf(pdfPartCount) })}
+                  </li>
+                )}
               </ul>
               <p className="mt-2 text-xs text-ink-soft">{tr("Mesajele trimise nu pot fi retrase. SMS-urile se taxează de furnizor.")}</p>
             </div>
@@ -574,7 +716,7 @@ export default function PayerNotifyDialog({
                 <span className="font-semibold">
                   {sending ? tr("Se trimite…") : runError ? tr("Trimitere întreruptă") : stopped ? tr("Oprit") : tr("Gata")}
                 </span>
-                <span className="tabular-nums text-ink-soft">{nf(processed)} / {nf(total)} ({pct}%)</span>
+                <span className="tabular-nums text-ink-soft">{nf(Math.min(total, Math.round(total * (pct / 100))))} / {nf(total)} ({pct}%)</span>
               </div>
               <div className="h-2.5 overflow-hidden rounded-full bg-[var(--color-surface-2)]">
                 <div className="h-full rounded-full bg-brand transition-all duration-300" style={{ width: `${pct}%` }} />
@@ -585,7 +727,26 @@ export default function PayerNotifyDialog({
               {useEmail && <StatCard title={tr("✉ Email")} s={emailStats} />}
               {useSms && <StatCard title={tr("💬 SMS")} s={smsStats} />}
               {useCall && <StatCard title={`📞 ${tr("Apel")}`} s={callStats} sentLabel={tr("Trimise la gateway")} />}
+              {usePdf && <StatCard title={"📄 PDF"} s={pdfStats} sentLabel={tr("Foi generate")} />}
             </div>
+
+            {usePdf && pdfParts.length > 0 && (
+              <div className="rounded-xl border border-[var(--color-line)] p-3 text-sm" data-pdf-parts>
+                <p className="font-semibold">📄 {tr("Fișiere PDF gata de tipărit")}</p>
+                <ul className="mt-2 space-y-1.5">
+                  {pdfParts.map((p) => (
+                    <li key={p.n} className="flex flex-wrap items-center gap-2">
+                      <span className="min-w-0 flex-1 text-xs">
+                        {tr("Fișierul {n}", { n: p.n })} · {tr("plătitorii {a}–{b}", { a: nf(p.from), b: nf(p.to) })} · {nf(p.count)} {tr("foi")}
+                      </span>
+                      <a href={p.url} download={`notificari-${p.n}.pdf`} className="tap inline-flex h-8 items-center rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong">⬇ {tr("Descarcă")}</a>
+                      <a href={p.url} target="_blank" rel="noopener" className="tap inline-flex h-8 items-center rounded-lg border border-[var(--color-line)] px-3 text-xs font-semibold hover:bg-brand-soft">🖨 {tr("Deschide pentru tipărire")}</a>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-[11px] text-ink-soft">{tr("Fișierele rămân disponibile cât timp această fereastră e deschisă; nu se păstrează pe server. Plătitorii apar în jurnal ca notificați prin PDF.")}</p>
+              </div>
+            )}
 
             {useCall && !sending && (callStats.sent > 0 || callStats.failed > 0) && (
               <div className="rounded-xl border border-[var(--color-line)] p-3 text-sm">
@@ -626,7 +787,7 @@ export default function PayerNotifyDialog({
                     </button>
                   )}
                   {resumeAt !== null && (
-                    <button type="button" onClick={() => run(resumeAt)} className="tap h-11 rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong">
+                    <button type="button" onClick={() => run(resumeAt, resumeStage.current)} className="tap h-11 rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong">
                       {tr("Reia")}
                     </button>
                   )}

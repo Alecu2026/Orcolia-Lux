@@ -15,7 +15,7 @@ export async function listPortalTemplates(): Promise<PortalTemplate[]> {
   const rows = await prisma.portalRequestTemplate.findMany({
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     take: 100,
-    select: { id: true, name: true, title: true, description: true, teamId: true },
+    select: { id: true, name: true, title: true, description: true, teamId: true, dueDays: true },
   });
   putCachedTemplates(rows); // golit la orice modificare de șablon (invalidatePortalTemplates)
   return rows;

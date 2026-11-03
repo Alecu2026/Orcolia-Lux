@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { savePortalTemplateAction, deletePortalTemplateAction, addDefaultPortalTemplatesAction } from "@/app/actions/portal-templates";
 import {
   PORTAL_TEMPLATE_MAX_DESCRIPTION,
+  PORTAL_TEMPLATE_MAX_DUE_DAYS,
   PORTAL_TEMPLATE_MAX_NAME,
   PORTAL_TEMPLATE_MAX_TITLE,
   type PortalTemplate,
@@ -13,7 +14,7 @@ import { useT } from "@/lib/i18n/context";
 
 const input =
   "w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/30";
-const EMPTY = { id: "", name: "", title: "", description: "", teamId: "" };
+const EMPTY = { id: "", name: "", title: "", description: "", teamId: "", dueDays: "" };
 
 /** Administrare: șabloanele de cereri pe care clienții le văd în cabinetul personal (listă la „Creează cerere” și pe pagina cu facturi). */
 export default function PortalTemplatesManager({ initial, teams: initialTeams = [] }: { initial: PortalTemplate[]; teams?: { id: string; name: string }[] }) {
@@ -30,7 +31,7 @@ export default function PortalTemplatesManager({ initial, teams: initialTeams = 
   function save() {
     if (!form) return;
     startTransition(async () => {
-      const res = await savePortalTemplateAction({ id: form.id || undefined, name: form.name, title: form.title, description: form.description, teamId: form.teamId || null });
+      const res = await savePortalTemplateAction({ id: form.id || undefined, name: form.name, title: form.title, description: form.description, teamId: form.teamId || null, dueDays: form.dueDays.trim() || null });
       if (!res.ok) return toast.error(res.error);
       setItems(res.templates);
       setForm(null);
@@ -81,8 +82,11 @@ export default function PortalTemplatesManager({ initial, teams: initialTeams = 
               <p className={`truncate text-[11px] font-medium ${tpl.teamId && teamName(tpl.teamId) ? "text-brand-strong" : "text-ink-soft"}`}>
                 {tpl.teamId && teamName(tpl.teamId) ? `🏢 ${teamName(tpl.teamId)}` : t("🏢 Fără secție — cererea merge la administratori")}
               </p>
+              <p className="truncate text-[11px] text-ink-soft" data-due-days={tpl.dueDays ?? ""}>
+                {tpl.dueDays ? `⏱ ${t("Termen de rezolvare: {n} zile", { n: tpl.dueDays })}` : t("⏱ Fără termen prestabilit")}
+              </p>
             </div>
-            <button type="button" disabled={pending} onClick={() => setForm({ ...tpl, teamId: tpl.teamId ?? "" })} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-[var(--color-surface-2)]">
+            <button type="button" disabled={pending} onClick={() => setForm({ ...tpl, teamId: tpl.teamId ?? "", dueDays: tpl.dueDays ? String(tpl.dueDays) : "" })} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium hover:bg-[var(--color-surface-2)]">
               {t("Editează")}
             </button>
             <button type="button" disabled={pending} onClick={() => remove(tpl)} className="tap h-8 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-medium text-st-cancelled hover:bg-[var(--color-surface-2)]">
@@ -103,6 +107,17 @@ export default function PortalTemplatesManager({ initial, teams: initialTeams = 
               {teams.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
             <p className="text-[11px] text-ink-soft">{t("Cererile de acest tip se atribuie secției, iar doar membrii ei primesc notificarea. Dacă secția n-are încă persoane, notificarea merge la administratori.")}</p>
+            <label className="text-xs font-semibold">{t("Termen de rezolvare (zile, opțional)")}</label>
+            <input
+              value={form.dueDays}
+              onChange={(e) => setForm({ ...form, dueDays: e.target.value.replace(/\D/g, "").slice(0, 3) })}
+              inputMode="numeric"
+              placeholder={t("ex. 30")}
+              aria-label={t("Termen de rezolvare (zile, opțional)")}
+              data-due-days-input
+              className={input}
+            />
+            <p className="text-[11px] text-ink-soft">{t("Scadența cererilor create din acest șablon = data depunerii + numărul de zile calendaristice (maximum {max}). Gol = fără termen. Cererile deja depuse nu se schimbă.", { max: PORTAL_TEMPLATE_MAX_DUE_DAYS })}</p>
             <label className="text-xs font-semibold">{t("Descriere (opțional)")}</label>
             <textarea value={form.description} rows={4} maxLength={PORTAL_TEMPLATE_MAX_DESCRIPTION} onChange={(e) => setForm({ ...form, description: e.target.value })} className={input} />
             <div className="flex gap-2">

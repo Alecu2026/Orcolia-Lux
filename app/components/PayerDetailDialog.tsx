@@ -314,7 +314,7 @@ export default function PayerDetailDialog({
                 <li key={n.id} className="px-2.5 py-1.5">
                   <p className="flex items-center justify-between gap-2">
                     <span className="font-semibold">
-                      {n.channel === "SMS" ? "💬 SMS" : n.channel === "CALL" ? `📞 ${t("Apel")}` : "✉ Email"}{" "}
+                      {n.channel === "SMS" ? "💬 SMS" : n.channel === "CALL" ? `📞 ${t("Apel")}` : n.channel === "PDF" ? `📄 ${t("PDF (tipărit)")}` : "✉ Email"}{" "}
                       <span className={n.status === "SENT" ? "text-st-done" : "text-st-cancelled"}>{n.status === "SENT" ? t("trimis") : t("eșuat")}</span>
                     </span>
                     <span className="text-ink-soft">{new Date(n.createdAt).toLocaleString(tag, { dateStyle: "short", timeStyle: "short" })} · {n.userName}</span>

@@ -23,6 +23,17 @@ const sameSet = (a: string[], b: string[]) =>
 function invalidate() {
   revalidatePath("/users");
   updateTag("users");
+  // secțiile din care face parte utilizatorul se văd și în lista echipelor
+  revalidatePath("/team");
+  updateTag("teams");
+}
+
+/** Secțiile/echipele alese pentru utilizator: doar cele care există (un id străin ar face salvarea să cadă). */
+async function parseTeamIds(formData: FormData): Promise<string[]> {
+  const ids = parseIdList(formData, "teamIds");
+  if (ids.length === 0) return [];
+  const found = await prisma.team.findMany({ where: { id: { in: ids } }, select: { id: true } });
+  return found.map((x) => x.id);
 }
 
 function parsePerms(formData: FormData): string[] {
@@ -116,6 +127,8 @@ export async function createUser(
   const exists = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   if (exists) return { error: "Există deja un cont cu acest email." };
 
+  const teamIds = await parseTeamIds(formData);
+
   const created = await prisma.user.create({
     data: {
       name,
@@ -133,6 +146,8 @@ export async function createUser(
       tableLook: parseTableLook(formData),
       taskViewTeamIds: parseIdList(formData, "taskViewTeamIds"),
       taskViewMemberIds: parseIdList(formData, "taskViewMemberIds"),
+      // secțiile din care face parte: devine membru al lor, deci primește cererile și notificările secției
+      ...(teamIds.length ? { teams: { connect: teamIds.map((id) => ({ id })) } } : {}),
     },
     select: { id: true },
   });
@@ -209,6 +224,12 @@ export async function updateUser(
 
   const newPerms = role === "ADMIN" ? [] : guardImpersonatePerm(admin, parsePerms(formData), before.permissions);
   const newNotify = parseNotifyEvents(formData);
+  // Secțiile se schimbă doar dacă formularul le-a trimis (marcajul „teamsSent”): alte apeluri nu trebuie să le șteargă.
+  const teamsSent = formData.get("teamsSent") === "1";
+  const newTeamIds = teamsSent ? await parseTeamIds(formData) : null;
+  const beforeTeamIds = newTeamIds
+    ? (await prisma.user.findUnique({ where: { id }, select: { teamIds: true } }))?.teamIds ?? []
+    : [];
 
   try {
     await prisma.user.update({
@@ -228,6 +249,7 @@ export async function updateUser(
         tableLook: parseTableLook(formData),
         taskViewTeamIds: parseIdList(formData, "taskViewTeamIds"),
         taskViewMemberIds: parseIdList(formData, "taskViewMemberIds"),
+        ...(newTeamIds ? { teams: { set: newTeamIds.map((tid) => ({ id: tid })) } } : {}),
         ...(newPassword.length >= 8 ? { passwordHash: await hashPassword(newPassword) } : {}),
       },
     });
@@ -278,6 +300,19 @@ export async function updateUser(
       objectName: name,
       oldValue: before.notifyEvents.join(", ") || "—",
       newValue: newNotify.join(", ") || "—",
+    });
+  }
+  // Log dedicat la schimbarea secțiilor
+  if (newTeamIds && !sameSet(beforeTeamIds, newTeamIds)) {
+    const names = new Map((await prisma.team.findMany({ where: { id: { in: [...beforeTeamIds, ...newTeamIds] } }, select: { id: true, name: true } })).map((x) => [x.id, x.name] as const));
+    const label = (ids: string[]) => ids.map((x) => names.get(x) ?? x).join(", ") || "—";
+    await logAudit(a, {
+      action: "user.teams_change",
+      module: "Users",
+      objectId: id,
+      objectName: name,
+      oldValue: label(beforeTeamIds),
+      newValue: label(newTeamIds),
     });
   }
   invalidate();
