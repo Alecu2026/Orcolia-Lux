@@ -1,0 +1,160 @@
+/**
+ * Engleza pentru „i” („Unde se găsește / cum e implementat”) din lib/tender-spec.ts, pentru PDF-ul din pagina Contract.
+ * Cheia = id-ul punctului (`<grup>-<număr>`, stabil). Când adaugi un punct nou în caiet, adaugă aici și traducerea (altfel PDF-ul în engleză arată textul românesc).
+ */
+
+import type { SpecPart, SpecStatus } from "./tender-spec";
+
+export const STATUS_LABEL_EN: Record<SpecStatus, string> = {
+  done: "Implemented",
+  partial: "Partial",
+  external: "In 1C / outside the CRM",
+  na: "Not applicable",
+  todo: "Not implemented",
+};
+
+export const PART_NOTE_EN: Record<SpecPart, string> = {
+  contract: "Items of Section VII (9.7.2.3 — CRM, portal, mobile application, billing, LoRaWAN), exactly as in the contract.",
+  additional: "The additional software licences (9.7.2.2) and the additional billing functionalities (3.5), kept apart from the rest.",
+  ours: "Features we built on top of what the contract asks for.",
+};
+
+export const WHERE_EN: Record<string, string> = {
+  "lic-1": "Infrastructure licence, not a CRM feature. The CRM runs in the browser (Next.js + MongoDB) and needs no Windows CALs.",
+  "lic-2": "Licence of the 1C / billing database, outside the CRM. The CRM uses MongoDB (no SQL Server licence).",
+  "lic-3": "Workstation security licence, outside the CRM. Application security (scrypt passwords, TOTP, CSP, new-device alert) is in the CRM — see Settings → Security.",
+
+  "crm-core-1": "Requests page: tickets created by staff, from the customer portal (7 standard request types + petition) or from incoming emails. Each has a number, type, address, consumer, assignee and due date.",
+  "crm-core-2": "Statuses (New → Assigned → In progress → Done / Cancelled), list filters and search, activity log, comments and a conversation with the customer in every ticket.",
+  "crm-core-3": "A ticket is assigned to a team (section) and / or a user; a “Work order” type also exists. The date and time of creation and of every status change are kept in the activity log.",
+  "crm-core-4": "On closing, “Measures taken”, resolution time and closing date are filled in. The customer is notified and can leave a 1–5 rating in the portal; task reminders go through the app, push and Telegram.",
+  "crm-core-5": "Notifications to payers (in bulk or individually) by email / SMS, with editable templates and filters; automatic notifications (email / SMS) for contracts, metrological checks and meter irregularities; a delivery log for every message.",
+
+  "crm-info-1": "Payers (~19,000) are imported from 1C and can be searched and filtered instantly (name, account, contract, address, phone, email, sector, locality). CRM customers are created and edited manually.",
+  "crm-info-2": "One payer in the CRM = one 1C account (personal account / contract), the level at which billing happens: all monthly invoices and all meters of the subscriber are on the same account, with one email and one phone per account. Created and updated (from 1C and manually) and searched instantly.",
+  "crm-info-3": "Phone and email are kept per payer, i.e. per account (customer and account are the same level, with one email and phone per account); they come from 1C or are entered by staff, can be updated at any time, are searched instantly and filtered with “No email / no phone”. Per account, Settings → Portal accounts shows the personal account, the contract, the email and the portal activation state.",
+  "crm-info-4": "The consumption address is stored on the payer (customer and account are the same level) and on each meter: it comes from 1C, is updated on sync, is searched by street / locality / sector, and the address of a meter that has none in 1C is filled in from the field.",
+  "crm-info-5": "Data is classified and presented by sector (Участок from 1C), locality, street, type (household / non-household), private / communal sector, invoice status, portal account and other criteria, as instant combinable filters in Payers and Meters, with a counter next to every value and an Excel export on the applied filters.",
+  "crm-info-6": "Only the number of the current contract (“НомерДоговора”) comes from 1C: neither the expiry date of the current contract nor past contracts are in the export. Staff enter the expiry date in the CRM, with automatic notifications at 30 and 10 days. The history is kept per meter instead: meters removed or connected, active / inactive, installation date, when consumption started and when it stopped for a meter.",
+  "crm-info-7": "The “Meter irregularities” register: the irregularity (defect, broken seal, reverse flow, fraud, etc.), the person in charge, the section and the remediation deadline. Open irregularities are also shown on the payer’s page.",
+  "crm-info-8": "Every irregularity has a remediation deadline; 3 days before and when it is exceeded, automatic messages (email / SMS) go out, with editable text. A task can also be created from the payer’s page.",
+  "crm-info-9": "The irregularities register shows open and resolved ones (with filters by person in charge, section, deadline) and can be exported.",
+  "crm-info-10": "The customer’s orders are the service requests (connection, meter replacement, re-sealing, recalculation, etc.) and the work orders: all of them, current and past, are shown on the payer’s page (“Requests” section) and searched on the Requests page. Billing integration: invoices arrive from 1C at every sync and appear on the same page.",
+  "crm-info-11": "A payer’s requests are visible from their page and are filtered in Requests by customer; the customer sees them in the portal under “My requests”.",
+  "crm-info-12": "The customer’s services (water supply, sewerage) appear on the invoice lines, with volume, tariff and amount per service, and their meters in Meters and on the payer’s page; they are searched by payer, account, address or meter number.",
+  "crm-info-13": "Payer page: last invoice, balance, due date, invoice history, settlement statement (PDF), meters and readings in one place.",
+  "crm-info-14": "On the account you see the billing cycle (the calculation period of each invoice), the address and the monthly invoices (monthly frequency), with issue date, due date and amount. Payments and the payment method do not come from 1C yet; when they do, they will be added to the account.",
+  "crm-info-15": "The Apă-Canal invoice has the monthly consumption chart and the amount due; the settlement statement shows invoices, consumption and balance by period (also in the portal).",
+  "crm-info-16": "Consumers are billed post-payment; prepaid accounts do not exist in ACC’s business.",
+  "crm-info-17": "The invoice due date and the balance are visible. The invoice status is only “Sent”: 1C does not transmit payments, so there is no “paid” / “overdue” status and no payment history in the CRM.",
+  "crm-info-18": "A marketing template is created in Notifications (text for email, SMS, robot call) and sent in a targeted way, only to the payers chosen through filters (sector, locality, street, type, etc.), with a delivery log. The invoice also has an “Announcement” box with editable text.",
+  "crm-info-19": "Calls (PBX) arrive automatically, sent notifications are recorded in the delivery log and in the payer’s “last notification”, and the payer page has notes.",
+  "crm-info-20": "PBX integration: the call list (incoming / outgoing / missed), audio recordings, duration, the link to the payer by phone number and a notification on call.",
+
+  "crm-svc-1": "The customer logs into the portal with an account and password (activated with the email on file or proof of the last invoice), with a verification code; staff identify the customer by name, account, contract or phone.",
+  "crm-svc-2": "The portal offers 7 standard request types and the petition, as separate templates, with the responsible section; in the list they are told apart by type / category.",
+  "crm-svc-3": "Every request has the date and time of submission (automatic), and the customer receives a confirmation; the execution date is filled in by the team.",
+  "crm-svc-4": "A ticket from the portal, from Requests (staff) or from email; description, attachments, address, consumer.",
+  "crm-svc-5": "Portal requests come from a verified account; for requests received by email / phone, staff look up the payer on their page (name, account, phone).",
+  "crm-svc-6": "Categories and templates per request type; the ticket keeps the address, the consumer and the customer, and from the ticket you reach the payer and their meters.",
+  "crm-svc-7": "The logic is set per request type: each request template (the 7 standard requests and the petition) has its responsible team / section chosen in advance, and the request reaches it by itself (with no section, it goes to the administrators). The ticket can later be reassigned to another team or to a user.",
+  "crm-svc-8": "A ticket can have several teams and several assignees, each with their own notification settings.",
+  "crm-svc-9": "Configurable automatic closing (with a warning beforehand); the customer is informed and can rate the resolution in the portal.",
+  "crm-svc-10": "Automatic overdue notifications, scheduled reminders, warnings for contracts (30 and 10 days), metrological checks (60 / 30 / 10 days) and irregularity deadlines (3 days before and when exceeded), by email / SMS / app.",
+  "crm-svc-11": "The closing window asks for “Measures taken”, the resolution time (minutes) and the execution date; they stay in the ticket and in the export.",
+  "crm-svc-12": "All tickets are kept (open and closed), with the activity log, comments and the whole conversation with the customer.",
+  "crm-svc-13": "The very detailed Excel / CSV export of requests, with filters by type, period, status, assignee, address / location and sector; it includes the resolution time, from which the average response time is calculated.",
+
+  "portal-1": "Portal → Settlement: a table with invoices, consumption, balance and penalties, downloadable as PDF (and printable). Individual payments are not yet transmitted by 1C; when they are, they will be added to the settlement.",
+  "portal-2": "The portal lists all of the customer’s invoices, with the public invoice page and the PDF.",
+  "portal-3": "The e-invoice is emailed as a link (the “Your invoice {factura} is available” template, from Notifications, to the chosen payers), and from the invoice page the customer downloads it as PDF. Invoices created in the CRM with the status “Sent” go automatically to the customer’s email.",
+  "portal-4": "Not implemented — it depends on Apă-Canal, not only on the CRM. Apă-Canal has to apply to a payment processor (bank), the payment has to be integrated with 1C (the payment confirmation reaches 1C so the invoice is closed there), and the processor imposes strict requirements on the public website (mandatory company information, terms and conditions, contacts, etc.): without meeting them the bank will not accept the payment implementation. On the CRM side: the portal shows invoices and balance, and the structure (invoices, balance, due date, verified account) is ready for integration with the processor once its requirement and the 1C integration are settled.",
+  "portal-5": "Portal → Requests: the customer picks the type (7 standard requests or a petition), fills in the address, the consumer and the date, attaches files and keeps the conversation with the operators.",
+  "portal-6": "Portal → Meters: the reading (with a photo and the meter state) and the history of the last 6 months. For every new or changed reading an email goes to the account holder, with a confirm / dispute link (staff are notified of a dispute).",
+  "portal-7": "The customer opts for the e-invoice by entering the portal account: there they open and download as PDF the current invoice or any earlier one, enter the reading and see the reading and the consumption (monthly chart). The invoice can also be emailed as a link. Individual payments are not transmitted by 1C; the balance, the due date and the invoice status (only “Sent”) are shown.",
+  "portal-8": "The customer portal is published online at the CRM address (/portal), reachable from any browser and installable as an app on the phone. The link to it is placed on ACC’s official page, and customers enter with the account activated on request.",
+  "portal-9": "The customer activates the portal account by proving their identity (the email on file or the last invoice); the administrator sees all accounts, can reset them and can check them through simulation.",
+
+  "mobile-1": "Field readings: the app (PWA, installable on Android) shows the meters from 1C, to be read manually.",
+  "mobile-2": "The reading is typed on the phone, with a photo, GPS location and the meter state.",
+  "mobile-3": "The meter list is downloaded to the phone and also works without internet (with an offline queue); routes have a reading window by days of the month, and “My routes” shows what belongs to the reader.",
+  "mobile-4": "Readings are sent automatically to the CRM when the internet returns, and at the end of the cycle they are downloaded from the CRM as Excel / CSV (with the applied filters: month, route, reader, sector) for the 1C billing system.",
+  "mobile-5": "The calculation stays in 1C and the CRM only receives the data. The invoice itself is generated by the CRM from the 1C data, in the Apă-Canal model (public page with a link, PDF, editable template), and shown in the portal; it can also be issued directly from the CRM.",
+  "mobile-6": "Reading routes have the window of days of the month (e.g. 1–10), the reader and the rules (sector / locality / street); the new month starts automatically.",
+  "mobile-7": "Routes split the meters among readers and days; the report shows how many should have been read by today (even pace) against how many were read.",
+  "mobile-8": "Every reading has a photo, location, reader, time, the previous reading and the consumption; the customer sees the same data in the portal and verifies the reading by email.",
+  "mobile-9": "Manual readings have the date and time; LoRaWAN ones automatically get the transmission date and time from the meter (source “LoRaWAN”).",
+  "mobile-10": "At reading time the meter state is chosen (defect, seal, reverse flow, etc.) with remarks; the irregularity goes into the “Meter irregularities” register.",
+  "mobile-11": "A reading lower than the previous one, an unusually high or low consumption compared with the meter’s monthly average, and a location far from the previous one require confirmation / are flagged in the lists.",
+  "mobile-12": "Reading routes → Planned vs read: per route and per reader (read by them, by others, remaining, behind plan), with CSV export.",
+  "mobile-13": "The “Estimate” filter (calculated / estimated reading) in Payers, Notifications and Meters, combined with the “Invoice month” filter for any period, with Excel export. The estimation duration is shown in each meter’s history: month by month, with the reading source “Calculated (estimated)”.",
+
+  "billing-data-1": "Reading routes split the readers by sectors (Участок from 1C), with locality and street as additional rules: each route has its own reader and its window of days of the month. Planned versus read is shown per route and per reader.",
+  "billing-data-2": "The meter page shows from 1C the installation date, the seal, the reading source, the readings and the consumption, and adds in the CRM the GPS location and the meter address filled in from the field (with the location accuracy). The new fields of the page (position and place of installation, etc.) are created in 1C and reach the CRM through the sync.",
+  "billing-data-3": "Done in 1C. The CRM shows each subscriber’s meters at the consumption address, including the meters at the same address.",
+  "billing-data-4": "The average-volume calculation for billing is done in 1C, and the CRM receives it with the data: calculated (estimated) readings are shown with the source “Calculated (estimated)” in Meters, Payers and Field readings, and each meter also has its monthly average from history.",
+  "billing-data-5": "The list of consumers to whom the individual average volume applies, each one or in groups by sector / street / locality, is managed in 1C. The CRM shows the result: the “Estimate” filter together with sector, locality and street, with Excel export.",
+
+  "billing-rep-1": "Payers with debts are filtered by amount due, due date and invoice month (any period: under 3 months, 3 months – 1 year, over 1 year, over 3 years), with the due date and amount on each, and exported to Excel. The invoice status in the CRM is only “Sent” (1C does not transmit payments): the debt is seen from the amount to pay, not from “paid” / “overdue” statuses.",
+  "billing-rep-2": "Invoices are filtered by month, status and type household / non-household, and the lines show the service (water, sewerage). The report is made through the very detailed Excel export, with the applied filters (period, service, household / non-household, sector, locality).",
+  "billing-rep-3": "Payers: the “New consumer” filters (added to the CRM from a date) and “New consumption place” (start of consumption from 1C from a date), plus “Installed”, contracts with an expiry date / expired and the 30 / 10-day notifications. The filtered list is exported to Excel.",
+  "billing-rep-4": "The tariff groups are the private and the communal sector; the counts by sector (private / communal and the 1C sector), locality, street and type are shown in the filters in Payers / Meters (with a number next to every value), and the service (water / sewerage) from the invoice lines. Exported to Excel.",
+  "billing-rep-5": "The “Reading source” filter (Subscriber, Inspector, Dispatcher, Act, LoRaWAN) in Meters, combined with sector, locality and street; in Field readings also the source “from portal / reader / LoRaWAN”. Excel export on the filters.",
+
+  "billing-docs-1": "The metrological check (5 years) with automatic notifications at 60 / 30 / 10 days, editable text, by email / SMS, and the “defective meter” irregularity with messages.",
+  "billing-docs-2": "Automatic irregularity-remediation messages (3 days before and when exceeded) and Notifications to payers with their own templates (e.g. for disconnection, at 30 / 10 days): the reason is chosen (debt, technical non-conformities, etc.) and sent to the customer.",
+
+  "billing-add-1": "Marked in the contract as “implemented” (outside the CRM).",
+  "billing-add-2": "Not implemented: it depends on the banks’ APIs / formats. The CRM can export lists of invoices and amounts due (1C table, export on filters), but has no bank connectors.",
+  "billing-add-3": "Notifications to payers by email (with the link and PDF of the invoice, balance, due date), with templates and a delivery log.",
+
+  "lorawan-1": "The LoRaWAN node server supplies the list (meter number, volume, date and time); the CRM reads it daily at 23:30 and links it to payers by meter number (including the variants with leading zeros or -wc / -bc).",
+  "lorawan-2": "The integration is active: the “Activate” button starts the first extraction, then it runs automatically every day. The page shows the saved readings, the ignored meters (another month), those not found in the CRM, and the run stages. LoRaWAN meters appear with the source “LoRaWAN” and cannot be edited manually.",
+  "lorawan-3": "LoRaWAN readings reach the CRM (daily extraction) and are visible to the payer in the portal, to readers and to staff. For 1C billing they are exported to Excel / CSV and entered into 1C. Meters in the feed that are not registered in 1C appear in the “Not found in CRM” list (with every number, for troubleshooting) and are added to 1C.",
+
+  "ours-work-1": "Tasks (table), Kanban (columns by status, tasks move between statuses), Calendar (deadlines and appointments) and Projects (a project’s tasks and files, with a map).",
+  "ours-work-2": "Settings → Ticket / task statuses (an editor with colour, order, “notify on entry”, “stop all notifications”).",
+  "ours-work-3": "Tasks → Templates: the list and the editor; “Use” opens the creation with the title and description filled in (the template’s use counter grows with every use).",
+  "ours-work-4": "The multi-assignment selector in the task form; each assignee receives notifications according to their own rule.",
+  "ours-work-5": "The circle in the row for the task colour (with a full palette) and “Table colours” for the header, text, alternating rows and lines; saved on the device.",
+  "ours-work-6": "In the task page: comments, activity log, files; in the project page: the project’s files in folders.",
+  "ours-work-7": "Reminder once / daily / weekly / monthly / at an interval, with an in-app notification, push and Telegram.",
+  "ours-work-8": "The “Proof” window on completion; without the “Assign” permission the assignees are visible but cannot be changed.",
+  "ours-work-9": "The “+” button in the app (and the floating button on the phone); categories are managed in Settings.",
+  "ours-work-10": "The Appointments page: duration, location, category, status, the customer’s channels and reminder thresholds chosen per appointment (x minutes / hours / days before, added with a button).",
+  "ours-work-11": "The first page after login; the Map shows the meters (read / unread / irregularity) with filters by sector, route and reading source.",
+
+  "ours-roles-1": "Users → Role templates: name, description, role, permissions and which tasks the account sees; a template fills in the user form.",
+  "ours-roles-2": "Users → each account’s permissions, grouped by module; the menu and the pages adapt to them.",
+  "ours-roles-3": "The Teams page; a task can be assigned to a whole team.",
+  "ours-roles-4": "Settings: profile, Telegram / push / email, “Quick buttons on the phone” (maximum 5, saved on the account).",
+  "ours-roles-5": "Login simulation: the list of portal accounts with filters; a banner clearly shows that you are in simulation.",
+
+  "ours-comm-1": "It appears automatically when someone calls the company number: the payer’s page, a filter in Payers, a ticket / task with the call data.",
+  "ours-comm-2": "Notifications → Payers: you filter the payers and prepare the files (numbers + messages) for the PBX; sending SMS / robot calls is done through a gateway.",
+  "ours-comm-3": "It is linked from the Telegram page; messages respect sleeping hours, except for the tasks marked as such.",
+  "ours-comm-4": "It is installed from the browser; large lists are downloaded once and also work without internet.",
+  "ours-comm-5": "The microphone button in the header; the voice command is turned into a task or an appointment.",
+  "ours-comm-6": "The email inbox is read automatically (IMAP); spam messages are rejected, and requests with no answer from the customer are closed after a set number of hours.",
+  "ours-comm-7": "In the ticket, the customer’s and the operators’ messages; after closing, the customer gives a rating and a comment.",
+  "ours-comm-8": "Notification log: every message, the channel, the recipient and the result; exportable.",
+
+  "ours-data-1": "Payers → API sync (daily) and file import; at every run the new / updated customers and invoices are shown.",
+  "ours-data-2": "Payers → 1C table; the exports from Payers, Meters, Requests and Tasks respect the active filters.",
+  "ours-data-3": "The import buttons in Payers, Customers, Projects and Tasks.",
+  "ours-data-4": "Settings → Apă-Canal invoice template; the public invoice PDF is drawn directly, without a browser, with a cache.",
+  "ours-data-5": "Invoices → New invoice; the “Apply tariff” button only affects invoices created from then on.",
+  "ours-data-6": "Payer page → Settlement and Portal → Settlement, with printing.",
+  "ours-data-7": "Settings → Portal accounts, with “Request templates for customers” (adds the 7 standard requests with one button).",
+  "ours-data-8": "The meter page (metrological check), Settings → the meter irregularity rules, Field readings (photos).",
+
+  "ours-ux-1": "Payers, Meters, Invoices, PBX calls, Portal accounts, Tasks: a local list + updates with only the differences.",
+  "ours-ux-2": "Filters stay on the device; the “Columns”, “Display” and “Phone mode” buttons in each table’s bar.",
+  "ours-ux-3": "The “Open in …” buttons for addresses / locations; public links (invoice, reading confirmation) have an image with the logo in messengers.",
+  "ours-ux-4": "The language selector in the header; the theme in Settings.",
+
+  "ours-sec-1": "Settings → Security (TOTP QR, active sessions); the new-device alert arrives in the app, push and email.",
+  "ours-sec-2": "Audit Logs (visible to the super-administrator), with a details window for every action.",
+  "ours-sec-3": "For every new reading from the portal an email goes to the account holder; a dispute notifies staff.",
+  "ours-sec-4": "Meters → LoRaWAN: activation, manual run, figures per stage, numbers not found in the CRM.",
+};

@@ -46,9 +46,10 @@ type Task = {
 };
 
 /** Cine poate muta cardul (schimba statusul): aceeași regulă ca pe server (canWorkOnTask / „Închidere”), calculată în browser ca să meargă și pe lista completă. */
-type Mover = { id: string; teamIds: string[]; canEdit: boolean; canClose: boolean };
+type Mover = { id: string; teamIds: string[]; canEdit: boolean; canClose: boolean; canCancelTask: boolean; canCancelTicket: boolean };
+const mayCancel = (u: Mover, t: Task): boolean => (t.type === "TICKET" ? u.canCancelTicket : u.canCancelTask);
 const canMoveTask = (u: Mover, t: Task): boolean =>
-  u.canClose || u.canEdit || t.creatorId === u.id || t.assigneeId === u.id || t.extraAssigneeIds.includes(u.id) || (!!t.teamId && u.teamIds.includes(t.teamId)) || t.extraTeamIds.some((x) => u.teamIds.includes(x));
+  u.canClose || mayCancel(u, t) || u.canEdit || t.creatorId === u.id || t.assigneeId === u.id || t.extraAssigneeIds.includes(u.id) || (!!t.teamId && u.teamIds.includes(t.teamId)) || t.extraTeamIds.some((x) => u.teamIds.includes(x));
 
 /** Câte carduri se afișează (cele mai noi, după filtre); 0 = toate. */
 const LIMITS = [20, 50, 100, 200, 500, 1000, 0] as const;
@@ -245,6 +246,7 @@ export default function TaskKanban({
     const task = tasks.find((t) => t.id === id);
     if (!task || task.status === status) return;
     if (!canMoveTask(mover, task)) { toast.error(tr("Nu ai permisiunea de editare.")); return; }
+    if (status === "CANCELLED" && !mayCancel(mover, task)) { toast.error(tr(task.type === "TICKET" ? "Nu ai permisiunea de a anula cereri." : "Nu ai permisiunea de a anula sarcini.")); return; }
     const prev = tasks;
     setTasks((cur) => cur.map((t) => (t.id === id ? { ...t, status } : t)));
     setTaskStatus(id, status, resolution).then((res) => {

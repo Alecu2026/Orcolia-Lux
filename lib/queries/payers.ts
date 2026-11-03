@@ -76,7 +76,7 @@ export type ListPayersOpts = {
   maxDebt?: number;
   /** Ce date de contact are plătitorul (vezi /notificari-platitori). */
   contact?: "email" | "phone" | "both" | "any" | "none" | "noemail" | "nophone";
-  /** "person" = cu cont personal (meterSeries); "company" = firmă/instituție (doar nr. de contract). */
+  /** "person" = casnic, cu cont personal (meterSeries); "company" = non casnic (doar nr. de contract). */
   kind?: "person" | "company";
   /** Filtru după Client.lastNotifiedAt: niciodată / în / nu în ultimele 7 sau 30 de zile. */
   notified?: "never" | "7d" | "30d" | "not7d" | "not30d";

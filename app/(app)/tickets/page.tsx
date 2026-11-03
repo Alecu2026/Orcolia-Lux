@@ -80,6 +80,7 @@ export default async function TicketsPage({
         portalTemplates={portalTemplates}
         canAssign={can(user, "tasks.assign")}
         canClose={can(user, "tasks.close")}
+        canCancel={can(user, "tickets.cancel")}
         scope={scope}
         users={users}
         teams={teams}

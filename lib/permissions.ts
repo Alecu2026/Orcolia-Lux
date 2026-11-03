@@ -12,6 +12,9 @@ export type PermissionKey =
   | "tasks.delete"
   | "tasks.assign"
   | "tasks.close"
+  // Anularea (statusul „Anulat”), separat pe sarcini și pe cereri; finalizarea rămâne la „Închidere / finalizare”
+  | "tasks.cancel"
+  | "tickets.cancel"
   // Proiecte
   | "projects.view"
   | "projects.create"
@@ -89,7 +92,9 @@ export const PERMISSION_GROUPS: {
       { key: "tasks.edit", label: "Editare" },
       { key: "tasks.delete", label: "Ștergere" },
       { key: "tasks.assign", label: "Asignare" },
-      { key: "tasks.close", label: "Închidere / finalizare" },
+      { key: "tasks.close", label: "Închidere / finalizare (fără anulare)" },
+      { key: "tasks.cancel", label: "Anulare sarcini" },
+      { key: "tickets.cancel", label: "Anulare cereri" },
       { key: "tasks.export", label: "Export sarcini (Excel / CSV / JSON)" },
       { key: "tasks.import", label: "Import sarcini din fișier" },
       { key: "tickets.export", label: "Export cereri (Excel / CSV / JSON)" },
@@ -209,6 +214,20 @@ export const PERMISSIONS_V2 = "perm.v2";
  */
 export const PERMISSIONS_V3 = "perm.v3";
 
+/**
+ * Al treilea marcaj: conturile salvate cu „Anulare sarcini” / „Anulare cereri” ca permisiuni separate. Conturile FĂRĂ marcaj le primesc deduse din
+ * „Închidere / finalizare” (care înainte acoperea și anularea), deci nimeni nu pierde sau câștigă dreptul de a anula la actualizare.
+ */
+export const PERMISSIONS_V4 = "perm.v4";
+
+const CANCEL_FALLBACK: Partial<Record<PermissionKey, PermissionKey[]>> = {
+  "tasks.cancel": ["tasks.close"],
+  "tickets.cancel": ["tasks.close"],
+};
+
+/** Marcajele de versiune (nu sunt permisiuni de afișat). */
+const PERMISSION_MARKERS: string[] = [PERMISSIONS_V2, PERMISSIONS_V3, PERMISSIONS_V4];
+
 const EXPORT_IMPORT_FALLBACK: Partial<Record<PermissionKey, PermissionKey[]>> = {
   "tasks.export": ["tasks.view"],
   "tasks.import": ["tasks.create"],
@@ -259,12 +278,19 @@ export function can(user: PermissionSubject, key: PermissionKey): boolean {
     if (key === "payers.import") return can(user, "clients.create") && can(user, "clients.edit");
     return ei.some((k) => can(user, k));
   }
+  const cf = CANCEL_FALLBACK[key];
+  if (cf && !user.permissions.includes(PERMISSIONS_V4)) return cf.some((k) => can(user, k));
   return false;
+}
+
+/** Poate anula acest tip de element? Sarcinile cer „Anulare sarcini”, cererile (tichetele) „Anulare cereri”. */
+export function canCancelTask(user: PermissionSubject, type: string): boolean {
+  return can(user, type === "TICKET" ? "tickets.cancel" : "tasks.cancel");
 }
 
 /** Permisiunile EFECTIVE ale unui cont (cele deduse din vechile chei, pentru conturile fără marcaj) — le arată fereastra de utilizator. */
 export function effectivePermissionKeys(permissions: string[]): string[] {
-  const out = new Set(permissions.filter((p) => p !== PERMISSIONS_V2 && p !== PERMISSIONS_V3));
+  const out = new Set(permissions.filter((p) => !PERMISSION_MARKERS.includes(p)));
   if (!permissions.includes(PERMISSIONS_V2)) {
     for (const [k] of Object.entries(LEGACY_FALLBACK)) {
       if (can({ role: "STAFF", permissions }, k as PermissionKey)) out.add(k);
@@ -272,6 +298,11 @@ export function effectivePermissionKeys(permissions: string[]): string[] {
   }
   if (!permissions.includes(PERMISSIONS_V3)) {
     for (const [k] of Object.entries(EXPORT_IMPORT_FALLBACK)) {
+      if (can({ role: "STAFF", permissions }, k as PermissionKey)) out.add(k);
+    }
+  }
+  if (!permissions.includes(PERMISSIONS_V4)) {
+    for (const [k] of Object.entries(CANCEL_FALLBACK)) {
       if (can({ role: "STAFF", permissions }, k as PermissionKey)) out.add(k);
     }
   }
@@ -312,7 +343,7 @@ export const USER_TYPES: { key: UserTypeKey; label: string; description: string;
     label: "Operator",
     description: "Sarcini, cereri, clienți, plătitori, notificări, programări și apeluri; fără administrare.",
     permissions: [
-      "tasks.view", "tasks.create", "tasks.edit", "tasks.assign", "tasks.close",
+      "tasks.view", "tasks.create", "tasks.edit", "tasks.assign", "tasks.close", "tasks.cancel", "tickets.cancel",
       "dashboard.view", "tickets.view", "kanban.view", "calendar.view",
       "projects.view", "clients.view", "clients.create", "clients.edit",
       "payers.view", "payers.notify", "invoices.view", "appointments.view", "appointments.manage", "teams.view",

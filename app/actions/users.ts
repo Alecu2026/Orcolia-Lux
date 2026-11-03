@@ -4,7 +4,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser, isSuper, type CurrentUser } from "@/lib/dal";
-import { can, ALL_PERMISSION_KEYS, PERMISSIONS_V2, PERMISSIONS_V3 } from "@/lib/permissions";
+import { can, ALL_PERMISSION_KEYS, PERMISSIONS_V2, PERMISSIONS_V3, PERMISSIONS_V4 } from "@/lib/permissions";
 import { sanitizePreset } from "@/lib/table-look";
 import { hashPassword } from "@/lib/password";
 import { validateNewPassword } from "@/lib/password-policy";
@@ -42,7 +42,7 @@ function parsePerms(formData: FormData): string[] {
     .map(String)
     .filter((p) => (ALL_PERMISSION_KEYS as string[]).includes(p));
   // Marcajul spune că lista e cea nouă (pe pagini): de acum permisiunile sunt explicite, fără deducții din cele vechi.
-  return [...new Set(perms), PERMISSIONS_V2, PERMISSIONS_V3];
+  return [...new Set(perms), PERMISSIONS_V2, PERMISSIONS_V3, PERMISSIONS_V4];
 }
 
 function parseNotifyEvents(formData: FormData): string[] {

@@ -128,7 +128,7 @@ export type MeterStatic = [
 
 /**
  * Tuplul trimis browserului = partea statică + datele plătitorului (alipite la servire, din lista de plătitori din memorie):
- * 25 telefon, 26 email, 27 cont portal activat, 28 persoană fizică (are cont personal), 29 nr. factură, 30 status factură,
+ * 25 telefon, 26 email, 27 cont portal activat, 28 casnic (are cont personal), 29 nr. factură, 30 status factură,
  * 31 total (de achitat), 32 valută, 33 scadență (ms), 34 sector („Sector privat" / „Sector comunal").
  */
 export type MeterTuple = [

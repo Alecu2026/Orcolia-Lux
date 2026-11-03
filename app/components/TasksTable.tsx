@@ -164,6 +164,7 @@ export default function TasksTable({
   portalTemplates = [],
   canAssign = false,
   canClose = false,
+  canCancel = false,
 }: {
   items: Task[];
   scope: string;
@@ -210,8 +211,10 @@ export default function TasksTable({
   /** Șabloanele de cereri din portal (id + nume): filtrul „Șablon din portal” din Cereri. */
   portalTemplates?: { id: string; name: string }[];
   canAssign?: boolean;
-  /** „Închidere / finalizare": poate finaliza / anula chiar și task-uri la care nu lucrează. */
+  /** „Închidere / finalizare": poate finaliza chiar și task-uri la care nu lucrează. */
   canClose?: boolean;
+  /** „Anulare sarcini" (în Sarcini) sau „Anulare cereri" (în Cereri): poate pune statusul „Anulat", chiar și la task-uri la care nu lucrează. */
+  canCancel?: boolean;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -310,7 +313,11 @@ export default function TasksTable({
   }
 
   // Editarea câmpurilor: doar cu „Editare". Statusul și progresul: și cei implicați în task (creator, responsabil, echipă) — aceeași regulă ca pe server.
-  const CLOSE_ONLY: Status[] = ["DONE", "CANCELLED"];
+  // Ce statusuri poate alege: cine lucrează la task — toate, fără „Anulat" dacă nu are permisiunea de anulare; ceilalți — doar finalizarea / anularea, după permisiunile lor.
+  const statusChoices = (work: boolean): Status[] | undefined => {
+    if (work) return canCancel ? undefined : STATUSES.filter((s) => s !== "CANCELLED");
+    return [...(canClose ? (["DONE"] as Status[]) : []), ...(canCancel ? (["CANCELLED"] as Status[]) : [])];
+  };
   const canEditRow = (_t: Task) => canEdit;
   const canWorkRow = (t: Task) =>
     canEdit ||
@@ -426,7 +433,7 @@ export default function TasksTable({
       key: "status", label: "Status", minW: 95, sort: (t) => STATUSES.indexOf(t.status),
       render: (t) => (
         <div className="origin-left scale-90" onClick={(e) => e.stopPropagation()}>
-          <StatusDropdown status={t.status} pending={statusPending === t.id} disabled={!canWorkRow(t) && !canClose} allowed={canWorkRow(t) ? undefined : CLOSE_ONLY} onChange={(s) => changeStatus(t.id, s)} />
+          <StatusDropdown status={t.status} pending={statusPending === t.id} disabled={!canWorkRow(t) && !canClose && !canCancel} allowed={statusChoices(canWorkRow(t))} onChange={(s) => changeStatus(t.id, s)} />
         </div>
       ),
     },
@@ -850,7 +857,7 @@ export default function TasksTable({
           canDelete={canDelete}
           statusPending={statusPending === current.id}
           canWork={canWorkRow(current)}
-          canClose={canClose}
+          statusChoices={statusChoices(canWorkRow(current))}
           onStatus={(s) => changeStatus(current.id, s)}
           onProgress={(p) => changeProgress(current.id, p)}
           onEdit={() => { setEditTask(current); }}
@@ -936,7 +943,7 @@ function TaskDetailDialog({
   canDelete,
   statusPending,
   canWork,
-  canClose,
+  statusChoices,
   onStatus,
   onProgress,
   onEdit,
@@ -949,7 +956,7 @@ function TaskDetailDialog({
   canDelete: boolean;
   statusPending: boolean;
   canWork: boolean;
-  canClose: boolean;
+  statusChoices: Status[] | undefined;
   onStatus: (s: Status) => void;
   onProgress: (p: number) => void;
   onEdit: () => void;
@@ -1016,7 +1023,7 @@ function TaskDetailDialog({
           {canEdit && <button type="button" onClick={onEdit} className={miniBtn}>✎ {m.common.edit}</button>}
           {canDelete && <button type="button" onClick={onDelete} className={`${miniBtn} text-st-cancelled`}>🗑 {m.common.delete}</button>}
           <span className="ml-auto flex items-center gap-2">
-            <StatusDropdown status={t.status} pending={statusPending} disabled={!canWork && !canClose} allowed={canWork ? undefined : ["DONE", "CANCELLED"]} onChange={onStatus} />
+            <StatusDropdown status={t.status} pending={statusPending} disabled={!canWork && statusChoices?.length === 0} allowed={statusChoices} onChange={onStatus} />
             <select value={t.progress} disabled={!canWork} onChange={(e) => onProgress(Number(e.target.value))} className="h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-1 text-[11px]" aria-label={tr("Progres")}>
               {[0, 25, 50, 75, 100].map((p) => <option key={p} value={p}>{p}%</option>)}
             </select>

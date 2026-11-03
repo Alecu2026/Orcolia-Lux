@@ -79,6 +79,7 @@ export default async function TasksPage({
         templates={templates}
         canAssign={can(user, "tasks.assign")}
         canClose={can(user, "tasks.close")}
+        canCancel={can(user, "tasks.cancel")}
         scope={scope}
         users={users}
         teams={teams}

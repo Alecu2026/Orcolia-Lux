@@ -209,7 +209,7 @@ export default function MeterPageClient({
             <Item label={t("Nume")} value={row.name} />
             <Item label={t("Cont personal")} value={row.account} />
             <Item label={t("Contract")} value={row.contract} />
-            <Item label={t("Tip")} value={row.person ? t("Persoană fizică") : t("Firmă / instituție")} />
+            <Item label={t("Tip")} value={row.person ? t("Casnic") : t("Non casnic")} />
             <Item label={t("Sector")} value={enumLabel(row.sector, t)} />
             <Item label={t("Tip sector (1C)")} value={enumLabel(sub?.tipSector, t)} loading={metaLoading} />
             <Item label={t("Adresă")} value={row.address} />

@@ -16,7 +16,7 @@ import {
 import { formatTime, formatDate, DEFAULT_TZ, todayKey } from "../date";
 import { notifyClientTicketClosed } from "./ticket-client-notify";
 import { validateResolution, type Resolution } from "../resolution";
-import { can } from "../permissions";
+import { can, canCancelTask } from "../permissions";
 import { env } from "../env";
 import { absoluteUrl } from "../storage";
 import { notifyUsers, observerRecipients, filteredAdminRecipients } from "./notifications";
@@ -211,12 +211,13 @@ type TaskAccessShape = {
 };
 
 /** Poate actorul schimba statusul / progresul? Cu „Editare" (sau administrator), sau dacă e implicat în task (creator, responsabil, echipă). */
-async function actorMayWorkOnTask(actorId: string, task: TaskAccessShape, closing = false): Promise<boolean> {
+async function actorMayWorkOnTask(actorId: string, task: TaskAccessShape & { type?: string }, closing: "DONE" | "CANCELLED" | false = false): Promise<boolean> {
   const u = await prisma.user.findUnique({ where: { id: actorId }, select: { role: true, permissions: true } });
   if (!u) return false;
   if (can(u, "tasks.edit")) return true;
-  // „Închidere / finalizare": poți finaliza / anula orice task, dar nu schimba alte statusuri la task-urile străine.
-  if (closing && can(u, "tasks.close")) return true;
+  // „Închidere / finalizare" (finalizare) și „Anulare sarcini / cereri" (anulare): poți finaliza / anula orice task, dar nu schimba alte statusuri la task-urile străine.
+  if (closing === "DONE" && can(u, "tasks.close")) return true;
+  if (closing === "CANCELLED" && canCancelTask(u, task.type ?? "TASK")) return true;
   return actorHasTaskAccess(actorId, task);
 }
 
@@ -596,19 +597,22 @@ export async function changeTaskStatus(
     }
   }
 
-  if (!(await actorMayWorkOnTask(actorId, task, newStatus === "DONE" || newStatus === "CANCELLED"))) {
+  if (!(await actorMayWorkOnTask(actorId, task, newStatus === "DONE" || newStatus === "CANCELLED" ? newStatus : false))) {
     return { ok: false as const, error: opts.fromTelegram ? "Nu ai acces la această sarcină." : "Nu ai permisiunea de editare." };
   }
 
   const closed = newStatus === "DONE" || newStatus === "CANCELLED";
   const wasClosed = task.status === "DONE" || task.status === "CANCELLED";
-  // Închidere / finalizare: cine are permisiunea „Închidere / finalizare” o face liber. Ceilalți pot FINALIZA doar după ce au atașat
-  // o poză / un fișier informativ la acest task (dovada muncii făcute); anularea rămâne rezervată celor cu permisiune.
+  // Anularea cere permisiunea „Anulare sarcini” (sarcini) sau „Anulare cereri” (cereri), indiferent de cine lucrează la task.
+  // Finalizare: cine are permisiunea „Închidere / finalizare” o face liber. Ceilalți pot FINALIZA doar după ce au atașat
+  // o poză / un fișier informativ la acest task (dovada muncii făcute).
   // Regula e aici (nu doar în acțiunea web), ca să fie valabilă și pentru butoanele din Telegram.
   if (closed) {
     const actorAcc = await prisma.user.findUnique({ where: { id: actorId }, select: { role: true, permissions: true } });
-    if (actorAcc && !can(actorAcc, "tasks.close")) {
-      if (newStatus === "CANCELLED") return { ok: false as const, error: "Nu ai permisiunea de a anula / închide sarcina.", needsProof: false };
+    if (actorAcc && newStatus === "CANCELLED" && !canCancelTask(actorAcc, task.type)) {
+      return { ok: false as const, error: task.type === "TICKET" ? "Nu ai permisiunea de a anula cereri." : "Nu ai permisiunea de a anula sarcini.", needsProof: false };
+    }
+    if (actorAcc && newStatus === "DONE" && !can(actorAcc, "tasks.close")) {
       const proofs = await prisma.taskAttachment.count({ where: { taskId, userId: actorId } });
       if (proofs === 0) {
         return {

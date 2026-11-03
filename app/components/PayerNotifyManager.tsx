@@ -783,8 +783,8 @@ export default function PayerNotifyManager({
         </select>
         <select value={filters.kind} onChange={(e) => setFilter({ kind: e.target.value as NotifyFilters["kind"] })} className={fld(filters.kind)} aria-label={t("Tip plătitor")}>
           <option value="">{t("Tip: toți")}</option>
-          <option value="person">{t("Persoane fizice")}</option>
-          <option value="company">{t("Firme / instituții")}</option>
+          <option value="person">{t("Casnic")}</option>
+          <option value="company">{t("Non casnic")}</option>
         </select>
         <select value={filters.sector} onChange={(e) => setFilter({ sector: e.target.value as NotifyFilters["sector"] })} className={fld(filters.sector)} aria-label={t("Sector")}>
           <option value="">{t("Toate sectoarele")}</option>

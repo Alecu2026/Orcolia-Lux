@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requireAnyPermission } from "@/lib/dal";
-import { can, canEditTask, canViewTask, canWorkOnTask } from "@/lib/permissions";
+import { can, canCancelTask, canEditTask, canViewTask, canWorkOnTask } from "@/lib/permissions";
 import { getTask, getTaskComments, ticketCreatorName } from "@/lib/queries/tasks";
 import { serviceTypeLabel } from "@/lib/service-type";
 import { consumerTypeLabel } from "@/lib/consumer-type";
@@ -388,7 +388,7 @@ export default async function TaskDetailPage({
         )}
 
         <div className="mt-4 border-t border-[var(--color-line)] pt-4 flex flex-col gap-3">
-          <TaskStatusChanger taskId={id} initialStatus={task.status} disabled={!canWork && !can(user, "tasks.close")} closeOnly={!canWork} title={task.title} createdAt={task.createdAt.toISOString()} />
+          <TaskStatusChanger taskId={id} initialStatus={task.status} disabled={!canWork && !can(user, "tasks.close") && !canCancelTask(user, task.type)} closeOnly={!canWork} canClose={can(user, "tasks.close")} canCancel={canCancelTask(user, task.type)} title={task.title} createdAt={task.createdAt.toISOString()} />
           {task.type === "TICKET" && task.status !== "DONE" && task.status !== "CANCELLED" && (canWork || can(user, "tasks.close")) && (
             <div className="flex justify-end">
               <CloseTicketButton taskId={id} title={task.title} createdAt={task.createdAt.toISOString()} />

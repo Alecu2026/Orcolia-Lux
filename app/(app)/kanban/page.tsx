@@ -32,7 +32,7 @@ export default async function KanbanPage() {
         items={result.items}
         dataset={result.dataset ? { total: result.total } : undefined}
         scope={kanbanScope}
-        mover={{ id: user.id, teamIds: user.teamIds ?? [], canEdit: can(user, "tasks.edit"), canClose: can(user, "tasks.close") }}
+        mover={{ id: user.id, teamIds: user.teamIds ?? [], canEdit: can(user, "tasks.edit"), canClose: can(user, "tasks.close"), canCancelTask: can(user, "tasks.cancel"), canCancelTicket: can(user, "tickets.cancel") }}
         users={users}
         teams={teams}
         projects={projects}

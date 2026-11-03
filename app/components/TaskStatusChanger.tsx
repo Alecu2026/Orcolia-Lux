@@ -39,6 +39,8 @@ export default function TaskStatusChanger({
   initialStatus,
   disabled = false,
   closeOnly = false,
+  canClose = true,
+  canCancel = true,
   title,
   createdAt,
 }: {
@@ -49,8 +51,12 @@ export default function TaskStatusChanger({
   initialStatus: string;
   /** Fără drept de lucru pe task: butoanele se văd, dar nu se pot apăsa. */
   disabled?: boolean;
-  /** Doar „Finalizat / Anulat" se pot alege (cine are doar „Închidere / finalizare"). */
+  /** Doar „Finalizat / Anulat" se pot alege (cine nu lucrează la task, dar are „Închidere / finalizare" sau „Anulare"). */
   closeOnly?: boolean;
+  /** „Închidere / finalizare": poate alege „Finalizat" când nu lucrează la task (closeOnly). */
+  canClose?: boolean;
+  /** „Anulare sarcini" / „Anulare cereri": poate alege „Anulat". */
+  canCancel?: boolean;
 }) {
   const t = useT();
   const router = useRouter();
@@ -68,8 +74,10 @@ export default function TaskStatusChanger({
     color: STATUS_COLORS[value],
   }));
 
+  const blocked = (s: Status) => (s === "CANCELLED" && !canCancel) || (closeOnly && (s === "DONE" ? !canClose : s !== "CANCELLED"));
+
   async function change(next: Status, resolution?: Resolution) {
-    if (next === status || busy || disabled || (closeOnly && next !== "DONE" && next !== "CANCELLED")) return;
+    if (next === status || busy || disabled || blocked(next)) return;
     const prev = status;
     setStatus(next);
     setBusy(true);
@@ -99,7 +107,7 @@ export default function TaskStatusChanger({
           <button
             key={s.value}
             onClick={() => change(s.value)}
-            disabled={busy || disabled || (closeOnly && s.value !== "DONE" && s.value !== "CANCELLED")}
+            disabled={busy || disabled || blocked(s.value)}
             className={[
               disabled ? "cursor-not-allowed" : "",
               "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all disabled:opacity-50",

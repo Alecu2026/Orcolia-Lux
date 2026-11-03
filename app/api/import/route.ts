@@ -3,7 +3,7 @@ import { SERVICE_TYPES, SERVICE_TYPE_LABEL } from "@/lib/service-type";
 import { CONSUMER_TYPES, CONSUMER_TYPE_LABEL } from "@/lib/consumer-type";
 import { prisma } from "@/lib/prisma";
 import { parseWorkbook, parseJsonRows, parseRoDateKey, parseTime, mapLabel, ImportResult } from "@/lib/import-utils";
-import { can } from "@/lib/permissions";
+import { can, canCancelTask } from "@/lib/permissions";
 import {
   RO_TO_TASK_STATUS,
   RO_TO_TASK_PRIORITY,
@@ -119,6 +119,11 @@ export async function POST(req: Request) {
           continue;
         }
         statusVal = mapped as import("@prisma/client").TaskStatus;
+        // „Anulat” din fișier cere aceeași permisiune ca anularea din listă (separat pentru sarcini și cereri)
+        if (statusVal === "CANCELLED" && !canCancelTask(user, typeVal)) {
+          result.failed.push({ row: rowNum, error: typeVal === "TICKET" ? "Nu ai permisiunea de a anula cereri (statusul „Anulat”)." : "Nu ai permisiunea de a anula sarcini (statusul „Anulat”)." });
+          continue;
+        }
       }
 
       let priorityVal: import("@prisma/client").TaskPriority | undefined;

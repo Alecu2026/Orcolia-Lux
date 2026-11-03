@@ -2,6 +2,7 @@ import { requirePermission } from "@/lib/dal";
 import { getT } from "@/lib/i18n/server-t";
 import { loadTenderChecks } from "@/app/actions/tender";
 import TenderChecklist from "@/app/components/TenderChecklist";
+import TenderPdfButton from "@/app/components/TenderPdfButton";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,9 @@ export default async function ContractPage() {
       <div className="mb-3">
         <h1 className="text-xl font-bold">{t("Caiet de sarcini")}</h1>
         <p className="mt-0.5 text-sm text-ink-soft">{t("BD Contract 3 WSS Cahul Rural — Section VII, Particular Technical Specifications. Bifați punctele împreună: se salvează pentru toată echipa.")}</p>
+      </div>
+      <div className="mb-3">
+        <TenderPdfButton />
       </div>
       <TenderChecklist initial={initial} />
     </div>

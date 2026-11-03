@@ -61,7 +61,7 @@ export default async function PayerDetailPage({
                   {/* meterSeries e identificatorul cu care clientul se loghează în portal — afișat
                       ca "Cont personal" (nu "Serie contor"), la fel ca pe factură/pagina de login,
                       ca staff-ul să știe exact ce număr să-i dea clientului. */}
-                  {payer.meterSeries ? <>{tr("Cont personal:")} <b>{payer.meterSeries}</b></> : <>{tr("Firmă · Contract 1C:")} <b>{payer.contract}</b></>}
+                  {payer.meterSeries ? <>{tr("Cont personal:")} <b>{payer.meterSeries}</b></> : <>{tr("Non casnic · Contract 1C:")} <b>{payer.contract}</b></>}
                   {payer.meterNumber && <> {tr("· Contor:")} {payer.meterNumber}</>}
                 </p>
                 {payer.consumAddress && <p className="text-xs text-ink-soft">{payer.consumAddress}</p>}

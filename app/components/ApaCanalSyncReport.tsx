@@ -75,7 +75,7 @@ function Who({ r }: { r: SyncReportRow }) {
     <div className="flex flex-wrap items-baseline justify-between gap-x-3">
       <span className="font-medium">{r.name || t("(fără nume)")}</span>
       <span className="text-ink-soft">
-        {r.contPersonal ? t("cont {c}", { c: r.contPersonal }) : r.contract ? t("contract {c} (firmă, fără cont)", { c: r.contract }) : t("fără cont")}
+        {r.contPersonal ? t("cont {c}", { c: r.contPersonal }) : r.contract ? t("contract {c} (non casnic, fără cont)", { c: r.contract }) : t("fără cont")}
         {r.period ? ` · ${r.period}` : ""}
         {r.deAchitat !== null ? ` · ${mdl(r.deAchitat)}` : ""}
       </span>
