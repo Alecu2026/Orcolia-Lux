@@ -8,11 +8,18 @@ export default function TenderPdfButton() {
   const t = useT();
   const [lang, setLang] = useState<"both" | "ro" | "en">("both");
   const [show, setShow] = useState<"all" | "done" | "todo">("all");
+  const [part, setPart] = useState<"contract" | "additional" | "ours" | "all">("contract");
   const [info, setInfo] = useState(true);
-  const href = `/api/contract/pdf?lang=${lang}&show=${show}${info ? "" : "&info=0"}`;
+  const href = `/api/contract/pdf?lang=${lang}&show=${show}&part=${part}${info ? "" : "&info=0"}`;
   const field = "h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2.5 text-sm";
   return (
     <div className="card flex flex-wrap items-center gap-2 p-3" data-tender-pdf="">
+      <select value={part} onChange={(e) => setPart(e.target.value as typeof part)} className={field} aria-label={t("Partea din caiet")} data-tender-pdf-part="">
+        <option value="contract">{t("Cerințele contractului")}</option>
+        <option value="additional">{t("Puncte adiționale din contract")}</option>
+        <option value="ours">{t("Adăugate de noi")}</option>
+        <option value="all">{t("Toate părțile")}</option>
+      </select>
       <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} className={field} aria-label={t("Limba PDF-ului")} data-tender-pdf-lang="">
         <option value="both">{t("Română + engleză")}</option>
         <option value="ro">{t("Română")}</option>

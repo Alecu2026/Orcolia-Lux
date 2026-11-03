@@ -2,14 +2,14 @@ import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { prisma } from "@/lib/prisma";
-import { buildTenderPdf, TENDER_PDF_LANGS, TENDER_PDF_SHOWS, type TenderPdfChecks, type TenderPdfLang, type TenderPdfShow } from "@/lib/pdf/tender-pdf";
+import { buildTenderPdf, TENDER_PDF_LANGS, TENDER_PDF_PARTS, TENDER_PDF_SHOWS, type TenderPdfChecks, type TenderPdfLang, type TenderPdfPart, type TenderPdfShow } from "@/lib/pdf/tender-pdf";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
  * Caietul de sarcini (pagina Contract) în PDF: toate punctele cu bifele lor (cine și când), statusul în CRM și textul din „i”.
- * `lang` = both | ro | en (implicit both), `show` = all | done | todo (implicit all), `info` = 0 scoate textul din „i”. Același drept ca pagina: „Gestionare utilizatori”.
+ * `lang` = both | ro | en (implicit both), `show` = all | done | todo (implicit all), `part` = contract | additional | ours | all (implicit all), `info` = 0 scoate textul din „i”. Același drept ca pagina: „Gestionare utilizatori”.
  */
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -19,6 +19,7 @@ export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
   const lang = (TENDER_PDF_LANGS as string[]).includes(sp.get("lang") ?? "") ? (sp.get("lang") as TenderPdfLang) : "both";
   const show = (TENDER_PDF_SHOWS as string[]).includes(sp.get("show") ?? "") ? (sp.get("show") as TenderPdfShow) : "all";
+  const part = (TENDER_PDF_PARTS as string[]).includes(sp.get("part") ?? "") ? (sp.get("part") as TenderPdfPart) : "all";
   const info = sp.get("info") !== "0";
 
   const checks: TenderPdfChecks = {};
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
   const now = new Date();
   let pdf: Buffer;
   try {
-    pdf = await buildTenderPdf({ companyName, generatedBy: user.name, now, lang, show, info, checks });
+    pdf = await buildTenderPdf({ companyName, generatedBy: user.name, now, lang, show, part, info, checks });
   } catch (e) {
     console.error("[contract-pdf] generare eșuată:", e);
     return Response.json({ error: "Nu am putut genera PDF-ul. Încearcă din nou." }, { status: 500 });
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
   return new Response(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${name}-${lang === "both" ? "ro-en-" : lang === "ro" ? "ro-" : "en-"}${day}.pdf"`,
+      "Content-Disposition": `attachment; filename="${name}-${part === "all" ? "" : `${part}-`}${lang === "both" ? "ro-en-" : lang === "ro" ? "ro-" : "en-"}${day}.pdf"`,
       "Cache-Control": "no-store",
     },
   });

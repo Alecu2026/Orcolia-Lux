@@ -3247,4 +3247,9 @@ export const RU: Record<string, string> = {
   "Engleză": "Английский",
   "Puncte în PDF": "Пункты в PDF",
   "Cu textul din „i”": "С текстом из «i»",
+  "Partea din caiet": "Часть спецификации",
+  "Toate părțile": "Все части",
+  "Cerințele contractului": "Требования контракта",
+  "Puncte adiționale din contract": "Дополнительные пункты контракта",
+  "Adăugate de noi": "Добавлено нами",
 };

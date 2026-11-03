@@ -1,7 +1,7 @@
 import "server-only";
 import path from "node:path";
 import PDFDocument from "pdfkit";
-import { SPEC_GROUPS, SPEC_PARTS, STATUS_LABEL_RO, type SpecItem, type SpecStatus } from "../tender-spec";
+import { SPEC_GROUPS as ALL_GROUPS, SPEC_PARTS as ALL_PARTS, STATUS_LABEL_RO, type SpecPart, type SpecItem, type SpecStatus } from "../tender-spec";
 import { PART_NOTE_EN, STATUS_LABEL_EN, WHERE_EN } from "../tender-spec-en";
 
 /**
@@ -16,10 +16,13 @@ const STATUS_COLOR: Record<SpecStatus, string> = { done: "#15803d", partial: "#b
 
 export type TenderPdfLang = "both" | "ro" | "en";
 export type TenderPdfShow = "all" | "done" | "todo";
+/** Ce parte a caietului intră în PDF: toate sau una singură (contract / adiționale / adăugate de noi). */
+export type TenderPdfPart = "all" | SpecPart;
 export type TenderPdfChecks = Record<string, { by: string; at: string }>;
 
 export const TENDER_PDF_LANGS: TenderPdfLang[] = ["both", "ro", "en"];
 export const TENDER_PDF_SHOWS: TenderPdfShow[] = ["all", "done", "todo"];
+export const TENDER_PDF_PARTS: TenderPdfPart[] = ["contract", "additional", "ours", "all"];
 
 const TZ = "Europe/Bucharest";
 const fmtDate = (d: Date, lang: TenderPdfLang) =>
@@ -33,11 +36,18 @@ export async function buildTenderPdf(o: {
   now: Date;
   lang: TenderPdfLang;
   show: TenderPdfShow;
+  /** Partea din caiet (implicit toate). */
+  part?: TenderPdfPart;
   /** Cu textul din „i” (unde se găsește / cum e implementat). */
   info: boolean;
   checks: TenderPdfChecks;
 }): Promise<Buffer> {
-  const { lang, show, info, checks } = o;
+  const { lang, show, info } = o;
+  // doar partea aleasă: totalurile, sumarul și „Cine a bifat” se calculează numai pe ea
+  const SPEC_PARTS = o.part && o.part !== "all" ? ALL_PARTS.filter((p) => p.id === o.part) : ALL_PARTS;
+  const SPEC_GROUPS = ALL_GROUPS.filter((g) => SPEC_PARTS.some((p) => p.id === g.part));
+  const checks: TenderPdfChecks = {};
+  for (const g of SPEC_GROUPS) g.items.forEach((_, i) => { const c = o.checks[`${g.id}-${i + 1}`]; if (c) checks[`${g.id}-${i + 1}`] = c; });
   const ro = lang !== "en";
   const en = lang !== "ro";
   /** Eticheta în limba/limbile PDF-ului: „română / engleză”, doar româna sau doar engleza. */
@@ -105,7 +115,8 @@ export async function buildTenderPdf(o: {
   );
   y = doc.y + 2;
   const showLabel = show === "done" ? tx("doar punctele bifate", "only checked items") : show === "todo" ? tx("doar punctele nebifate", "only unchecked items") : tx("toate punctele", "all items");
-  put(`${tx("Conținut", "Contents")}: ${showLabel}${info ? "" : ` · ${tx("fără detaliile din „i”", "without the “i” details")}`}`, L, W, "R", 9, C.soft);
+  const partLabel = SPEC_PARTS.length === 1 ? ` · ${tx(SPEC_PARTS[0].titleRo, SPEC_PARTS[0].titleEn)}` : "";
+  put(`${tx("Conținut", "Contents")}: ${showLabel}${partLabel}${info ? "" : ` · ${tx("fără detaliile din „i”", "without the “i” details")}`}`, L, W, "R", 9, C.soft);
   y = doc.y + 12;
 
   // total + pe părți
@@ -119,7 +130,7 @@ export async function buildTenderPdf(o: {
     doc.font("R").fontSize(9).fillColor(C.soft).text(`${d} / ${t} · ${pct}%`, bx + bw + 6, y + 2, { width: R - (bx + bw + 6), align: "right", lineBreak: false });
     y += 18;
   };
-  barRow(tx("În total", "Total"), checkedTotal, total, true);
+  if (SPEC_PARTS.length > 1) barRow(tx("În total", "Total"), checkedTotal, total, true);
   for (const p of SPEC_PARTS) {
     const gs = SPEC_GROUPS.filter((g) => g.part === p.id);
     const t = gs.reduce((n, g) => n + g.items.length, 0);
