@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { prisma } from "../prisma";
 import { env } from "../env";
 import { sendReadingVerificationEmail } from "../email";
-import { signReadingToken } from "../reading-verify-token";
+import { signPendingToken, signReadingToken } from "../reading-verify-token";
 import { isRateLimited } from "../rate-limit";
 import { getCompanySettings } from "../queries/company";
 
@@ -79,6 +79,57 @@ export async function queueReadingVerification(n: OwnerNotice): Promise<string |
     return maskEmail(to);
   } catch (e) {
     console.error("[reading-verify] pregătirea emailului:", String((e as Error)?.message ?? e).slice(0, 200));
+    return null;
+  }
+}
+
+export type PendingNotice = {
+  pendingId: string;
+  clientId: string;
+  contor: string;
+  address: string | null;
+  period: string;
+  value: number;
+  submittedAt: Date;
+};
+
+/**
+ * Emailul „Confirmă citirea” pentru o citire trimisă din portal și încă neînregistrată (vezi PortalReadingPending): linkul duce la /citire/confirma, iar citirea contează abia după confirmare.
+ * Pleacă în fundal; întoarce adresa mascată, sau null dacă titularul nu are un email valid la companie. Limita de trimiteri o ține apelantul.
+ */
+export async function queuePendingConfirmation(n: PendingNotice): Promise<string | null> {
+  try {
+    const client = await prisma.client.findUnique({ where: { id: n.clientId }, select: { name: true, email: true } });
+    const to = validEmail(client?.email);
+    if (!client || !to) return null;
+    const run = async () => {
+      const company = await getCompanySettings().catch(() => null);
+      await sendReadingVerificationEmail({
+        to,
+        name: client.name,
+        contor: n.contor,
+        address: n.address,
+        period: n.period,
+        value: n.value,
+        prevValue: null,
+        consum: null,
+        oldValue: null,
+        when: new Intl.DateTimeFormat("ro-RO", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Chisinau" }).format(n.submittedAt),
+        byClient: true,
+        url: `${env.appUrl.replace(/\/$/, "")}/citire/confirma?t=${encodeURIComponent(signPendingToken(n.pendingId))}`,
+        company: company?.companyName || "Apă-Canal",
+        pending: true,
+      });
+    };
+    const safe = () => run().catch((e) => console.error("[reading-verify] emailul de confirmare nu a plecat:", String((e as Error)?.message ?? e).slice(0, 200)));
+    try {
+      after(safe);
+    } catch {
+      void safe();
+    }
+    return maskEmail(to);
+  } catch (e) {
+    console.error("[reading-verify] pregătirea emailului de confirmare:", String((e as Error)?.message ?? e).slice(0, 200));
     return null;
   }
 }

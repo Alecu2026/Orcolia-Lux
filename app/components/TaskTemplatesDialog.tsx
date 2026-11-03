@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { deleteTaskTemplateAction, saveTaskTemplateAction } from "@/app/actions/task-templates";
+import { deleteTaskTemplateAction, importPortalTemplatesAction, saveTaskTemplateAction } from "@/app/actions/task-templates";
 import { PAYER_VARIABLES, TEMPLATE_MAX_NAME, TEMPLATE_MAX_TITLE, TEMPLATE_VARIABLES, type TaskTemplate, type TaskTemplateType } from "@/lib/task-template";
 import MultiAssignPicker from "./MultiAssignPicker";
 import AddressInput from "./AddressInput";
@@ -57,6 +57,7 @@ export default function TaskTemplatesDialog({
   const m = useMessages();
   const [editing, setEditing] = useState<(Omit<TaskTemplate, "id" | "type"> & { id?: string }) | null>(null);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   // Câmpurile titlu / descriere (necontrolate): butoanele de variabile inserează la cursorul ultimului câmp atins
   const titleRef = useRef<HTMLInputElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
@@ -112,6 +113,18 @@ export default function TaskTemplatesDialog({
     setEditing(null);
   }
 
+  async function importFromPortal() {
+    if (importing) return;
+    setImporting(true);
+    const res = await importPortalTemplatesAction(type).catch(() => null);
+    setImporting(false);
+    if (!res) return toast.error(m.common.error);
+    if (!res.ok) return toast.error(tr(res.error));
+    onChange(res.templates);
+    if (res.created > 0) toast.success(tr("Importate {n} șabloane din portal.", { n: res.created }));
+    else toast.success(tr("Toate șabloanele din portal există deja aici."));
+  }
+
   async function remove(t: TaskTemplate) {
     if (!confirm(tr("Ștergi șablonul „{name}”?", { name: t.name }))) return;
     const res = await deleteTaskTemplateAction(t.id).catch(() => null);
@@ -156,7 +169,10 @@ export default function TaskTemplatesDialog({
                 </button>
               </div>
             ))}
-            <button type="button" onClick={() => startEdit(null)} className="tap mt-1 h-10 cursor-pointer rounded-xl border border-dashed border-brand text-sm font-semibold text-brand hover:bg-brand-soft">
+            <button type="button" onClick={() => void importFromPortal()} disabled={importing} data-import-portal-templates="" className="tap mt-1 h-10 cursor-pointer rounded-xl border border-[var(--color-line)] text-sm font-semibold hover:bg-[var(--color-surface-2)] disabled:opacity-50">
+              {importing ? tr("Se importă…") : tr("Importă din șabloanele portalului")}
+            </button>
+            <button type="button" onClick={() => startEdit(null)} className="tap h-10 cursor-pointer rounded-xl border border-dashed border-brand text-sm font-semibold text-brand hover:bg-brand-soft">
               {tr("+ Șablon nou")}
             </button>
           </div>

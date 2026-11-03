@@ -291,11 +291,13 @@ function buildWhere(filter: TaskFilter): Prisma.TaskWhereInput {
   if (filter.viewScope === "RESTRICTED") {
     const teamIds = filter.viewTeamIds ?? [];
     const memberIds = filter.viewMemberIds ?? [];
+    const ownTeamIds = filter.teamIds ?? []; // task-urile asignate echipelor lui (ex. cererea din portal cu secție) sunt ale lui
     and.push({
       OR: [
         { creatorId: filter.userId },
         { assigneeId: filter.userId },
         { extraAssigneeIds: { has: filter.userId } },
+        ...(ownTeamIds.length ? [{ teamId: { in: ownTeamIds } }, { extraTeamIds: { hasSome: ownTeamIds } }] : []),
         ...(teamIds.length ? [{ teamId: { in: teamIds } }, { extraTeamIds: { hasSome: teamIds } }] : []),
         ...(memberIds.length
           ? [
@@ -812,6 +814,7 @@ export async function dashboardStats(
       { creatorId: userId },
       { assigneeId: userId },
       { extraAssigneeIds: { has: userId } },
+      ...(teamIds.length ? [{ teamId: { in: teamIds } }, { extraTeamIds: { hasSome: teamIds } }] : []),
       ...(vTeamIds.length ? [{ teamId: { in: vTeamIds } }, { extraTeamIds: { hasSome: vTeamIds } }] : []),
       ...(vMemberIds.length
         ? [{ assigneeId: { in: vMemberIds } }, { extraAssigneeIds: { hasSome: vMemberIds } }, { creatorId: { in: vMemberIds } }]

@@ -75,6 +75,8 @@ function keyOf(f: TaskFilter, kind: DatasetKind): string {
     view: f.viewScope ?? "ALL",
     vt: f.viewScope === "RESTRICTED" ? [...(f.viewTeamIds ?? [])].sort() : [],
     vm: f.viewScope === "RESTRICTED" ? [...(f.viewMemberIds ?? [])].sort() : [],
+    // la vizibilitate restrânsă contează și echipele proprii (task-urile asignate lor se văd)
+    vo: f.viewScope === "RESTRICTED" ? [...(f.teamIds ?? [])].sort() : [],
     hide: !!f.hideClientNames,
   };
   return createHash("sha1").update(JSON.stringify(parts)).digest("hex").slice(0, 20);

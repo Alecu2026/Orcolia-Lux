@@ -46,6 +46,59 @@ export function snapshotPeriod(raw: string | null): string | null {
 const subscriberKey = (r: { contPersonal: string | null; nrContract: string | null; nume: string | null }) =>
   r.contPersonal ? `c:${r.contPersonal}` : r.nrContract ? `k:${r.nrContract}` : `n:${(r.nume ?? "").trim().toLowerCase()}`;
 
+type PeriodIndex = { latest: Map<string, string>; months: { month: string; count: number }[] };
+
+/**
+ * Indexul calculat în MongoDB (grupare pe server): se întoarce doar un rând per abonat și câte unul per lună, nu toate înregistrările 1C (sute de mii, cu toate lunile) — citirea
+ * lor întreagă prin Prisma dura zeci de secunde la volumul real. Cheia abonatului e aceeași ca în `subscriberKey`; la același abonat și aceeași dată se alege primul înregistrat (id-ul cel mai mic), ca la citirea completă. `$top` cere MongoDB 5.2+; dacă serverul nu-l are, agregarea eșuează și se folosește varianta de rezervă.
+ */
+async function periodIndexViaMongo(): Promise<PeriodIndex> {
+  const dd = { $ifNull: ["$dataDoc", ""] };
+  const key = {
+    $let: {
+      vars: { cp: { $ifNull: ["$contPersonal", ""] }, nc: { $ifNull: ["$nrContract", ""] }, nm: { $toLower: { $trim: { input: { $ifNull: ["$nume", ""] } } } } },
+      in: { $cond: [{ $ne: ["$$cp", ""] }, { $concat: ["c:", "$$cp"] }, { $cond: [{ $ne: ["$$nc", ""] }, { $concat: ["k:", "$$nc"] }, { $concat: ["n:", "$$nm"] }] }] },
+    },
+  };
+  const [latestRaw, monthsRaw] = (await Promise.all([
+    prisma.oneCRecord.aggregateRaw({
+      pipeline: [
+        { $project: { d: dd, k: key } },
+        { $group: { _id: "$k", best: { $top: { sortBy: { d: -1, _id: 1 }, output: ["$d", { $toString: "$_id" }] } } } },
+      ],
+    }),
+    prisma.oneCRecord.aggregateRaw({
+      pipeline: [{ $project: { d: dd } }, { $match: { d: { $ne: "" } } }, { $group: { _id: { $substrCP: ["$d", 0, 7] }, n: { $sum: 1 } } }],
+    }),
+  ])) as unknown as [{ best: [string, string] }[], { _id: string; n: number }[]];
+  const latest = new Map<string, string>();
+  for (const r of latestRaw) {
+    if (!Array.isArray(r.best) || typeof r.best[0] !== "string" || !/^[0-9a-f]{24}$/i.test(r.best[1])) throw new Error("agregare neașteptată");
+    latest.set(r.best[1], r.best[0]);
+  }
+  const months = monthsRaw.map((m) => ({ month: m._id, count: m.n })).sort((a, b) => b.month.localeCompare(a.month));
+  return { latest, months };
+}
+
+/** Varianta de rezervă (dacă agregarea pe server nu merge): citește toate înregistrările și grupează aici. */
+async function periodIndexViaScan(): Promise<PeriodIndex> {
+  const rows = await prisma.oneCRecord.findMany({ select: { id: true, contPersonal: true, nrContract: true, nume: true, dataDoc: true } });
+  const best = new Map<string, { id: string; dataDoc: string }>();
+  const months = new Map<string, number>();
+  for (const r of rows) {
+    const d = r.dataDoc ?? "";
+    const m = d.slice(0, 7);
+    if (m) months.set(m, (months.get(m) ?? 0) + 1);
+    const k = subscriberKey(r);
+    const prev = best.get(k);
+    if (!prev || d > prev.dataDoc) best.set(k, { id: r.id, dataDoc: d });
+  }
+  return {
+    latest: new Map([...best.values()].map((b) => [b.id, b.dataDoc] as [string, string])),
+    months: [...months.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([month, count]) => ({ month, count })),
+  };
+}
+
 /** Cel mai recent document al fiecărui abonat (id → data documentului) + lunile disponibile; o singură citire cu câmpuri mici, partajată între perioade. */
 async function periodIndex() {
   const s = slot();
@@ -53,22 +106,11 @@ async function periodIndex() {
   if (!s.indexBuilding) {
     s.indexBuilding = (async () => {
       const at = Date.now();
-      const rows = await prisma.oneCRecord.findMany({ select: { id: true, contPersonal: true, nrContract: true, nume: true, dataDoc: true } });
-      const best = new Map<string, { id: string; dataDoc: string }>();
-      const months = new Map<string, number>();
-      for (const r of rows) {
-        const d = r.dataDoc ?? "";
-        const m = d.slice(0, 7);
-        if (m) months.set(m, (months.get(m) ?? 0) + 1);
-        const k = subscriberKey(r);
-        const prev = best.get(k);
-        if (!prev || d > prev.dataDoc) best.set(k, { id: r.id, dataDoc: d });
-      }
-      const idx = {
-        at,
-        latest: new Map([...best.values()].map((b) => [b.id, b.dataDoc] as [string, string])),
-        months: [...months.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([month, count]) => ({ month, count })),
-      };
+      const base = await periodIndexViaMongo().catch((e) => {
+        console.error("[onec-cache] agregarea pe server a eșuat, citesc toate înregistrările:", e);
+        return periodIndexViaScan();
+      });
+      const idx = { at, ...base };
       s.index = idx;
       return idx;
     })().finally(() => {

@@ -2,6 +2,8 @@
 
 import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
+import { canResolveIssue } from "@/lib/meter-issue-access";
+import { prisma } from "@/lib/prisma";
 import type { RouteDto } from "@/lib/meter-routes";
 import { deleteRoute, moveRoute, saveRoute } from "@/lib/services/meter-routes";
 import { resolveIssue } from "@/lib/services/meter-issues";
@@ -34,7 +36,9 @@ export async function moveRouteAction(id: string, dir: "up" | "down"): Promise<{
 
 export async function resolveIssueAction(id: string, note: string): Promise<{ ok: boolean; error?: string }> {
   const user = await requireUser();
-  if (!can(user, "meters.manage")) return { ok: false, error: "Fără permisiune." };
+  // „Gestionare contoare”, sau membrul secției căreia îi e atribuită neregula
+  const issue = /^[0-9a-f]{24}$/i.test(String(id)) ? await prisma.meterIssue.findUnique({ where: { id: String(id) }, select: { teamId: true } }).catch(() => null) : null;
+  if (!canResolveIssue(user, issue?.teamId ?? null)) return { ok: false, error: "Fără permisiune." };
   const r = await resolveIssue(user, String(id), typeof note === "string" ? note : null);
   invalidateRoutesBundle();
   return r;

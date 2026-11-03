@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { PIN_COLOR, countMeterFilters, type MeterMapFilters, type MeterPin, type MeterPinsResponse } from "@/lib/map-meters";
 import { useT } from "@/lib/i18n/context";
 import { EMPTY_METER_FILTERS } from "@/lib/map-meters";
@@ -140,6 +141,12 @@ export default function MeterMapPanel({
                   <span style={{ color: PIN_COLOR.read }}>●</span> {stats.read} {t("citite")} · <span style={{ color: PIN_COLOR.unread }}>●</span> {stats.unread} {t("necitite")} · <span style={{ color: PIN_COLOR.issue }}>●</span> {stats.issue} {t("cu neregulă")}
                 </p>
                 {withoutLoc > 0 && <p className="mt-0.5 text-ink-soft">{t("{n} contoare încă fără locație (se completează la citire)", { n: withoutLoc })}</p>}
+                {(data?.issuesNoLoc ?? 0) > 0 && (
+                  <p className="mt-1 rounded-lg bg-st-cancelled/10 px-2 py-1 text-st-cancelled" data-map-issues-noloc="">
+                    ⚠ {t("{n} contoare cu neregulă nu au încă locație, deci nu pot apărea pe hartă (locația se salvează la citirea cu GPS).", { n: data?.issuesNoLoc ?? 0 })}{" "}
+                    <Link href="/contoare/nereguli" prefetch={false} className="font-semibold underline">{t("Vezi registrul neregulilor")}</Link>
+                  </p>
+                )}
               </div>
               <div className="flex gap-1.5">
                 <button type="button" onClick={onFit} disabled={shown.length === 0} className="tap h-8 flex-1 cursor-pointer rounded-lg border border-[var(--color-line)] text-xs font-medium hover:bg-brand-soft disabled:opacity-50">⤢ {t("Încadrează")}</button>

@@ -309,6 +309,8 @@ export type ReadingVerifyEmailData = {
   byClient: boolean;
   url: string;
   company: string;
+  /** Citirea NU e încă înregistrată: emailul cere confirmarea, iar abia după ea citirea contează. */
+  pending?: boolean;
 };
 
 const m3 = (n: number) => n.toLocaleString("ro-RO", { maximumFractionDigits: 3 });
@@ -316,12 +318,16 @@ const m3 = (n: number) => n.toLocaleString("ro-RO", { maximumFractionDigits: 3 }
 function readingVerifyTemplate(d: ReadingVerifyEmailData): string {
   const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const edited = d.oldValue != null;
-  const introRo = !edited
+  const introRo = d.pending
+    ? "Ați trimis prin portalul clienților indexul contorului. Citirea va fi înregistrată abia după ce o confirmați prin butonul de mai jos — până atunci ea nu este trimisă."
+    : !edited
     ? "Am primit prin portalul clienților indexul contorului dumneavoastră. Vă rugăm să verificați că este corect."
     : d.byClient
       ? "Indexul contorului dumneavoastră a fost modificat în portalul clienților. Vă rugăm să verificați că noua valoare este corectă."
       : "Un angajat al companiei a corectat indexul contorului dumneavoastră. Vă rugăm să verificați că noua valoare este corectă.";
-  const introRu = !edited
+  const introRu = d.pending
+    ? "Вы передали показания счётчика через портал. Они будут зарегистрированы только после подтверждения кнопкой ниже — до этого момента они не отправлены."
+    : !edited
     ? "Через портал клиентов получены показания вашего счётчика. Пожалуйста, проверьте, что они верны."
     : d.byClient
       ? "Показания вашего счётчика были изменены в портале клиентов. Пожалуйста, проверьте, что новое значение верно."
@@ -331,7 +337,7 @@ function readingVerifyTemplate(d: ReadingVerifyEmailData): string {
 <html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0"><tr><td align="center">
     <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
-      <tr><td style="background:#0d9488;padding:18px 24px;color:#fff;font-size:17px;font-weight:700">${edited ? "✏️ Citire modificată / Показания изменены" : "💧 Verificați citirea / Проверьте показания"}</td></tr>
+      <tr><td style="background:#0d9488;padding:18px 24px;color:#fff;font-size:17px;font-weight:700">${d.pending ? "💧 Confirmați citirea / Подтвердите показания" : edited ? "✏️ Citire modificată / Показания изменены" : "💧 Verificați citirea / Проверьте показания"}</td></tr>
       <tr><td style="padding:24px">
         <p style="margin:0 0 12px;font-size:15px">Stimate(ă) <b>${esc(d.name)}</b>,</p>
         <p style="margin:0 0 14px;font-size:14px;line-height:1.6">${introRo}</p>
@@ -345,8 +351,8 @@ function readingVerifyTemplate(d: ReadingVerifyEmailData): string {
           ${d.consum != null ? row("Consum față de citirea anterioară", "Расход", `${m3(d.consum)} m³`) : ""}
           ${row("Data și ora", "Дата и время", esc(d.when))}
         </table>
-        <p style="margin:0 0 16px"><a href="${esc(d.url)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Verifică citirea / Проверить показания</a></p>
-        <p style="margin:0;font-size:12px;line-height:1.6;color:#64748b">Pe pagina deschisă puteți <b>confirma</b> valoarea sau o puteți <b>contesta</b> dacă nu este corectă ori nu dumneavoastră ați transmis-o. Linkul este valabil 14 zile.<br>На открывшейся странице вы можете <b>подтвердить</b> значение или <b>оспорить</b> его, если оно неверно или вы его не передавали. Ссылка действительна 14 дней.</p>
+        <p style="margin:0 0 16px"><a href="${esc(d.url)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">${d.pending ? "Confirm citirea / Подтверждаю показания" : "Verifică citirea / Проверить показания"}</a></p>
+        ${d.pending ? `<p style="margin:0;font-size:12px;line-height:1.6;color:#64748b">Dacă nu ați trimis dumneavoastră această citire, ignorați emailul — nu se înregistrează nimic. Linkul este valabil 7 zile.<br>Если вы не передавали эти показания, просто проигнорируйте письмо — ничего не будет зарегистрировано. Ссылка действительна 7 дней.</p>` : `<p style="margin:0;font-size:12px;line-height:1.6;color:#64748b">Pe pagina deschisă puteți <b>confirma</b> valoarea sau o puteți <b>contesta</b> dacă nu este corectă ori nu dumneavoastră ați transmis-o. Linkul este valabil 14 zile.<br>На открывшейся странице вы можете <b>подтвердить</b> значение или <b>оспорить</b> его, если оно неверно или вы его не передавали. Ссылка действительна 14 дней.</p>`}
       </td></tr>
       <tr><td style="padding:12px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">${esc(d.company)} · Mesaj automat — vă rugăm să nu răspundeți.</td></tr>
     </table>
@@ -361,8 +367,8 @@ async function sendReadingVerificationEmailImpl(d: ReadingVerifyEmailData): Prom
   await transporter.sendMail({
     from: env.smtp.from,
     to: d.to,
-    subject: edited ? `Citirea contorului ${d.contor} a fost modificată / Показания счётчика ${d.contor} изменены` : `Verificați citirea contorului ${d.contor} / Проверьте показания счётчика ${d.contor}`,
-    text: `Stimate(ă) ${d.name}, indexul contorului ${d.contor} (${d.period}) este ${m3(d.value)} m³${edited ? ` (înainte: ${m3(d.oldValue!)} m³)` : ""}. Verificați și confirmați sau contestați: ${d.url}`,
+    subject: d.pending ? `Confirmați citirea contorului ${d.contor} / Подтвердите показания счётчика ${d.contor}` : edited ? `Citirea contorului ${d.contor} a fost modificată / Показания счётчика ${d.contor} изменены` : `Verificați citirea contorului ${d.contor} / Проверьте показания счётчика ${d.contor}`,
+    text: d.pending ? `Stimate(ă) ${d.name}, ați trimis indexul contorului ${d.contor} (${d.period}): ${m3(d.value)} m³. Citirea se înregistrează abia după confirmare: ${d.url}` : `Stimate(ă) ${d.name}, indexul contorului ${d.contor} (${d.period}) este ${m3(d.value)} m³${edited ? ` (înainte: ${m3(d.oldValue!)} m³)` : ""}. Verificați și confirmați sau contestați: ${d.url}`,
     html: readingVerifyTemplate(d),
   });
 }
@@ -601,7 +607,7 @@ export const sendVerificationCodeEmail = (d: VerificationCodeEmailData) =>
 export const sendNewDeviceEmail = (d: NewDeviceEmailData) =>
   logged(d, { kind: "auth.new_device", toName: d.name }, sendNewDeviceEmailImpl);
 export const sendReadingVerificationEmail = (d: ReadingVerifyEmailData) =>
-  logged(d, { kind: "reading.verify", toName: d.name, objectType: "meter", objectName: d.contor }, sendReadingVerificationEmailImpl);
+  logged(d, { kind: d.pending ? "reading.confirm" : "reading.verify", toName: d.name, objectType: "meter", objectName: d.contor }, sendReadingVerificationEmailImpl);
 export const sendReminderEmail = (d: ReminderEmailData) =>
   logged(d, { kind: "appointment.reminder", toName: d.clientName, objectType: "appointment", objectName: d.service }, sendReminderEmailImpl);
 export const sendPayerNotificationEmail = (d: PayerNotificationEmailData) =>

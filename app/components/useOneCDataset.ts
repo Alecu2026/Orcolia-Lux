@@ -56,8 +56,9 @@ export function useOneCDataset(period: string | null) {
             rememberVersion(per, etag0);
             return;
           }
-          const j = await res.json();
-          if (!res.ok) throw new Error(j.error ?? "Eroare la încărcare.");
+          // la depășirea timpului serverul întoarce HTML, nu JSON: mesaj clar în loc de „Unexpected token…”
+          const j = (await res.json().catch(() => null)) as { error?: string; rows?: OneCTuple[]; months?: OneCPayload["months"] } | null;
+          if (!res.ok || !j?.rows) throw new Error(j?.error ?? (res.ok ? "Răspuns incomplet de la server. Reîncearcă." : "Serverul nu a răspuns la timp. Reîncearcă în câteva secunde (prima încărcare durează mai mult)."));
           const etag = res.headers.get("etag");
           const at = Date.now();
           const e: Entry = { rows: j.rows as OneCTuple[], months: j.months ?? [], at, etag };

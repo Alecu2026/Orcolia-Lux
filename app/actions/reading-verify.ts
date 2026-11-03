@@ -7,6 +7,7 @@ import { isRateLimited } from "@/lib/rate-limit";
 import { clientIp } from "@/lib/request-ip";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "@/lib/services/notifications";
 import { invalidatePortalClient } from "@/lib/portal-cache";
+import { confirmPendingReading } from "@/lib/services/portal-meters";
 
 /**
  * Confirmarea / contestarea unei citiri din linkul primit pe email. Fără autentificare: dovada e codul semnat din link (citire + index). Limitat pe adresă; o valoare schimbată între timp nu se mai poate
@@ -54,4 +55,15 @@ export async function disputeReadingAction(token: string, note: string): Promise
     console.error("[reading-verify] notificarea contestației:", e);
   }
   return { ok: true, status: "disputed" };
+}
+
+/**
+ * Confirmarea unei citiri trimise din portal (încă neînregistrată), din linkul din emailul „Confirmă citirea”: abia acum citirea se înregistrează. Fără autentificare — dovada e codul semnat din link;
+ * confirmarea se face cu un buton (POST), nu din simpla deschidere a linkului (programele de protecție ale căsuțelor de email deschid linkurile singure).
+ */
+export async function confirmPendingReadingAction(token: string): Promise<{ ok: true; contor: string; value: number; period: string } | { ok: false; error: string }> {
+  if (DEMO) return { ok: false, error: "Mod demo." };
+  const ip = await clientIp();
+  if (ip && isRateLimited(`reading-confirm-act:${ip}`, 30, 60_000)) return { ok: false, error: "Prea multe încercări. Încearcă din nou peste un minut." };
+  return confirmPendingReading(String(token ?? ""));
 }

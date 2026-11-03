@@ -26,6 +26,7 @@ import VirtualList from "./VirtualList";
 import MeterDetailDialog from "./MeterDetailDialog";
 import ContractExpiry from "./ContractExpiry";
 import { METROLOGY_FILTER_OPTIONS } from "@/lib/metrology";
+import { ISSUE_KINDS, ISSUE_LABELS } from "@/lib/meter-issues";
 import { useMeterDataset } from "./useMeterDataset";
 import SectorFilter from "./SectorFilter";
 import { addressLocality, distinctBy, distinctSectors } from "@/lib/sector-filter";
@@ -320,7 +321,7 @@ export default function MetersManager({
     const head = [
       "Nr. contor", "Abonat", "Cont personal", "Contract", "Adresă", "Consumator", "Status", "Instalat", "Sigiliu", "Scos la", "Citire anterioară (m³)", "Data citirii anterioare",
       "Citire curentă (m³)", "Data citirii", "Consum (m³)", "Sursa citirii", "Apă: volum (m³)", "Apă: sumă (MDL)", "Canal: volum (m³)", "Canal: sumă (MDL)", "Contoare active la abonat", "Factură",
-      "Status factură", "De achitat (MDL)", "Telefon", "Email", "Ultima verificare metrologică", "Scadență verificare metrologică",
+      "Status factură", "De achitat (MDL)", "Telefon", "Email", "Ultima verificare metrologică", "Scadență verificare metrologică", "Neregulă",
     ].map((h) => esc(t(h)));
     const lines = [head.join(";")];
     for (const r of localList) {
@@ -329,6 +330,7 @@ export default function MetersManager({
           r.contor, r.name, r.account, r.contract, r.address, r.consumator, r.removedAt ? t("Scos") : t("Activ"), dmy(r.installedAt), r.sigiliu, dmy(r.removedAt), r.prev, dmy(r.prevDate),
           r.curr, dmy(r.currDate), r.consum, enumLabel(r.sursa, t), r.apaVol, r.apaSum, r.canalVol, r.canalSum, r.meterCount, r.invoice?.number,
           r.invoice ? t(INVOICE_STATUS[r.invoice.status as InvoiceStatusKey]?.label ?? r.invoice.status) : "", r.invoice?.grandTotal, r.phone, r.email, dmy(r.metroVerified), dmy(r.metroDue),
+          r.issue ? ((ISSUE_KINDS as readonly string[]).includes(r.issue) ? t(ISSUE_LABELS[r.issue as (typeof ISSUE_KINDS)[number]]) : r.issue) : "",
         ].map(esc).join(";"),
       );
     }
@@ -403,6 +405,13 @@ export default function MetersManager({
         <select value={filters.metrology} onChange={(e) => setFilter({ metrology: e.target.value as MeterFilters["metrology"] })} className={fld(filters.metrology)} aria-label={t("Verificare metrologică")}>
           <option value="">{t("Verificare metrologică: toate")}</option>
           {METROLOGY_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+        </select>
+        <select value={filters.issue} onChange={(e) => setFilter({ issue: e.target.value as MeterFilters["issue"] })} className={fld(filters.issue)} aria-label={t("Neregulă contor")} data-filter-issue="">
+          <option value="">{t("Neregulă: toate")}</option>
+          <option value="any">{t("Cu neregulă (orice)")}</option>
+          <option value="serious">{t("Cu neregulă gravă")}</option>
+          <option value="none">{t("Fără neregulă")}</option>
+          {ISSUE_KINDS.map((k) => <option key={k} value={k}>{t(ISSUE_LABELS[k])}</option>)}
         </select>
         <select value={filters.source} onChange={(e) => setFilter({ source: e.target.value as MeterFilters["source"] })} className={fld(filters.source)} aria-label={t("Sursa datelor")}>
           <option value="">{t("Date: 1C și Axioma")}</option>
@@ -538,6 +547,7 @@ export default function MetersManager({
                   <CompactField label={t("Consumator")}>{r.consumator ?? <Dash />}</CompactField>
                   <CompactField label={t("Instalat")}>{r.installedAt ? dmy(r.installedAt) : <Dash />}</CompactField>
                   <CompactField label={t("Sigiliu")}>{r.sigiliu ?? <Dash />}</CompactField>
+                  {r.issue && <CompactField label={t("Neregulă")}><span className="font-medium text-st-cancelled">⚠ {(ISSUE_KINDS as readonly string[]).includes(r.issue) ? t(ISSUE_LABELS[r.issue as (typeof ISSUE_KINDS)[number]]) : r.issue}</span></CompactField>}
                   <CompactField label={t("Verificare metrologică")}>{r.metroDue ? <>{dmy(r.metroDue)} <ContractExpiry date={r.metroDue} /></> : <Dash />}</CompactField>
                   <CompactField label={t("Citire anterioară")}>{r.prev != null ? `${num(r.prev)} m³${r.prevDate ? ` (${dmy(r.prevDate)})` : ""}` : <Dash />}</CompactField>
                   <CompactField label={t("Citire curentă")}>{r.curr != null ? `${num(r.curr)} m³${r.currDate ? ` (${dmy(r.currDate)})` : ""}` : <Dash />}</CompactField>
@@ -660,6 +670,7 @@ const MeterTr = memo(function MeterTr({ r, canTask, onOpen }: { r: MeterRowBase;
   ) : (
     <span className="inline-block rounded-full bg-st-done/12 px-1.5 text-[10px] leading-[14px] font-medium text-st-done">{t("Activ")}</span>
   );
+  const issueLabel = r.issue && (ISSUE_KINDS as readonly string[]).includes(r.issue) ? t(ISSUE_LABELS[r.issue as (typeof ISSUE_KINDS)[number]]) : r.issue;
   // doar când rândul are „+”: linkul de sarcină nouă (nu se construiește pentru toate rândurile)
   const taskHref =
     canTask && r.clientId
@@ -682,7 +693,10 @@ const MeterTr = memo(function MeterTr({ r, canTask, onOpen }: { r: MeterRowBase;
       <div role="cell" className={CELL}>{r.account ?? r.contract ?? "—"}</div>
       <div role="cell" className={CELL} title={r.address ?? ""}>{r.address ?? <Dash />}</div>
       <div role="cell" className={CELL} title={r.consumator ?? ""}>{r.consumator ?? <Dash />}</div>
-      <div role="cell" className={CELL}>{chip}</div>
+      <div role="cell" className={CELL} data-issue={r.issue ?? ""}>
+        {chip}
+        {r.issue && <span className="ml-1 inline-block max-w-28 truncate rounded-full bg-st-cancelled/12 px-1.5 align-bottom text-[10px] leading-[14px] font-medium text-st-cancelled" title={issueLabel ?? ""}>⚠ {issueLabel}</span>}
+      </div>
       <div role="cell" className={CELL}>{r.installedAt ? dmy(r.installedAt) : <Dash />}</div>
       <div role="cell" className={CELL} title={r.sigiliu ?? ""}>{r.sigiliu ?? <Dash />}</div>
       <div role="cell" className={`${CELL} tabular-nums`} data-metro={r.metroDue ?? ""} title={r.metroVerified ? `${t("Ultima verificare")}: ${dmy(r.metroVerified)}` : t("Data verificării metrologice nu e introdusă")}>{r.metroDue ? <ContractExpiry date={r.metroDue} compact /> : <Dash />}</div>

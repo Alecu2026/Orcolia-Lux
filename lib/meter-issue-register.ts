@@ -17,7 +17,7 @@ export type IssueFilters = {
   due: "" | "overdue" | "7d" | "none";
   /** Cine remediază; "none" = de stabilit. */
   resp: "" | "CLIENT" | "COMPANY" | "none";
-  /** Secția (id echipă); "none" = fără secție. */
+  /** Secția (id echipă); "none" = fără secție; "mine" = secția / secțiile utilizatorului; "all" = toate (ales explicit, ca să nu revină la „mine”). */
   team: string;
   kind: "" | IssueKind;
   sort: IssueSort;
@@ -37,7 +37,7 @@ export function sanitizeIssueFilters(src: Source): IssueFilters {
     status: ONE_OF(get(src, "status"), ["open", "resolved", "all"] as const) || "open",
     due: ONE_OF(get(src, "due"), ["overdue", "7d", "none"] as const),
     resp: ONE_OF(get(src, "resp"), ["CLIENT", "COMPANY", "none"] as const),
-    team: typeof team === "string" && (team === "none" || /^[0-9a-f]{24}$/i.test(team)) ? team : "",
+    team: typeof team === "string" && (team === "none" || team === "mine" || team === "all" || /^[0-9a-f]{24}$/i.test(team)) ? team : "",
     kind: ONE_OF(get(src, "kind"), ISSUE_KINDS),
     sort: ONE_OF(get(src, "sort"), ["dueAsc", "reportedDesc", "contor"] as const) || "dueAsc",
   };
@@ -60,7 +60,7 @@ export function decodeIssueRows(rows: IssueRegisterRow[], today: string = todayK
   }));
 }
 
-export function filterIssues(all: IssueRow[], f: IssueFilters): IssueRow[] {
+export function filterIssues(all: IssueRow[], f: IssueFilters, ownTeamIds: string[] = []): IssueRow[] {
   const tokens = f.q.trim().toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
   const out: IssueRow[] = [];
   for (let i = 0, n = all.length; i < n; i++) {
@@ -73,7 +73,7 @@ export function filterIssues(all: IssueRow[], f: IssueFilters): IssueRow[] {
     }
     if (f.kind && r.kind !== f.kind) continue;
     if (f.resp === "none" ? r.responsible !== null : f.resp ? r.responsible !== f.resp : false) continue;
-    if (f.team === "none" ? r.teamId !== null : f.team ? r.teamId !== f.team : false) continue;
+    if (f.team === "none" ? r.teamId !== null : f.team === "mine" ? !(r.teamId && ownTeamIds.includes(r.teamId)) : f.team && f.team !== "all" ? r.teamId !== f.team : false) continue;
     if (f.due === "none" ? r.dueAt !== null : f.due === "overdue" ? !(r._o && r._d < 0) : f.due === "7d" ? !(r._o && r._d >= 0 && r._d <= 7) : false) continue;
     out.push(r);
   }

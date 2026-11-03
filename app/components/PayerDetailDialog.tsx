@@ -21,6 +21,9 @@ type Detail = {
     meterCurrReading: number | null;
     portalActivatedAt: string | null;
     portalLastLoginAt: string | null;
+    /** Început / sfârșit consum din ultimul document 1C („YYYY-MM-DD”, ca în export). */
+    consumStart: string | null;
+    consumEnd: string | null;
   } | null;
   invoices: { id: string; publicToken: string; number: string; status: string; grandTotal: number; currency: string; issueDate: string; dueDate: string | null; paidAt: string | null; billingPeriodLabel: string | null }[];
   notes: PayerNoteItem[];
@@ -243,6 +246,8 @@ export default function PayerDetailDialog({
 
         <Section title={t("Contor & portal")}>
           <Item label={t("Contor instalat")} value={row.installedAt ? row.installedAt.split("-").reverse().join(".") : null} />
+          <Item label={t("Început consum")} value={detail?.payer?.consumStart ? detail.payer.consumStart.slice(0, 10).split("-").reverse().join(".") : null} loading={pending} />
+          <Item label={t("Sfârșit consum")} value={detail?.payer?.consumEnd ? detail.payer.consumEnd.slice(0, 10).split("-").reverse().join(".") : null} loading={pending} />
           <Item label={t("Nr. contor")} value={detail?.payer?.meterNumber} loading={pending} />
           <Item label={t("Ultima citire")} value={detail?.payer?.meterCurrReading} loading={pending} />
           <Item label={t("Ultima logare în portal")} value={detail?.payer?.portalLastLoginAt ? day(detail.payer.portalLastLoginAt) : null} loading={pending} />

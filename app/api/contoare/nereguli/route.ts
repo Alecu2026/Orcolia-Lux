@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { getCurrentUser } from "@/lib/dal";
-import { can } from "@/lib/permissions";
 import { listIssueRegister } from "@/lib/services/meter-issues";
+import { canManageMeterIssues, issueAccess, visibleIssues } from "@/lib/meter-issue-access";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -13,11 +13,12 @@ export const maxDuration = 30;
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Autentificare necesară." }, { status: 401 });
-  if (!can(user, "payers.view")) return Response.json({ error: "Fără permisiune." }, { status: 403 });
+  const access = issueAccess(user);
+  if (!access) return Response.json({ error: "Fără permisiune." }, { status: 403 });
   try {
-    const rows = await listIssueRegister();
-    const canManage = can(user, "meters.manage");
-    const body = JSON.stringify({ rows, canManage });
+    const rows = visibleIssues(await listIssueRegister(), access);
+    const canManage = canManageMeterIssues(user);
+    const body = JSON.stringify({ rows, canManage, restricted: !access.all, ownTeamIds: access.teamIds });
     const etag = `"${createHash("sha1").update(body).digest("hex").slice(0, 20)}"`;
     const headers = { ETag: etag, "Cache-Control": "private, no-cache" };
     if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });

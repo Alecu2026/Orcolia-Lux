@@ -32,3 +32,32 @@ export function verifyReadingToken(token: string): ReadingVerifyClaim | null {
     return null;
   }
 }
+
+/**
+ * Linkul din emailul „Confirmă citirea” (citire trimisă din portal, încă neînregistrată): codul conține doar id-ul citirii în așteptare. Valabil `PENDING_TTL_DAYS` zile (cât și citirea în așteptare).
+ * Altă cheie decât la verificarea citirilor deja salvate, ca un cod să nu poată fi folosit în locul celuilalt.
+ */
+export const PENDING_TTL_DAYS = 7;
+const pendingKey = () => createHash("sha256").update(`reading-confirm:${env.sessionSecret}`).digest();
+const pendingMac = (payload: string) => createHmac("sha256", pendingKey()).update(payload).digest("base64url");
+
+export function signPendingToken(pendingId: string): string {
+  const payload = Buffer.from(JSON.stringify({ p: pendingId, e: Date.now() + PENDING_TTL_DAYS * 86_400_000 })).toString("base64url");
+  return `${payload}.${pendingMac(payload)}`;
+}
+
+/** Id-ul citirii în așteptare; null dacă codul e fals, alterat sau expirat. */
+export function verifyPendingToken(token: string): string | null {
+  if (typeof token !== "string" || token.length > 400) return null;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return null;
+  const a = Buffer.from(sig), b = Buffer.from(pendingMac(payload));
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const j = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { p?: unknown; e?: unknown };
+    if (typeof j.p !== "string" || !/^[0-9a-f]{24}$/i.test(j.p) || typeof j.e !== "number" || j.e < Date.now()) return null;
+    return j.p;
+  } catch {
+    return null;
+  }
+}

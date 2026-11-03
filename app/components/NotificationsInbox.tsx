@@ -455,9 +455,10 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
                     </button>
                     {(showWork || showAppt || a?.done || a?.error) && (
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        {a?.done ? (
-                          <span className="rounded-full bg-st-done/15 px-2.5 py-1 text-[11px] font-semibold text-st-done">✓ {a.done}</span>
-                        ) : (
+                        {/* după o acțiune rămâne insigna cu ce s-a făcut, dar butoanele rămân: poți continua (ex. 25% → 50% → Finalizat) */}
+                        {a?.done && (
+                          <span className="rounded-full bg-st-done/15 px-2.5 py-1 text-[11px] font-semibold text-st-done" data-act-done="">✓ {a.done}</span>
+                        )}
                           <>
                             {showWork && (
                               <>
@@ -476,7 +477,6 @@ export default function NotificationsInbox({ userId, canAppointments }: { userId
                             )}
                             {showAppt && <button type="button" disabled={a?.busy} onClick={() => act(r, t("Confirmată"), () => setAppointmentStatus(oid!, "CONFIRMED"))} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-50 pointer-coarse:h-10 pointer-coarse:px-3.5 pointer-coarse:text-sm">✓ {t("Confirmă")}</button>}
                           </>
-                        )}
                         {a?.error && <span className="text-[11px] text-st-cancelled">{a.error}</span>}
                       </div>
                     )}

@@ -34,11 +34,14 @@ export type PortalMeterDto = {
   history: PortalReadingDto[];
   /** Contorul transmite automat prin LoRaWAN: plătitorul nu trimite indexul (nu se poate modifica manual). */
   auto: boolean;
+  /** Citire trimisă, în așteptarea confirmării din email: nu e încă înregistrată (nu apare ca citit). */
+  pending: { value: number; submittedAt: string; expiresAt: string; emailsSent: number } | null;
   /** Scadența următoarei verificări metrologice („YYYY-MM-DD”, ultima verificare + 5 ani); null = necunoscută. */
   metroDue: string | null;
 };
 
 export type PortalReadingResult =
-  | { ok: true; readingId: string; value: number; consum: number | null; issueSaved: boolean; issueError?: string; /** adresa (mascată) la care s-a trimis emailul de verificare a citirii */ verifyEmail?: string }
+  /** Citirea NU e încă înregistrată: a plecat un email de confirmare la `verifyEmail` (adresa mascată), iar citirea contează abia după ce plătitorul o confirmă. */
+  | { ok: true; pending: true; value: number; verifyEmail: string; /** starea contorului (neregula) a fost transmisă personalului imediat, fără să aștepte confirmarea citirii */ issueSaved?: boolean; issueError?: string }
   /** Plătitorul nu primește avertismentul „prea mic” (lipsa de consum e normală: plecat, casă nelocuită), doar „prea mare”; `avg`/`pct` explică avertismentul față de medie. */
   | { ok: false; error: string; confirm?: "lower" | "high"; avg?: { avg: number; count: number }; pct?: number };

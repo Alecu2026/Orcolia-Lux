@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
+import { canManageMeterIssues } from "@/lib/meter-issue-access";
 import { prisma } from "@/lib/prisma";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
@@ -23,7 +24,7 @@ export async function updateIssueAction(
   patch: { responsible: string | null; teamId: string | null; dueAt: string | null },
 ): Promise<{ ok: true; issue: IssueDto } | { ok: false; error: string }> {
   const user = await requireUser();
-  if (!can(user, "meters.manage")) return { ok: false, error: "Fără permisiune." };
+  if (!canManageMeterIssues(user)) return { ok: false, error: "Fără permisiune." };
   if (typeof id !== "string" || !patch || typeof patch !== "object") return { ok: false, error: "Date invalide." };
   const responsible = patch.responsible === "CLIENT" || patch.responsible === "COMPANY" ? patch.responsible : null;
   const res = await updateIssue(user, id, {

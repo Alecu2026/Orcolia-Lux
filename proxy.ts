@@ -70,7 +70,7 @@ function buildCsp(nonce: string): string {
 }
 
 /** Pagini publice fără autentificare (previzualizarea facturii prin link): nu trec prin verificarea de sesiune, dar primesc același CSP. */
-const OPEN_PATHS = ["/invoice/public", "/citire/verifica"];
+const OPEN_PATHS = ["/invoice/public", "/citire/verifica", "/citire/confirma"];
 
 export function proxy(req: NextRequest) {
   const nonce = btoa(crypto.randomUUID());

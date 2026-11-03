@@ -30,6 +30,7 @@ export const KIND_LABEL: Record<string, string> = {
   "verification.code": "Cod de verificare",
   "auth.new_device": "Autentificare de pe un dispozitiv nou",
   "reading.verify": "Verificare citire contor (email către client)",
+  "reading.confirm": "Confirmare citire contor din portal (email către client)",
   "appointment.reminder": "Reamintire programare",
   "payer.campaign": "Notificare plătitori",
   "payer.test": "Test notificare plătitori",

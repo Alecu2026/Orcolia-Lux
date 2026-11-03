@@ -10,6 +10,8 @@ import { addressLocality, cleanSectorList, effectiveSector, parseSectorFilter } 
 import type { SnapInvoice } from "./payer-notify";
 import { matchesMetrologyFilter, METROLOGY_FILTER_VALUES, metrologyDueKey, type MetrologyFilter } from "./metrology";
 import { DEFAULT_TZ, todayKey } from "./date";
+import { ISSUE_KINDS } from "./meter-issues";
+import { isSeriousIssue } from "./map-meters";
 
 // ── Filtre ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -45,12 +47,14 @@ export type MeterFilters = {
   source: "" | "1c" | "axioma";
   /** Verificarea metrologică (pe scadență): fără dată / expirată / expiră în 10, 30 sau 60 de zile. */
   metrology: MetrologyFilter;
+  /** Neregula deschisă a contorului: „any” = cu orice neregulă, „serious” = gravă (defect, curgere inversă, fraudă, scurgere), „none” = fără, sau un tip anume (vezi ISSUE_KINDS). */
+  issue: "" | "any" | "serious" | "none" | (typeof ISSUE_KINDS)[number];
   sort: MeterSort;
 };
 
 export const EMPTY_METER_FILTERS: MeterFilters = {
   q: "", street: "", status: "", reading: "", consum: "", sursa: "", estimated: "", shared: "", kind: "", sector: "", usector: "", uloc: "", account: "", debt: "",
-  invoiceStatus: "", installedFrom: "", installedTo: "", source: "", metrology: "", sort: "",
+  invoiceStatus: "", installedFrom: "", installedTo: "", source: "", metrology: "", issue: "", sort: "",
 };
 
 const ONE_OF = <T extends string>(v: unknown, allowed: readonly T[]): T | "" =>
@@ -89,6 +93,7 @@ export function sanitizeMeterFilters(src: Source): MeterFilters {
     installedTo,
     source: ONE_OF(get(src, "source"), ["1c", "axioma"] as const),
     metrology: ONE_OF(get(src, "metrology"), METROLOGY_FILTER_VALUES),
+    issue: ONE_OF(get(src, "issue"), ["any", "serious", "none", ...ISSUE_KINDS] as const),
     sort: ONE_OF(get(src, "sort"), ["contor", "installDesc", "installAsc", "consumDesc", "consumAsc", "debtDesc", "readDesc", "metroAsc"] as const),
   };
 }
@@ -135,6 +140,8 @@ export type MeterTuple = [
   string | null,
   /** 36 data ultimei verificări metrologice („YYYY-MM-DD”) — lipsește în listele salvate înainte de această versiune */
   string | null,
+  /** 37 tipul neregulii deschise (DEFECT, LEAK…) — lipsește în listele salvate înainte de această versiune */
+  string | null,
 ];
 
 export type MeterRowBase = {
@@ -176,6 +183,8 @@ export type MeterRowBase = {
   metroVerified: string | null;
   /** Scadența următoarei verificări (data + 5 ani). */
   metroDue: string | null;
+  /** Tipul neregulii deschise a contorului (DEFECT, LEAK…), dacă are. */
+  issue: string | null;
 };
 
 /**
@@ -249,6 +258,7 @@ export function decodeMeters(tuples: MeterTuple[], presorted = false): MeterRow[
       uch: effectiveSector(t[35], t[34]),
       metroVerified: t[36] ?? null,
       metroDue: t[36] ? metrologyDueKey(t[36]) : null,
+      issue: t[37] ?? null,
       _h: [t[2], t[3], t[4], t[5], t[6], t[7], t[25], t[26]].filter(Boolean).join("\n").toLowerCase(),
       _a: addressKey(t[6]),
       _ac: 0,
@@ -343,6 +353,7 @@ export function filterMeters(allRows: MeterRow[], f: MeterFilters): MeterRow[] {
     if (f.account === "activated" ? !r.activated : f.account === "pending" ? r.activated : false) continue;
     if (f.source === "1c" ? r.source !== "1c" : f.source === "axioma" ? r.source !== "axioma" : false) continue;
     if (f.metrology && !matchesMetrologyFilter(r.metroDue, f.metrology, today)) continue;
+    if (f.issue === "any" ? !r.issue : f.issue === "serious" ? !isSeriousIssue(r.issue) : f.issue === "none" ? !!r.issue : f.issue ? r.issue !== f.issue : false) continue;
     if (f.invoiceStatus && r.invoice?.status !== f.invoiceStatus) continue;
     if (f.debt === "has" ? !(r.invoice && r._dk > 0) : f.debt === "none" ? !(r.invoice && r._dk <= 0) : false) continue;
     if (f.installedFrom && !(r.installedAt && r.installedAt >= f.installedFrom)) continue;

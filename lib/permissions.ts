@@ -48,6 +48,8 @@ export type PermissionKey =
   | "meters.read"
   // Rute de citire, comparația planificat / citit pe cititor, nereguli ale contoarelor (administrare)
   | "meters.manage"
+  // Doar registrul „Nereguli contoare” (vizualizare, rezolvare, editare) — fără rutele de citire și planificat vs citit; implicit pe secția utilizatorului
+  | "meters.issues"
   // PBX / apeluri
   | "pbx.view"
   | "pbx.manage"
@@ -150,6 +152,7 @@ export const PERMISSION_GROUPS: {
       { key: "payers.delete", label: "Ștergere" },
       { key: "meters.read", label: "Citiri contoare (introducere index lunar, locație, poză) — pagina Citiri teren" },
       { key: "meters.manage", label: "Rute de citire, planificat vs citit pe cititor, nereguli contoare (administrare)" },
+      { key: "meters.issues", label: "Doar „Nereguli contoare” (vizualizare, rezolvare, editare; implicit doar secția lui, cu posibilitatea de a alege și alte secții)" },
       { key: "payers.export", label: "Export plătitori (lista cu filtre, Notificări, Tabel 1C, decontare)" },
       { key: "payers.import", label: "Import plătitori din fișier" },
       { key: "meters.export", label: "Export contoare și citiri teren (CSV)" },
@@ -236,6 +239,8 @@ export const LEGACY_FALLBACK: Partial<Record<PermissionKey, PermissionKey[] | "A
   "pbx.view": ["clients.view"],
   "pbx.manage": ["clients.edit"],
   "tasks.assign": ["tasks.create", "tasks.edit"],
+  // registrul neregulilor îl administra cine avea „Administrare contoare”
+  "meters.issues": ["meters.manage"],
   "tasks.close": "ANY",
 };
 
@@ -284,7 +289,7 @@ export function homePath(user: PermissionSubject): string {
     ["dashboard.view", "/dashboard"], ["tasks.view", "/tasks"], ["tickets.view", "/tickets"], ["appointments.view", "/appointments"],
     ["projects.view", "/projects"], ["kanban.view", "/kanban"], ["calendar.view", "/calendar"], ["payers.view", "/platitori"],
     ["clients.view", "/clients"], ["invoices.view", "/invoices"], ["pbx.view", "/pbx"], ["map.view", "/harta"], ["teams.view", "/team"], ["meters.read", "/contoare/citiri"],
-    ["users.manage", "/users"],
+    ["meters.issues", "/contoare/nereguli"], ["users.manage", "/users"],
   ];
   for (const [k, path] of order) if (can(user, k)) return path;
   return "/notificari";
@@ -378,6 +383,8 @@ export function canWorkOnTask(user: PermissionSubject & { id: string; teamIds?: 
 
 export type TaskVisibilitySubject = {
   id: string;
+  /** Echipele din care face parte: un task asignat echipei lui (de ex. cererea din portal cu secție) e al lui și îl vede, chiar fără „Vede toate”. */
+  teamIds?: string[];
   taskViewScope: string;
   taskViewTeamIds: string[];
   taskViewMemberIds: string[];
@@ -402,7 +409,7 @@ export type TaskTeamOwnership = TaskOwnership & {
  * Vede userul task-ul ăsta? taskViewScope="ALL" (implicit — comportamentul de dinainte de
  * restricție) vede tot. "RESTRICTED" vede doar: propriile task-uri (creator/asignat/co-asignat —
  * mereu vizibile, indiferent de listele de mai jos) + cele din echipele/persoanele alese de admin
- * la crearea contului (taskViewTeamIds/taskViewMemberIds) — vezi lib/queries/tasks.ts (buildWhere)
+ * la crearea contului (taskViewTeamIds/taskViewMemberIds) + cele asignate echipelor din care face parte — vezi lib/queries/tasks.ts (buildWhere)
  * pentru aceeași regulă aplicată la nivel de listă/export, nu doar la deschiderea individuală.
  */
 export function canViewTask(user: TaskVisibilitySubject, task: TaskTeamOwnership): boolean {
@@ -410,6 +417,9 @@ export function canViewTask(user: TaskVisibilitySubject, task: TaskTeamOwnership
   if (task.creatorId === user.id) return true;
   if (task.assigneeId === user.id) return true;
   if (task.extraAssigneeIds?.includes(user.id)) return true;
+  const own = user.teamIds ?? [];
+  if (task.teamId && own.includes(task.teamId)) return true;
+  if (task.extraTeamIds?.some((id) => own.includes(id))) return true;
   if (task.teamId && user.taskViewTeamIds.includes(task.teamId)) return true;
   if (task.extraTeamIds?.some((id) => user.taskViewTeamIds.includes(id))) return true;
   if (task.assigneeId && user.taskViewMemberIds.includes(task.assigneeId)) return true;

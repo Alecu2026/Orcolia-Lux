@@ -187,6 +187,10 @@ export type SaveInput = {
   fromQueue?: boolean;
   /** „PORTAL”: citirea o trimite plătitorul din portal — nu suprascrie o citire făcută de cititor în aceeași lună. „LORAWAN”: citirea vine automat de la contor (lib/services/lorawan.ts). */
   source?: "PORTAL" | "LORAWAN";
+  /** Doar verifică (aceleași reguli ca la salvare: index mai mic, consum neobișnuit, citire a cititorului…) fără să scrie nimic — vezi `checkReading`. */
+  dryRun?: boolean;
+  /** Plătitorul a confirmat deja citirea din email: se marchează verificată și nu se mai trimite emailul de verificare. */
+  verified?: boolean;
 };
 
 /** O citire din coada offline nu poate avea ora în viitor și nici să fie mai veche de atât. */
@@ -195,8 +199,19 @@ export const QUEUE_MAX_AGE_DAYS = 40;
 /** Mesajul pentru o încercare de a citi / corecta manual un contor LoRaWAN. */
 export const LORAWAN_LOCKED_ERROR = "Contorul transmite automat prin LoRaWAN: indexul nu se poate citi sau modifica manual.";
 
+type DryRunOk = { ok: true; dryRun: true };
+
 /** Salvează (sau corectează) citirea de luna aceasta a unui contor. */
 export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveReadingResult> {
+  return (await saveReadingImpl(actor, { ...input, dryRun: false })) as SaveReadingResult;
+}
+
+/** Verifică o citire cu aceleași reguli ca `saveReading`, fără să scrie: întoarce eroarea / cererea de confirmare pe care ar da-o salvarea, sau ok. */
+export async function checkReading(actor: Actor, input: SaveInput): Promise<Exclude<SaveReadingResult, { ok: true }> | DryRunOk> {
+  return (await saveReadingImpl(actor, { ...input, dryRun: true })) as Exclude<SaveReadingResult, { ok: true }> | DryRunOk;
+}
+
+async function saveReadingImpl(actor: Actor, input: SaveInput): Promise<SaveReadingResult | DryRunOk> {
   if (DEMO) return { ok: false, error: "Mod demo." };
   const { value } = input;
   if (!Number.isFinite(value) || value < 0 || value > MAX_INDEX) return { ok: false, error: "Index invalid." };
@@ -263,6 +278,7 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
   // citirea automată nu înlocuiește una făcută de un cititor / operator în aceeași lună
   if (input.source === LORAWAN_SOURCE && cur && cur.source == null) return { ok: false, error: "Pentru luna aceasta citirea a fost deja înregistrată de cititor." };
   const changed = !!cur && cur.value !== v;
+  if (input.dryRun) return { ok: true, dryRun: true };
   const data = {
     contor: row.contor,
     clientId: row.clientId,
@@ -279,7 +295,7 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
     source: input.source ?? null,
     avgConsum: avg ? avg.avg : null,
     // un index schimbat anulează confirmarea / contestarea de dinainte (se cere o verificare nouă)
-    ...(changed ? { verifiedAt: null, disputedAt: null, disputeNote: null } : {}),
+    ...(input.verified ? { verifiedAt: new Date(), disputedAt: null, disputeNote: null } : changed ? { verifiedAt: null, disputedAt: null, disputeNote: null } : {}),
   };
   if (input.fromQueue) {
     const existing = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { readAt: true, value: true, userName: true } });
@@ -295,7 +311,7 @@ export async function saveReading(actor: Actor, input: SaveInput): Promise<SaveR
   const location = await updateMeterLocation(actor, row, { address: input.address ?? null, lat, lng, accuracy });
   invalidatePortalClient(row.clientId); // plătitorul vede imediat citirea în portal
   // email de verificare către titular: citire nouă din portal, sau index schimbat (de plătitor în portal / de un angajat peste citirea trimisă de plătitor)
-  const ownerNotice = !!row.clientId && input.source !== LORAWAN_SOURCE && (cur ? changed && (input.source === "PORTAL" || cur.source === "PORTAL") : input.source === "PORTAL");
+  const ownerNotice = !!row.clientId && !input.verified && input.source !== LORAWAN_SOURCE && (cur ? changed && (input.source === "PORTAL" || cur.source === "PORTAL") : input.source === "PORTAL");
   let ownerEmailTo: string | null = null;
   if (ownerNotice && row.clientId) {
     ownerEmailTo = await queueReadingVerification({

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { submitPortalReadingAction, uploadPortalPhotoAction } from "@/app/actions/portal-meters";
+import { resendPortalConfirmationAction, submitPortalReadingAction } from "@/app/actions/portal-meters";
 import { ISSUE_LABELS } from "@/lib/meter-issues";
 import { PORTAL_ISSUE_KINDS, type PortalMeterDto } from "@/lib/portal-meters";
 import { JUMP_CONFIRM_M3, parseIndex } from "@/lib/meter-readings";
@@ -15,6 +15,19 @@ import { daysUntil } from "@/lib/contract-expiry";
 
 const inp = "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
 const nf = (n: number) => String(Math.round(n * 1000) / 1000).replace(".", ",");
+
+type Geo = { lat: number; lng: number; accuracy: number };
+/** Locația curentă (cere permisiunea browserului dacă n-a fost dată); null dacă e refuzată / indisponibilă / durează prea mult. */
+function currentGeo(): Promise<Geo | null> {
+  return new Promise((resolve) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+    );
+  });
+}
 
 /**
  * „Contoarele mele” din cabinetul personal: un dropdown cu contoarele plătitorului; pentru cel ales — ultimul index, citirea lunii (dacă există) și formularul de trimitere:
@@ -43,12 +56,23 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
   const [pending, setPending] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [geoState, setGeoState] = useState<"idle" | "asking" | "ok" | "off">("idle");
+  const geoRef = useRef<Geo | null>(null);
+  const [resending, setResending] = useState(false);
+
+  async function askLocation() {
+    setGeoState("asking");
+    const g = await currentGeo();
+    geoRef.current = g;
+    setGeoState(g ? "ok" : "off");
+    return g;
+  }
 
   // la schimbarea contorului formularul pornește de la zero (cu indexul trimis deja din portal, dacă există)
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
     setValue(m?.thisMonth?.source === "PORTAL" ? nf(m.thisMonth.value) : "");
-    setKind(""); setNote(""); setPhoto(null); setPreview(null); setConfirm(null); setMsg(null);
+    setKind(""); setNote(""); setPhoto(null); setPreview(null); setConfirm(null); setMsg(null); setGeoState("idle"); geoRef.current = null;
     if (fileRef.current) fileRef.current.value = "";
   }, [m?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -63,14 +87,18 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
   async function submit(confirmed: boolean) {
     const v = parseIndex(value);
     if (v == null) { setMsg({ ok: false, text: t("Index invalid. Scrie un număr (m³), ex. 1234,5.") }); return; }
+    if (!photo) { setMsg({ ok: false, text: t("Poza contorului este obligatorie: fotografiază cadranul cu indexul.") }); return; }
     setPending(true); setMsg(null);
     try {
+      const geo = geoRef.current ?? (await askLocation());
       const fd = new FormData();
       fd.set("meterId", m.id);
       fd.set("value", value);
       if (confirmed) fd.set("confirmed", "1");
       fd.set("issueKind", kind);
       fd.set("issueNote", note);
+      fd.set("photo", await optimizeImage(photo));
+      if (geo) { fd.set("lat", String(geo.lat)); fd.set("lng", String(geo.lng)); fd.set("accuracy", String(geo.accuracy)); }
       const res = await submitPortalReadingAction(fd);
       if (!res.ok) {
         if (res.confirm) {
@@ -80,25 +108,31 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
         return;
       }
       setConfirm(null);
-      let text = res.consum != null ? t("Citirea a fost salvată: {value} m³ (consum {consum} m³).", { value: nf(res.value), consum: nf(res.consum) }) : t("Citirea a fost salvată: {value} m³.", { value: nf(res.value) });
-      let ok = true;
-      if (photo) {
-        const pf = new FormData();
-        pf.set("readingId", res.readingId);
-        pf.set("file", await optimizeImage(photo));
-        const up = await uploadPortalPhotoAction(pf);
-        if (up.ok) { setPhoto(null); setPreview(null); if (fileRef.current) fileRef.current.value = ""; }
-        else { ok = false; text += ` ${t("Poza nu s-a încărcat: {error}", { error: t(up.error) })}`; }
-      }
-      if (res.issueError) { ok = false; text += ` ${t("Starea contorului nu s-a salvat: {error}", { error: t(res.issueError) })}`; }
-      else if (res.issueSaved) text += ` ${t("Starea contorului a fost transmisă.")}`;
-      if (res.verifyEmail) text += ` ${t("Ți-am trimis un email la {email} ca să verifici citirea.", { email: res.verifyEmail })}`;
-      setMsg({ ok, text: multi ? `${t("Contor")} ${m.contor}: ${text}` : text });
+      setPhoto(null); setPreview(null); if (fileRef.current) fileRef.current.value = "";
+      const text = res.verifyEmail
+        ? t("Citirea {value} m³ NU este încă înregistrată. Ți-am trimis un email la {email}: apasă „Confirm citirea” din el ca să fie trimisă.", { value: nf(res.value), email: res.verifyEmail })
+        : t("Citirea {value} m³ NU este încă înregistrată: confirm-o din emailul primit.", { value: nf(res.value) });
+      const full = res.issueError ? `${text} ${t("Starea contorului nu s-a salvat: {error}", { error: t(res.issueError) })}` : res.issueSaved ? `${text} ${t("Starea contorului a fost transmisă.")}` : text;
+      setMsg({ ok: !res.issueError, text: multi ? `${t("Contor")} ${m.contor}: ${full}` : full });
       router.refresh();
     } catch {
       setMsg({ ok: false, text: t("A apărut o eroare. Încearcă din nou.") });
     } finally {
       setPending(false);
+    }
+  }
+
+  async function resend() {
+    if (resending) return;
+    setResending(true);
+    try {
+      const r = await resendPortalConfirmationAction(m.id);
+      setMsg(r.ok ? { ok: true, text: t("Am retrimis emailul de confirmare la {email}.", { email: r.verifyEmail }) } : { ok: false, text: t(r.error) });
+      router.refresh();
+    } catch {
+      setMsg({ ok: false, text: t("A apărut o eroare. Încearcă din nou.") });
+    } finally {
+      setResending(false);
     }
   }
 
@@ -175,7 +209,7 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
                 <span className="ml-1 text-xs font-normal text-ink-soft">({fmtDay(m.thisMonth.readAt)} · {m.thisMonth.source === "PORTAL" ? t("trimisă de tine") : m.thisMonth.source === "LORAWAN" ? t("primită automat (LoRaWAN)") : t("citită de cititor")})</span>
               </p>
             ) : (
-              <p className="font-semibold text-st-progress">{m.auto ? t("încă nu a sosit") : t("încă netrimisă")}</p>
+              <p className="font-semibold text-st-progress">{m.auto ? t("încă nu a sosit") : m.pending ? t("în așteptarea confirmării din email") : t("încă netrimisă")}</p>
             )}
           </div>
           {m.openIssues.length > 0 && (
@@ -198,6 +232,15 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
             onSubmit={(e) => { e.preventDefault(); void submit(false); }}
             className="flex flex-col gap-3"
           >
+            {m.pending && (
+              <div className="rounded-xl border border-st-progress/40 bg-st-progress/8 p-3 text-sm" data-portal-pending="">
+                <p className="font-semibold">⏳ {t("Citirea {value} m³ așteaptă confirmarea din email", { value: nf(m.pending.value) })}</p>
+                <p className="mt-0.5 text-xs text-ink-soft">{t("Nu este trimisă până nu apeși „Confirm citirea” în emailul primit. Dacă nu l-ai primit, verifică și dosarul Spam sau retrimite-l.")}</p>
+                <button type="button" onClick={() => void resend()} disabled={resending || m.pending.emailsSent >= 5} data-portal-resend="" className="tap mt-2 h-9 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-xs font-semibold hover:bg-[var(--color-surface-2)] disabled:opacity-50">
+                  {resending ? t("Se trimite…") : t("Retrimite emailul")}
+                </button>
+              </div>
+            )}
             <label className="text-xs font-semibold text-ink-soft">
               {multi ? t("Indexul contorului {contor} (m³)", { contor: m.contor }) : t("Indexul contorului (m³)")}
               <input
@@ -211,22 +254,28 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
             </label>
 
             <div>
-              <p className="mb-1 text-xs font-semibold text-ink-soft">{t("Poza contorului")}</p>
+              <p className="mb-1 text-xs font-semibold text-ink-soft">{t("Poza contorului")} <span className="text-st-cancelled">*</span> <span className="font-normal">({t("obligatorie")})</span></p>
               <input
                 ref={fileRef}
                 type="file"
                 accept="image/*"
                 capture="environment"
+                required
+                data-portal-photo=""
                 onChange={(e) => {
                   const f = e.target.files?.[0] ?? null;
                   setPhoto(f);
                   setPreview(f ? URL.createObjectURL(f) : null);
+                  if (f && geoState !== "ok") void askLocation(); // locația se pornește odată cu poza (apare cererea de permisiune)
                 }}
                 className="block w-full text-xs file:mr-3 file:h-10 file:cursor-pointer file:rounded-xl file:border-0 file:bg-brand file:px-4 file:text-sm file:font-semibold file:text-white"
               />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               {preview && <img src={preview} alt="" className="mt-2 max-h-48 rounded-xl border border-[var(--color-line)] object-contain" />}
               <p className="mt-1 text-[11px] text-ink-soft">{t("Fotografiază cadranul cu indexul, ca să se vadă clar cifrele.")}</p>
+              <p className={`mt-1 text-[11px] ${geoState === "off" ? "text-st-progress" : "text-ink-soft"}`} data-portal-geo={geoState}>
+                {geoState === "ok" ? `📍 ${t("Locația a fost preluată.")}` : geoState === "asking" ? `📍 ${t("Se preia locația…")}` : geoState === "off" ? `📍 ${t("Locația nu este activă. Permite accesul la locație în browser, ca să o atașăm la citire.")}` : `📍 ${t("Locația se cere la alegerea pozei. Te rugăm să o permiți.")}`}
+              </p>
             </div>
 
             <label className="text-xs font-semibold text-ink-soft">
@@ -268,7 +317,7 @@ export default function PortalMeters({ meters, period }: { meters: PortalMeterDt
               </button>
             )}
 
-            <button type="submit" disabled={pending || !value.trim()} className="tap h-12 cursor-pointer rounded-xl bg-brand text-base font-semibold text-white hover:bg-brand-strong disabled:opacity-50">
+            <button type="submit" disabled={pending || !value.trim() || !photo} className="tap h-12 cursor-pointer rounded-xl bg-brand text-base font-semibold text-white hover:bg-brand-strong disabled:opacity-50">
               {pending ? t("Se trimite…") : m.thisMonth ? (multi ? t("Actualizează citirea contorului {contor}", { contor: m.contor }) : t("Actualizează citirea")) : multi ? t("Trimite citirea contorului {contor}", { contor: m.contor }) : t("Trimite citirea")}
             </button>
           </form>

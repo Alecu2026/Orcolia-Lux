@@ -636,6 +636,12 @@ export default function PayerNotifyManager({
     const sp = new URLSearchParams({ create: "task", client: r.id, desc: [r.name, r.meterSeries ?? r.contract, r.phone].filter(Boolean).join(" · ") });
     return `/tasks?${sp.toString()}`;
   };
+  /** Cerere nouă pentru plătitor: pagina de cereri deschide fereastra de creare cu plătitorul, adresa și telefonul lui; șabloanele de cereri se completează cu datele lui. */
+  const ticketHref = (r: PayerRow) => {
+    const sp = new URLSearchParams({ create: "ticket", client: r.id, desc: [r.name, r.meterSeries ?? r.contract, r.phone].filter(Boolean).join(" · ") });
+    if (r.phone) sp.set("phone", r.phone.replace(/[^\d+]/g, ""));
+    return `/tickets?${sp.toString()}`;
+  };
 
   return (
     <div>
@@ -1025,6 +1031,11 @@ export default function PayerNotifyManager({
                       + {t("Sarcină")}
                     </Link>
                   )}
+                  {canTask && (
+                    <Link href={ticketHref(r)} prefetch={false} data-new-ticket="" className="tap inline-flex h-7 items-center rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft">
+                      + {t("Cerere")}
+                    </Link>
+                  )}
                 </div>
               </CompactCard>
             );
@@ -1043,12 +1054,12 @@ export default function PayerNotifyManager({
         className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}
         style={{ maxHeight: rowCount > 50 ? "max(78vh, 890px)" : undefined }}
       >
-        <table className="min-w-full table-fixed border-separate border-spacing-0 text-[11px] leading-[14px]" style={{ width: COL_W.reduce((a, b) => a + b, 0) + (canSelect ? 28 : 0) + (canSend ? 32 : 0) + (canTask ? 28 : 0) }}>
+        <table className="min-w-full table-fixed border-separate border-spacing-0 text-[11px] leading-[14px]" style={{ width: COL_W.reduce((a, b) => a + b, 0) + (canSelect ? 28 : 0) + (canSend ? 32 : 0) + (canTask ? 50 : 0) }}>
           <colgroup>
             {canSelect && <col style={{ width: 28 }} />}
             {COL_W.map((w, i) => <col key={i} style={{ width: w }} />)}
             {canSend && <col style={{ width: 32 }} />}
-            {canTask && <col style={{ width: 28 }} />}
+            {canTask && <col style={{ width: 50 }} />}
           </colgroup>
           <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
             <tr>
@@ -1086,7 +1097,7 @@ export default function PayerNotifyManager({
               <Th minW={45} right>{t("Facturi")}</Th>
               <Th minW={95}>{t("Ultima notificare")}</Th>
               {canSend && <Th minW={32}> </Th>}
-              {canTask && <Th minW={28}> </Th>}
+              {canTask && <Th minW={50}> </Th>}
             </tr>
           </thead>
           <tbody>
@@ -1171,15 +1182,27 @@ export default function PayerNotifyManager({
                   )}
                   {canTask && (
                     <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" onClick={(e) => e.stopPropagation()}>
-                      <Link
-                        href={taskHref(r)}
-                        prefetch={false}
-                        title={t("Creează sarcină pentru acest plătitor (adresa se completează singură)")}
-                        aria-label={t("Creează sarcină pentru acest plătitor (adresa se completează singură)")}
-                        className="grid size-4 place-items-center rounded bg-brand text-[11px] font-bold leading-none text-white hover:bg-brand-strong"
-                      >
-                        +
-                      </Link>
+                      <span className="flex items-center gap-1">
+                        <Link
+                          href={taskHref(r)}
+                          prefetch={false}
+                          title={t("Creează sarcină pentru acest plătitor (adresa se completează singură)")}
+                          aria-label={t("Creează sarcină pentru acest plătitor (adresa se completează singură)")}
+                          className="grid size-4 place-items-center rounded bg-brand text-[11px] font-bold leading-none text-white hover:bg-brand-strong"
+                        >
+                          +
+                        </Link>
+                        <Link
+                          href={ticketHref(r)}
+                          prefetch={false}
+                          data-new-ticket=""
+                          title={t("Creează cerere pentru acest plătitor (datele lui se completează singure, și în șabloane)")}
+                          aria-label={t("Creează cerere pentru acest plătitor (datele lui se completează singure, și în șabloane)")}
+                          className="grid size-4 place-items-center rounded bg-st-progress text-[10px] font-bold leading-none text-white hover:opacity-80"
+                        >
+                          C
+                        </Link>
+                      </span>
                     </td>
                   )}
                 </tr>

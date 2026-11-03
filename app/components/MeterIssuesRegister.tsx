@@ -19,10 +19,13 @@ import type { IssueMessages } from "@/lib/issue-messages";
 const ROW_H = 38;
 const VIEW_H = 640; // înălțimea zonei derulabile a tabelului când rândurile sunt virtualizate
 const VIRT_MIN = 60; // peste atâtea rânduri pe pagină se desenează doar cele vizibile
-// Contor, Abonat, Tip, Responsabil, Secția, Termen de remediere, Stare, Raportat, Adresă, acțiuni
-const COLS = [104, 158, 150, 92, 112, 196, 92, 88, 190, 156];
-const GRID = COLS.map((w) => `${w}px`).join(" ");
-const GRID_W = COLS.reduce((a, b) => a + b, 0);
+// Contor, Abonat, Tip, Responsabil, Secția, Termen de remediere, Stare, Rezolvat de, Raportat, Adresă, acțiuni
+const COLS_HEAD = [104, 158, 150, 92, 112, 196, 92, 176, 88, 190];
+/** Lățimea coloanei de acțiuni: butoanele stau pe un singur rând, deci coloana trebuie să le încapă (Editează 92 + Rezolvată 104 + Cerere 84 + spații). */
+const actionsWidth = (manage: boolean, ticket: boolean) => (manage ? 204 : 0) + (ticket ? 92 : 0) + 16;
+
+/** Butoanele din rândul neregulii: text pe un singur rând, aceeași înălțime, fără să se strângă (altfel textul trecea pe al doilea rând și ieșea din chenar). */
+const ACT_BTN = "tap inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap rounded-lg border bg-[var(--color-surface)] px-2.5 text-[11px] font-medium leading-none";
 
 const fld = (active: string | boolean) =>
   `h-8 min-w-0 rounded-lg border px-2 text-xs outline-none focus:border-brand ${active ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"}`;
@@ -39,6 +42,9 @@ export default function MeterIssuesRegister({
   initialPerPage,
   teams,
   canManage: canManageServer,
+  canTicket = false,
+  restricted: restrictedServer = false,
+  ownTeamIds: ownTeamIdsServer = [],
   messages,
   autoNotify,
   canEditMessages,
@@ -51,6 +57,11 @@ export default function MeterIssuesRegister({
   initialPerPage: number;
   teams: { id: string; name: string }[];
   canManage: boolean;
+  /** Poate crea cereri (tichete): fiecare rând are butonul „+ Cerere” cu datele neregulii completate. */
+  canTicket?: boolean;
+  /** Vede doar neregulile secțiilor lui (`ownTeamIds`) — nu are „Plătitori – Vizualizare”; nu primește linkuri către fișele contoarelor / plătitorilor. */
+  restricted?: boolean;
+  ownTeamIds?: string[];
   /** Doar administratorii primesc mesajele și canalele automate (setări de administrator); altfel null și butonul „Mesaje automate” nu apare. */
   messages: IssueMessages | null;
   autoNotify: AutoNotifySettings | null;
@@ -63,6 +74,10 @@ export default function MeterIssuesRegister({
   const toast = useToast();
   const ds = useIssueDataset(initialRows);
   const canManage = ds.canManage ?? canManageServer;
+  const restricted = ds.scope?.restricted ?? restrictedServer;
+  const ownTeamIds = ds.scope?.ownTeamIds ?? ownTeamIdsServer;
+  /** Marchează rezolvată: cine gestionează contoarele sau membrul secției responsabile. */
+  const canResolve = (r: { _o: boolean; teamId: string | null }) => r._o && (canManage || (!!r.teamId && ownTeamIds.includes(r.teamId)));
   const [filters, setFilters] = useState<IssueFilters>(initialFilters);
   const [perPage, setPerPage] = useState(normalizePerPageClient(initialPerPage));
   const [page, setPage] = useState(1);
@@ -73,13 +88,16 @@ export default function MeterIssuesRegister({
   const box = useRef<HTMLDivElement>(null);
   const q = useDeferredValue(filters.q);
 
-  const list = useMemo(() => filterIssues(ds.rows, { ...filters, q }), [ds.rows, filters, q]);
+  const list = useMemo(() => filterIssues(ds.rows, { ...filters, q }, ownTeamIds), [ds.rows, filters, q, ownTeamIds]);
   const counts = useMemo(() => countIssues(ds.rows), [ds.rows]);
   const uiPerPage = perPage === PER_PAGE_ALL ? Math.max(list.length, 1) : perPage;
   const totalPages = Math.max(1, Math.ceil(list.length / uiPerPage));
   const cur = Math.min(page, totalPages);
   const pageRows = useMemo(() => list.slice((cur - 1) * uiPerPage, cur * uiPerPage), [list, cur, uiPerPage]);
-  const active = countActiveIssueFilters(filters);
+  /** Cine vede toate neregulile și are o secție pornește pe „Secția mea”; revenirea la filtrele implicite păstrează asta. */
+  const defaultTeam = !restricted && ownTeamIds.length > 0 ? "mine" : "";
+  const baseFilters: IssueFilters = { ...EMPTY_ISSUE_FILTERS, team: defaultTeam };
+  const active = countActiveIssueFilters(filters) - (defaultTeam && filters.team === defaultTeam ? 1 : 0);
 
   const setFilter = useCallback((patch: Partial<IssueFilters>) => {
     setFilters((f) => ({ ...f, ...patch }));
@@ -90,14 +108,14 @@ export default function MeterIssuesRegister({
   useEffect(() => {
     const usp = new URLSearchParams();
     for (const [k, v] of Object.entries(filters)) {
-      if (v && v !== (EMPTY_ISSUE_FILTERS as Record<string, string>)[k]) usp.set(k, v as string);
+      if (v && v !== (k === "team" ? defaultTeam : (EMPTY_ISSUE_FILTERS as Record<string, string>)[k])) usp.set(k, v as string);
     }
     const qs = usp.toString();
     try {
       window.history.replaceState(null, "", `/contoare/nereguli${qs ? `?${qs}` : ""}`);
       document.cookie = `${ISSUES_PP_COOKIE}=${perPage}; path=/; max-age=31536000; samesite=lax`;
     } catch {}
-  }, [filters, perPage]);
+  }, [filters, perPage, defaultTeam]);
 
   useEffect(() => {
     if (box.current) box.current.scrollTop = 0;
@@ -132,12 +150,12 @@ export default function MeterIssuesRegister({
       const s = v == null ? "" : String(v);
       return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const head = ["Nr. contor", "Abonat", "Cont personal", "Contract", "Adresă", "Telefon", "Tip", "Observații", "Responsabil", "Secția", "Raportat la", "Raportat de", "Termen de remediere", "Stare", "Rezolvat la", "Rezolvare"].map((h) => esc(t(h)));
+    const head = ["Nr. contor", "Abonat", "Cont personal", "Contract", "Adresă", "Telefon", "Tip", "Observații", "Responsabil", "Secția", "Raportat la", "Raportat de", "Termen de remediere", "Stare", "Rezolvat de", "Rezolvat la", "Rezolvare"].map((h) => esc(t(h)));
     const lines = [head.join(";")];
     for (const r of list) {
       lines.push([
         r.contor, r.name, r.account, r.contract, r.address, r.phone, t(ISSUE_LABELS[r.kind]), r.note, r.responsible ? respLabel(r) : "", r.teamName, dmy(r.reportedAt), r.userName, dmy(r.dueAt),
-        r._o ? t("Deschisă") : t("Rezolvată"), dmy(r.resolvedAt), r.resolvedNote,
+        r._o ? t("Deschisă") : t("Rezolvată"), r.resolvedName, dmy(r.resolvedAt), r.resolvedNote,
       ].map(esc).join(";"));
     }
     const url = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
@@ -163,12 +181,37 @@ export default function MeterIssuesRegister({
     return <span className={cls} title={label}>{dmy(r.dueAt)} · {label}</span>;
   };
 
+  /** Cerere nouă pentru această neregulă: pagina Cereri deschide fereastra de creare cu plătitorul, titlul și descrierea (contor, adresă, observații) completate. */
+  const ticketHref = (r: IssueRow) => {
+    const kind = t(ISSUE_LABELS[r.kind]);
+    const desc = [
+      `${t("Neregulă")}: ${kind}`,
+      `${t("Contor")}: ${r.contor}`,
+      r.name ? `${t("Abonat")}: ${r.name}` : "",
+      r.address ? `${t("Adresă")}: ${r.address}` : "",
+      r.phone ? `${t("Telefon")}: ${r.phone}` : "",
+      r.note ? `${t("Observații")}: ${r.note}` : "",
+      `${t("Raportat")}: ${dmy(r.reportedAt)}${r.userName ? ` (${r.userName})` : ""}`,
+    ].filter(Boolean).join("\n");
+    const sp = new URLSearchParams({ create: "ticket", title: `${kind} — ${t("contor")} ${r.contor}`.slice(0, 200), desc: desc.slice(0, 1000) });
+    if (r.clientId) sp.set("client", r.clientId);
+    if (r.phone) sp.set("phone", r.phone.replace(/[^\d+]/g, ""));
+    return `/tickets?${sp.toString()}`;
+  };
+
+  const cols = [...COLS_HEAD, actionsWidth(canManage, canTicket)];
+  const grid = cols.map((w) => `${w}px`).join(" ");
+  const gridW = cols.reduce((a, b) => a + b, 0);
+
   const actions = (r: IssueRow) =>
-    canManage ? (
-      <span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={() => setEdit(r)} className="tap h-6 cursor-pointer rounded-md border border-[var(--color-line)] px-1.5 text-[11px] hover:bg-brand-soft" data-act="edit">✎ {t("Editează")}</button>
-        {r._o && (
-          <button type="button" disabled={busy === r.id} onClick={() => void resolve(r)} className="tap h-6 cursor-pointer rounded-md border border-[var(--color-line)] px-1.5 text-[11px] hover:bg-brand-soft disabled:opacity-50" data-act="resolve">✓ {t("Rezolvată")}</button>
+    canManage || canTicket || canResolve(r) ? (
+      <span className="flex flex-wrap items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+        {canManage && <button type="button" onClick={() => setEdit(r)} className={`${ACT_BTN} border-[var(--color-line)] text-ink hover:bg-[var(--color-surface-2)]`} data-act="edit"><span aria-hidden>✎</span>{t("Editează")}</button>}
+        {canResolve(r) && (
+          <button type="button" disabled={busy === r.id} onClick={() => void resolve(r)} className={`${ACT_BTN} border-st-done/50 text-st-done hover:bg-st-done/10 disabled:opacity-50`} data-act="resolve"><span aria-hidden>✓</span>{t("Rezolvată")}</button>
+        )}
+        {canTicket && (
+          <Link href={ticketHref(r)} prefetch={false} className={`${ACT_BTN} border-brand/50 text-brand hover:bg-brand-soft`} data-act="ticket" title={t("Creează o cerere pentru această neregulă (datele ei se completează singure)")}><span aria-hidden>+</span>{t("Cerere")}</Link>
         )}
       </span>
     ) : null;
@@ -196,7 +239,7 @@ export default function MeterIssuesRegister({
       </div>
 
       <div className="mb-2 flex flex-wrap gap-1.5 text-xs" data-issue-counters="">
-        <Chip active={filters.status === "open" && !filters.due && !filters.resp} onClick={() => setFilters({ ...EMPTY_ISSUE_FILTERS, sort: filters.sort })} label={t("Deschise")} n={counts.open} />
+        <Chip active={filters.status === "open" && !filters.due && !filters.resp} onClick={() => setFilters({ ...baseFilters, sort: filters.sort })} label={t("Deschise")} n={counts.open} />
         <Chip tone="red" active={filters.due === "overdue"} onClick={() => setFilter({ status: "open", due: filters.due === "overdue" ? "" : "overdue" })} label={t("Termen depășit")} n={counts.overdue} />
         <Chip tone="amber" active={filters.due === "7d"} onClick={() => setFilter({ status: "open", due: filters.due === "7d" ? "" : "7d" })} label={t("Expiră în 7 zile")} n={counts.soon} />
         <Chip active={filters.resp === "CLIENT"} onClick={() => setFilter({ status: "open", resp: filters.resp === "CLIENT" ? "" : "CLIENT" })} label={t("Răspunde clientul")} n={counts.client} />
@@ -227,11 +270,14 @@ export default function MeterIssuesRegister({
           <option value="COMPANY">{t("Compania")}</option>
           <option value="none">{t("De stabilit")}</option>
         </select>
-        <select value={filters.team} onChange={(e) => setFilter({ team: e.target.value })} className={fld(filters.team)} aria-label={t("Secția")}>
-          <option value="">{t("Secție: toate")}</option>
-          {teams.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-          <option value="none">{t("Fără secție")}</option>
-        </select>
+        {!restricted && (
+          <select value={filters.team} onChange={(e) => setFilter({ team: e.target.value })} className={fld(filters.team !== defaultTeam)} aria-label={t("Secția")} data-filter-team="">
+            {defaultTeam && <option value="mine">{ownTeamIds.length > 1 ? t("Secțiile mele") : t("Secția mea")}</option>}
+            <option value={defaultTeam ? "all" : ""}>{t("Secție: toate")}</option>
+            {teams.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            <option value="none">{t("Fără secție")}</option>
+          </select>
+        )}
         <select value={filters.due} onChange={(e) => setFilter({ due: e.target.value as IssueFilters["due"] })} className={fld(filters.due)} aria-label={t("Termen")}>
           <option value="">{t("Termen: toate")}</option>
           <option value="overdue">{t("Termen depășit")}</option>
@@ -244,7 +290,7 @@ export default function MeterIssuesRegister({
           <option value="contor">{t("Sortare: nr. contor")}</option>
         </select>
         {active > 0 && (
-          <button type="button" onClick={() => { setFilters({ ...EMPTY_ISSUE_FILTERS, sort: filters.sort }); setPage(1); }} className="tap h-8 rounded-lg border border-[var(--color-line)] px-2 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]">{t("Resetează filtrele")} ({active})</button>
+          <button type="button" onClick={() => { setFilters({ ...baseFilters, sort: filters.sort }); setPage(1); }} className="tap h-8 rounded-lg border border-[var(--color-line)] px-2 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]">{t("Resetează filtrele")} ({active})</button>
         )}
         <button type="button" onClick={exportCsv} disabled={list.length === 0} className="tap h-8 rounded-lg border border-[var(--color-line)] px-2.5 text-xs font-medium hover:bg-brand-soft disabled:opacity-40" data-export="">⭳ {t("Export")}</button>
         <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-soft">
@@ -265,22 +311,25 @@ export default function MeterIssuesRegister({
       {/* Tabel (ecrane late) */}
       <div className="card hidden overflow-hidden md:block">
         <div ref={box} onScroll={(e) => virt && setScroll((e.target as HTMLDivElement).scrollTop)} className="overflow-auto" style={{ maxHeight: virt ? VIEW_H : undefined }} data-issue-scroll="">
-          <div role="table" className="text-[11px]" style={{ width: GRID_W, minWidth: "100%" }}>
-            <div role="row" className="sticky top-0 z-10 grid bg-[var(--color-surface-2)]" style={{ gridTemplateColumns: GRID }}>
-              {["Contor", "Abonat", "Tip", "Responsabil", "Secția", "Termen de remediere", "Stare", "Raportat", "Adresă", ""].map((h, i) => (
+          <div role="table" className="text-[11px]" style={{ width: gridW, minWidth: "100%" }}>
+            <div role="row" className="sticky top-0 z-10 grid bg-[var(--color-surface-2)]" style={{ gridTemplateColumns: grid }}>
+              {["Contor", "Abonat", "Tip", "Responsabil", "Secția", "Termen de remediere", "Stare", "Rezolvat de", "Raportat", "Adresă", ""].map((h, i) => (
                 <div key={i} role="columnheader" className="border-b border-[var(--color-line)] px-2 py-1.5 font-semibold text-ink-soft">{h ? t(h) : ""}</div>
               ))}
             </div>
             {virt && start > 0 && <div style={{ height: start * ROW_H }} />}
             {pageRows.slice(start, end).map((r) => (
-              <div key={r.id} role="row" data-issue-row={r.id} className={`grid items-center hover:bg-brand-soft/30 ${r._o ? "" : "text-ink-soft"}`} style={{ gridTemplateColumns: GRID, height: ROW_H }}>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2 font-mono font-medium"><Link href={`/contoare/${encodeURIComponent(r.meterId)}`} className="hover:text-brand hover:underline">{r.contor}</Link></div>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" title={r.name}>{r.clientId ? <Link href={`/platitori/${r.clientId}`} className="hover:text-brand hover:underline">{r.name}</Link> : r.name}</div>
+              <div key={r.id} role="row" data-issue-row={r.id} className={`grid items-center hover:bg-brand-soft/30 ${r._o ? "" : "text-ink-soft"}`} style={{ gridTemplateColumns: grid, height: ROW_H }}>
+                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2 font-mono font-medium">{restricted ? r.contor : <Link href={`/contoare/${encodeURIComponent(r.meterId)}`} className="hover:text-brand hover:underline">{r.contor}</Link>}</div>
+                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" title={r.name}>{r.clientId && !restricted ? <Link href={`/platitori/${r.clientId}`} className="hover:text-brand hover:underline">{r.name}</Link> : r.name}</div>
                 <div role="cell" className={`truncate border-b border-[var(--color-line)] px-2 ${SERIOUS_ISSUES.includes(r.kind) && r._o ? "font-semibold text-st-cancelled" : ""}`} title={r.note ?? t(ISSUE_LABELS[r.kind])}>{t(ISSUE_LABELS[r.kind])}</div>
                 <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" data-resp={r.responsible ?? ""}>{respLabel(r)}</div>
                 <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" title={r.teamName ?? ""}>{r.teamName ?? <span className="text-ink-soft/60">—</span>}</div>
                 <div role="cell" className="truncate border-b border-[var(--color-line)] px-2 tabular-nums" data-due={r.dueAt ?? ""}>{dueCell(r)}</div>
                 <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" title={r.resolvedNote ?? ""}>{r._o ? t("Deschisă") : `✓ ${t("Rezolvată")}`}</div>
+                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" data-resolved-by={r.resolvedName ?? ""} title={r._o ? "" : [r.resolvedName, dmy(r.resolvedAt), r.resolvedNote].filter(Boolean).join(" · ")}>
+                  {r._o ? <span className="text-ink-soft/60">—</span> : <>{r.resolvedName || "—"}{r.resolvedAt ? <span className="ml-1 tabular-nums text-ink-soft">{dmy(r.resolvedAt)}</span> : null}</>}
+                </div>
                 <div role="cell" className="truncate border-b border-[var(--color-line)] px-2 tabular-nums" title={r.userName}>{dmy(r.reportedAt)}</div>
                 <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" title={r.address ?? ""}>{r.address ?? "—"}</div>
                 <div role="cell" className="border-b border-[var(--color-line)] px-1">{actions(r)}</div>
@@ -297,17 +346,18 @@ export default function MeterIssuesRegister({
         {pageRows.map((r) => (
           <div key={r.id} data-issue-card={r.id} className={`card p-3 text-sm ${r._o ? "" : "opacity-70"}`}>
             <div className="flex items-start justify-between gap-2">
-              <Link href={`/contoare/${encodeURIComponent(r.meterId)}`} className="font-mono font-semibold hover:text-brand">{r.contor}</Link>
+              {restricted ? <span className="font-mono font-semibold">{r.contor}</span> : <Link href={`/contoare/${encodeURIComponent(r.meterId)}`} className="font-mono font-semibold hover:text-brand">{r.contor}</Link>}
               <span className={`text-xs ${SERIOUS_ISSUES.includes(r.kind) && r._o ? "font-semibold text-st-cancelled" : "text-ink-soft"}`}>{t(ISSUE_LABELS[r.kind])}</span>
             </div>
-            <p className="truncate text-xs text-ink-soft">{r.clientId ? <Link href={`/platitori/${r.clientId}`} className="hover:text-brand">{r.name}</Link> : r.name}{r.address ? ` · ${r.address}` : ""}</p>
+            <p className="truncate text-xs text-ink-soft">{r.clientId && !restricted ? <Link href={`/platitori/${r.clientId}`} className="hover:text-brand">{r.name}</Link> : r.name}{r.address ? ` · ${r.address}` : ""}</p>
             <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
               <div><dt className="text-ink-soft">{t("Responsabil")}</dt><dd className="font-medium">{respLabel(r)}</dd></div>
               <div><dt className="text-ink-soft">{t("Secția")}</dt><dd className="font-medium">{r.teamName ?? "—"}</dd></div>
               <div className="col-span-2"><dt className="text-ink-soft">{t("Termen de remediere")}</dt><dd className="font-medium">{dueCell(r)}</dd></div>
             </dl>
             {r.note && <p className="mt-1 text-xs">{r.note}</p>}
-            {canManage && <div className="mt-2">{actions(r)}</div>}
+            {!r._o && <p className="mt-1 text-xs text-st-done" data-resolved-card="">✓ {t("Rezolvată de")} <b>{r.resolvedName || "—"}</b>{r.resolvedAt ? ` · ${dmy(r.resolvedAt)}` : ""}{r.resolvedNote ? ` — ${r.resolvedNote}` : ""}</p>}
+            {(canManage || canTicket || canResolve(r)) && <div className="mt-2">{actions(r)}</div>}
           </div>
         ))}
         {pageRows.length === 0 && <div className="card p-8 text-center text-ink-soft">{t("Nicio neregulă cu filtrele acestea.")}</div>}

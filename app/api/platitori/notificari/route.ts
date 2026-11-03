@@ -25,7 +25,7 @@ export async function GET(req: Request) {
   const detailId = sp.get("detail");
   if (detailId) {
     if (!/^[0-9a-f]{24}$/i.test(detailId)) return Response.json({ error: "Id invalid." }, { status: 400 });
-    const [payer, invoices, notifications, notes] = await Promise.all([
+    const [payer, invoices, notifications, notes, consum] = await Promise.all([
       getPayer(detailId),
       getPayerInvoices(detailId),
       prisma.payerNotificationLog.findMany({
@@ -35,6 +35,8 @@ export async function GET(req: Request) {
         select: { id: true, channel: true, status: true, error: true, subject: true, body: true, userName: true, createdAt: true },
       }),
       listPayerNotes(detailId, 50),
+      // începutul / sfârșitul consumului (Потребители) din cel mai recent document 1C al plătitorului
+      prisma.oneCRecord.findFirst({ where: { clientId: detailId }, orderBy: { dataDoc: "desc" }, select: { inceputConsum: true, sfarsitConsum: true } }).catch(() => null),
     ]);
     if (!payer) return Response.json({ error: "Plătitor inexistent." }, { status: 404 });
     return Response.json({
@@ -44,6 +46,8 @@ export async function GET(req: Request) {
         meterCurrReading: payer.meterCurrReading,
         portalActivatedAt: payer.portalActivatedAt,
         portalLastLoginAt: payer.portalLastLoginAt,
+        consumStart: consum?.inceputConsum ?? null,
+        consumEnd: consum?.sfarsitConsum ?? null,
       },
       // toate facturile (cele mai noi primele); plafon de siguranță, ca un răspuns să nu crească nemărginit
       invoices: invoices.slice(0, 300).map((i) => ({

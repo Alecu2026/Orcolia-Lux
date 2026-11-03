@@ -25,6 +25,8 @@ export function useIssueDataset(initial: IssueRegisterRow[]) {
   const etagRef = useRef<string | null>(memo?.etag ?? null);
   const inflight = useRef<Promise<void> | null>(null);
   const [canManage, setCanManage] = useState<boolean | null>(null);
+  /** Accesul pe secție (vezi lib/meter-issue-access.ts): `restricted` = vede doar neregulile secțiilor lui (`ownTeamIds`). */
+  const [scope, setScope] = useState<{ restricted: boolean; ownTeamIds: string[] } | null>(null);
   const rawRef = useRef<IssueRegisterRow[]>(raw);
 
   const apply = useCallback((next: IssueRegisterRow[], at: number, etag: string | null) => {
@@ -53,6 +55,7 @@ export function useIssueDataset(initial: IssueRegisterRow[]) {
         const at = Date.now();
         apply(j.rows as IssueRegisterRow[], at, etag);
         setCanManage(!!j.canManage);
+        setScope({ restricted: !!j.restricted, ownTeamIds: Array.isArray(j.ownTeamIds) ? (j.ownTeamIds as string[]) : [] });
         void idbSet(IDB_KEY, { at, etag, rows: j.rows } satisfies Stored);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Eroare la încărcare.");
@@ -96,5 +99,5 @@ export function useIssueDataset(initial: IssueRegisterRow[]) {
     void idbSet(IDB_KEY, { at: 0, etag: null, rows: next } satisfies Stored);
   }, []);
 
-  return { rows, raw, loading, error, refresh, patch, canManage };
+  return { rows, raw, loading, error, refresh, patch, canManage, scope };
 }

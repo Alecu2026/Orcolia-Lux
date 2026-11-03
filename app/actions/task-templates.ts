@@ -7,7 +7,7 @@ import { DEMO } from "@/lib/demo";
 import { dateKeyOf, addDaysToKey } from "@/lib/date";
 import { parseReminderSchedule } from "@/lib/reminder-schedule";
 import type { Prisma } from "@prisma/client";
-import { TEMPLATE_SELECT, toTaskTemplate } from "@/lib/queries/task-templates";
+import { TEMPLATE_SELECT, listTaskTemplates, toTaskTemplate } from "@/lib/queries/task-templates";
 import { loadPayerTemplateData } from "@/lib/queries/payer-template";
 import {
   TEMPLATE_MAX_DESCRIPTION,
@@ -98,6 +98,50 @@ export async function saveTaskTemplateAction(type: TaskTemplateType, input: Task
   } catch (e) {
     console.error("[task-templates] salvare eșuată", e);
     return { ok: false, error: "Nu am putut salva șablonul." };
+  }
+}
+
+/**
+ * Copiază șabloanele de cereri din portal (PortalRequestTemplate: nume, titlu, descriere, secție) ca șabloane de cereri / sarcini (TaskTemplate), ca să le poți alege
+ * din pop-up-ul „Apel primit” și din fereastra de creare. Nu dublează: un șablon cu același nume și tip rămâne neatins. Secția devine echipa șablonului (doar cu „Asignare”).
+ * Întoarce lista completă a șabloanelor tipului, ca fereastra să se reîmprospăteze.
+ */
+export async function importPortalTemplatesAction(type: TaskTemplateType): Promise<{ ok: true; created: number; skipped: number; templates: TaskTemplate[] } | { ok: false; error: string }> {
+  try {
+    const g = await guard();
+    if (!g.ok) return g;
+    const t: TaskTemplateType = type === "TICKET" ? "TICKET" : "TASK";
+    const [portal, existing] = await Promise.all([
+      prisma.portalRequestTemplate.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], take: 400, select: { name: true, title: true, description: true, teamId: true } }),
+      prisma.taskTemplate.findMany({ where: { type: t }, select: { name: true } }),
+    ]);
+    if (portal.length === 0) return { ok: false, error: "Nu există șabloane în portal." };
+    const have = new Set(existing.map((e) => e.name.trim().toLowerCase()));
+    const canAssign = can(g.user, "tasks.assign");
+    let room = TEMPLATE_MAX_PER_TYPE - existing.length;
+    const data: Prisma.TaskTemplateCreateManyInput[] = [];
+    for (const p of portal) {
+      const name = p.name.trim().slice(0, TEMPLATE_MAX_NAME);
+      if (!name || have.has(name.toLowerCase())) continue;
+      if (room <= 0) break;
+      have.add(name.toLowerCase());
+      room--;
+      data.push({
+        type: t,
+        name,
+        title: p.title.replace(/[\r\n]+/g, " ").trim().slice(0, TEMPLATE_MAX_TITLE),
+        description: p.description.trim().slice(0, TEMPLATE_MAX_DESCRIPTION) || null,
+        priority: "MEDIUM",
+        assigneeIds: [],
+        teamIds: canAssign && p.teamId ? [p.teamId] : [],
+        createdById: g.user.id,
+      });
+    }
+    if (data.length) await prisma.taskTemplate.createMany({ data });
+    return { ok: true, created: data.length, skipped: portal.length - data.length, templates: await listTaskTemplates(t) };
+  } catch (e) {
+    console.error("[task-templates] importul din portal a eșuat", e);
+    return { ok: false, error: "Nu am putut importa șabloanele din portal." };
   }
 }
 

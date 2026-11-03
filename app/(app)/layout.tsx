@@ -45,6 +45,8 @@ export default async function AppLayout({
     "calendar.view": can(user, "calendar.view"),
     "map.view": can(user, "map.view"),
     "payers.view": can(user, "payers.view"),
+    // „Nereguli contoare”: cine are „Plătitori – Vizualizare” sau face parte dintr-o secție (vede neregulile secției lui)
+    "meterIssues.view": can(user, "payers.view") || can(user, "meters.issues") || can(user, "meters.manage") || (user.teamIds?.length ?? 0) > 0,
     "meters.read": can(user, "meters.read"),
     "meters.manage": can(user, "meters.manage"),
     "pbx.view": can(user, "pbx.view"),

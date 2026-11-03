@@ -10,6 +10,8 @@ export type MeterPinsResponse = {
   routes: { id: string; name: string }[];
   /** contoarele active în total (ca să se vadă câte nu au încă locație) */
   total: number;
+  /** contoare cu neregulă deschisă, dar fără locație: nu au unde să apară pe hartă (locația vine din GPS-ul unei citiri) */
+  issuesNoLoc: number;
 };
 
 export type MeterPin = {

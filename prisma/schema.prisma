@@ -1523,3 +1523,32 @@ model TenderCheck {
   byName    String   @default("")
   updatedAt DateTime @updatedAt
 }
+
+/// Citire trimisă de plătitor din portal, în așteptarea confirmării din email. Nu e încă o citire: devine MeterReading (sursa „PORTAL”, verificată)
+/// abia când plătitorul apasă „Confirm” în emailul primit; până atunci nu apare nicăieri ca citit. Una per (plătitor, contor): o trimitere nouă o înlocuiește.
+model PortalReadingPending {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  clientId   String   @db.ObjectId
+  meterId    String
+  contor     String
+  /// luna citirii, „YYYY-MM” (fusul orar al firmei), calculată la trimitere
+  period     String
+  value      Float
+  /// plătitorul a confirmat deja avertismentul „index mai mic / consum neobișnuit de mare”
+  confirmed  Boolean  @default(false)
+  issueKind  String?
+  issueNote  String?
+  /// poza contorului (obligatorie), deja pe disc / în Blob; se leagă de citire la confirmare
+  photoUrl   String
+  photoName  String?
+  lat        Float?
+  lng        Float?
+  accuracy   Float?
+  submittedAt DateTime @default(now())
+  expiresAt  DateTime
+  /// de câte ori s-a trimis emailul de confirmare (limită la retrimitere)
+  emailsSent Int      @default(1)
+
+  @@unique([clientId, meterId])
+  @@index([expiresAt])
+}
