@@ -28,6 +28,8 @@ export type TaskReportParams = {
   consumer: string;
   /** PORTAL / INTERNAL / EMAIL */
   origin: string;
+  /** Raport pe exact aceste rânduri (cele rămase în tabel după filtrele din browser); celelalte filtre nu se mai aplică. */
+  ids?: string[];
 };
 
 type Viewer = { id: string; teamIds?: string[]; taskViewScope: string; taskViewTeamIds: string[]; taskViewMemberIds: string[] } & PermissionSubject;
@@ -83,13 +85,14 @@ export async function buildTaskReport(user: Viewer, p: TaskReportParams): Promis
     ...taskViewFilter(user),
     types: [type],
     scope: "all",
+    ...(p.ids ? { ids: p.ids } : {}),
     ...(p.status ? { status: p.status as never } : {}),
     ...(p.from ? { createdFrom: zonedToUtc(p.from, "00:00") } : {}),
     ...(p.to ? { createdTo: zonedToUtc(addDaysToKey(p.to, 1), "00:00") } : {}),
     ...(p.sectionId ? { sectionId: p.sectionId, sectionTeamIds: teams.map((t) => t.id), sectionUserIds: users.map((u) => u.id) } : {}),
     sort: "newest",
     page: 1,
-    pageSize: MAX_ROWS,
+    pageSize: p.ids ? Math.max(1, p.ids.length) : MAX_ROWS,
   });
   const meta = await ticketOrigins(all, type);
 

@@ -20,7 +20,7 @@ export type ReportItem = {
 
 export type ReportMeta = {
   /** Pentru fiecare id: de unde vine și din ce șablon (portal / intern). */
-  byId: Map<string, { origin: "PORTAL" | "INTERNAL" | "EMAIL"; portalTplId: string | null; internalTplId: string | null }>;
+  byId: Map<string, { origin: "PORTAL" | "INTERNAL" | "EMAIL"; portalTplId: string | null; internalTplId: string | null; /** `p:<id șablon portal>` / `i:<id șablon intern>` / `none` */ typeKey: string }>;
   portalTemplates: { id: string; name: string }[];
   /** Șabloanele interne (și cele șterse între timp, cu numele salvat la creare). */
   internalTemplates: { id: string; name: string }[];
@@ -33,7 +33,7 @@ const UNIT = "unități";
 
 export function buildRegulatoryReport(items: ReportItem[], meta: ReportMeta, kind: "tickets" | "tasks"): ReportSheet {
   const noun = kind === "tickets" ? "cereri" : "sarcini";
-  const info = (id: string) => meta.byId.get(id) ?? { origin: "INTERNAL" as const, portalTplId: null, internalTplId: null };
+  const info = (id: string) => meta.byId.get(id) ?? { origin: "INTERNAL" as const, portalTplId: null, internalTplId: null, typeKey: "none" };
 
   /** [apă, canalizare, apă + canalizare, total, din total: nespecificat] pentru rândurile care trec testul. */
   const count = (pred: (t: ReportItem) => boolean): number[] => {
@@ -66,16 +66,10 @@ export function buildRegulatoryReport(items: ReportItem[], meta: ReportMeta, kin
 
   // 1. numărul total, pe tipuri / șabloane
   add(1, `Numărul total de ${noun} cu privire la:`, UNIT, count(() => true));
-  if (kind === "tickets") {
-    for (const p of meta.portalTemplates) add("", p.name, UNIT, count((t) => info(t.id).origin === "PORTAL" && info(t.id).portalTplId === p.id));
-    add("", "Altă cerere din portal (fără șablon)", UNIT, count((t) => info(t.id).origin === "PORTAL" && !info(t.id).portalTplId));
-    const email = count((t) => info(t.id).origin === "EMAIL");
-    if (email[3]) add("", "Primite pe email", UNIT, email);
-  }
-  for (const s of meta.internalTemplates) {
-    add("", kind === "tickets" ? `Create de noi: ${s.name}` : s.name, UNIT, count((t) => info(t.id).origin === "INTERNAL" && info(t.id).internalTplId === s.id));
-  }
-  add("", kind === "tickets" ? "Create de noi, fără șablon intern" : "Fără șablon", UNIT, count((t) => info(t.id).origin === "INTERNAL" && !info(t.id).internalTplId));
+  // pe tipuri / șabloane, indiferent de origine (portal, CRM, email): fiecare cerere e numărată într-un singur rând
+  if (kind === "tickets") for (const p of meta.portalTemplates) add("", p.name, UNIT, count((t) => info(t.id).typeKey === `p:${p.id}`));
+  for (const s of meta.internalTemplates) add("", kind === "tickets" ? `Șablon intern: ${s.name}` : s.name, UNIT, count((t) => info(t.id).typeKey === `i:${s.id}`));
+  add("", kind === "tickets" ? "Alte cereri (fără tip / șablon recunoscut)" : "Fără șablon", UNIT, count((t) => info(t.id).typeKey === "none"));
 
   // 2. răspunsuri emise = rezolvate, în termen / peste termen
   add(2, `Numărul total de răspunsuri emise cu privire la examinarea și soluționarea ${kind === "tickets" ? "cererilor" : "sarcinilor"} (rezolvate)`, UNIT, count(done));
@@ -88,6 +82,12 @@ export function buildRegulatoryReport(items: ReportItem[], meta: ReportMeta, kin
   add("", `${noun} în lucru, în termen sau fără termen`, UNIT, count((t) => state(t) === "open_on_time" || state(t) === "open_no_due"));
   add("", `${noun} expirate (nerezolvate, termen depășit)`, UNIT, count((t) => state(t) === "expired"));
   add("", `${noun} anulate`, UNIT, count((t) => state(t) === "cancelled"));
+  if (kind === "tickets") {
+    add("", "origine: din portalul clienților", UNIT, count((t) => info(t.id).origin === "PORTAL"));
+    add("", "origine: create de noi (în CRM)", UNIT, count((t) => info(t.id).origin === "INTERNAL"));
+    const email = count((t) => info(t.id).origin === "EMAIL");
+    if (email[3]) add("", "origine: primite pe email", UNIT, email);
+  }
   add("", "consumatori casnici", UNIT, count((t) => t.consumerType === "HOUSEHOLD"));
   add("", "consumatori non casnici", UNIT, count((t) => t.consumerType === "NON_HOUSEHOLD"));
   add("", "tip consumator nespecificat", UNIT, count((t) => t.consumerType !== "HOUSEHOLD" && t.consumerType !== "NON_HOUSEHOLD"));

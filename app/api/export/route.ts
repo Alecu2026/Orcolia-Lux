@@ -267,7 +267,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
       ? { ...origin.summary, rows: [...origin.summary.rows, [], ...section.rows, [], ...dl.summaryRows] }
       : { name: "Sumar", rows: [["Sarcini exportate", items.length], [], ...section.rows, [], ...dl.summaryRows] };
     // foaia „Raport”: în forma formularului de raportare (indicatori × tip serviciu), prima după datele exportate
-    const report = buildRegulatoryReport(items, { byId: new Map([...meta.byId].map(([id, v]) => [id, { origin: v.origin, portalTplId: v.portalTplId, internalTplId: v.internalTplId }])), portalTemplates: meta.portalTemplates, internalTemplates: meta.internalTemplates }, entity === "tickets" ? "tickets" : "tasks");
+    const report = buildRegulatoryReport(items, { byId: new Map([...meta.byId].map(([id, v]) => [id, { origin: v.origin, portalTplId: v.portalTplId, internalTplId: v.internalTplId, typeKey: v.typeKey }])), portalTemplates: meta.portalTemplates, internalTemplates: meta.internalTemplates }, entity === "tickets" ? "tickets" : "tasks");
     return makeResponse(HEADERS, rows, entity, [report, summary, dl.sheet]);
   }
 

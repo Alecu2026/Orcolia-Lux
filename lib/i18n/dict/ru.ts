@@ -3225,6 +3225,7 @@ export const RU: Record<string, string> = {
   "Numărul de facturi și suma pe apă, canalizare și ambele (pentru perioada aleasă)": "Количество счетов и сумма по воде, канализации и по обеим услугам (за выбранный период)",
   "Serviciu": "Услуга",
   "Doar apă": "Только вода",
+  "Raport PDF (petiții și reclamații)": "PDF-отчёт (петиции и жалобы)",
   "Rapoarte": "Отчёты",
   "Petiții și reclamații cu privire la furnizarea serviciului": "Петиции и жалобы, связанные с предоставлением услуги",
   "Descarcă Excel": "Скачать Excel",

@@ -35,7 +35,21 @@ export async function ticketOrigins(items: { id: string; title: string; portalTe
   const internalName = new Map(internalTemplates.map((x) => [x.id, x.name]));
   const internalCount = new Map<string, { name: string; n: number }>();
   let noInternal = 0;
-  const byId = new Map<string, { origin: Origin; template: string; internal: string; portalTplId: string | null; internalTplId: string | null }>();
+  const byId = new Map<string, { origin: Origin; template: string; internal: string; portalTplId: string | null; internalTplId: string | null; typeKey: string }>();
+  const norm = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+  const portalByName = new Map(templates.filter((x) => norm(x.name)).map((x) => [norm(x.name), x.id]));
+  /** Tipul cererii, indiferent de origine: șablonul din portal; șablonul intern cu același nume ca unul din portal; altfel titlul care începe cu numele unui șablon din portal. `p:` = șablon din portal, `i:` = șablon intern fără pereche în portal, `none` = fără tip. */
+  const typeOf = (t: { title: string; portalTemplateId: string | null }, f: { tplId: string | null; tplName: string | null } | undefined): string => {
+    if (type === "TASK") return f?.tplId ? `i:${f.tplId}` : "none";
+    if (t.portalTemplateId && nameById.has(t.portalTemplateId)) return `p:${t.portalTemplateId}`;
+    if (f?.tplId) {
+      const pid = portalByName.get(norm(internalName.get(f.tplId) ?? f.tplName));
+      return pid ? `p:${pid}` : `i:${f.tplId}`;
+    }
+    const title = norm(t.title);
+    const hit = byLength.find((x) => norm(x.name) && title.startsWith(norm(x.name)));
+    return hit ? `p:${hit.id}` : "none";
+  };
   const perOrigin: Record<Origin, number> = { PORTAL: 0, INTERNAL: 0, EMAIL: 0 };
   const perTemplate = new Map<string, number>();
   let noTemplate = 0;
@@ -63,7 +77,7 @@ export async function ticketOrigins(items: { id: string; title: string; portalTe
       } else noInternal++;
     }
     perOrigin[origin]++;
-    byId.set(t.id, { origin, template, internal, portalTplId, internalTplId: origin === "INTERNAL" ? (f?.tplId ?? null) : null });
+    byId.set(t.id, { origin, template, internal, portalTplId, internalTplId: origin === "INTERNAL" ? (f?.tplId ?? null) : null, typeKey: typeOf(t, f) });
   }
   const summary: ExtraSheet = {
     name: "Sumar",
@@ -86,7 +100,8 @@ export async function ticketOrigins(items: { id: string; title: string; portalTe
     ],
   };
   // pentru foaia „Raport”: șabloanele din portal, cele interne și cele interne șterse între timp (cu numele salvat)
-  const internalRows = [...internalTemplates, ...[...internalCount].filter(([id]) => !internalName.has(id)).map(([id, v]) => ({ id, name: v.name }))];
+  // șabloanele interne care au pereche în portal (același nume) se numără la tipul din portal, deci nu mai au rând separat
+  const internalRows = [...internalTemplates, ...[...internalCount].filter(([id]) => !internalName.has(id)).map(([id, v]) => ({ id, name: v.name }))].filter((x) => type === "TASK" || !portalByName.has(norm(x.name)));
   return { byId, summary, portalTemplates: templates, internalTemplates: internalRows };
 }
 

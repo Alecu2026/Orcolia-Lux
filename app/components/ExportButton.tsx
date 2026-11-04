@@ -18,6 +18,7 @@ export default function ExportButton({
   filtered = false,
   getIds,
   count,
+  report,
 }: {
   entity: string;
   params?: Record<string, string | undefined>;
@@ -28,6 +29,8 @@ export default function ExportButton({
   getIds?: () => string[];
   /** Câte rânduri rămân în tabel (afișat în meniu). */
   count?: number;
+  /** Raportul „Petiții și reclamații” (PDF) pe rândurile rămase în tabel, cu filtrele aplicate; `describe` = filtrele active, ca text pentru antetul PDF-ului. */
+  report?: { kind: "tickets" | "tasks"; describe: () => string[] };
 }) {
   const tr = useT();
   const [open, setOpen] = useState(false);
@@ -63,6 +66,35 @@ export default function ExportButton({
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
       setOpen(false);
     } catch {
+      setError(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Raportul PDF: se generează pe serverul din rândurile rămase în tabel și se deschide într-o filă nouă (de acolo se poate descărca / tipări); dacă fila e blocată, se descarcă. */
+  async function openReport() {
+    if (!report || !getIds) return;
+    setBusy(true);
+    setError(false);
+    const win = window.open("", "_blank"); // deschisă acum, cât ținem clicul (altfel e blocată)
+    try {
+      const res = await fetch("/api/reports/petitions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: report.kind, ids: getIds(), format: "pdf", lines: report.describe() }) });
+      if (!res.ok) throw new Error(String(res.status));
+      const url = URL.createObjectURL(new Blob([await res.blob()], { type: "application/pdf" }));
+      if (win) win.location.href = url;
+      else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? "raport.pdf";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 120_000);
+      setOpen(false);
+    } catch {
+      win?.close();
       setError(true);
     } finally {
       setBusy(false);
@@ -116,6 +148,15 @@ export default function ExportButton({
                   {tr(text)}
                 </a>
               ),
+            )}
+            {report && getIds && (
+              <>
+                <div className="my-1 border-t border-[var(--color-line)]" />
+                <button type="button" disabled={busy} onClick={() => void openReport()} className={item} data-export-report>
+                  <span className="text-base">📄</span>
+                  {tr("Raport PDF (petiții și reclamații)")}
+                </button>
+              </>
             )}
             {error && <p className="px-3 py-1.5 text-xs text-st-cancelled">{tr("Eroare")}</p>}
           </div>

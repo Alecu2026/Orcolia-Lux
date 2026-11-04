@@ -836,7 +836,7 @@ export default function TasksTable({
         rowClassName={(t) => (overdue(t) ? "bg-st-cancelled/5" : "")}
         toolbar={(view) => (
           <>
-            {canExport && <ExportButton entity={ticketMode ? "tickets" : "tasks"} params={{ scope }} filtered={view.filtered} getIds={view.getIds} count={view.count} className={topBtn} />}
+            {canExport && <ExportButton entity={ticketMode ? "tickets" : "tasks"} params={{ scope }} filtered={view.filtered} getIds={view.getIds} count={view.count} report={{ kind: ticketMode ? "tickets" : "tasks", describe: view.describeFilters }} className={topBtn} />}
             {canImport && canCreate && <ImportButton entity={ticketMode ? "tickets" : "tasks"} className={topBtn} />}
             {canCreate && (
               <div className="relative">

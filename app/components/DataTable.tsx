@@ -192,7 +192,7 @@ export default function DataTable<T extends { id: string }>({
    * Butoane în dreapta barei de filtre (ex. „+ Nou", Export). Ca funcție primește starea listei: `filtered` = sunt filtre active (în tabel au rămas mai puține rânduri decât lista întreagă),
    * `getIds()` = id-urile rândurilor rămase, în ordinea tabelului, `count` = câte sunt — pentru un Export care chiar urmează filtrele.
    */
-  toolbar?: ReactNode | ((view: { filtered: boolean; getIds: () => string[]; count: number }) => ReactNode);
+  toolbar?: ReactNode | ((view: { filtered: boolean; getIds: () => string[]; count: number; describeFilters: () => string[] }) => ReactNode);
   /** Text în plus lângă numărătoare (primește lista filtrată). */
   summaryExtra?: (filtered: T[]) => ReactNode;
   /** Substantiv pentru numărătoare: „task-uri", „clienți"… */
@@ -597,7 +597,17 @@ export default function DataTable<T extends { id: string }>({
             {t("Resetează filtrele")}{activeCount > 0 ? ` (${activeCount})` : ""}
           </button>
         )}
-        {toolbar && <div className="ml-auto flex flex-wrap items-center gap-1.5">{typeof toolbar === "function" ? toolbar({ filtered: !pending && filtered.length !== rows.length, getIds: () => filtered.map((r) => r.id), count: filtered.length }) : toolbar}</div>}
+        {toolbar && <div className="ml-auto flex flex-wrap items-center gap-1.5">{typeof toolbar === "function" ? toolbar({
+          filtered: !pending && filtered.length !== rows.length,
+          getIds: () => filtered.map((r) => r.id),
+          count: filtered.length,
+          // filtrele active, ca text („Status: Finalizat”), pentru antetul rapoartelor
+          describeFilters: () => filters.flatMap((f) => {
+            const v = values[f.key];
+            if (!v) return [];
+            return [`${f.label}: ${f.kind === "select" ? (f.options.find((o) => o.value === v)?.label ?? v) : f.kind === "date" ? v.split("-").reverse().join(".") : v}`];
+          }),
+        }) : toolbar}</div>}
       </div>
 
       <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
