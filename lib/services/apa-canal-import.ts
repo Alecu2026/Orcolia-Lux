@@ -279,18 +279,34 @@ export function buildApaCanalPlan(
     readingByUid.set(uid, agg);
   }
 
-  // Contoarele fiecărui abonat: ultima citire a fiecărui contor (1C trimite câte un rând de citire per contor), ca factura să le arate pe toate.
-  type MeterRow = { serial: string; prev: number; curr: number; date: string; estimated: boolean };
+  // Contoarele fiecărui abonat, ca factura să le arate pe toate: câte un rând per (contor, consumator subordonat) din citiri — la o primărie, de exemplu, mai multe
+  // citiri pot avea aceeași serie de contor și diferă doar prin consumatorul subordonat (ПодчиненныйПотребитель) sau sub-contor (СубПрибор), deci nu se deduplică doar după serie.
+  type MeterRow = { serial: string; label: string; prev: number | null; curr: number | null; date: string; estimated: boolean };
   const metersByUid = new Map<string, Map<string, MeterRow>>();
+  const removed = (m: Record<string, unknown>) => !!m["ДатаСнятия"] && !str(m["ДатаСнятия"]).startsWith("0001-01-01");
   for (const r of data.citiri) {
-    const serial = str(r["ИзмерительныйПрибор"]);
-    if (!serial) continue;
     const uid = str(r.UID);
+    const label = str(r["ПодчиненныйПотребительНаименование"]);
+    const serial = str(r["СубПрибор"]) || str(r["ИзмерительныйПрибор"]);
+    if (!serial && !label) continue;
+    const key = `${serial}|${label}`;
     const byMeter = metersByUid.get(uid) ?? new Map<string, MeterRow>();
     const date = str(r["ДатаПоказаний"]);
-    const old = byMeter.get(serial);
-    if (!old || date >= old.date) byMeter.set(serial, { serial, prev: Number(r["ПредыдущиеПоказания"]) || 0, curr: Number(r["Показания"]) || 0, date, estimated: str(r["Источник"]) !== "Контролер" });
+    const old = byMeter.get(key);
+    if (!old || date >= old.date) byMeter.set(key, { serial, label, prev: Number(r["ПредыдущиеПоказания"]) || 0, curr: Number(r["Показания"]) || 0, date, estimated: str(r["Источник"]) !== "Контролер" });
     metersByUid.set(uid, byMeter);
+  }
+  // Abonații cu mai multe citiri primesc și contoarele active din lista de contoare care nu au citire în această perioadă (fără indici), ca factura să arate TOATE seriile.
+  // Cei cu un singur contor nu se ating (un contor înlocuit între timp n-ar trebui să apară ca al doilea rând).
+  for (const m of data.contoare) {
+    const uid = str(m.UID);
+    const byMeter = metersByUid.get(uid);
+    if (!byMeter || byMeter.size < 2 || removed(m)) continue;
+    const label = str(m["ПодчиненныйПотребительНаименование"]);
+    const serial = str(m["СубПрибор"]) || str(m["ИзмерительныйПрибор"]);
+    if (!serial) continue;
+    const key = `${serial}|${label}`;
+    if (!byMeter.has(key)) byMeter.set(key, { serial, label, prev: null, curr: null, date: "", estimated: false });
   }
 
   const itemsByUid = new Map<string, Record<string, unknown>[]>();
@@ -451,8 +467,18 @@ export function buildApaCanalPlan(
     const meterCurrReadingNum = reading ? reading.curr : null;
     const meterReadingEstimated = reading ? reading.estimat : false;
     // Cu 2+ contoare, lista lor intră pe factură (serie + indici la fiecare); cu unul singur rămân câmpurile obișnuite.
-    const metersList = [...(metersByUid.get(uid)?.values() ?? [])].sort((a, b) => a.serial.localeCompare(b.serial, "ro", { numeric: true }));
-    const metersJson = metersList.length >= 2 ? metersList.map((m) => ({ serial: m.serial, prev: pad5(m.prev), curr: pad5(m.curr), estimated: m.estimated })) : null;
+    const metersList = [...(metersByUid.get(uid)?.values() ?? [])].sort((a, b) => a.label.localeCompare(b.label, "ro", { numeric: true }) || a.serial.localeCompare(b.serial, "ro", { numeric: true }));
+    const ownName = name.trim().toLowerCase();
+    const metersJson =
+      metersList.length >= 2
+        ? metersList.map((m) => ({
+            serial: m.serial,
+            prev: m.prev == null ? "" : pad5(m.prev),
+            curr: m.curr == null ? "" : pad5(m.curr),
+            estimated: m.estimated,
+            ...(m.label && m.label.trim().toLowerCase() !== ownName ? { label: m.label } : {}),
+          }))
+        : null;
     const metersSig = metersJson ? createHash("sha1").update(JSON.stringify(metersJson)).digest("hex").slice(0, 12) : null;
 
     // Factura există deja (același abonat, aceeași perioadă): nu se creează alta. Dacă 1C trimite acum alte

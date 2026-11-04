@@ -6,7 +6,7 @@ import { fmtDate } from "../app/components/invoice-meta";
 export type ConsumPoint = { label: string; value: number };
 
 /** Un contor de pe factură: serie, indici precedent / actual (text, ca pe factură) și dacă volumul e estimat. */
-export type InvoiceMeter = { serial: string; prev: string; curr: string; estimated: boolean };
+export type InvoiceMeter = { serial: string; prev: string; curr: string; estimated: boolean; /** Consumatorul / locul de consum subordonat căruia îi aparține contorul (la abonații cu mai mulți consumatori, ex. o primărie). */ label?: string };
 
 /** Lista de contoare din JSON-ul salvat (validată; orice rând stricat se ignoră). */
 export function parseMeters(raw: unknown): InvoiceMeter[] {
@@ -16,8 +16,9 @@ export function parseMeters(raw: unknown): InvoiceMeter[] {
     if (!r || typeof r !== "object") continue;
     const o = r as Record<string, unknown>;
     const serial = typeof o.serial === "string" ? o.serial.trim() : "";
-    if (!serial) continue;
-    out.push({ serial: serial.slice(0, 40), prev: typeof o.prev === "string" ? o.prev.slice(0, 20) : "", curr: typeof o.curr === "string" ? o.curr.slice(0, 20) : "", estimated: o.estimated === true });
+    const label = typeof o.label === "string" ? o.label.trim().slice(0, 120) : "";
+    if (!serial && !label) continue;
+    out.push({ serial: (serial || "—").slice(0, 40), prev: typeof o.prev === "string" ? o.prev.slice(0, 20) : "", curr: typeof o.curr === "string" ? o.curr.slice(0, 20) : "", estimated: o.estimated === true, ...(label ? { label } : {}) });
   }
   return out;
 }

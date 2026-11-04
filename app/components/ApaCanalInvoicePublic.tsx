@@ -972,6 +972,7 @@ export function ApaCanalContinuationPage({ invoice, page, pageNo, totalPages }: 
             <tr className="text-left">
               <th style={{ ...th, width: "12mm" }}>Nr.</th>
               <th style={th}>Numărul contorului</th>
+              {page.rows.some((x) => x.label) && <th style={th}>Consumator / loc de consum</th>}
               <th style={{ ...th, textAlign: "right" }}>Indicii precedenți</th>
               <th style={{ ...th, textAlign: "right" }}>Indicii actuali</th>
               <th style={{ ...th, textAlign: "center" }}>Volum estimativ</th>
@@ -982,6 +983,7 @@ export function ApaCanalContinuationPage({ invoice, page, pageNo, totalPages }: 
               <tr key={i} className="font-semibold">
                 <td style={td}>{page.from + i}</td>
                 <td style={td}>{mt.serial || "—"}</td>
+                {page.rows.some((x) => x.label) && <td style={td}>{mt.label || ""}</td>}
                 <td className="tabular-nums" style={{ ...td, textAlign: "right" }}>{mt.prev || "—"}</td>
                 <td className="tabular-nums" style={{ ...td, textAlign: "right" }}>{mt.curr || "—"}</td>
                 <td style={{ ...td, textAlign: "center" }}>{mt.estimated ? "DA" : ""}</td>

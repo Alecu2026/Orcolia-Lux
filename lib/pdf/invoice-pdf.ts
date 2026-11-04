@@ -193,11 +193,13 @@ function drawContinuationPage(doc: Doc, invoice: ApaCanalInvoiceData, page: Cont
   put(doc, page.kind === "meters" ? `Contoare (continuare, de la nr. ${page.from})` : `Servicii (continuare, de la linia ${page.from})`, L, 30, 3.6, 1.5, { bold: true });
 
   const s = 3.3, rowH = 6.2;
-  const cols = [12, 0.34, 0.2, 0.2, 0.26].map((v, i) => (i === 0 ? v : v * (W - 12)));
+  // la contoarele cu consumator subordonat (ex. o primărie) apare o coloană în plus cu numele lui
+  const withLabel = page.kind === "meters" && page.rows.some((x) => x.label);
+  const cols = (withLabel ? [12, 0.17, 0.33, 0.16, 0.16, 0.18] : [12, 0.34, 0.2, 0.2, 0.26]).map((v, i) => (i === 0 ? v : v * (W - 12)));
   const xs: number[] = [];
   cols.reduce((x, w) => (xs.push(x), x + w), L);
-  const heads = page.kind === "meters" ? ["Nr.", "Numărul contorului", "Indicii precedenți", "Indicii actuali", "Volum estimativ"] : ["Nr.", "Denumirea serviciului", "Volumul, m3", "Tariful lei/m3", "Suma calculată"];
-  const align: Align[] = ["left", "left", "right", "right", page.kind === "meters" ? "center" : "right"];
+  const heads = page.kind === "meters" ? ["Nr.", "Numărul contorului", ...(withLabel ? ["Consumator / loc de consum"] : []), "Indicii precedenți", "Indicii actuali", "Volum estimativ"] : ["Nr.", "Denumirea serviciului", "Volumul, m3", "Tariful lei/m3", "Suma calculată"];
+  const align: Align[] = page.kind === "meters" ? (withLabel ? ["left", "left", "left", "right", "right", "center"] : ["left", "left", "right", "right", "center"]) : ["left", "left", "right", "right", "right"];
   let y = 38;
   heads.forEach((h, c) => put(doc, h, xs[c] + 2, y + 1, s, 1.5, { color: BORDER, align: align[c], width: cols[c] - 4 }));
   y += 1 + s * 1.5 + 1;
@@ -205,8 +207,14 @@ function drawContinuationPage(doc: Doc, invoice: ApaCanalInvoiceData, page: Cont
   y += PX;
   if (page.kind === "meters") {
     page.rows.forEach((m, i) => {
-      const cells = [String(page.from + i), m.serial || "—", m.prev || "—", m.curr || "—", m.estimated ? "DA" : ""];
-      cells.forEach((t, c) => put(doc, t, xs[c] + 2, y + 1.2, s, 1.5, { bold: c > 0, color: TEXT, align: align[c], width: cols[c] - 4 }));
+      const cells = [String(page.from + i), m.serial || "—", ...(withLabel ? [m.label || ""] : []), m.prev || "—", m.curr || "—", m.estimated ? "DA" : ""];
+      cells.forEach((t, c) => {
+        const w = cols[c] - 4;
+        // numele consumatorului poate fi lung: se taie ca să nu intre peste coloana următoare
+        let txt = t;
+        while (txt.length > 3 && widthMm(doc, txt, s, c > 0 && !(withLabel && c === 2)) > w) txt = txt.slice(0, -2);
+        put(doc, txt === t ? t : `${txt.trimEnd()}…`, xs[c] + 2, y + 1.2, s, 1.5, { bold: c > 0 && !(withLabel && c === 2), color: TEXT, align: align[c], width: w });
+      });
       y += rowH;
       hline(doc, L, R, y - PX, PX, BORDER_LIGHT);
     });
