@@ -63,6 +63,8 @@ export type InvoiceShard = {
   total: number;
   gz: Buffer;
   rows: InvRow[];
+  /** Serviciile (apă / canalizare) ale unor facturi încă nu sunt calculate: luna se servește imediat fără ele, iar în fundal se completează (vezi `enqueueSvcFill`). Nu se salvează în baza de date. */
+  incomplete?: boolean;
 };
 
 type Artifact = { v: 3; at: number; month: string; total: number; rows: InvTuple[] };
@@ -172,11 +174,11 @@ function toTuple(r: TupleSource, clientName: string | null, svc: InvSvc = 0): In
  * Un snapshot de lună. `rows` (obiectele decodate, pentru filtrarea de pe server) se construiesc LA PRIMA FOLOSIRE: cererea /api/invoices/snapshot are nevoie doar de varianta
  * comprimată, deci o lună încărcată din baza de date nu se mai despachetează degeaba (≈ 100–200 ms la 19.000 de facturi).
  */
-function makeShard(month: string, version: string, builtAt: number, total: number, gz: Buffer, tuples?: InvTuple[]): InvoiceShard {
+function makeShard(month: string, version: string, builtAt: number, total: number, gz: Buffer, tuples?: InvTuple[], incomplete = false): InvoiceShard {
   let rows: InvRow[] | null = null;
   let tup: InvTuple[] | null = tuples ?? null;
   return {
-    month, version, builtAt, total, gz,
+    month, version, builtAt, total, gz, incomplete,
     get rows(): InvRow[] {
       if (!rows) {
         if (!tup) tup = (JSON.parse(gunzipSync(gz).toString("utf8")) as Artifact).rows;
@@ -219,23 +221,56 @@ function setL1(shard: InvoiceShard) {
   }
 }
 
-/** Serviciile fiecărei facturi Apă-Canal dintr-o lună (id → 1 apă / 2 canalizare / 3 amândouă), într-o singură agregare; fără intrare = fără servicii. */
+/** Serviciile fiecărei facturi Apă-Canal dintr-o lună (id → 0 niciunul / 1 apă / 2 canalizare / 3 amândouă), într-o singură agregare (grea: câte o căutare de linii per factură). NU se rulează în cererea utilizatorului, ci în fundal, pe rând (`enqueueSvcFill`). */
 async function serviceMapForMonth(a: number, b: number): Promise<Map<string, InvSvc>> {
   const raw = (await prisma.invoice.aggregateRaw({
     pipeline: [
       { $match: { kind: "APA_CANAL", issueDate: { $gte: { $date: new Date(a).toISOString() }, $lt: { $date: new Date(b).toISOString() } } } },
       { $lookup: { from: "InvoiceItem", localField: "_id", foreignField: "invoiceId", as: "items" } },
       { $project: { w: svcLine("alimentare cu ap[aă]"), s: svcLine("canalizare") } },
-      { $match: { $or: [{ w: true }, { s: true }] } },
     ],
   })) as unknown as { _id: { $oid: string } | string; w: boolean; s: boolean }[];
   const out = new Map<string, InvSvc>();
-  for (const r of raw) out.set(typeof r._id === "string" ? r._id : r._id.$oid, r.w && r.s ? 3 : r.w ? 1 : 2);
+  for (const r of raw) out.set(typeof r._id === "string" ? r._id : r._id.$oid, r.w && r.s ? 3 : r.w ? 1 : r.s ? 2 : 0);
   return out;
 }
 
+const gsvc = globalThis as unknown as { __invSvc?: { queue: string[]; worker: boolean; maps: Map<string, { at: number; map: Map<string, InvSvc> }> } };
+const SVC = (gsvc.__invSvc ??= { queue: [] as string[], worker: false, maps: new Map<string, { at: number; map: Map<string, InvSvc> }>() });
+const SVC_MAP_TTL_MS = 5 * 60_000;
+
+/** Calculează serviciile lunii (agregarea grea) și reface luna cu ele. */
+async function fillServicesNow(month: string): Promise<void> {
+  const [a, b] = monthBoundsMs(month);
+  const map = await serviceMapForMonth(a, b);
+  SVC.maps.set(month, { at: Date.now(), map });
+  await rebuildInvoiceShard(month, "servicii", false);
+}
+
+/** Lunile cu servicii necalculate se completează în fundal, UNA câte una (agregarea e grea; pornită pe toate lunile deodată, bloca pagina de facturi). */
+function enqueueSvcFill(month: string): void {
+  if (!SVC.queue.includes(month)) SVC.queue.push(month);
+  if (SVC.worker) return;
+  SVC.worker = true;
+  runInBackground(async () => {
+    try {
+      while (SVC.queue.length) {
+        const m = SVC.queue.shift() as string;
+        try {
+          await fillServicesNow(m);
+        } catch (e) {
+          console.error(`[invoice-cache] servicii ${m}:`, e);
+        }
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    } finally {
+      SVC.worker = false;
+    }
+  });
+}
+
 /** Reconstruiește luna din facturi și o salvează în L2. O singură execuție per lună la un moment dat. */
-export function rebuildInvoiceShard(month: string, reason = "manual"): Promise<InvoiceShard> {
+export function rebuildInvoiceShard(month: string, reason = "manual", carry = false): Promise<InvoiceShard> {
   const cur = S.building.get(month);
   if (cur) return cur;
   const p = (async () => {
@@ -243,25 +278,44 @@ export function rebuildInvoiceShard(month: string, reason = "manual"): Promise<I
     const startedAt = new Date();
     ensureIssueDateIndex();
     const [a, b] = monthBoundsMs(month);
-    const [invoices, names, svcById] = await Promise.all([
+    const [invoices, names] = await Promise.all([
       prisma.invoice.findMany({ where: { issueDate: { gte: new Date(a), lt: new Date(b) } }, select: { ...TUPLE_SELECT, createdAt: true } }),
       allClientNames(),
-      serviceMapForMonth(a, b),
     ]);
     // cele mai noi create primele (ordinea listei); sortarea e aici, nu în baza de date, ca interogarea să folosească indexul pe data emiterii
     invoices.sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime());
-    const tuples = invoices.map((r) => toTuple(r, r.clientId ? (names.get(r.clientId) ?? null) : null, svcById.get(r.id) ?? 0));
+    // Serviciile facturilor: dintr-un calcul proaspăt (vezi `enqueueSvcFill`), sau — la o modificare minoră — din luna veche aflată în memorie; ce nu se știe încă rămâne 0 și se completează în fundal.
+    const fresh = SVC.maps.get(month);
+    const known = fresh && Date.now() - fresh.at < SVC_MAP_TTL_MS ? fresh.map : null;
+    const prev = S.l1.get(month);
+    const carried: Map<string, InvSvc> | null = !known && carry && prev && !prev.incomplete ? new Map(prev.rows.filter((r) => r.kind === "APA_CANAL").map((r): [string, InvSvc] => [r.id, r.svc])) : null;
+    const svcSrc: Map<string, InvSvc> | null = known ?? carried;
+    if (known) SVC.maps.delete(month);
+    let incomplete = false;
+    const tuples = invoices.map((r) => {
+      let svc: InvSvc = 0;
+      if (r.kind === "APA_CANAL") {
+        const v = svcSrc?.get(r.id);
+        if (v === undefined) incomplete = true;
+        else svc = v;
+      }
+      return toTuple(r, r.clientId ? (names.get(r.clientId) ?? null) : null, svc);
+    });
     const art: Artifact = { v: 3, at: startedAt.getTime(), month, total: tuples.length, rows: tuples };
     const gz = gzipSync(Buffer.from(JSON.stringify(art), "utf8"), { level: 6 });
     const version = createHash("sha1").update(gz).digest("hex").slice(0, 16);
-    try {
-      const data = { version, builtAt: startedAt, rows: tuples.length, gz: Uint8Array.from(gz) };
-      const upd = await prisma.payerCacheEntry.updateMany({ where: { id: shardId(month) }, data });
-      if (upd.count === 0) await prisma.payerCacheEntry.create({ data: { id: shardId(month), ...data } });
-    } catch (e) {
-      console.error(`[invoice-cache] nu am putut salva ${month} în baza de date (rămâne doar în memorie):`, e);
+    // o lună fără servicii calculate nu se salvează în baza de date (ar rămâne așa): se salvează abia după completare
+    if (!incomplete) {
+      try {
+        const data = { version, builtAt: startedAt, rows: tuples.length, gz: Uint8Array.from(gz) };
+        const upd = await prisma.payerCacheEntry.updateMany({ where: { id: shardId(month) }, data });
+        if (upd.count === 0) await prisma.payerCacheEntry.create({ data: { id: shardId(month), ...data } });
+      } catch (e) {
+        console.error(`[invoice-cache] nu am putut salva ${month} în baza de date (rămâne doar în memorie):`, e);
+      }
     }
-    const shard = makeShard(month, version, startedAt.getTime(), tuples.length, gz, tuples);
+    const shard = makeShard(month, version, startedAt.getTime(), tuples.length, gz, tuples, incomplete);
+    if (incomplete) enqueueSvcFill(month);
     setL1(shard);
     S.checkedAt.set(month, Date.now());
     S.patchSeq.set(month, 0);
@@ -285,13 +339,13 @@ function runInBackground(fn: () => Promise<unknown>) {
   }
 }
 
-function scheduleRebuild(month: string, delayMs: number, reason: string) {
+function scheduleRebuild(month: string, delayMs: number, reason: string, carry = false) {
   if (S.scheduled.has(month)) return;
   S.scheduled.add(month);
   runInBackground(async () => {
     await new Promise((r) => setTimeout(r, delayMs));
     S.scheduled.delete(month);
-    await rebuildInvoiceShard(month, reason);
+    await rebuildInvoiceShard(month, reason, carry);
   });
 }
 
@@ -308,6 +362,11 @@ async function resolveShard(month: string): Promise<InvoiceShard> {
   const metas = await readMetas(month);
   S.checkedAt.set(month, Date.now());
   const meta = metas.shard;
+  // luna e în memorie, dar fără servicii calculate (nu e în baza de date): o servim așa, se completează în fundal — nu o refacem la fiecare cerere
+  if (cur?.incomplete && !meta && localHard(month) <= cur.builtAt) {
+    enqueueSvcFill(month);
+    return cur;
+  }
   if (meta) {
     const builtMs = meta.builtAt.getTime();
     const dirty = Math.max(meta.dirtyAt?.getTime() ?? 0, metas.all?.dirtyAt?.getTime() ?? 0, localHard(month));
@@ -321,7 +380,7 @@ async function resolveShard(month: string): Promise<InvoiceShard> {
           S.lists.clear();
         }
         const soft = Math.max(meta.softDirtyAt?.getTime() ?? 0, metas.all?.softDirtyAt?.getTime() ?? 0, localSoft(month));
-        if (soft > builtMs) scheduleRebuild(month, SOFT_DELAY_MS, "modificare minoră");
+        if (soft > builtMs) scheduleRebuild(month, SOFT_DELAY_MS, "modificare minoră", true);
         return agedOut(shard, builtMs);
       }
     }
@@ -413,7 +472,7 @@ export async function syncInvoiceToCache(id: string): Promise<void> {
         const [row] = decodeInvoices([toTuple(r!, names, svc)]);
         rows = idx >= 0 ? rows.map((x, i) => (i === idx ? row : x)) : [row, ...rows];
       }
-      const next: InvoiceShard = { month: sh.month, version: sh.version, builtAt: sh.builtAt, gz: sh.gz, rows, total: rows.length };
+      const next: InvoiceShard = { month: sh.month, version: sh.version, builtAt: sh.builtAt, gz: sh.gz, rows, total: rows.length, incomplete: sh.incomplete };
       S.l1.set(m, next);
       S.patchSeq.set(m, (S.patchSeq.get(m) ?? 0) + 1);
       S.patched.delete(m);
@@ -445,7 +504,7 @@ async function markMonths(months: string[], soft: boolean) {
   } catch (e) {
     console.error("[invoice-cache] nu am putut marca modificarea:", e);
   }
-  for (const m of months) scheduleRebuild(m, soft ? SOFT_DELAY_MS : HARD_DELAY_MS, soft ? "modificare minoră" : "după modificare");
+  for (const m of months) scheduleRebuild(m, soft ? SOFT_DELAY_MS : HARD_DELAY_MS, soft ? "modificare minoră" : "după modificare", true); // o factură schimbată: serviciile celorlalte rămân cele știute
 }
 
 /**
@@ -501,7 +560,9 @@ export async function prewarmInvoices(): Promise<boolean> {
     const dirty = Math.max(meta?.dirtyAt?.getTime() ?? 0, all?.dirtyAt?.getTime() ?? 0);
     const soft = Math.max(meta?.softDirtyAt?.getTime() ?? 0, all?.softDirtyAt?.getTime() ?? 0);
     if (!meta || Date.now() - builtMs > 20 * 60 * 60 * 1000 || dirty > builtMs || soft > builtMs) {
-      await rebuildInvoiceShard(month, "cron zilnic");
+      const sh = await rebuildInvoiceShard(month, "cron zilnic");
+      // cronul are timp: completează acum serviciile lunii (în cererile utilizatorilor se completează în fundal)
+      if (sh.incomplete) await fillServicesNow(month);
       did = true;
     }
   }
