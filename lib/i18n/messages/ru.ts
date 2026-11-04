@@ -11,6 +11,7 @@ const ru: Messages = {
     projects: "Проекты",
     map: "Карта",
     team: "Команда",
+    reports: "Отчёты",
     invoices: "Счета",
     clients: "Клиенты",
     payers: "Плательщики",

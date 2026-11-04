@@ -1,8 +1,10 @@
 import { getCurrentUser } from "@/lib/dal";
 import { serviceTypeLabel } from "@/lib/service-type";
 import { consumerTypeLabel } from "@/lib/consumer-type";
-import { DEADLINE_LABEL, deadlineState } from "@/lib/task-deadline";
+import { DEADLINE_LABEL, closedAtMs, deadlineEnd, deadlineState, type DeadlineState } from "@/lib/task-deadline";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
+import { buildRegulatoryReport } from "@/lib/regulatory-report";
+import { ORIGIN_LABEL, ticketOrigins } from "@/lib/services/task-origins";
 import { listSections, sectionMaps } from "@/lib/queries/sections";
 import { deriveSectionId } from "@/lib/sections";
 import { listClients } from "@/lib/queries/clients";
@@ -70,87 +72,68 @@ async function sectionBreakdown(items: { id: string; sectionId: string | null; t
   return { byId, rows };
 }
 
-type Origin = "PORTAL" | "INTERNAL" | "EMAIL";
-const ORIGIN_LABEL: Record<Origin, string> = { PORTAL: "Portal clienți", INTERNAL: "Creată de noi (CRM)", EMAIL: "Email" };
-const NO_INTERNAL = "Fără șablon intern (create manual / înainte de evidența șabloanelor)";
-const NO_TEMPLATE ="Fără șablon (altă cerere / cereri mai vechi)";
+const DEADLINE_ORDER: DeadlineState[] = ["done_on_time", "done_late", "expired", "open_on_time", "open_no_due", "done_no_due", "done_unknown", "cancelled"];
+
+/** „2 zile 3 h” / „5 h 10 min” / „12 min” dintr-o durată în ms. */
+function fmtDelay(msDiff: number): string {
+  const min = Math.max(0, Math.round(msDiff / 60_000));
+  const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60), m = min % 60;
+  if (d) return h ? `${d} zile ${h} h` : `${d} zile`;
+  if (h) return m ? `${h} h ${m} min` : `${h} h`;
+  return `${m} min`;
+}
 
 /**
- * Originea cererilor exportate. Nu e salvată ca atare: doar portalul și emailul completează solicitantul (`fromName` / `fromEmail`), iar cererile create în CRM nu —
- * deci „portal” = are șablon din portal sau solicitant fără să fie din email; „creată de noi” = restul. Cererile mai vechi din portal, fără șablon salvat, se potrivesc
- * după titlu (care pornește din numele șablonului), ca în filtrul „Șablon din portal”. Șablonul intern folosit (Setări → Șabloane) se păstrează pe cerere (`taskTemplateId`) doar de la introducerea evidenței; cele create înainte, sau fără șablon, apar la „Fără șablon intern”.
+ * Raportul față de termen: câte sunt rezolvate în termen / după termen / expirate…, pe persoană (cine a finalizat după termen) și o foaie „După termen” cu fiecare sarcină / cerere
+ * rezolvată după termen. „Cine” = utilizatorul care a pus statusul „Finalizat” (din jurnalul de activitate).
  */
-async function ticketOrigins(items: { id: string; title: string; portalTemplateId: string | null }[]) {
-  const [templates, internalTemplates, flags] = await Promise.all([
-    prisma.portalRequestTemplate.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
-    prisma.taskTemplate.findMany({ where: { type: "TICKET" }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
-    (async () => {
-      const out = new Map<string, { emailSource: boolean; who: boolean; tplId: string | null; tplName: string | null }>();
-      const ids = items.map((t) => t.id);
-      const chunks: string[][] = [];
-      for (let i = 0; i < ids.length; i += 1000) chunks.push(ids.slice(i, i + 1000));
-      // loturi de câte 1000 de id-uri, câte 4 deodată (un `id in` uriaș e lent pe MongoDB)
-      for (let i = 0; i < chunks.length; i += 4) {
-        const parts = await Promise.all(chunks.slice(i, i + 4).map((c) => prisma.task.findMany({ where: { id: { in: c } }, select: { id: true, emailSource: true, fromName: true, fromEmail: true, taskTemplateId: true, taskTemplateName: true } })));
-        for (const r of parts.flat()) out.set(r.id, { emailSource: !!r.emailSource, who: !!(r.fromName?.trim() || r.fromEmail?.trim()), tplId: r.taskTemplateId ?? null, tplName: r.taskTemplateName ?? null });
-      }
-      return out;
-    })(),
-  ]);
-  const nameById = new Map(templates.map((x) => [x.id, x.name]));
-  const byLength = [...templates].sort((a, b) => b.name.length - a.name.length);
-  const internalName = new Map(internalTemplates.map((x) => [x.id, x.name]));
-  const internalCount = new Map<string, { name: string; n: number }>();
-  let noInternal = 0;
-  const byId = new Map<string, { origin: Origin; template: string; internal: string }>();
-  const perOrigin: Record<Origin, number> = { PORTAL: 0, INTERNAL: 0, EMAIL: 0 };
-  const perTemplate = new Map<string, number>();
-  let noTemplate = 0;
+async function deadlineReport(
+  items: { id: string; seq: number | null; title: string; status: string; dueAt: Date | null; closedAt: Date | null; executedOn: string | null; assigneeName: string | null; teamName: string | null }[],
+  sectionById: Map<string, string>,
+  label: string,
+) {
+  const counts = new Map<DeadlineState, number>();
+  const late: { t: (typeof items)[number]; delay: number; closed: number }[] = [];
   for (const t of items) {
-    const f = flags.get(t.id);
-    const origin: Origin = f?.emailSource ? "EMAIL" : t.portalTemplateId || f?.who ? "PORTAL" : "INTERNAL";
-    let template = "";
-    if (origin === "PORTAL") {
-      const title = t.title.trim().toLowerCase();
-      const tplId = (t.portalTemplateId && nameById.has(t.portalTemplateId) ? t.portalTemplateId : null) ?? byLength.find((x) => x.name.trim() && title.startsWith(x.name.trim().toLowerCase()))?.id ?? null;
-      template = tplId ? (nameById.get(tplId) ?? "") : "";
-      if (tplId) perTemplate.set(tplId, (perTemplate.get(tplId) ?? 0) + 1); // pe id: două șabloane cu același nume nu se adună
-      else noTemplate++;
+    const st = deadlineState(t);
+    counts.set(st, (counts.get(st) ?? 0) + 1);
+    if (st === "done_late") {
+      const closed = closedAtMs(t)!;
+      late.push({ t, delay: closed - (deadlineEnd(t.dueAt) ?? closed), closed });
     }
-    // șablonul intern (doar la cererile create de noi): numele de acum, altfel cel salvat la creare (șablon șters ulterior)
-    let internal = "";
-    if (origin === "INTERNAL") {
-      if (f?.tplId) {
-        internal = internalName.get(f.tplId) ?? (f.tplName ? `${f.tplName} (șters)` : "(șablon șters)");
-        const cur = internalCount.get(f.tplId);
-        if (cur) cur.n++;
-        else internalCount.set(f.tplId, { name: internal, n: 1 });
-      } else noInternal++;
-    }
-    perOrigin[origin]++;
-    byId.set(t.id, { origin, template, internal });
   }
-  const summary: ExtraSheet = {
-    name: "Sumar",
+  // cine a finalizat: ultima trecere în „Finalizat” din jurnal
+  const doneBy = new Map<string, string>();
+  const ids = late.map((x) => x.t.id);
+  for (let i = 0; i < ids.length; i += 1000) {
+    const acts = await prisma.taskActivity.findMany({ where: { taskId: { in: ids.slice(i, i + 1000) }, toStatus: "DONE" }, orderBy: { createdAt: "asc" }, select: { taskId: true, userId: true } });
+    for (const a of acts) doneBy.set(a.taskId, a.userId);
+  }
+  const userIds = [...new Set(doneBy.values())];
+  const names = new Map((userIds.length ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : []).map((u) => [u.id, u.name]));
+  const who = (id: string) => (doneBy.has(id) ? names.get(doneBy.get(id)!) ?? "(cont șters)" : "(necunoscut)");
+
+  const perPerson = new Map<string, number>();
+  for (const x of late) perPerson.set(who(x.t.id), (perPerson.get(who(x.t.id)) ?? 0) + 1);
+  const summaryRows: (string | number)[][] = [
+    ["Situație termen", label],
+    ...DEADLINE_ORDER.filter((s) => counts.get(s)).map((s): (string | number)[] => [DEADLINE_LABEL[s], counts.get(s)!]),
+    [],
+    ["Rezolvate după termen, pe persoană (cine a finalizat)", label],
+    ...[...perPerson].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ro")).map(([n, c]): (string | number)[] => [n, c]),
+    ["Total rezolvate după termen", late.length],
+  ];
+  const HEAD = ["#", "Titlu", "Finalizată de", "Asignat", "Echipă", "Secție", "Scadent", "Finalizată la", "Întârziere"];
+  const sheet: ExtraSheet = {
+    name: "După termen",
+    header: true,
+    widths: [8, 50, 24, 24, 24, 22, 14, 18, 16],
     rows: [
-      ["Cereri exportate", items.length],
-      [],
-      ["Origine", "Cereri"],
-      ["Create din portalul clienților", perOrigin.PORTAL],
-      ["Create de noi (în CRM, inclusiv din șabloanele interne)", perOrigin.INTERNAL],
-      ...(perOrigin.EMAIL ? [["Primite pe email", perOrigin.EMAIL]] : []),
-      [],
-      ["Din portalul clienților, pe șabloane", "Cereri"],
-      ...templates.map((x): (string | number)[] => [x.name, perTemplate.get(x.id) ?? 0]),
-      [NO_TEMPLATE, noTemplate],
-      [],
-      ["Create de noi, pe șabloane interne", "Cereri"],
-      ...internalTemplates.map((x): (string | number)[] => [x.name, internalCount.get(x.id)?.n ?? 0]),
-      ...[...internalCount].filter(([id]) => !internalName.has(id)).map(([, v]): (string | number)[] => [v.name, v.n]),
-      [NO_INTERNAL, noInternal],
+      HEAD,
+      ...late.sort((a, b) => b.delay - a.delay).map(({ t, delay, closed }): (string | number)[] => [t.seq ?? "", t.title, who(t.id), t.assigneeName ?? "", t.teamName ?? "", sectionById.get(t.id) ?? "", fmtDate(t.dueAt), fmtDateTime(new Date(closed)), fmtDelay(delay)]),
     ],
   };
-  return { byId, summary };
+  return { summaryRows, sheet, lateCount: late.length };
 }
 
 export async function GET(req: Request) {
@@ -243,7 +226,8 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
     const clientNameMap = await clientNamesFor(clientIds); // id-in cu mii de id-uri e lent: pentru liste mari se citește harta numelor
 
     // Cereri: de unde vine fiecare (portalul clienților / creată de noi în CRM / email) și din ce șablon din portal; la Excel, o foaie „Sumar” numără pe fiecare
-    const origin = entity === "tickets" ? await ticketOrigins(items) : null;
+    const meta = await ticketOrigins(items, entity === "tickets" ? "TICKET" : "TASK");
+    const origin = entity === "tickets" ? meta : null;
     const section = await sectionBreakdown(items, entity === "tickets" ? "Cereri" : "Sarcini");
     const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Secție", "Proiect", "Client", "Adresă", "Nume consumator", "Tip serviciu", "Tip consumator", ...(origin ? ["Origine", "Șablon din portal", "Șablon intern"] : []), "Categorie", "Scadent", "Situație termen", "Data finalizării", "Data executării", "Măsuri luate", "Timp de rezolvare", "Feedback client (1-5)", "Comentariu feedback", "Progres (%)", "Creat la", "Creat de", "Descriere"];
     const rows = items.map((t) => ({
@@ -278,10 +262,13 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
     }));
 
     // foaia „Sumar”: la cereri, originea / șabloanele + secțiile; la sarcini, doar secțiile
+    const dl = await deadlineReport(items, section.byId, entity === "tickets" ? "Cereri" : "Sarcini");
     const summary: ExtraSheet = origin
-      ? { ...origin.summary, rows: [...origin.summary.rows, [], ...section.rows] }
-      : { name: "Sumar", rows: [["Sarcini exportate", items.length], [], ...section.rows] };
-    return makeResponse(HEADERS, rows, entity, [summary]);
+      ? { ...origin.summary, rows: [...origin.summary.rows, [], ...section.rows, [], ...dl.summaryRows] }
+      : { name: "Sumar", rows: [["Sarcini exportate", items.length], [], ...section.rows, [], ...dl.summaryRows] };
+    // foaia „Raport”: în forma formularului de raportare (indicatori × tip serviciu), prima după datele exportate
+    const report = buildRegulatoryReport(items, { byId: new Map([...meta.byId].map(([id, v]) => [id, { origin: v.origin, portalTplId: v.portalTplId, internalTplId: v.internalTplId }])), portalTemplates: meta.portalTemplates, internalTemplates: meta.internalTemplates }, entity === "tickets" ? "tickets" : "tasks");
+    return makeResponse(HEADERS, rows, entity, [report, summary, dl.sheet]);
   }
 
   // ─── PROJECTS ─────────────────────────────────────────────────────

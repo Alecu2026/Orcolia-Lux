@@ -17,7 +17,26 @@ export function toCSV(headers: string[], rows: Row[]): string {
 }
 
 /** O foaie în plus (după cea cu date): rânduri libere, prima coloană text, restul numere. */
-export type ExtraSheet = { name: string; rows: (string | number)[][] };
+export type ExtraSheet = { name: string; rows: (string | number)[][]; /** lățimile coloanelor (caractere); implicit: prima coloană după conținut, restul 12 */ widths?: number[]; /** prima linie e antet (se îngheață și are filtru) */ header?: boolean; /** celule îmbinate (rând / coloană, de la 0) */ merges?: { s: { r: number; c: number }; e: { r: number; c: number } }[] };
+
+/** Un fișier Excel doar din foi libere (rapoarte), fără foaia de date „Export”. */
+export function sheetsToXLSX(sheets: ExtraSheet[]): Blob {
+  const wb = XLSX.utils.book_new();
+  for (const s of sheets) appendExtraSheet(wb, s);
+  const arr = XLSX.write(wb, { type: "array", bookType: "xlsx", compression: true }) as unknown as ArrayBuffer;
+  return new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+
+function appendExtraSheet(wb: XLSX.WorkBook, s: ExtraSheet) {
+  const es = XLSX.utils.aoa_to_sheet(s.rows);
+  es["!cols"] = (s.widths ?? [Math.min(Math.max(...s.rows.map((r) => String(r[0] ?? "").length), 10) + 2, 60), 12, 12]).map((wch) => ({ wch }));
+  if (s.merges?.length) es["!merges"] = s.merges;
+  if (s.header && s.rows.length > 0) {
+    es["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: s.rows.length - 1, c: Math.max(s.rows[0].length - 1, 0) } }) };
+    es["!freeze"] = { xSplit: 0, ySplit: 1 };
+  }
+  XLSX.utils.book_append_sheet(wb, es, s.name);
+}
 
 export function toXLSX(headers: string[], rows: Row[], extraSheets: ExtraSheet[] = []): Blob {
   const sheetData = [headers, ...rows.map((r) => headers.map((h) => r[h] ?? ""))];
@@ -37,11 +56,7 @@ export function toXLSX(headers: string[], rows: Row[], extraSheets: ExtraSheet[]
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Export");
-  for (const s of extraSheets) {
-    const es = XLSX.utils.aoa_to_sheet(s.rows);
-    es["!cols"] = [{ wch: Math.min(Math.max(...s.rows.map((r) => String(r[0] ?? "").length), 10) + 2, 60) }, { wch: 12 }, { wch: 12 }];
-    XLSX.utils.book_append_sheet(wb, es, s.name);
-  }
+  for (const s of extraSheets) appendExtraSheet(wb, s);
   const arr = XLSX.write(wb, { type: "array", bookType: "xlsx", compression: true }) as unknown as ArrayBuffer;
   return new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }

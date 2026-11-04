@@ -57,7 +57,7 @@ import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 import { SERVICE_TYPES, SERVICE_TYPE_LABEL, serviceTypeLabel } from "@/lib/service-type";
 import { CONSUMER_TYPES, CONSUMER_TYPE_LABEL, consumerTypeLabel } from "@/lib/consumer-type";
-import { DEADLINE_FILTER_OPTIONS, deadlineState } from "@/lib/task-deadline";
+import { DEADLINE_FILTER_OPTIONS, DEADLINE_OVER, deadlineState, isOverDeadline } from "@/lib/task-deadline";
 
 const PRIO_RANK = { LOW: 1, MEDIUM: 2, HIGH: 3, URGENT: 4 } as const;
 /** Prioritatea ca etichetă colorată (se vede și pe rânduri colorate / cu zebră): urgent roșu, ridicată portocaliu, medie albastru, scăzută gri. */
@@ -710,7 +710,7 @@ export default function TasksTable({
             {
               kind: "select" as const, key: "deadline", label: "Situație termen",
               options: DEADLINE_FILTER_OPTIONS,
-              test: (t: Task, v: string) => deadlineState(t) === v,
+              test: (t: Task, v: string) => (v === DEADLINE_OVER ? isOverDeadline(t) : deadlineState(t) === v),
             },
             {
               kind: "select" as const, key: "executed", label: "Executare",
@@ -783,7 +783,8 @@ export default function TasksTable({
           const k = dueKey(t);
           if (v === "none") return k == null;
           if (k == null) return false;
-          if (v === "overdue") return k < today && t.status !== "DONE" && t.status !== "CANCELLED";
+          // „Expirate”: nerezolvate cu termenul trecut ȘI rezolvate după termen (ca împreună cu statusul „Finalizat” să se vadă ce s-a făcut după termen)
+          if (v === "overdue") return (k < today && t.status !== "DONE" && t.status !== "CANCELLED") || deadlineState(t) === "done_late";
           if (v === "today") return k === today;
           if (v === "tomorrow") return k === addDaysToKey(today, 1, TZ);
           if (v === "week") return k >= today && k <= addDaysToKey(today, 6, TZ);

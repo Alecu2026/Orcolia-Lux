@@ -9,6 +9,7 @@
     projects: "Proiecte",
     map: "Hartă",
     team: "Echipă",
+    reports: "Rapoarte",
     invoices: "Facturi",
     clients: "Clienți",
     payers: "Plătitori",

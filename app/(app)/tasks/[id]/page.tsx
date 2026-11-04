@@ -261,6 +261,8 @@ export default async function TaskDetailPage({
             categoryId: task.categoryId ?? null,
             address: task.address ?? null,
             sectionId: (task as { sectionId?: string | null }).sectionId ?? null,
+            serviceType: task.serviceType ?? null,
+            consumerType: task.consumerType ?? null,
           }}
           users={users}
           teams={teams}

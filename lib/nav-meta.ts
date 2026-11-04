@@ -24,6 +24,7 @@ export const NAV_META: NavMeta[] = [
   { href: "/users", labelKey: "users", perm: "users.manage" },
   { href: "/simulare", labelKey: "impersonate", perm: "users.impersonate" },
   { href: "/team", labelKey: "team", perm: "teams.view" },
+  { href: "/rapoarte", labelKey: "reports", perm: "tasks.view" },
   { href: "/harta", labelKey: "map", perm: "map.view" },
   { href: "/admin/audit-logs", labelKey: "auditLogs", perm: "audit.view" },
   { href: "/admin/jurnal-notificari", labelKey: "deliveryLogs", perm: "audit.view" },

@@ -10,6 +10,7 @@ import { IconTrash, IconPencil, IconX } from "./icons";
 import MultiAssignPicker from "./MultiAssignPicker";
 import AssignmentLocked from "./AssignmentLocked";
 import AddressInput from "./AddressInput";
+import { ServiceTypeSelect, ConsumerTypeSelect } from "./TasksManager";
 import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
 import { useMessages } from "@/lib/i18n/context";
@@ -35,6 +36,10 @@ export type TaskForEdit = {
   categoryId: string | null;
   address?: string | null;
   sectionId?: string | null;
+  /** WATER / SEWER / BOTH; gol = nespecificat. */
+  serviceType?: string | null;
+  /** HOUSEHOLD / NON_HOUSEHOLD; gol = nespecificat. */
+  consumerType?: string | null;
 };
 
 const TZ = "Europe/Bucharest";
@@ -267,6 +272,10 @@ function EditDialog({
           )}
           <CategoryChips categories={categories} value={categoryId} onChange={setCategoryId} />
           {task.address !== undefined && <AddressInput defaultValue={task.address ?? ""} className={dlgInput} />}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <ServiceTypeSelect defaultValue={task.serviceType ?? ""} />
+            <ConsumerTypeSelect defaultValue={task.consumerType ?? ""} />
+          </div>
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.dueDate}</label>
             <div className="grid gap-2 sm:grid-cols-2">

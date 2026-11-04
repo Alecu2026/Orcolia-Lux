@@ -67,6 +67,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
   "/users": userIcon(),
   "/simulare": userIcon(),
   "/team": usersIcon(),
+  "/rapoarte": checklistIcon(),
   "/harta": mapIcon(),
   "/admin/audit-logs": shieldIcon(),
   "/admin/jurnal-notificari": bellIcon(),

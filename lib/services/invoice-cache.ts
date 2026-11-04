@@ -21,9 +21,11 @@ import {
   periodMonths,
   queryInvoices,
   toListItem,
+  serviceOfItems,
   type InvQuery,
   type InvRow,
   type InvServiceRow,
+  type InvSvc,
   type InvSums,
   type InvTuple,
   type InvoiceListItem,
@@ -43,7 +45,9 @@ import {
  * Starea stă pe `globalThis`: în producție paginile și acțiunile primesc instanțe separate ale modulului, iar invalidarea trebuie să ajungă peste tot.
  */
 
-const SHARD_PREFIX = "inv:m:";
+// „m3”: snapshot-urile au și serviciile facturii (apă / canalizare); cele vechi („inv:m:”) se șterg la prewarm și lunile se reconstruiesc la prima cerere
+const SHARD_PREFIX = "inv:m3:";
+const OLD_SHARD_PREFIX = "inv:m:";
 const ALL_ID = "inv:all";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const META_CHECK_MS = 10_000;
@@ -61,7 +65,7 @@ export type InvoiceShard = {
   rows: InvRow[];
 };
 
-type Artifact = { v: 2; at: number; month: string; total: number; rows: InvTuple[] };
+type Artifact = { v: 3; at: number; month: string; total: number; rows: InvTuple[] };
 
 type State = {
   l1: Map<string, InvoiceShard>;
@@ -154,12 +158,13 @@ type TupleSource = {
   id: string; number: string; status: string; kind: string; issueDate: Date; dueDate: Date | null; paidAt: Date | null; grandTotal: number;
   currency: string; publicToken: string; consumerName: string | null; contPersonal: string | null;
 };
-function toTuple(r: TupleSource, clientName: string | null): InvTuple {
+function toTuple(r: TupleSource, clientName: string | null, svc: InvSvc = 0): InvTuple {
   return [
     r.id, r.number, Math.max(0, INVOICE_STATUS_CODES.indexOf(r.status as (typeof INVOICE_STATUS_CODES)[number])), r.kind === "APA_CANAL" ? 1 : 0,
     r.issueDate.getTime(), r.dueDate ? r.dueDate.getTime() : null, r.paidAt ? r.paidAt.getTime() : null,
     r.grandTotal, r.currency, clientName, r.publicToken,
     [r.consumerName, r.contPersonal].filter(Boolean).join("\n") || null,
+    svc,
   ];
 }
 
@@ -214,6 +219,21 @@ function setL1(shard: InvoiceShard) {
   }
 }
 
+/** Serviciile fiecărei facturi Apă-Canal dintr-o lună (id → 1 apă / 2 canalizare / 3 amândouă), într-o singură agregare; fără intrare = fără servicii. */
+async function serviceMapForMonth(a: number, b: number): Promise<Map<string, InvSvc>> {
+  const raw = (await prisma.invoice.aggregateRaw({
+    pipeline: [
+      { $match: { kind: "APA_CANAL", issueDate: { $gte: { $date: new Date(a).toISOString() }, $lt: { $date: new Date(b).toISOString() } } } },
+      { $lookup: { from: "InvoiceItem", localField: "_id", foreignField: "invoiceId", as: "items" } },
+      { $project: { w: svcLine("alimentare cu ap[aă]"), s: svcLine("canalizare") } },
+      { $match: { $or: [{ w: true }, { s: true }] } },
+    ],
+  })) as unknown as { _id: { $oid: string } | string; w: boolean; s: boolean }[];
+  const out = new Map<string, InvSvc>();
+  for (const r of raw) out.set(typeof r._id === "string" ? r._id : r._id.$oid, r.w && r.s ? 3 : r.w ? 1 : 2);
+  return out;
+}
+
 /** Reconstruiește luna din facturi și o salvează în L2. O singură execuție per lună la un moment dat. */
 export function rebuildInvoiceShard(month: string, reason = "manual"): Promise<InvoiceShard> {
   const cur = S.building.get(month);
@@ -223,14 +243,15 @@ export function rebuildInvoiceShard(month: string, reason = "manual"): Promise<I
     const startedAt = new Date();
     ensureIssueDateIndex();
     const [a, b] = monthBoundsMs(month);
-    const [invoices, names] = await Promise.all([
+    const [invoices, names, svcById] = await Promise.all([
       prisma.invoice.findMany({ where: { issueDate: { gte: new Date(a), lt: new Date(b) } }, select: { ...TUPLE_SELECT, createdAt: true } }),
       allClientNames(),
+      serviceMapForMonth(a, b),
     ]);
     // cele mai noi create primele (ordinea listei); sortarea e aici, nu în baza de date, ca interogarea să folosească indexul pe data emiterii
     invoices.sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime());
-    const tuples = invoices.map((r) => toTuple(r, r.clientId ? (names.get(r.clientId) ?? null) : null));
-    const art: Artifact = { v: 2, at: startedAt.getTime(), month, total: tuples.length, rows: tuples };
+    const tuples = invoices.map((r) => toTuple(r, r.clientId ? (names.get(r.clientId) ?? null) : null, svcById.get(r.id) ?? 0));
+    const art: Artifact = { v: 3, at: startedAt.getTime(), month, total: tuples.length, rows: tuples };
     const gz = gzipSync(Buffer.from(JSON.stringify(art), "utf8"), { level: 6 });
     const version = createHash("sha1").update(gz).digest("hex").slice(0, 16);
     try {
@@ -340,7 +361,7 @@ export async function getInvoiceShardPayload(month: string): Promise<{ version: 
   if (seq === 0 || S.l1.get(month) !== shard) return { version: shard.version, gz: shard.gz };
   const hit = S.patched.get(month);
   if (hit?.seq === seq) return { version: hit.version, gz: hit.gz };
-  const art: Artifact = { v: 2, at: shard.builtAt, month, total: shard.rows.length, rows: encodeInvoices(shard.rows) };
+  const art: Artifact = { v: 3, at: shard.builtAt, month, total: shard.rows.length, rows: encodeInvoices(shard.rows) };
   const gz = gzipSync(Buffer.from(JSON.stringify(art), "utf8"), { level: 4 });
   const version = `${shard.version}p${seq}`;
   if (seq === (S.patchSeq.get(month) ?? 0)) S.patched.set(month, { seq, gz, version });
@@ -378,6 +399,8 @@ export async function syncInvoiceToCache(id: string): Promise<void> {
       if (oldMonth) touched.add(oldMonth);
     }
     const names = r?.clientId ? await clientNameFor(r.clientId) : null;
+    // serviciile facturii (doar Apă-Canal) după liniile ei
+    const svc: InvSvc = r && r.kind === "APA_CANAL" ? serviceOfItems(await prisma.invoiceItem.findMany({ where: { invoiceId: id }, select: { description: true, quantity: true, lineTotal: true } })) : 0;
     for (const m of touched) {
       const sh = S.l1.get(m);
       if (!sh) continue;
@@ -387,7 +410,7 @@ export async function syncInvoiceToCache(id: string): Promise<void> {
       if (!here) {
         if (idx >= 0) rows = rows.slice(0, idx).concat(rows.slice(idx + 1));
       } else {
-        const [row] = decodeInvoices([toTuple(r!, names)]);
+        const [row] = decodeInvoices([toTuple(r!, names, svc)]);
         rows = idx >= 0 ? rows.map((x, i) => (i === idx ? row : x)) : [row, ...rows];
       }
       const next: InvoiceShard = { month: sh.month, version: sh.version, builtAt: sh.builtAt, gz: sh.gz, rows, total: rows.length };
@@ -467,7 +490,9 @@ export async function rebuildInvoiceSnap(reason = "manual"): Promise<void> {
 export async function prewarmInvoices(): Promise<boolean> {
   if (DEMO) return false;
   // rândul vechi al listei întregi (înainte de împărțirea pe luni) nu mai folosește nimănui
-  void prisma.payerCacheEntry.deleteMany({ where: { id: "inv:snapshot" } }).catch(() => {});
+  void prisma.payerCacheEntry.deleteMany({ where: { id: { in: ["inv:snapshot"] } } }).catch(() => {});
+  // snapshot-urile lunare vechi (fără servicii) nu mai sunt folosite: se șterg ca să nu ocupe loc în baza de date
+  void prisma.payerCacheEntry.deleteMany({ where: { id: { startsWith: OLD_SHARD_PREFIX } } }).catch(() => {});
   const months = await getInvoiceMonths();
   let did = false;
   for (const { month } of months.slice(0, 2)) {

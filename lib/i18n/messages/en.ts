@@ -11,6 +11,7 @@ const en: Messages = {
     projects: "Projects",
     map: "Map",
     team: "Team",
+    reports: "Reports",
     invoices: "Invoices",
     clients: "Clients",
     payers: "Payers",

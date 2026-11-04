@@ -55,7 +55,7 @@ type Page = { items: InvRow[]; total: number; totalPages: number; sums: InvSums 
 
 const fromItem = (i: InvoiceListItem): InvRow => ({
   id: i.id, number: i.number, status: i.status, kind: i.kind, issueMs: Date.parse(i.issueDate), dueMs: i.dueDate ? Date.parse(i.dueDate) : null,
-  paidMs: i.paidAt ? Date.parse(i.paidAt) : null, grandTotal: i.grandTotal, currency: i.currency, clientName: i.clientName, publicToken: i.publicToken, _x: null, _h: "",
+  paidMs: i.paidAt ? Date.parse(i.paidAt) : null, grandTotal: i.grandTotal, currency: i.currency, clientName: i.clientName, publicToken: i.publicToken, svc: 0, _x: null, _h: "",
 });
 
 /** Momentul curent (în afara componentei, ca randarea să rămână pură). */
@@ -73,6 +73,8 @@ const monthLabel = (m: string) => {
 /** Sortările pe care le face și serverul (cu index); restul doar în browser, pe perioada încărcată. */
 const SERVER_SORTS = new Set(["issue", "number"]);
 const TEXT_SORTS = new Set(["number", "client", "status"]);
+
+const SERVICE_FILTERS = [["WATER", "Doar apă"], ["SEWER", "Doar canalizare"], ["BOTH", "Apă + canalizare"], ["NONE", "Fără servicii (consum și sumă zero)"]] as const;
 
 const hasAdvanced = (q: InvQuery) =>
   !!(q.min || q.max || q.currency || q.issueFrom || q.issueTo || q.dueFrom || q.dueTo || q.paidFrom || q.paidTo);
@@ -188,6 +190,7 @@ export default function InvoicesList({
     abortRef.current = ctl;
     setError(null);
     const sp = queryToParams(query);
+    sp.delete("svc"); // căutarea pe server (perioade mari) nu filtrează pe servicii
     sp.set("p", period);
     sp.set("page", String(page));
     sp.set("ps", String(perPage));
@@ -426,6 +429,18 @@ export default function InvoicesList({
           <option value="APA_CANAL">{t("Apă-Canal")}</option>
           <option value="STANDARD">{t("Standard")}</option>
         </select>
+        <select
+          value={query.service}
+          disabled={serverMode}
+          onChange={(e) => patchQuery({ service: e.target.value as InvQuery["service"] })}
+          className={`${filterCls(!!query.service)} disabled:opacity-50`}
+          aria-label={t("Serviciu")}
+          title={serverMode ? t("Filtrul pe servicii merge pe o lună sau pe „Ultimele 3 luni”.") : undefined}
+          data-inv-service=""
+        >
+          <option value="">{t("Serviciu: toate")}</option>
+          {SERVICE_FILTERS.map(([k, label]) => <option key={k} value={k}>{t(label)}</option>)}
+        </select>
         <select value={query.quick} onChange={(e) => patchQuery({ quick: e.target.value as InvQuery["quick"] })} className={filterCls(!!query.quick)} aria-label={t("Scurtături")} data-inv-quick="">
           <option value="">{t("Scurtături")}</option>
           <option value="unpaid">{t("Neachitate")}</option>
@@ -572,7 +587,9 @@ export default function InvoicesList({
                 <tbody>
                   {([["WATER", "Doar apă"], ["SEWER", "Doar canalizare"], ["BOTH", "Apă + canalizare"]] as const).map(([k, label]) => (
                     <tr key={k} className="border-t border-[var(--color-line)]">
-                      <td className="py-0.5">{t(label)}</td>
+                      <td className="py-0.5">
+                        <button type="button" disabled={serverMode} onClick={() => patchQuery({ service: query.service === k ? "" : k })} title={t("Arată doar aceste facturi în listă")} className={`cursor-pointer text-left underline decoration-dotted underline-offset-2 hover:text-brand disabled:cursor-default disabled:no-underline ${query.service === k ? "font-bold text-brand" : ""}`}>{t(label)}</button>
+                      </td>
                       <td className="py-0.5 text-right">{reportSum.by[k].n.toLocaleString("ro-RO")}</td>
                       <td className="py-0.5 text-right font-semibold">{fmtMoney(reportSum.by[k].total, reportSum.currency)}</td>
                     </tr>

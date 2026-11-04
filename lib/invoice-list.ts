@@ -6,6 +6,20 @@
  * Browserul ține în memorie doar perioada aleasă (o lună ≈ 19.000 de facturi, câteva luni cel mult `LOCAL_MAX_ROWS`); căutările peste „toate lunile" rulează pe server.
  */
 
+/** 0 = fără servicii (sau factură standard / necunoscut), 1 = doar apă, 2 = doar canalizare, 3 = apă + canalizare. */
+export type InvSvc = 0 | 1 | 2 | 3;
+
+/** Serviciile unei facturi după liniile ei: o linie există dacă are consum sau sumă (ca în raportul pe servicii). */
+export function serviceOfItems(items: { description: string; quantity: number; lineTotal: number }[]): InvSvc {
+  let w = false, s = false;
+  for (const it of items) {
+    if (!(it.quantity > 0 || it.lineTotal > 0)) continue;
+    if (/alimentare cu ap[aă]/i.test(it.description)) w = true;
+    else if (/canalizare/i.test(it.description)) s = true;
+  }
+  return w && s ? 3 : w ? 1 : s ? 2 : 0;
+}
+
 export const INVOICE_STATUS_CODES = ["DRAFT", "SENT", "PAID", "CANCELLED", "OVERDUE"] as const;
 export type InvoiceStatusName = (typeof INVOICE_STATUS_CODES)[number];
 
@@ -18,6 +32,8 @@ export type InvTuple = [
   id: string, number: string, status: number, kind: 0 | 1,
   issueMs: number, dueMs: number | null, paidMs: number | null,
   total: number, currency: string, clientName: string | null, token: string, extra: string | null,
+  /** serviciile facturii Apă-Canal: 0 niciunul / necunoscut, 1 doar apă, 2 doar canalizare, 3 amândouă — lipsește în snapshot-urile mai vechi */
+  svc?: InvSvc,
 ];
 
 /** Un rând decodat. `_h` = text de căutare (minuscule): număr, client, consumator, cont personal. */
@@ -33,6 +49,7 @@ export type InvRow = {
   currency: string;
   clientName: string | null;
   publicToken: string;
+  svc: InvSvc;
   /** Text suplimentar de căutare (consumator + cont personal), păstrat ca să se poată re-codifica snapshot-ul după o modificare locală. */
   _x: string | null;
   _h: string;
@@ -42,7 +59,7 @@ export type InvRow = {
 export function encodeInvoices(rows: InvRow[]): InvTuple[] {
   return rows.map((r): InvTuple => [
     r.id, r.number, Math.max(0, INVOICE_STATUS_CODES.indexOf(r.status)), r.kind === "APA_CANAL" ? 1 : 0, r.issueMs, r.dueMs, r.paidMs,
-    r.grandTotal, r.currency, r.clientName, r.publicToken, r._x,
+    r.grandTotal, r.currency, r.clientName, r.publicToken, r._x, r.svc,
   ]);
 }
 
@@ -62,6 +79,7 @@ export function decodeInvoices(tuples: InvTuple[]): InvRow[] {
       currency: t[8],
       clientName: t[9],
       publicToken: t[10],
+      svc: t[12] ?? 0,
       _x: t[11],
       _h: (t[1] + "\n" + (t[9] ?? "") + "\n" + (t[11] ?? "")).toLowerCase(),
     };
@@ -139,6 +157,9 @@ export function defaultPeriod(requested: string | null | undefined, months: Mont
 // ───────────────────────────── filtre ─────────────────────────────
 
 export type InvKind = "" | "APA_CANAL" | "STANDARD";
+/** Filtru pe servicii (facturi Apă-Canal): doar apă / doar canalizare / amândouă / fără servicii. */
+export type InvService = "" | "WATER" | "SEWER" | "BOTH" | "NONE";
+const SERVICE_CODE: Record<Exclude<InvService, "">, InvSvc> = { NONE: 0, WATER: 1, SEWER: 2, BOTH: 3 };
 export type InvQuick = "" | "unpaid" | "overdue" | "nodue" | "paidnodate";
 export type InvSort = "" | "number" | "client" | "issue" | "due" | "paid" | "total" | "status";
 
@@ -148,6 +169,7 @@ export type InvQuery = {
   /** Statusuri permise; gol = toate. */
   statuses: string[];
   kind: InvKind;
+  service: InvService;
   /** Scurtături: neachitate (nici achitate, nici anulate), restante (neachitate cu scadența trecută), fără scadență, achitate fără dată. */
   quick: InvQuick;
   /** Sumă minimă / maximă (cu virgulă sau punct). */
@@ -163,7 +185,7 @@ export type InvQuery = {
 };
 
 export const EMPTY_QUERY: InvQuery = {
-  q: "", statuses: [], kind: "", quick: "", min: "", max: "", currency: "",
+  q: "", statuses: [], kind: "", service: "", quick: "", min: "", max: "", currency: "",
   issueFrom: "", issueTo: "", dueFrom: "", dueTo: "", paidFrom: "", paidTo: "", sort: "", dir: "desc",
 };
 
@@ -173,6 +195,7 @@ export function activeFilterCount(q: InvQuery): number {
   if (q.q.trim()) n++;
   if (q.statuses.length) n++;
   if (q.kind) n++;
+  if (q.service) n++;
   if (q.quick) n++;
   if (q.min.trim() || q.max.trim()) n++;
   if (q.currency) n++;
@@ -248,6 +271,7 @@ function sortOrder(rows: InvRow[], sort: InvSort, dir: "asc" | "desc"): Uint32Ar
 export function queryInvoices(rows: InvRow[], f: InvQuery, nowMs: number = Date.now()): { idx: Uint32Array; total: number; sums: InvSums } {
   const tokens = f.q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const statuses = f.statuses.length ? new Set(f.statuses) : null;
+  const svcWant = f.service ? SERVICE_CODE[f.service] : null;
   const min = num(f.min), max = num(f.max);
   const dIssueA = dayOfKey(f.issueFrom), dIssueB = dayOfKey(f.issueTo);
   const dDueA = dayOfKey(f.dueFrom), dDueB = dayOfKey(f.dueTo);
@@ -263,6 +287,7 @@ export function queryInvoices(rows: InvRow[], f: InvQuery, nowMs: number = Date.
     const r = rows[i];
     if (statuses && !statuses.has(r.status)) continue;
     if (f.kind && r.kind !== f.kind) continue;
+    if (svcWant != null && (r.kind !== "APA_CANAL" || r.svc !== svcWant)) continue;
     if (f.currency && r.currency !== f.currency) continue;
     const unpaid = r.status !== "PAID" && r.status !== "CANCELLED";
     if (f.quick) {
@@ -377,7 +402,7 @@ export function normalizeInvoicePerPage(v: unknown): number {
 // ───────────────────────────── query string (adresă / API) ─────────────────────────────
 
 const KEYS: [keyof InvQuery, string][] = [
-  ["q", "q"], ["kind", "kind"], ["quick", "quick"], ["min", "min"], ["max", "max"], ["currency", "cur"],
+  ["q", "q"], ["kind", "kind"], ["service", "svc"], ["quick", "quick"], ["min", "min"], ["max", "max"], ["currency", "cur"],
   ["issueFrom", "if"], ["issueTo", "it"], ["dueFrom", "df"], ["dueTo", "dt"], ["paidFrom", "pf"], ["paidTo", "pt"], ["sort", "sort"], ["dir", "dir"],
 ];
 const QUICK = new Set(["unpaid", "overdue", "nodue", "paidnodate"]);
@@ -403,6 +428,8 @@ export function queryFromParams(sp: URLSearchParams | { get(k: string): string |
   if (!q.statuses.length && (INVOICE_STATUS_CODES as readonly string[]).includes(legacy)) q.statuses = [legacy];
   const kind = g("kind");
   q.kind = kind === "APA_CANAL" || kind === "STANDARD" ? kind : "";
+  const svc = g("svc");
+  q.service = svc === "WATER" || svc === "SEWER" || svc === "BOTH" || svc === "NONE" ? svc : "";
   const quick = g("quick");
   q.quick = QUICK.has(quick) ? (quick as InvQuick) : "";
   q.min = g("min").slice(0, 14);

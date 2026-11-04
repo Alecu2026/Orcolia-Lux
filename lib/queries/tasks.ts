@@ -245,6 +245,13 @@ export type TaskFilter = {
   assigneeId?: string;
   teamId?: string;
   dueBefore?: Date;
+  /** Perioada creării (de la inclusiv, până la exclusiv) — pentru rapoarte. */
+  createdFrom?: Date;
+  createdTo?: Date;
+  /** Secția: cele salvate pe ea; la cele create înainte de secții, cele atribuite echipelor / persoanelor secției (le dă apelantul). */
+  sectionId?: string;
+  sectionTeamIds?: string[];
+  sectionUserIds?: string[];
   /** Un singur task (pentru reîmprospătarea unui rând după editare). */
   id?: string;
   /** Doar aceste task-uri (de ex. rândurile rămase în tabel după filtrele din browser); plafonul de vizibilitate rămâne aplicat. */
@@ -330,6 +337,19 @@ function buildWhere(filter: TaskFilter): Prisma.TaskWhereInput {
     });
   }
 
+  if (filter.createdFrom || filter.createdTo) where.createdAt = { ...(filter.createdFrom ? { gte: filter.createdFrom } : {}), ...(filter.createdTo ? { lt: filter.createdTo } : {}) };
+  if (filter.sectionId) {
+    const legacy: Prisma.TaskWhereInput[] = [
+      ...(filter.sectionTeamIds?.length ? [{ teamId: { in: filter.sectionTeamIds } }] : []),
+      ...(filter.sectionUserIds?.length ? [{ assigneeId: { in: filter.sectionUserIds } }] : []),
+    ];
+    and.push({
+      OR: [
+        { sectionId: filter.sectionId },
+        ...(legacy.length ? [{ AND: [{ OR: [{ sectionId: null }, { sectionId: { isSet: false } }] }, { OR: legacy }] }] : []),
+      ],
+    });
+  }
   if (filter.id) where.id = filter.id;
   else if (filter.ids) where.id = { in: filter.ids };
   if (filter.teamId) where.teamId = filter.teamId;

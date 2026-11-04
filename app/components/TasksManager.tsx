@@ -195,7 +195,7 @@ const dlgInput =
   "h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
 
 /** Tipul serviciului la care se referă cererea (apă / canalizare / apă + canalizare); gol = nespecificat. */
-function ServiceTypeSelect({ defaultValue }: { defaultValue: string }) {
+export function ServiceTypeSelect({ defaultValue }: { defaultValue: string }) {
   const t = useT();
   return (
     <select name="serviceType" defaultValue={defaultValue} aria-label={t("Tip serviciu")} data-service-type className={dlgInput}>
@@ -206,7 +206,7 @@ function ServiceTypeSelect({ defaultValue }: { defaultValue: string }) {
 }
 
 /** Casnic / non casnic; gol = nespecificat. */
-function ConsumerTypeSelect({ defaultValue }: { defaultValue: string }) {
+export function ConsumerTypeSelect({ defaultValue }: { defaultValue: string }) {
   const t = useT();
   return (
     <select name="consumerType" defaultValue={defaultValue} aria-label={t("Tip consumator")} data-consumer-type className={dlgInput}>

@@ -10,6 +10,9 @@ import { formatTime, zonedToUtc } from "./date";
 const TZ = "Europe/Bucharest";
 const DAY_MS = 86_400_000;
 
+/** Valoare de filtru (nu o stare): termen depășit = expirate (nerezolvate) + rezolvate după termen. */
+export const DEADLINE_OVER = "over";
+
 export type DeadlineState =
   | "cancelled" // anulată
   | "expired" // nerezolvată, termenul a trecut
@@ -21,7 +24,8 @@ export type DeadlineState =
   | "open_no_due"; // în lucru, fără termen
 
 /** Etichetele din filtru (cele patru situații cerute) — în română, de tradus cu t(). */
-export const DEADLINE_FILTER_OPTIONS: { value: DeadlineState; label: string }[] = [
+export const DEADLINE_FILTER_OPTIONS: { value: DeadlineState | typeof DEADLINE_OVER; label: string }[] = [
+  { value: DEADLINE_OVER, label: "Termen depășit (expirate + rezolvate după termen)" },
   { value: "cancelled", label: "Anulate" },
   { value: "expired", label: "Expirate (nerezolvate, termen depășit)" },
   { value: "done_on_time", label: "Rezolvate în termen" },
@@ -63,6 +67,12 @@ export function closedAtMs(t: Pick<DeadlineInput, "closedAt" | "executedOn">): n
   if (c != null && !Number.isNaN(c)) return c;
   if (t.executedOn && /^\d{4}-\d{2}-\d{2}$/.test(t.executedOn)) return zonedToUtc(t.executedOn, "23:59", TZ).getTime();
   return null;
+}
+
+/** A depășit termenul? Nerezolvată cu termenul trecut SAU rezolvată după termen — filtrul „Termen depășit” și „Termen → Expirate”. */
+export function isOverDeadline(t: DeadlineInput, now: number = Date.now()): boolean {
+  const s = deadlineState(t, now);
+  return s === "expired" || s === "done_late";
 }
 
 export function deadlineState(t: DeadlineInput, now: number = Date.now()): DeadlineState {
