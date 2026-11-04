@@ -8,6 +8,8 @@ export type TeamRow = {
   id: string;
   name: string;
   description: string | null;
+  /** Secția echipei (Section); null = fără secție. */
+  sectionId: string | null;
   memberIds: string[];
   members: { id: string; name: string }[];
 };
@@ -43,6 +45,7 @@ async function loadTeams(): Promise<TeamRow[]> {
       id: true,
       name: true,
       description: true,
+      sectionId: true,
       memberIds: true,
       members: { select: { id: true, name: true } },
     },
@@ -51,10 +54,10 @@ async function loadTeams(): Promise<TeamRow[]> {
 }
 
 export const teamOptions = unstable_cache(
-  async (): Promise<{ id: string; name: string }[]> => {
+  async (): Promise<{ id: string; name: string; sectionId: string | null }[]> => {
     if (DEMO) return [];
     return prisma.team.findMany({
-      select: { id: true, name: true },
+      select: { id: true, name: true, sectionId: true },
       orderBy: { name: "asc" },
     });
   },
@@ -70,6 +73,7 @@ export async function getTeam(id: string): Promise<TeamRow | null> {
       id: true,
       name: true,
       description: true,
+      sectionId: true,
       memberIds: true,
       members: { select: { id: true, name: true } },
     },

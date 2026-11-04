@@ -12,6 +12,8 @@ export type PermissionKey =
   | "tasks.delete"
   | "tasks.assign"
   | "tasks.close"
+  // Schimbarea statusului (Citit, În lucru, În așteptare…) și a progresului la orice sarcină / cerere pe care o vede, fără „Editare”; la ale lui (creator, responsabil, echipă) se poate oricum
+  | "tasks.status"
   // Anularea (statusul „Anulat”), separat pe sarcini și pe cereri; finalizarea rămâne la „Închidere / finalizare”
   | "tasks.cancel"
   | "tickets.cancel"
@@ -92,6 +94,7 @@ export const PERMISSION_GROUPS: {
       { key: "tasks.edit", label: "Editare" },
       { key: "tasks.delete", label: "Ștergere" },
       { key: "tasks.assign", label: "Asignare" },
+      { key: "tasks.status", label: "Schimbare status (Citit, În lucru…) la sarcinile / cererile pe care le vede" },
       { key: "tasks.close", label: "Închidere / finalizare (fără anulare)" },
       { key: "tasks.cancel", label: "Anulare sarcini" },
       { key: "tickets.cancel", label: "Anulare cereri" },

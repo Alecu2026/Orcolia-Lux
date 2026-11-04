@@ -16,7 +16,7 @@ import {
 import { formatTime, formatDate, DEFAULT_TZ, todayKey } from "../date";
 import { notifyClientTicketClosed } from "./ticket-client-notify";
 import { validateResolution, type Resolution } from "../resolution";
-import { can, canCancelTask } from "../permissions";
+import { can, canCancelTask, canViewTask } from "../permissions";
 import { env } from "../env";
 import { absoluteUrl } from "../storage";
 import { notifyUsers, observerRecipients, filteredAdminRecipients } from "./notifications";
@@ -78,6 +78,11 @@ export type CreateTaskInput = {
   serviceType?: string | null;
   /** Categoria consumatorului (HOUSEHOLD / NON_HOUSEHOLD), gol = nespecificat. */
   consumerType?: string | null;
+  /** Secția (Section); gol = se deduce din echipele și persoanele atribuite. */
+  sectionId?: string | null;
+  /** Șablonul intern din care s-a creat (id + numele lui), pentru numărătoarea din exportul de cereri. */
+  taskTemplateId?: string | null;
+  taskTemplateName?: string | null;
   reminderIntervalMinutes?: number | null;
   /** Reamintire programată (are prioritate față de intervalul fix). */
   reminderSchedule?: ReminderSchedule | null;
@@ -210,11 +215,16 @@ type TaskAccessShape = {
   extraTeamIds: string[] | null;
 };
 
-/** Poate actorul schimba statusul / progresul? Cu „Editare" (sau administrator), sau dacă e implicat în task (creator, responsabil, echipă). */
+/** Poate actorul schimba statusul / progresul? Cu „Editare" (sau administrator), cu „Schimbare status" pe task-urile pe care le vede, sau dacă e implicat în task (creator, responsabil, echipă). */
 async function actorMayWorkOnTask(actorId: string, task: TaskAccessShape & { type?: string }, closing: "DONE" | "CANCELLED" | false = false): Promise<boolean> {
-  const u = await prisma.user.findUnique({ where: { id: actorId }, select: { role: true, permissions: true } });
+  const u = await prisma.user.findUnique({
+    where: { id: actorId },
+    select: { role: true, permissions: true, teamIds: true, taskViewScope: true, taskViewTeamIds: true, taskViewMemberIds: true },
+  });
   if (!u) return false;
   if (can(u, "tasks.edit")) return true;
+  // „Schimbare status”: orice task pe care are voie să-l vadă (ale lui, plus cele ale altor persoane / echipe din vizibilitatea contului)
+  if (can(u, "tasks.status") && canViewTask({ id: actorId, teamIds: u.teamIds, taskViewScope: u.taskViewScope, taskViewTeamIds: u.taskViewTeamIds, taskViewMemberIds: u.taskViewMemberIds }, { creatorId: task.creatorId, assigneeId: task.assigneeId, extraAssigneeIds: task.extraAssigneeIds ?? [], teamId: task.teamId, extraTeamIds: task.extraTeamIds ?? [] })) return true;
   // „Închidere / finalizare" (finalizare) și „Anulare sarcini / cereri" (anulare): poți finaliza / anula orice task, dar nu schimba alte statusuri la task-urile străine.
   if (closing === "DONE" && can(u, "tasks.close")) return true;
   if (closing === "CANCELLED" && canCancelTask(u, task.type ?? "TASK")) return true;
@@ -346,6 +356,28 @@ export async function notifyTaskAssigned(taskId: string, userIds: string[], acto
   }
 }
 
+/** Secția dedusă din cine se ocupă: întâi echipele atribuite (secția echipei), apoi persoanele atribuite (secția persoanei). Null dacă niciuna nu are secție. */
+export async function deriveTaskSectionId(teamIds: (string | null | undefined)[], userIds: (string | null | undefined)[]): Promise<string | null> {
+  const ok = (ids: (string | null | undefined)[]) => [...new Set(ids.filter((x): x is string => !!x && /^[0-9a-f]{24}$/i.test(x)))];
+  const teams = ok(teamIds);
+  if (teams.length) {
+    const found = await prisma.team.findMany({ where: { id: { in: teams } }, select: { id: true, sectionId: true } });
+    for (const id of teams) { const s = found.find((x) => x.id === id)?.sectionId; if (s) return s; }
+  }
+  const users = ok(userIds);
+  if (users.length) {
+    const found = await prisma.user.findMany({ where: { id: { in: users } }, select: { id: true, sectionId: true } });
+    for (const id of users) { const s = found.find((x) => x.id === id)?.sectionId; if (s) return s; }
+  }
+  return null;
+}
+
+/** Secția aleasă pentru o cerere / sarcină: doar una care există (o secție ștearsă între timp, într-un formular rămas deschis, se ignoră). */
+async function existingSectionId(v: unknown): Promise<string | null> {
+  if (typeof v !== "string" || !/^[0-9a-f]{24}$/i.test(v)) return null;
+  return (await prisma.section.findUnique({ where: { id: v }, select: { id: true } }).catch(() => null))?.id ?? null;
+}
+
 /**
  * Creează un task. NU trimite notificări aici (ca o problemă de Telegram să NU
  * pice crearea). Pentru notificări apelează separat `notifyNewTask`.
@@ -382,6 +414,8 @@ export async function createTask(
   // Asignat cuiva => ASSIGNED; altfel NEW
   const status: TaskStatus = assigneeId || teamId ? "ASSIGNED" : "NEW";
   const seq = await nextSeq("task");
+  // secția: cea aleasă în formular, altfel cea a echipelor / persoanelor atribuite
+  const sectionId = (await existingSectionId(input.sectionId)) ?? (await deriveTaskSectionId([teamId, ...(input.extraTeamIds ?? [])], [assigneeId, ...(input.extraAssigneeIds ?? [])]));
 
   const schedule = input.reminderSchedule ?? null;
   const intervalMin = schedule ? null : input.reminderIntervalMinutes || null;
@@ -406,6 +440,8 @@ export async function createTask(
       address: input.address?.trim().slice(0, 300) || null,
       serviceType: parseServiceType(input.serviceType),
       consumerType: parseConsumerType(input.consumerType),
+      ...(sectionId ? { sectionId } : {}),
+      ...(input.taskTemplateId ? { taskTemplateId: input.taskTemplateId, taskTemplateName: input.taskTemplateName?.slice(0, 120) || null } : {}),
       clientId,
       createdFrom: source,
       status,
@@ -1022,6 +1058,8 @@ export type UpdateTaskInput = {
   serviceType?: string | null;
   /** Categoria consumatorului (HOUSEHOLD / NON_HOUSEHOLD), gol = nespecificat. */
   consumerType?: string | null;
+  /** Secția (Section); gol = fără secție. Dacă lipsește din editare dar s-a schimbat atribuirea, o task fără secție o primește din echipele / persoanele noi. */
+  sectionId?: string | null;
   priority?: TaskPriority;
   dueAt?: Date | null;
   reminderIntervalMinutes?: number | null;
@@ -1046,7 +1084,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
     select: {
       id: true, seq: true, title: true, type: true,
       description: true, priority: true, dueAt: true,
-      assigneeId: true, teamId: true, projectId: true, address: true, consumerName: true, serviceType: true, consumerType: true,
+      assigneeId: true, teamId: true, projectId: true, address: true, consumerName: true, serviceType: true, consumerType: true, sectionId: true,
       creatorId: true, extraAssigneeIds: true, extraTeamIds: true,
       assignee: { select: { name: true, teamIds: true } },
       team: { select: { name: true } },
@@ -1085,6 +1123,18 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
   if ("consumerName" in input) data.consumerName = input.consumerName?.replace(/\s+/g, " ").trim().slice(0, 150) || null;
   if ("serviceType" in input) data.serviceType = parseServiceType(input.serviceType);
   if ("consumerType" in input) data.consumerType = parseConsumerType(input.consumerType);
+  if ("sectionId" in input) data.sectionId = await existingSectionId(input.sectionId);
+  else if ("assigneeId" in input || "teamId" in input || "extraAssigneeIds" in input || "extraTeamIds" in input) {
+    // atribuire schimbată fără secție în cerere (ex. din tabel): secția se completează din noii responsabili, ca în formular; dacă atribuirea nu s-a schimbat de fapt, secția rămâne
+    const teamsAfter = [("teamId" in input ? input.teamId : task.teamId), ...("extraTeamIds" in input ? (input.extraTeamIds ?? []) : (task.extraTeamIds ?? []))].filter(Boolean) as string[];
+    const usersAfter = [("assigneeId" in input ? input.assigneeId : task.assigneeId), ...("extraAssigneeIds" in input ? (input.extraAssigneeIds ?? []) : (task.extraAssigneeIds ?? []))].filter(Boolean) as string[];
+    const key = (a: (string | null)[]) => [...a].filter(Boolean).sort().join("|");
+    const changed = key(teamsAfter) !== key([task.teamId, ...(task.extraTeamIds ?? [])]) || key(usersAfter) !== key([task.assigneeId, ...(task.extraAssigneeIds ?? [])]);
+    if (changed) {
+      const derived = await deriveTaskSectionId(teamsAfter, usersAfter);
+      if (derived && derived !== task.sectionId) data.sectionId = derived;
+    }
+  }
   if (input.priority !== undefined) data.priority = input.priority;
   if ("dueAt" in input) {
     data.dueAt = input.dueAt ?? null;

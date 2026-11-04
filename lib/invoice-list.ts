@@ -316,6 +316,30 @@ export function queryInvoices(rows: InvRow[], f: InvQuery, nowMs: number = Date.
   };
 }
 
+/**
+ * Raportul pe servicii (facturi Apă-Canal): după liniile facturii — „WATER” = doar apă, „SEWER” = doar canalizare, „BOTH” = amândouă, „NONE” = nicio linie cu consum / sumă.
+ * Serverul trimite rânduri defalcate pe (serviciu, status, valută), iar browserul le adună după filtrele active (status, valută).
+ */
+export type InvServiceKey = "WATER" | "SEWER" | "BOTH" | "NONE";
+export type InvServiceRow = { svc: InvServiceKey; status: string; currency: string; n: number; total: number };
+
+/** Adună rândurile raportului: statusurile alese (fără alegere: toate în afară de anulate) și valuta aleasă (altfel cea mai frecventă). */
+export function sumServiceReport(rows: InvServiceRow[], statuses: string[], currency: string) {
+  const ok = rows.filter((r) => (statuses.length ? statuses.includes(r.status) : r.status !== "CANCELLED"));
+  const byCur = new Map<string, number>();
+  for (const r of ok) byCur.set(r.currency, (byCur.get(r.currency) ?? 0) + r.n);
+  let main = currency || "MDL", best = -1;
+  if (!currency) for (const [c, n] of byCur) if (n > best) { main = c; best = n; }
+  const out: Record<InvServiceKey, { n: number; total: number }> = { WATER: { n: 0, total: 0 }, SEWER: { n: 0, total: 0 }, BOTH: { n: 0, total: 0 }, NONE: { n: 0, total: 0 } };
+  for (const r of ok) {
+    if (r.currency !== main) continue;
+    out[r.svc].n += r.n;
+    out[r.svc].total += r.total;
+  }
+  for (const k of Object.keys(out) as InvServiceKey[]) out[k].total = round2(out[k].total);
+  return { currency: main, mixedCurrency: byCur.size > 1, by: out };
+}
+
 /** Forma pe care o primește tabelul (date ca ISO, ca să rămână serializabile între server și client). */
 export type InvoiceListItem = {
   id: string;

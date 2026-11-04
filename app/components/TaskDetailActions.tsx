@@ -15,7 +15,7 @@ import type { AssignmentSetting } from "@/lib/services/tasks";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
 
-type Opt = { id: string; name: string };
+type Opt = { id: string; name: string; sectionId?: string | null };
 
 export type TaskForEdit = {
   id: string;
@@ -34,6 +34,7 @@ export type TaskForEdit = {
   projectId: string | null;
   categoryId: string | null;
   address?: string | null;
+  sectionId?: string | null;
 };
 
 const TZ = "Europe/Bucharest";
@@ -45,6 +46,7 @@ export default function TaskDetailActions({
   task,
   users,
   teams,
+  sections,
   projects,
   categories,
   canEdit,
@@ -55,6 +57,7 @@ export default function TaskDetailActions({
   task: TaskForEdit;
   users: Opt[];
   teams: Opt[];
+  sections?: Opt[];
   projects: Opt[];
   categories: CategoryLite[];
   canEdit: boolean;
@@ -106,6 +109,7 @@ export default function TaskDetailActions({
           task={task}
           users={users}
           teams={teams}
+          sections={sections}
           projects={projects}
           categories={categories}
           canAssign={canAssign}
@@ -151,6 +155,7 @@ function EditDialog({
   task,
   users,
   teams,
+  sections,
   projects,
   categories,
   canAssign,
@@ -161,6 +166,7 @@ function EditDialog({
   task: TaskForEdit;
   users: Opt[];
   teams: Opt[];
+  sections?: Opt[];
   projects: Opt[];
   categories: CategoryLite[];
   onClose: () => void;
@@ -238,6 +244,8 @@ function EditDialog({
             <MultiAssignPicker
               users={users}
               teams={teams}
+              sections={sections}
+              initialSectionId={task.sectionId ?? ""}
               initialAssigneeIds={[
                 ...(task.assigneeId ? [task.assigneeId] : []),
                 ...(task.extraAssigneeIds ?? []),

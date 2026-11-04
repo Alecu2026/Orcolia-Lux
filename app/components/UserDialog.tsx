@@ -28,8 +28,10 @@ export type UserRow = {
   taskViewScope: string;
   taskViewTeamIds: string[];
   taskViewMemberIds: string[];
-  /** Secțiile/echipele din care face parte (membru). */
+  /** Echipele din care face parte (membru). */
   teamIds?: string[];
+  /** Secția din care face parte. */
+  sectionId?: string | null;
   totp?: boolean;
   /** Aspectul tabelelor setat de administrator (vezi lib/table-look.ts). */
   tableLook?: unknown;
@@ -78,6 +80,7 @@ export default function UserDialog({
   user,
   allUsers,
   teams,
+  sections = [],
   viewerId,
   viewerIsSuper,
   viewerIsAdmin,
@@ -87,6 +90,8 @@ export default function UserDialog({
   user: UserRow | null;
   allUsers: UserRow[];
   teams: Opt[];
+  /** Secțiile (nivelul de deasupra echipelor); fiecare utilizator face parte dintr-una. */
+  sections?: Opt[];
   viewerId: string;
   viewerIsSuper: boolean;
   /** Spectatorul e administrator (rol ADMIN): doar el poate crea/promova administratori. */
@@ -126,7 +131,8 @@ export default function UserDialog({
   const [viewTouched, setViewTouched] = useState(false);
   const [viewTeams, setViewTeams] = useState<Set<string>>(() => new Set(user?.taskViewTeamIds ?? []));
   const [viewMembers, setViewMembers] = useState<Set<string>>(() => new Set(user?.taskViewMemberIds ?? []));
-  // Secțiile/echipele din care face parte: devine membru, deci primește cererile și notificările lor.
+  // Secția din care face parte + echipele (devine membru al lor, deci primește cererile și notificările echipelor).
+  const [sectionId, setSectionId] = useState(user?.sectionId ?? "");
   const [memberTeams, setMemberTeams] = useState<Set<string>>(() => new Set(user?.teamIds ?? []));
   const [error, setError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
@@ -251,6 +257,7 @@ export default function UserDialog({
       if (notifyScope === "MEMBERS") for (const id of notifyMembers) fd.append("notifyMemberIds", id);
     }
     fd.set("teamsSent", "1");
+    fd.set("sectionId", sectionId);
     for (const id of memberTeams) fd.append("teamIds", id);
     fd.set("tableLook", JSON.stringify(look));
     fd.set("taskViewScope", viewMode === "ALL" ? "ALL" : "RESTRICTED");
@@ -356,10 +363,20 @@ export default function UserDialog({
               <p className="mt-1 text-xs text-ink-soft">{m.users.telegramHint}</p>
             </div>
 
+            <div data-user-section>
+              <label className="text-xs font-semibold text-ink-soft">
+                {t("Secție")}
+                <select value={sectionId} onChange={(e) => { setTouched(true); setSectionId(e.target.value); }} className={`${input} mt-1 font-normal text-ink`}>
+                  <option value="">{t("— fără secție —")}</option>
+                  {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </label>
+            </div>
+
             <div data-user-teams>
-              <p className="mb-1 text-xs font-semibold text-ink-soft">{t("Secție / echipă")}</p>
+              <p className="mb-1 text-xs font-semibold text-ink-soft">{t("Echipe")}</p>
               <PickList items={teams} selected={memberTeams} onToggle={(id, on) => { setTouched(true); setMemberTeams((p) => toggleIn(p, id, on)); }} empty={m.users.noTeams} />
-              <p className="mt-1 text-[11px] text-ink-soft">{t("Persoana face parte din secțiile bifate: primește cererile și notificările lor, iar în filtre cererile se repartizează pe secții.")}</p>
+              <p className="mt-1 text-[11px] text-ink-soft">{t("Persoana face parte din echipele bifate: primește cererile și notificările lor.")}</p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">

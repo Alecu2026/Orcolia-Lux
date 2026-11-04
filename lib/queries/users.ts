@@ -19,8 +19,10 @@ export type UserRow = {
   taskViewScope: string;
   taskViewTeamIds: string[];
   taskViewMemberIds: string[];
-  /** Secțiile/echipele din care face parte (aceleași cu membrii din pagina Echipe). */
+  /** Echipele din care face parte (aceleași cu membrii din pagina Echipe). */
   teamIds: string[];
+  /** Secția din care face parte (Section); null = fără secție. */
+  sectionId: string | null;
   /** Autentificarea în doi pași (TOTP) e activă pe cont. */
   totp?: boolean;
 };
@@ -42,13 +44,14 @@ const USER_SELECT = {
   taskViewTeamIds: true,
   taskViewMemberIds: true,
   teamIds: true,
+  sectionId: true,
   tableLook: true,
 } as const;
 
 export async function listUsers(): Promise<UserRow[]> {
   if (DEMO) {
     return [
-      { id: "demo-user", name: "Cont Demo", email: "demo@local", role: "ADMIN", isActive: true, isSuperAdmin: true, permissions: [], notifyEvents: [], telegramChatId: null, notifyScope: "ALL", notifyTeamIds: [], notifyMemberIds: [], taskViewScope: "ALL", taskViewTeamIds: [], taskViewMemberIds: [], teamIds: [] },
+      { id: "demo-user", name: "Cont Demo", email: "demo@local", role: "ADMIN", isActive: true, isSuperAdmin: true, permissions: [], notifyEvents: [], telegramChatId: null, notifyScope: "ALL", notifyTeamIds: [], notifyMemberIds: [], taskViewScope: "ALL", taskViewTeamIds: [], taskViewMemberIds: [], teamIds: [], sectionId: null },
     ];
   }
   const rows = await prisma.user.findMany({
@@ -65,11 +68,11 @@ export async function getUserById(id: string): Promise<UserRow | null> {
 
 /** Opțiuni minime pentru selectoare de asignare (utilizatori activi). Cache cross-request. */
 export const userOptions = unstable_cache(
-  async (): Promise<{ id: string; name: string }[]> => {
-    if (DEMO) return [{ id: "demo-user", name: "Cont Demo" }];
+  async (): Promise<{ id: string; name: string; sectionId: string | null }[]> => {
+    if (DEMO) return [{ id: "demo-user", name: "Cont Demo", sectionId: null }];
     return prisma.user.findMany({
       where: { isActive: true },
-      select: { id: true, name: true },
+      select: { id: true, name: true, sectionId: true },
       orderBy: { name: "asc" },
     });
   },

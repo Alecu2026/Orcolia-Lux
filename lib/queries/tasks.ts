@@ -47,6 +47,8 @@ export type TaskRow = {
   serviceType: string | null;
   /** Categoria consumatorului: HOUSEHOLD (casnic) / NON_HOUSEHOLD (non casnic); gol = nespecificat. */
   consumerType: string | null;
+  /** Secția (id); null = fără secție / creată înainte de secții. */
+  sectionId: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -95,6 +97,7 @@ const TASK_SELECT = {
   portalTemplateId: true,
   serviceType: true,
   consumerType: true,
+  sectionId: true,
   extraAssigneeIds: true,
   extraTeamIds: true,
   assignmentSettingsJson: true,
@@ -211,6 +214,7 @@ function toRow(t: TaskDbRow, l: Lookups): TaskRow {
     portalTemplateId: t.portalTemplateId ?? null,
     serviceType: t.serviceType ?? null,
     consumerType: t.consumerType ?? null,
+    sectionId: t.sectionId ?? null,
     extraAssigneeIds: t.extraAssigneeIds ?? [],
     extraTeamIds: t.extraTeamIds ?? [],
     assignmentSettingsJson: t.assignmentSettingsJson ?? null,
@@ -549,6 +553,7 @@ function toTuple(t: TaskDbRow): TaskTuple {
     t.serviceType ?? null,
     t.closedAt ? t.closedAt.getTime() : null,
     t.consumerType ?? null,
+    t.sectionId ?? null,
   ];
 }
 

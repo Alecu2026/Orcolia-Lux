@@ -23,6 +23,7 @@ import {
   toListItem,
   type InvQuery,
   type InvRow,
+  type InvServiceRow,
   type InvSums,
   type InvTuple,
   type InvoiceListItem,
@@ -395,6 +396,7 @@ export async function syncInvoiceToCache(id: string): Promise<void> {
       S.patched.delete(m);
     }
     S.lists.clear();
+    dropReports();
     // numărul de facturi pe lună se schimbă doar la creare / ștergere / mutare între luni (nu la schimbarea statusului)
     if (!oldMonth || !r || monthOf(r.issueDate.getTime()) !== oldMonth) S.index = null;
     invalidateOneC();
@@ -432,6 +434,7 @@ export async function invalidateInvoices(opts: { soft?: boolean; months?: string
   invalidateOneC(); // „Total PWA” / „Diferență” din Tabel 1C vin din facturi
   const soft = !!opts.soft;
   S.lists.clear();
+  dropReports();
   S.index = null;
   dropClientNames();
   if (opts.months?.length) {
@@ -478,6 +481,94 @@ export async function prewarmInvoices(): Promise<boolean> {
     }
   }
   return did;
+}
+
+// ───────────────────────────── raport pe servicii ─────────────────────────────
+
+const gr = globalThis as unknown as {
+  __invReports?: { done: Map<string, { at: number; rows: InvServiceRow[] }>; flights: Map<string, Promise<InvServiceRow[]>>; epoch: number };
+};
+const REPORTS = (gr.__invReports ??= { done: new Map(), flights: new Map(), epoch: 0 });
+const REPORT_TTL_MS = 5 * 60_000;
+const REPORT_CONCURRENCY = 3;
+const REPORT_MAX_MONTHS = 240;
+
+/** Orice modificare a facturilor: rezultatele calculate (și cele în curs de calcul) nu mai sunt valabile. */
+function dropReports() {
+  REPORTS.done.clear();
+  REPORTS.flights.clear();
+  REPORTS.epoch++;
+}
+
+/** O linie de serviciu „există” dacă are consum sau sumă (formularul salvează mereu ambele linii, chiar și cu canalizare 0). */
+const svcLine = (re: string) => ({
+  $gt: [
+    { $size: { $filter: { input: "$items", as: "i", cond: { $and: [
+      { $regexMatch: { input: "$$i.description", regex: re, options: "i" } },
+      { $or: [{ $gt: ["$$i.quantity", 0] }, { $gt: ["$$i.lineTotal", 0] }] },
+    ] } } } },
+    0,
+  ],
+});
+
+/** O lună: facturile Apă-Canal grupate pe (are apă, are canalizare, status, valută). Liniile se caută prin indexul pe invoiceId; rezultatul stă în memorie câteva minute. */
+function serviceReportForMonth(month: string): Promise<InvServiceRow[]> {
+  const hit = REPORTS.done.get(month);
+  if (hit && Date.now() - hit.at < REPORT_TTL_MS) return Promise.resolve(hit.rows);
+  // aceeași lună cerută de mai mulți deodată → o singură agregare
+  const flying = REPORTS.flights.get(month);
+  if (flying) return flying;
+  const epoch = REPORTS.epoch;
+  const run = computeServiceReport(month, epoch).finally(() => {
+    if (REPORTS.epoch === epoch) REPORTS.flights.delete(month);
+  });
+  REPORTS.flights.set(month, run);
+  return run;
+}
+
+async function computeServiceReport(month: string, epoch: number): Promise<InvServiceRow[]> {
+  const startedAt = Date.now();
+  const [a, b] = monthBoundsMs(month);
+  const raw = (await prisma.invoice.aggregateRaw({
+    pipeline: [
+      { $match: { kind: "APA_CANAL", issueDate: { $gte: { $date: new Date(a).toISOString() }, $lt: { $date: new Date(b).toISOString() } } } },
+      { $lookup: { from: "InvoiceItem", localField: "_id", foreignField: "invoiceId", as: "items" } },
+      { $project: { status: 1, currency: 1, grandTotal: 1, w: svcLine("alimentare cu ap[aă]"), s: svcLine("canalizare") } },
+      { $group: { _id: { w: "$w", s: "$s", st: "$status", c: "$currency" }, n: { $sum: 1 }, total: { $sum: "$grandTotal" } } },
+    ],
+  })) as unknown as { _id: { w: boolean; s: boolean; st: string; c: string }; n: number; total: number }[];
+  const rows = raw.map((r): InvServiceRow => ({
+    svc: r._id.w && r._id.s ? "BOTH" : r._id.w ? "WATER" : r._id.s ? "SEWER" : "NONE",
+    status: r._id.st, currency: r._id.c, n: r.n, total: r.total,
+  }));
+  // o modificare în timpul agregării → rezultatul nu se păstrează (ar arăta cifre vechi)
+  if (REPORTS.epoch === epoch) {
+    if (REPORTS.done.size >= REPORT_MAX_MONTHS) REPORTS.done.delete(REPORTS.done.keys().next().value as string);
+    REPORTS.done.set(month, { at: startedAt, rows });
+  }
+  return rows;
+}
+
+/** Raportul pe servicii pentru o perioadă (`AAAA-LL` / `last3` / `year:AAAA` / `all`): rândurile lunilor, adunate pe (serviciu, status, valută). */
+export async function getInvoiceServiceReport(period: string): Promise<InvServiceRow[]> {
+  if (DEMO) return [];
+  const months = await getInvoiceMonths();
+  const list = periodMonths(period, months).filter((m) => months.some((x) => x.month === m));
+  const perMonth: InvServiceRow[][] = new Array(list.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(REPORT_CONCURRENCY, list.length) }, async () => {
+    while (next < list.length) {
+      const i = next++;
+      perMonth[i] = await serviceReportForMonth(list[i]);
+    }
+  }));
+  const acc = new Map<string, InvServiceRow>();
+  for (const r of perMonth.flat()) {
+    const k = `${r.svc}|${r.status}|${r.currency}`;
+    const cur = acc.get(k);
+    if (cur) { cur.n += r.n; cur.total += r.total; } else acc.set(k, { ...r });
+  }
+  return [...acc.values()];
 }
 
 // ───────────────────────────── pagina / lista ─────────────────────────────

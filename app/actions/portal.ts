@@ -50,7 +50,7 @@ export async function createPortalTicket(
     }
   }
 
-  const team = sectionId ? await prisma.team.findUnique({ where: { id: sectionId }, select: { id: true, name: true, memberIds: true } }) : null;
+  const team = sectionId ? await prisma.team.findUnique({ where: { id: sectionId }, select: { id: true, name: true, memberIds: true, sectionId: true } }) : null;
 
   const systemUser = await prisma.user.findFirst({
     where: { role: "ADMIN", isActive: true },
@@ -76,6 +76,7 @@ export async function createPortalTicket(
       priority: "MEDIUM",
       creatorId: systemUser.id,
       ...(team ? { teamId: team.id } : {}),
+      ...(team?.sectionId ? { sectionId: team.sectionId } : {}), // secția echipei responsabile
       ...(portalTemplateId ? { portalTemplateId } : {}),
       ...(dueAt ? { dueAt } : {}),
       clientId: client.id,

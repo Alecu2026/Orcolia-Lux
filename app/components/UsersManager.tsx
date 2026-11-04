@@ -21,6 +21,7 @@ import { useT } from "@/lib/i18n/context";
 export default function UsersManager({
   users,
   teams = [],
+  sections = [],
   viewerIsSuper = false,
   viewerId = "",
   viewerRole = "STAFF",
@@ -30,6 +31,7 @@ export default function UsersManager({
   roleTemplates?: RoleTemplate[];
   users: UserRow[];
   teams?: Opt[];
+  sections?: Opt[];
   viewerIsSuper?: boolean;
   viewerId?: string;
   viewerRole?: "ADMIN" | "STAFF";
@@ -246,6 +248,7 @@ export default function UsersManager({
           user={dialog.user}
           allUsers={rows}
           teams={teams}
+          sections={sections}
           viewerId={viewerId}
           viewerIsSuper={viewerIsSuper}
           viewerIsAdmin={viewerRole === "ADMIN"}

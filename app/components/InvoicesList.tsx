@@ -31,7 +31,9 @@ import {
   periodMonths,
   queryInvoices,
   queryToParams,
+  sumServiceReport,
   type InvQuery,
+  type InvServiceRow,
   type InvSort,
   type InvSums,
   type InvoiceListItem,
@@ -113,6 +115,10 @@ export default function InvoicesList({
   const [showMore, setShowMore] = useState(() => hasAdvanced(initial.query));
   const [goto, setGoto] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  const [showReport, setShowReport] = useState(false);
+  const [report, setReport] = useState<{ period: string; rows: InvServiceRow[] } | null>(null);
+  const [reportErr, setReportErr] = useState<string | null>(null);
+  const [reportTick, setReportTick] = useState(0);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusMenu = useRef<HTMLDetailsElement>(null);
 
@@ -291,6 +297,7 @@ export default function InvoicesList({
         patchEverywhere(id, prev);
         toast.error(res.error ?? m.common.error);
       } else {
+        setReportTick((n) => n + 1);
         toast.success(`Status: ${INVOICE_STATUS[s].label}`);
       }
     });
@@ -304,6 +311,7 @@ export default function InvoicesList({
     setData((d) => ({ ...d, items: d.items.filter((r) => r.id !== id), total: Math.max(0, d.total - 1) }));
     cache.current.clear();
     deleteInvoice(id)
+      .then(() => setReportTick((n) => n + 1))
       .then(() => toast.success(m.invoices.deleted))
       .catch(() => {
         if (prevRows) ds.restoreRows(prevRows);
@@ -322,6 +330,30 @@ export default function InvoicesList({
       prompt(m.invoices.copyLink + ":", url);
     }
   }
+
+  // ── Raport pe servicii (apă / canalizare / amândouă): se aduce de pe server pentru perioada aleasă, doar cât timp panoul e deschis ──
+  useEffect(() => {
+    if (!showReport) return;
+    const ctl = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReportErr(null);
+    fetch(`/api/invoices/report?p=${encodeURIComponent(period)}`, { signal: ctl.signal })
+      .then(async (r) => {
+        // un răspuns care nu e JSON (expirare, eroare de platformă) nu trebuie să ajungă ca text tehnic în panou
+        const j = (await r.json().catch(() => null)) as { error?: string; rows?: InvServiceRow[] } | null;
+        if (!r.ok || !j?.rows) throw new Error(j?.error ?? "Nu am putut calcula raportul.");
+        setReport({ period, rows: j.rows });
+      })
+      .catch((e: Error) => {
+        if (e.name !== "AbortError") setReportErr(t(e.message));
+      });
+    return () => ctl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showReport, period, reportTick]);
+  const reportSum = useMemo(
+    () => (report && report.period === period ? sumServiceReport(report.rows, query.statuses, query.currency) : null),
+    [report, period, query.statuses, query.currency],
+  );
 
   const pageTotal = useMemo(() => rows.reduce((sum, r) => sum + (r.status === "CANCELLED" ? 0 : r.grandTotal), 0), [rows]);
 
@@ -490,10 +522,20 @@ export default function InvoicesList({
         {useLocal && <span className="text-ink-soft" title={t("Lista e ținută în memorie și filtrată instant în browser.")}>{t("⚡ local")}</span>}
         <button
           type="button"
+          onClick={() => setShowReport((v) => !v)}
+          aria-expanded={showReport}
+          data-inv-report-toggle=""
+          title={t("Numărul de facturi și suma pe apă, canalizare și ambele (pentru perioada aleasă)")}
+          className={`tap ml-auto h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${showReport ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+        >
+          {showReport ? t("Raport servicii ▴") : t("Raport servicii ▾")}
+        </button>
+        <button
+          type="button"
           onClick={toggleCards}
           aria-pressed={cards}
           title={cards ? t("Înapoi la tabel") : t("Afișează facturile într-o coloană mică; apeși pe una ca să vezi detaliile (potrivit pentru telefon)")}
-          className={`tap ml-auto h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+          className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
         >
           {cards ? "▦ Tabel" : "📱 Mod telefon"}
         </button>
@@ -511,6 +553,52 @@ export default function InvoicesList({
           </select>
         </label>
       </div>
+      {showReport && (
+        <div className="mb-1.5 max-w-xl rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)]/50 px-2 py-1.5 text-[11px]" data-inv-report="">
+          {reportErr ? (
+            <p className="text-st-cancelled">{reportErr}</p>
+          ) : !reportSum ? (
+            <p className="text-ink-soft">{t("se încarcă…")}</p>
+          ) : (
+            <>
+              <table className="w-full tabular-nums">
+                <thead>
+                  <tr className="text-ink-soft">
+                    <th className="py-0.5 text-left font-semibold">{t("Serviciu")}</th>
+                    <th className="py-0.5 text-right font-semibold">{t("Facturi")}</th>
+                    <th className="py-0.5 text-right font-semibold">{t("Sumă")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {([["WATER", "Doar apă"], ["SEWER", "Doar canalizare"], ["BOTH", "Apă + canalizare"]] as const).map(([k, label]) => (
+                    <tr key={k} className="border-t border-[var(--color-line)]">
+                      <td className="py-0.5">{t(label)}</td>
+                      <td className="py-0.5 text-right">{reportSum.by[k].n.toLocaleString("ro-RO")}</td>
+                      <td className="py-0.5 text-right font-semibold">{fmtMoney(reportSum.by[k].total, reportSum.currency)}</td>
+                    </tr>
+                  ))}
+                  {reportSum.by.NONE.n > 0 && (
+                    <tr className="border-t border-[var(--color-line)] text-ink-soft">
+                      <td className="py-0.5">{t("Fără servicii (consum și sumă zero)")}</td>
+                      <td className="py-0.5 text-right">{reportSum.by.NONE.n.toLocaleString("ro-RO")}</td>
+                      <td className="py-0.5 text-right">{fmtMoney(reportSum.by.NONE.total, reportSum.currency)}</td>
+                    </tr>
+                  )}
+                  <tr className="border-t border-[var(--color-line)] font-semibold">
+                    <td className="py-0.5">{t("Total")}</td>
+                    <td className="py-0.5 text-right">{(["WATER", "SEWER", "BOTH", "NONE"] as const).reduce((s, k) => s + reportSum.by[k].n, 0).toLocaleString("ro-RO")}</td>
+                    <td className="py-0.5 text-right">{fmtMoney((["WATER", "SEWER", "BOTH", "NONE"] as const).reduce((s, k) => s + reportSum.by[k].total, 0), reportSum.currency)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="mt-1 text-ink-soft">
+                {t("Doar facturile Apă-Canal din perioada aleasă; se ține cont de filtrul de status și de valută (fără filtru de status: fără cele anulate). Celelalte filtre nu se aplică.")}
+                {reportSum.mixedCurrency && ` ${t("(mai multe valute)")}`}
+              </p>
+            </>
+          )}
+        </div>
+      )}
       {serverMode && (
         <p className="mb-1 text-[11px] text-st-progress" data-inv-servernote="">
           {t("Perioadă mare: căutarea rulează pe server (mai lent). Sortarea după număr și dată emitere merge; pentru filtre instante și totaluri alege o lună sau „Ultimele 3 luni”.")}

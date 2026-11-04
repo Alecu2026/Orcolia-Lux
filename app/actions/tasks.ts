@@ -157,10 +157,17 @@ export async function createTaskAction(
         ].filter((s) => s.notifyUntilStatus)
       : [];
 
+    // Șablonul intern folosit (câmp ascuns din formular): se păstrează pe cerere pentru numărătoarea din export; un id care nu există se ignoră
+    const tplId = String(formData.get("templateId") ?? "");
+    const tpl = /^[0-9a-f]{24}$/i.test(tplId) ? await prisma.taskTemplate.findUnique({ where: { id: tplId }, select: { id: true, name: true } }).catch(() => null) : null;
+
     const res = await createTask(
       user.id,
       {
         title,
+        sectionId: (formData.get("sectionId") as string) || null,
+        taskTemplateId: tpl?.id ?? null,
+        taskTemplateName: tpl?.name ?? null,
         description: String(formData.get("description") ?? ""),
         type,
         priority,
@@ -383,6 +390,7 @@ export async function updateTaskAction(
       clientId: (formData.get("clientId") as string) || null,
       categoryId: (formData.get("categoryId") as string) || null,
       ...(formData.has("address") ? { address: String(formData.get("address") ?? "").trim().slice(0, 300) || null } : {}),
+      ...(formData.has("sectionId") ? { sectionId: (formData.get("sectionId") as string) || null } : {}),
       ...(formData.has("serviceType") ? { serviceType: parseServiceType(formData.get("serviceType")) } : {}),
       ...(formData.has("consumerType") ? { consumerType: parseConsumerType(formData.get("consumerType")) } : {}),
       priority,
@@ -414,6 +422,8 @@ export type TaskFieldPatch = {
   categoryId?: string | null;
   address?: string | null;
   consumerName?: string | null;
+  /** Secția (id); gol = fără secție. */
+  sectionId?: string | null;
   /** WATER / SEWER / BOTH; gol = nespecificat. */
   serviceType?: string | null;
   /** HOUSEHOLD / NON_HOUSEHOLD; gol = nespecificat. */
@@ -487,6 +497,7 @@ export async function updateTaskFieldAction(id: string, patch: TaskFieldPatch): 
     if ("categoryId" in patch) input.categoryId = idOrNull(patch.categoryId);
     if ("address" in patch) input.address = String(patch.address ?? "").trim().slice(0, 300) || null;
     if ("consumerName" in patch) input.consumerName = String(patch.consumerName ?? "").replace(/\s+/g, " ").trim().slice(0, 150) || null;
+    if ("sectionId" in patch) input.sectionId = idOrNull(patch.sectionId);
     if ("serviceType" in patch) input.serviceType = parseServiceType(patch.serviceType);
     if ("consumerType" in patch) input.consumerType = parseConsumerType(patch.consumerType);
     if ("dueDate" in patch) {

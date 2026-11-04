@@ -26,9 +26,17 @@ function invalidate() {
   // secțiile din care face parte utilizatorul se văd și în lista echipelor
   revalidatePath("/team");
   updateTag("teams");
+  updateTag("sections");
 }
 
-/** Secțiile/echipele alese pentru utilizator: doar cele care există (un id străin ar face salvarea să cadă). */
+/** Secția aleasă pentru utilizator (gol = fără secție); o secție care nu mai există se ignoră. */
+async function parseSectionId(formData: FormData): Promise<string | null> {
+  const v = String(formData.get("sectionId") ?? "");
+  if (!/^[a-f0-9]{24}$/i.test(v)) return null;
+  return (await prisma.section.findUnique({ where: { id: v }, select: { id: true } }).catch(() => null))?.id ?? null;
+}
+
+/** Echipele alese pentru utilizator: doar cele care există (un id străin ar face salvarea să cadă). */
 async function parseTeamIds(formData: FormData): Promise<string[]> {
   const ids = parseIdList(formData, "teamIds");
   if (ids.length === 0) return [];
@@ -128,6 +136,7 @@ export async function createUser(
   if (exists) return { error: "Există deja un cont cu acest email." };
 
   const teamIds = await parseTeamIds(formData);
+  const sectionId = await parseSectionId(formData);
 
   const created = await prisma.user.create({
     data: {
@@ -146,7 +155,8 @@ export async function createUser(
       tableLook: parseTableLook(formData),
       taskViewTeamIds: parseIdList(formData, "taskViewTeamIds"),
       taskViewMemberIds: parseIdList(formData, "taskViewMemberIds"),
-      // secțiile din care face parte: devine membru al lor, deci primește cererile și notificările secției
+      sectionId,
+      // echipele din care face parte: devine membru al lor, deci primește cererile și notificările echipei
       ...(teamIds.length ? { teams: { connect: teamIds.map((id) => ({ id })) } } : {}),
     },
     select: { id: true },
@@ -224,8 +234,9 @@ export async function updateUser(
 
   const newPerms = role === "ADMIN" ? [] : guardImpersonatePerm(admin, parsePerms(formData), before.permissions);
   const newNotify = parseNotifyEvents(formData);
-  // Secțiile se schimbă doar dacă formularul le-a trimis (marcajul „teamsSent”): alte apeluri nu trebuie să le șteargă.
+  // Echipele și secția se schimbă doar dacă formularul le-a trimis (marcajul „teamsSent”): alte apeluri nu trebuie să le șteargă.
   const teamsSent = formData.get("teamsSent") === "1";
+  const newSectionId = teamsSent ? await parseSectionId(formData) : undefined;
   const newTeamIds = teamsSent ? await parseTeamIds(formData) : null;
   const beforeTeamIds = newTeamIds
     ? (await prisma.user.findUnique({ where: { id }, select: { teamIds: true } }))?.teamIds ?? []
@@ -250,6 +261,7 @@ export async function updateUser(
         taskViewTeamIds: parseIdList(formData, "taskViewTeamIds"),
         taskViewMemberIds: parseIdList(formData, "taskViewMemberIds"),
         ...(newTeamIds ? { teams: { set: newTeamIds.map((tid) => ({ id: tid })) } } : {}),
+        ...(newSectionId !== undefined ? { sectionId: newSectionId } : {}),
         ...(newPassword.length >= 8 ? { passwordHash: await hashPassword(newPassword) } : {}),
       },
     });

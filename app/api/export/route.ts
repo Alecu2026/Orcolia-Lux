@@ -3,6 +3,8 @@ import { serviceTypeLabel } from "@/lib/service-type";
 import { consumerTypeLabel } from "@/lib/consumer-type";
 import { DEADLINE_LABEL, deadlineState } from "@/lib/task-deadline";
 import { listTasks, taskViewFilter } from "@/lib/queries/tasks";
+import { listSections, sectionMaps } from "@/lib/queries/sections";
+import { deriveSectionId } from "@/lib/sections";
 import { listClients } from "@/lib/queries/clients";
 import { mineWhere } from "@/lib/queries/appointments";
 import { buildPayerWhere, matchesMonthInvoice, monthRange, parsePayerMonth, parseInstalledFrom } from "@/lib/queries/payers";
@@ -12,7 +14,7 @@ import { sanitizeFilters } from "@/lib/payer-notify";
 import { INVOICE_STATUS_LIST, INVOICE_STATUS } from "@/app/components/invoice-meta";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
-import { toCSV, toXLSX, csvResponse, xlsxResponse, streamText } from "@/lib/export-utils";
+import { toCSV, toXLSX, csvResponse, xlsxResponse, streamText, type ExtraSheet } from "@/lib/export-utils";
 import { getPayerStatement } from "@/lib/services/payer-statement";
 import { formatDate, formatTime, DEFAULT_TZ } from "@/lib/date";
 import { formatMinutes } from "@/lib/resolution";
@@ -41,6 +43,114 @@ function fmtDateTime(d: Date | null | undefined): string {
 
 function today(): string {
   return fmtDate(new Date()).replace(/\./g, "-");
+}
+
+/**
+ * Secția fiecărei cereri / sarcini: cea salvată pe ea; la cele create înainte de secții, cea a echipei atribuite, apoi a persoanei atribuite.
+ * Întoarce numele secției pe rând și numărătoarea pe secții (cu „Fără secție” la urmă) pentru foaia „Sumar”.
+ */
+async function sectionBreakdown(items: { id: string; sectionId: string | null; teamId: string | null; extraTeamIds: string[]; assigneeId: string | null; extraAssigneeIds: string[] }[], label: string) {
+  const [sections, maps] = await Promise.all([listSections(), sectionMaps()]);
+  const nameById = new Map(sections.map((s) => [s.id, s.name]));
+  const counts = new Map<string, number>();
+  let none = 0;
+  const byId = new Map<string, string>();
+  for (const t of items) {
+    const sid = t.sectionId ?? deriveSectionId([t.teamId ?? "", ...t.extraTeamIds].filter(Boolean), [t.assigneeId ?? "", ...t.extraAssigneeIds].filter(Boolean), maps.teamSection, maps.userSection);
+    const name = sid ? nameById.get(sid) : undefined;
+    byId.set(t.id, name ?? "");
+    if (sid && name) counts.set(sid, (counts.get(sid) ?? 0) + 1);
+    else none++;
+  }
+  const rows: (string | number)[][] = [
+    ["Pe secții", label],
+    ...sections.map((s): (string | number)[] => [s.name, counts.get(s.id) ?? 0]),
+    ["Fără secție", none],
+  ];
+  return { byId, rows };
+}
+
+type Origin = "PORTAL" | "INTERNAL" | "EMAIL";
+const ORIGIN_LABEL: Record<Origin, string> = { PORTAL: "Portal clienți", INTERNAL: "Creată de noi (CRM)", EMAIL: "Email" };
+const NO_INTERNAL = "Fără șablon intern (create manual / înainte de evidența șabloanelor)";
+const NO_TEMPLATE ="Fără șablon (altă cerere / cereri mai vechi)";
+
+/**
+ * Originea cererilor exportate. Nu e salvată ca atare: doar portalul și emailul completează solicitantul (`fromName` / `fromEmail`), iar cererile create în CRM nu —
+ * deci „portal” = are șablon din portal sau solicitant fără să fie din email; „creată de noi” = restul. Cererile mai vechi din portal, fără șablon salvat, se potrivesc
+ * după titlu (care pornește din numele șablonului), ca în filtrul „Șablon din portal”. Șablonul intern folosit (Setări → Șabloane) se păstrează pe cerere (`taskTemplateId`) doar de la introducerea evidenței; cele create înainte, sau fără șablon, apar la „Fără șablon intern”.
+ */
+async function ticketOrigins(items: { id: string; title: string; portalTemplateId: string | null }[]) {
+  const [templates, internalTemplates, flags] = await Promise.all([
+    prisma.portalRequestTemplate.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }], select: { id: true, name: true } }),
+    prisma.taskTemplate.findMany({ where: { type: "TICKET" }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    (async () => {
+      const out = new Map<string, { emailSource: boolean; who: boolean; tplId: string | null; tplName: string | null }>();
+      const ids = items.map((t) => t.id);
+      const chunks: string[][] = [];
+      for (let i = 0; i < ids.length; i += 1000) chunks.push(ids.slice(i, i + 1000));
+      // loturi de câte 1000 de id-uri, câte 4 deodată (un `id in` uriaș e lent pe MongoDB)
+      for (let i = 0; i < chunks.length; i += 4) {
+        const parts = await Promise.all(chunks.slice(i, i + 4).map((c) => prisma.task.findMany({ where: { id: { in: c } }, select: { id: true, emailSource: true, fromName: true, fromEmail: true, taskTemplateId: true, taskTemplateName: true } })));
+        for (const r of parts.flat()) out.set(r.id, { emailSource: !!r.emailSource, who: !!(r.fromName?.trim() || r.fromEmail?.trim()), tplId: r.taskTemplateId ?? null, tplName: r.taskTemplateName ?? null });
+      }
+      return out;
+    })(),
+  ]);
+  const nameById = new Map(templates.map((x) => [x.id, x.name]));
+  const byLength = [...templates].sort((a, b) => b.name.length - a.name.length);
+  const internalName = new Map(internalTemplates.map((x) => [x.id, x.name]));
+  const internalCount = new Map<string, { name: string; n: number }>();
+  let noInternal = 0;
+  const byId = new Map<string, { origin: Origin; template: string; internal: string }>();
+  const perOrigin: Record<Origin, number> = { PORTAL: 0, INTERNAL: 0, EMAIL: 0 };
+  const perTemplate = new Map<string, number>();
+  let noTemplate = 0;
+  for (const t of items) {
+    const f = flags.get(t.id);
+    const origin: Origin = f?.emailSource ? "EMAIL" : t.portalTemplateId || f?.who ? "PORTAL" : "INTERNAL";
+    let template = "";
+    if (origin === "PORTAL") {
+      const title = t.title.trim().toLowerCase();
+      const tplId = (t.portalTemplateId && nameById.has(t.portalTemplateId) ? t.portalTemplateId : null) ?? byLength.find((x) => x.name.trim() && title.startsWith(x.name.trim().toLowerCase()))?.id ?? null;
+      template = tplId ? (nameById.get(tplId) ?? "") : "";
+      if (tplId) perTemplate.set(tplId, (perTemplate.get(tplId) ?? 0) + 1); // pe id: două șabloane cu același nume nu se adună
+      else noTemplate++;
+    }
+    // șablonul intern (doar la cererile create de noi): numele de acum, altfel cel salvat la creare (șablon șters ulterior)
+    let internal = "";
+    if (origin === "INTERNAL") {
+      if (f?.tplId) {
+        internal = internalName.get(f.tplId) ?? (f.tplName ? `${f.tplName} (șters)` : "(șablon șters)");
+        const cur = internalCount.get(f.tplId);
+        if (cur) cur.n++;
+        else internalCount.set(f.tplId, { name: internal, n: 1 });
+      } else noInternal++;
+    }
+    perOrigin[origin]++;
+    byId.set(t.id, { origin, template, internal });
+  }
+  const summary: ExtraSheet = {
+    name: "Sumar",
+    rows: [
+      ["Cereri exportate", items.length],
+      [],
+      ["Origine", "Cereri"],
+      ["Create din portalul clienților", perOrigin.PORTAL],
+      ["Create de noi (în CRM, inclusiv din șabloanele interne)", perOrigin.INTERNAL],
+      ...(perOrigin.EMAIL ? [["Primite pe email", perOrigin.EMAIL]] : []),
+      [],
+      ["Din portalul clienților, pe șabloane", "Cereri"],
+      ...templates.map((x): (string | number)[] => [x.name, perTemplate.get(x.id) ?? 0]),
+      [NO_TEMPLATE, noTemplate],
+      [],
+      ["Create de noi, pe șabloane interne", "Cereri"],
+      ...internalTemplates.map((x): (string | number)[] => [x.name, internalCount.get(x.id)?.n ?? 0]),
+      ...[...internalCount].filter(([id]) => !internalName.has(id)).map(([, v]): (string | number)[] => [v.name, v.n]),
+      [NO_INTERNAL, noInternal],
+    ],
+  };
+  return { byId, summary };
 }
 
 export async function GET(req: Request) {
@@ -82,7 +192,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
 
   const BOM = "﻿";
 
-  function makeResponse(headers: string[], rows: Record<string, string | number | boolean | null | undefined>[], filename: string) {
+  function makeResponse(headers: string[], rows: Record<string, string | number | boolean | null | undefined>[], filename: string, extraSheets: ExtraSheet[] = []) {
     if (format === "json") {
       // Cheile sunt aceleași ca antetele din Excel/CSV, deci fișierul se poate reimporta.
       const data = rows.map((r) => Object.fromEntries(headers.map((h) => [h, r[h] ?? ""])));
@@ -94,7 +204,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
       });
     }
     if (isXLSX) {
-      return xlsxResponse(toXLSX(headers, rows), `${filename}-${today()}.xlsx`);
+      return xlsxResponse(toXLSX(headers, rows, extraSheets), `${filename}-${today()}.xlsx`);
     }
     return csvResponse(BOM + toCSV(headers, rows), `${filename}-${today()}.csv`);
   }
@@ -132,8 +242,12 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
     const clientIds = [...new Set(items.map((t) => t.clientId).filter(Boolean) as string[])];
     const clientNameMap = await clientNamesFor(clientIds); // id-in cu mii de id-uri e lent: pentru liste mari se citește harta numelor
 
-    const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Proiect", "Client", "Adresă", "Nume consumator", "Tip serviciu", "Tip consumator", "Categorie", "Scadent", "Situație termen", "Data finalizării", "Data executării", "Măsuri luate", "Timp de rezolvare", "Feedback client (1-5)", "Comentariu feedback", "Progres (%)", "Creat la", "Creat de", "Descriere"];
+    // Cereri: de unde vine fiecare (portalul clienților / creată de noi în CRM / email) și din ce șablon din portal; la Excel, o foaie „Sumar” numără pe fiecare
+    const origin = entity === "tickets" ? await ticketOrigins(items) : null;
+    const section = await sectionBreakdown(items, entity === "tickets" ? "Cereri" : "Sarcini");
+    const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Secție", "Proiect", "Client", "Adresă", "Nume consumator", "Tip serviciu", "Tip consumator", ...(origin ? ["Origine", "Șablon din portal", "Șablon intern"] : []), "Categorie", "Scadent", "Situație termen", "Data finalizării", "Data executării", "Măsuri luate", "Timp de rezolvare", "Feedback client (1-5)", "Comentariu feedback", "Progres (%)", "Creat la", "Creat de", "Descriere"];
     const rows = items.map((t) => ({
+      ...(origin ? { "Origine": ORIGIN_LABEL[origin.byId.get(t.id)!.origin], "Șablon din portal": origin.byId.get(t.id)!.template, "Șablon intern": origin.byId.get(t.id)!.internal } : {}),
       "#": t.seq ?? "",
       "Titlu": t.title,
       "Tip": TYPE_RO[t.type] ?? t.type,
@@ -141,6 +255,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
       "Prioritate": PRIO_RO[t.priority] ?? t.priority,
       "Asignat": t.assigneeName ?? "",
       "Echipă": t.teamName ?? "",
+      "Secție": section.byId.get(t.id) ?? "",
       "Proiect": t.projectName ?? "",
       "Client": t.clientId ? (clientNameMap.get(t.clientId) ?? "") : "",
       "Adresă": t.address ?? "",
@@ -162,7 +277,11 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
       "Descriere": t.description ?? "",
     }));
 
-    return makeResponse(HEADERS, rows, entity);
+    // foaia „Sumar”: la cereri, originea / șabloanele + secțiile; la sarcini, doar secțiile
+    const summary: ExtraSheet = origin
+      ? { ...origin.summary, rows: [...origin.summary.rows, [], ...section.rows] }
+      : { name: "Sumar", rows: [["Sarcini exportate", items.length], [], ...section.rows] };
+    return makeResponse(HEADERS, rows, entity, [summary]);
   }
 
   // ─── PROJECTS ─────────────────────────────────────────────────────

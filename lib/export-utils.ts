@@ -16,7 +16,10 @@ export function toCSV(headers: string[], rows: Row[]): string {
   return lines.join("\r\n");
 }
 
-export function toXLSX(headers: string[], rows: Row[]): Blob {
+/** O foaie în plus (după cea cu date): rânduri libere, prima coloană text, restul numere. */
+export type ExtraSheet = { name: string; rows: (string | number)[][] };
+
+export function toXLSX(headers: string[], rows: Row[], extraSheets: ExtraSheet[] = []): Blob {
   const sheetData = [headers, ...rows.map((r) => headers.map((h) => r[h] ?? ""))];
   const ws = XLSX.utils.aoa_to_sheet(sheetData);
 
@@ -34,6 +37,11 @@ export function toXLSX(headers: string[], rows: Row[]): Blob {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Export");
+  for (const s of extraSheets) {
+    const es = XLSX.utils.aoa_to_sheet(s.rows);
+    es["!cols"] = [{ wch: Math.min(Math.max(...s.rows.map((r) => String(r[0] ?? "").length), 10) + 2, 60) }, { wch: 12 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, es, s.name);
+  }
   const arr = XLSX.write(wb, { type: "array", bookType: "xlsx", compression: true }) as unknown as ArrayBuffer;
   return new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }

@@ -8,6 +8,7 @@ import { consumerTypeLabel } from "@/lib/consumer-type";
 import { dateKeyOf, formatDate, formatTime } from "@/lib/date";
 import { userOptions } from "@/lib/queries/users";
 import { teamOptions } from "@/lib/queries/teams";
+import { sectionOptions } from "@/lib/queries/sections";
 import { projectOptions } from "@/lib/queries/projects";
 import { listCategories } from "@/lib/queries/categories";
 import TaskCommentSection from "@/app/components/TaskCommentSection";
@@ -96,11 +97,12 @@ export default async function TaskDetailPage({
 
   const { env } = await import("@/lib/env");
 
-  const [task, comments, users, teams, projects, categories] = await Promise.all([
+  const [task, comments, users, teams, sections, projects, categories] = await Promise.all([
     getTask(id),
     getTaskComments(id),
     userOptions(),
     teamOptions(),
+    sectionOptions(),
     projectOptions(),
     listCategories(),
   ]);
@@ -258,9 +260,11 @@ export default async function TaskDetailPage({
             projectId: task.projectId ?? null,
             categoryId: task.categoryId ?? null,
             address: task.address ?? null,
+            sectionId: (task as { sectionId?: string | null }).sectionId ?? null,
           }}
           users={users}
           teams={teams}
+          sections={sections}
           projects={projects}
           categories={categories}
           canEdit={canEdit}
@@ -388,7 +392,7 @@ export default async function TaskDetailPage({
         )}
 
         <div className="mt-4 border-t border-[var(--color-line)] pt-4 flex flex-col gap-3">
-          <TaskStatusChanger taskId={id} initialStatus={task.status} disabled={!canWork && !can(user, "tasks.close") && !canCancelTask(user, task.type)} closeOnly={!canWork} canClose={can(user, "tasks.close")} canCancel={canCancelTask(user, task.type)} title={task.title} createdAt={task.createdAt.toISOString()} />
+          <TaskStatusChanger taskId={id} initialStatus={task.status} disabled={!canWork && !can(user, "tasks.status") && !can(user, "tasks.close") && !canCancelTask(user, task.type)} closeOnly={!canWork && !can(user, "tasks.status")} canClose={can(user, "tasks.close")} canCancel={canCancelTask(user, task.type)} title={task.title} createdAt={task.createdAt.toISOString()} />
           {task.type === "TICKET" && task.status !== "DONE" && task.status !== "CANCELLED" && (canWork || can(user, "tasks.close")) && (
             <div className="flex justify-end">
               <CloseTicketButton taskId={id} title={task.title} createdAt={task.createdAt.toISOString()} />

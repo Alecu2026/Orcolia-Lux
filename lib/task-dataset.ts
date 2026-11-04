@@ -45,6 +45,7 @@ export type TaskTuple = [
   string | null, // 33 tipul serviciului (WATER / SEWER / BOTH) — lipsește în listele salvate înainte de această versiune
   number | null, // 34 când s-a finalizat / anulat (ms) — lipsește în listele salvate înainte de această versiune
   string | null, // 35 categoria consumatorului (HOUSEHOLD / NON_HOUSEHOLD) — lipsește în listele salvate înainte de această versiune
+  string | null, // 36 secția (id) — lipsește în listele salvate înainte de această versiune
 ];
 
 export type TaskNames = {
@@ -102,6 +103,8 @@ export type DecodedTask = {
   closedAt: string | null;
   /** Categoria consumatorului: HOUSEHOLD / NON_HOUSEHOLD; gol = nespecificat. */
   consumerType: string | null;
+  /** Secția (id); gol = fără secție / creată înainte de secții. */
+  sectionId: string | null;
   extraAssigneeIds: string[];
   extraTeamIds: string[];
   assignmentSettingsJson: string | null;
@@ -157,6 +160,7 @@ export function decodeTasks(tuples: TaskTuple[], names: TaskNames): DecodedTask[
       serviceType: r[33] ?? null,
       closedAt: r[34] == null ? null : new Date(r[34]).toISOString(),
       consumerType: r[35] ?? null,
+      sectionId: r[36] ?? null,
       extraAssigneeIds: r[16],
       extraTeamIds: r[17],
       assignmentSettingsJson: r[18],

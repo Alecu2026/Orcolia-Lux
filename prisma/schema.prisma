@@ -138,6 +138,8 @@ model User {
   notifyEvents String[] @default([])
   // Chat ID Telegram setat manual de admin (pentru notificări), independent de linkarea prin bot
   telegramChatId String?
+  // Secția din care face parte utilizatorul (Section); echipele lui sunt cele din Team.memberIds. Gol = fără secție.
+  sectionId      String? @db.ObjectId
 
   // --- Filtrare notificări „administrator" (ce echipe/membri îl interesează) ---
   // ALL = toate echipele/membrii; TEAMS = doar notifyTeamIds; MEMBERS = doar notifyMemberIds
@@ -255,10 +257,22 @@ model AuditLog {
   @@index([module, createdAt])
 }
 
+/// Secție = nivelul de deasupra echipelor: o secție are mai multe echipe (Team.sectionId), iar fiecare utilizator face parte dintr-o secție (User.sectionId).
+/// Cererile și sarcinile au și ele o secție (Task.sectionId), completată automat din echipele / persoanele alese; pe ea se filtrează și se scot rapoartele.
+model Section {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model Team {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   name        String
   description String?
+  /// Secția din care face parte echipa (Section); gol = echipă fără secție.
+  sectionId   String?  @db.ObjectId
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -350,6 +364,11 @@ model Task {
   consumerName String?
   /// Șablonul de cerere din portal din care a pornit cererea (PortalRequestTemplate); gol la cererile mai vechi sau create în CRM — pentru filtrul „Șablon din portal” din Cereri.
   portalTemplateId String? @db.ObjectId
+  /// Șablonul intern (TaskTemplate: Setări → Șabloane) din care a fost creată cererea / sarcina în CRM, plus numele lui de atunci (rămâne la numărătoare și după ștergerea șablonului); gol = creată fără șablon sau înainte de această evidență.
+  taskTemplateId   String? @db.ObjectId
+  taskTemplateName String?
+  /// Secția cererii / sarcinii (Section): aleasă în formular sau completată automat din echipele și persoanele atribuite; gol = fără secție (cele create înainte de secții se deduc la afișare din echipă / asignat).
+  sectionId        String? @db.ObjectId
   /// Tipul serviciului la care se referă cererea: WATER (apă), SEWER (canalizare) sau BOTH (apă + canalizare); gol = nespecificat (cererile mai vechi). Vezi lib/service-type.ts.
   serviceType String?
   /// Categoria consumatorului: HOUSEHOLD (casnic) sau NON_HOUSEHOLD (non casnic); gol = nespecificat. Vezi lib/consumer-type.ts.

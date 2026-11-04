@@ -60,7 +60,7 @@ export type CommentRow = {
   userName: string;
 };
 
-export type Opt = { id: string; name: string };
+export type Opt = { id: string; name: string; sectionId?: string | null };
 export type Status = "NEW" | "ASSIGNED" | "READ" | "IN_PROGRESS" | "ON_HOLD" | "REVIEW" | "DONE" | "CANCELLED";
 export type Task = {
   id: string;
@@ -105,6 +105,8 @@ export type Task = {
   closedAt?: string | Date | null;
   /** Categoria consumatorului: HOUSEHOLD (casnic) / NON_HOUSEHOLD (non casnic); gol = nespecificat. */
   consumerType?: string | null;
+  /** Secția (id). */
+  sectionId?: string | null;
   assigneeName: string | null;
   teamName: string | null;
   projectName: string | null;
@@ -1151,9 +1153,11 @@ function CategoryChips({
 }
 
 export function EditDialog({
-  task, users, teams, projects, clients, categories, quietHoursEnabled, canAssign = true, onClose, onSaved,
+  task, users, teams, sections, projects, clients, categories, quietHoursEnabled, canAssign = true, onClose, onSaved,
 }: {
   canAssign?: boolean;
+  /** Secțiile: dacă sunt date, apare câmpul „Secție” (completat din echipa / persoana aleasă). */
+  sections?: Opt[];
   task: Task;
   users: Opt[];
   teams: Opt[];
@@ -1248,6 +1252,8 @@ export function EditDialog({
           {canAssign && <MultiAssignPicker
             users={users}
             teams={teams}
+            sections={sections}
+            initialSectionId={task.sectionId ?? ""}
             initialAssigneeIds={[
               ...(task.assigneeId ? [task.assigneeId] : []),
               ...(task.extraAssigneeIds ?? []),
@@ -1293,11 +1299,13 @@ function fmtFileSize(bytes: number): string {
 }
 
 export function CreateDialog({
-  initialType, users, teams, projects, clients, categories, canCreateProject, quietHoursEnabled, uploadsEnabled, initialProjectId, initialClientId, initialTitle, initialAddress, initialDescription, canAssign = true, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated,
+  initialType, users, teams, sections, projects, clients, categories, canCreateProject, quietHoursEnabled, uploadsEnabled, initialProjectId, initialClientId, initialTitle, initialAddress, initialDescription, canAssign = true, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated,
 }: {
   initialType: "TASK" | "TICKET" | "WORK_ORDER";
   users: Opt[];
   teams: Opt[];
+  /** Secțiile: dacă sunt date, apare câmpul „Secție” (completat din echipa / persoana aleasă). */
+  sections?: Opt[];
   projects: Opt[];
   clients: Opt[];
   categories: CategoryLite[];
@@ -1411,6 +1419,7 @@ export function CreateDialog({
           </div>
         </div>
         <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-3">
+          {prefill?.templateId && <input type="hidden" name="templateId" value={prefill.templateId} />}
           <input name="title" defaultValue={prefill?.title ?? initialTitle ?? ""} placeholder={t("Titlu *")} required autoFocus className={dlgInput} />
           <textarea name="description" defaultValue={prefill?.description ?? initialDescription ?? ""} placeholder={t("Descriere")} rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 py-2.5 text-sm outline-none focus:border-brand" />
           <div className="grid gap-2 sm:grid-cols-2">
@@ -1451,7 +1460,7 @@ export function CreateDialog({
             <ServiceTypeSelect defaultValue="" />
             <ConsumerTypeSelect defaultValue="" />
           </div>
-          {canAssign && <MultiAssignPicker users={users} teams={teams} initialAssigneeIds={prefill?.assigneeIds} initialTeamIds={prefill?.teamIds} />}
+          {canAssign && <MultiAssignPicker users={users} teams={teams} sections={sections} initialAssigneeIds={prefill?.assigneeIds} initialTeamIds={prefill?.teamIds} />}
           <div>
             <label className="mb-1 block text-xs font-semibold text-ink-soft">{m.tasks.dueDate}</label>
             <div className="grid gap-2 sm:grid-cols-2">

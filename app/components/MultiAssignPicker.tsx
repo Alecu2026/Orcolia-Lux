@@ -6,7 +6,7 @@ import type { AssignmentSetting } from "@/lib/services/tasks";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
 
-type Opt = { id: string; name: string };
+type Opt = { id: string; name: string; sectionId?: string | null };
 
 const sel =
   "h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-xs outline-none focus:border-brand";
@@ -17,12 +17,17 @@ export default function MultiAssignPicker({
   initialAssigneeIds = [],
   initialTeamIds = [],
   initialSettings = [],
+  sections,
+  initialSectionId = "",
 }: {
   users: Opt[];
   teams: Opt[];
   initialAssigneeIds?: string[];
   initialTeamIds?: string[];
   initialSettings?: AssignmentSetting[];
+  /** Dacă e dat, apare câmpul „Secție” (trimis ca `sectionId`), completat automat din echipele și persoanele alese. */
+  sections?: Opt[];
+  initialSectionId?: string;
 }) {
   const tr = useT();
   const m = useMessages();
@@ -38,6 +43,16 @@ export default function MultiAssignPicker({
   ];
   const [assigneeIds, setAssigneeIds] = useState<string[]>(initialAssigneeIds);
   const [teamIds, setTeamIds] = useState<string[]>(initialTeamIds);
+  const [sectionId, setSectionId] = useState(
+    () => initialSectionId || initialTeamIds.map((id) => teams.find((x) => x.id === id)?.sectionId).find(Boolean) || initialAssigneeIds.map((id) => users.find((x) => x.id === id)?.sectionId).find(Boolean) || "",
+  );
+  /** Secția celor atribuiți: întâi a echipelor, apoi a persoanelor (în ordinea alegerii); se completează singură, dar rămâne modificabilă. */
+  const autoSection = (nextUsers: string[], nextTeams: string[]) => {
+    if (!sections) return;
+    const fromTeam = nextTeams.map((id) => teams.find((x) => x.id === id)?.sectionId).find(Boolean);
+    const found = fromTeam || nextUsers.map((id) => users.find((x) => x.id === id)?.sectionId).find(Boolean);
+    if (found) setSectionId(found);
+  };
   const [thresholds, setThresholds] = useState<Record<string, string>>(() => {
     const map: Record<string, string> = {};
     for (const s of initialSettings) {
@@ -54,7 +69,10 @@ export default function MultiAssignPicker({
   const availableTeams = teams.filter((t) => !teamIds.includes(t.id));
 
   function addUser(id: string) {
-    if (id && !assigneeIds.includes(id)) setAssigneeIds((prev) => [...prev, id]);
+    if (id && !assigneeIds.includes(id)) {
+      setAssigneeIds((prev) => [...prev, id]);
+      autoSection([...assigneeIds, id], teamIds);
+    }
   }
 
   function removeUser(id: string) {
@@ -63,7 +81,10 @@ export default function MultiAssignPicker({
   }
 
   function addTeam(id: string) {
-    if (id && !teamIds.includes(id)) setTeamIds((prev) => [...prev, id]);
+    if (id && !teamIds.includes(id)) {
+      setTeamIds((prev) => [...prev, id]);
+      autoSection(assigneeIds, [...teamIds, id]);
+    }
   }
 
   function removeTeam(id: string) {
@@ -184,6 +205,23 @@ export default function MultiAssignPicker({
         <p className="text-[11px] text-ink-soft">
           {m.appts.thresholdHint}
         </p>
+      )}
+
+      {sections && (
+        <label className="text-xs font-semibold text-ink-soft">
+          {tr("Secție")}
+          <select
+            name="sectionId"
+            value={sectionId}
+            onChange={(e) => setSectionId(e.target.value)}
+            data-task-section
+            className="mt-1 h-10 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm font-normal text-ink outline-none focus:border-brand"
+          >
+            <option value="">{tr("— fără secție —")}</option>
+            {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <span className="mt-0.5 block text-[11px] font-normal">{tr("Se completează automat din echipa / persoana aleasă; o poți schimba.")}</span>
+        </label>
       )}
     </div>
   );

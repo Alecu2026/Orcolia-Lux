@@ -5,6 +5,7 @@ import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
 import { userOptions } from "@/lib/queries/users";
 import { teamOptions, listTeams } from "@/lib/queries/teams";
+import { sectionOptions } from "@/lib/queries/sections";
 import { projectOptions } from "@/lib/queries/projects";
 import { crmClientOptionsPlus } from "@/lib/queries/clients";
 import { listCategories } from "@/lib/queries/categories";
@@ -40,7 +41,7 @@ export default async function TasksPage({
   const initialOpenId = typeof sp.open === "string" && sp.open ? sp.open : undefined;
 
   // Toate task-urile din „scope" odată; filtrarea/sortarea/paginarea rulează în browser (vezi TasksTable / DataTable).
-  const [result, users, teams, teamList, projects, clients, categories, quietHoursSettings, templates] = await Promise.all([
+  const [result, users, teams, sections, teamList, projects, clients, categories, quietHoursSettings, templates] = await Promise.all([
     listTasksForPage(
       {
         scope,
@@ -53,6 +54,7 @@ export default async function TasksPage({
     ),
     userOptions(),
     teamOptions(),
+    sectionOptions(),
     listTeams(),
     projectOptions(),
     crmClientOptionsPlus(sp.client && /^[0-9a-f]{24}$/i.test(sp.client) ? sp.client : null), // + clientul din apel (plătitorii nu sunt în lista CRM)
@@ -79,10 +81,12 @@ export default async function TasksPage({
         templates={templates}
         canAssign={can(user, "tasks.assign")}
         canClose={can(user, "tasks.close")}
+        canStatus={can(user, "tasks.status")}
         canCancel={can(user, "tasks.cancel")}
         scope={scope}
         users={users}
         teams={teams}
+        sections={sections}
         teamMembers={Object.fromEntries(teamList.map((x) => [x.id, x.memberIds]))}
         projects={projects}
         clients={clients}

@@ -5,6 +5,7 @@ import { describeSchedule, parseReminderSchedule } from "@/lib/reminder-schedule
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import RowColorPicker from "./RowColorPicker";
+import { deriveSectionId } from "@/lib/sections";
 import { setTaskColorAction } from "@/app/actions/row-color";
 import {
   getTaskRowAction,
@@ -130,6 +131,7 @@ export default function TasksTable({
   scope,
   users,
   teams,
+  sections = [],
   teamMembers = {},
   projects,
   clients = [],
@@ -165,11 +167,14 @@ export default function TasksTable({
   canAssign = false,
   canClose = false,
   canCancel = false,
+  canStatus = false,
 }: {
   items: Task[];
   scope: string;
   users: Opt[];
   teams: Opt[];
+  /** Secțiile (nivelul de deasupra echipelor): filtrul „Secție” și câmpul din formulare. */
+  sections?: Opt[];
   /** Membrii fiecărei secții (id echipă → id-urile persoanelor): filtrul „Echipă” include și cererile atribuite direct unui membru al secției. */
   teamMembers?: Record<string, string[]>;
   projects: Opt[];
@@ -215,6 +220,8 @@ export default function TasksTable({
   canClose?: boolean;
   /** „Anulare sarcini" (în Sarcini) sau „Anulare cereri" (în Cereri): poate pune statusul „Anulat", chiar și la task-uri la care nu lucrează. */
   canCancel?: boolean;
+  /** „Schimbare status": poate schimba statusul și progresul oricărui rând din listă (cele pe care are voie să le vadă), fără „Editare". */
+  canStatus?: boolean;
 }) {
   const tr = useT();
   const locale = useLocale();
@@ -319,8 +326,10 @@ export default function TasksTable({
     return [...(canClose ? (["DONE"] as Status[]) : []), ...(canCancel ? (["CANCELLED"] as Status[]) : [])];
   };
   const canEditRow = (_t: Task) => canEdit;
+  // „Schimbare status” dă statusul și progresul la toate rândurile din listă (lista conține doar ce are voie să vadă)
   const canWorkRow = (t: Task) =>
     canEdit ||
+    canStatus ||
     (!!userId &&
       (t.creatorId === userId || t.assigneeId === userId || t.extraAssigneeIds.includes(userId) ||
         (!!t.teamId && userTeamIds.includes(t.teamId)) || t.extraTeamIds.some((x) => userTeamIds.includes(x))));
@@ -729,6 +738,20 @@ export default function TasksTable({
           return !!mem && ((!!t.assigneeId && mem.includes(t.assigneeId)) || t.extraAssigneeIds.some((id) => mem.includes(id)));
         },
       },
+      // secția cererii: cea salvată pe ea; la cele create înainte de secții, cea a echipei sau a persoanei atribuite
+      ...(sections.length
+        ? [{
+            kind: "select" as const, key: "section", label: "Secție",
+            options: sections.map((x) => ({ value: x.id, label: x.name })),
+            test: (t: Task, v: string) => {
+              if (t.sectionId) return t.sectionId === v;
+              // aceeași regulă ca la export: prima echipă cu secție, altfel prima persoană cu secție
+              const ts = Object.fromEntries(teams.map((x) => [x.id, x.sectionId]));
+              const us = Object.fromEntries(users.map((x) => [x.id, x.sectionId]));
+              return deriveSectionId([t.teamId, ...(t.extraTeamIds ?? [])].filter(Boolean) as string[], [t.assigneeId, ...(t.extraAssigneeIds ?? [])].filter(Boolean) as string[], ts, us) === v;
+            },
+          }]
+        : []),
       { kind: "select", key: "consumerType", label: "Tip consumator", options: CONSUMER_TYPES.map((k) => ({ value: k, label: CONSUMER_TYPE_LABEL[k] })), test: (t, v) => t.consumerType === v },
       { kind: "select", key: "service", label: "Tip serviciu", options: SERVICE_TYPES.map((k) => ({ value: k, label: SERVICE_TYPE_LABEL[k] })), test: (t, v) => t.serviceType === v },
       { kind: "select", key: "proj", label: m.tasks.filterProject, options: projects.map((x) => ({ value: x.id, label: x.name })), test: (t, v) => t.projectId === v },
@@ -770,7 +793,7 @@ export default function TasksTable({
       { kind: "date", key: "from", label: "Termen de la", test: (t, v) => { const k = dueKey(t); return !!k && k >= v; } },
       { kind: "date", key: "to", label: "Termen până la", test: (t, v) => { const k = dueKey(t); return !!k && k <= v; } },
     ];
-  }, [m, users, teams, teamMembers, projects, clients, categories, ticketMode, portalTemplates]);
+  }, [m, users, teams, sections, teamMembers, projects, clients, categories, ticketMode, portalTemplates]);
 
   const current = openId ? rows.find((t) => t.id === openId) ?? null : null;
 
@@ -885,6 +908,7 @@ export default function TasksTable({
       )}
       {createType && (
         <CreateDialog
+          sections={sections}
           key={prefill ? `${prefill.templateId}:${prefill.reserved}` : "nou"}
           prefill={prefill ?? undefined}
           templates={tpls}
@@ -918,6 +942,7 @@ export default function TasksTable({
           task={editTask}
           users={users}
           teams={teams}
+          sections={sections}
           projects={projects}
           clients={clients}
           categories={categories}
