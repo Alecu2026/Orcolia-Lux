@@ -639,6 +639,10 @@ model Invoice {
   datoriiAvans        Float    @default(0)
   // Istoric consum lunar pt. graficul cu bare — JSON: [{ label: "7", value: 8 }, ...]
   monthlyConsumption  Json?
+  // Contoarele facturii când sunt mai multe (din 1C): [{ serial, prev, curr, estimated }]. Sub 2 contoare (sau gol) = se folosesc câmpurile de contor de mai sus.
+  // `metersSig` = amprenta listei, ca importul să observe schimbările fără să citească lista din toate facturile.
+  meters              Json?
+  metersSig           String?
 
   // Relații opționale (nullable)
   clientId  String? @db.ObjectId

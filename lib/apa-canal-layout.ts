@@ -39,6 +39,8 @@ export type ApaCanalElementOverride = {
 export type ApaCanalLayout = Partial<Record<ApaCanalElementKey, ApaCanalElementOverride>> & {
   /** Fotografii adăugate liber pe factură (poziționabile/redimensionabile ca orice element). */
   customImages?: ApaCanalCustomImage[];
+  /** De la câte contoare / linii de servicii factura continuă pe o pagină nouă: pe prima pagină rămân cel mult atâtea rânduri. Gol = valorile implicite. */
+  limits?: { meters?: number; services?: number };
 };
 
 export type ApaCanalCustomImage = {
@@ -210,6 +212,15 @@ export function sanitizeApaCanalLayout(input: unknown): ApaCanalLayout {
       if (typeof r.textOverride === "string" && r.textOverride.trim() !== "") o.textOverride = r.textOverride.slice(0, MAX_TEXT_OVERRIDE);
     }
     if (Object.keys(o).length) out[key] = o;
+  }
+
+  if (src.limits && typeof src.limits === "object" && !Array.isArray(src.limits)) {
+    const l = src.limits as Record<string, unknown>;
+    const lim: { meters?: number; services?: number } = {};
+    const m = finite(l.meters), s = finite(l.services);
+    if (m !== undefined && m >= 1) lim.meters = Math.min(60, Math.floor(m));
+    if (s !== undefined && s >= 1) lim.services = Math.min(60, Math.floor(s));
+    if (Object.keys(lim).length) out.limits = lim;
   }
 
   if (Array.isArray(src.customImages)) {

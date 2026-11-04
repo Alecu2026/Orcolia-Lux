@@ -133,6 +133,7 @@ const SCALAR_SELECT = {
   penalitati: true,
   datoriiAvans: true,
   monthlyConsumption: true,
+  meters: true,
 } as const;
 
 const ITEM_SELECT = {

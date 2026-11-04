@@ -24,7 +24,7 @@ import {
   type ApaCanalCustomImage,
 } from "@/lib/apa-canal-layout";
 
-import { num2, isApa, factorOrDash, niceStep, buildApaCanalVars, type ApaCanalInvoiceData, type ConsumPoint } from "@/lib/apa-canal-invoice-vars";
+import { num2, isApa, factorOrDash, niceStep, buildApaCanalVars, splitForPages, continuationPages, pageLimits, type ApaCanalInvoiceData, type ConsumPoint, type ContPage } from "@/lib/apa-canal-invoice-vars";
 export { buildApaCanalVars };
 export type { ApaCanalInvoiceData };
 
@@ -417,6 +417,12 @@ export default function ApaCanalInvoicePublic({
   // NU resumat din apaItems/canalItems aici — mai robust, nu depinde de regex-ul de mai sus.
   const sumaCalculata = invoice.subtotal;
 
+  // Contoare și linii de servicii: pe prima pagină cel mult limitele din șablon (implicit 6 + 6), restul pe pagini de continuare (la fel în PDF).
+  const limits = useMemo(() => pageLimits(layout?.limits), [layout]);
+  const sp = useMemo(() => splitForPages(invoice, limits), [invoice, limits]);
+  const contPages = useMemo(() => continuationPages(sp, limits), [sp, limits]);
+  const totalPages = 1 + contPages.length;
+
   // Un șablon salvat (editor) fixează poziția elementelor de sub tabelul de servicii presupunând
   // mereu 2 rânduri (câte o linie de apă + una de canal) — dar ~11% din facturile din import au
   // MAI MULTE linii (recalculări/corecții din aceeași perioadă, în sursa 1C, până la câteva zeci),
@@ -438,7 +444,7 @@ export default function ApaCanalInvoicePublic({
 
   // Doar când există un șablon salvat (altfel tabelul e în flux normal — vezi LayoutField — și
   // își împinge singur vecinii mai jos, fără nicio suprapunere posibilă).
-  const itemRowCount = apaItems.length + canalItems.length;
+  const itemRowCount = sp.services.length + (sp.servicesRest.length ? 1 : 0);
   // În editor NU împingem elementele: valorile afișate/salvate trebuie să fie exact cele din șablon.
   const tableOverflowMm = hasCustomLayout && !editable ? Math.max(0, itemRowCount - TABLE_BASELINE_ROWS) * TABLE_ROW_HEIGHT_MM : 0;
   // `.invoice-page` are `overflow: hidden` la 210mm (o singură pagină A4, tăiată strict) — pentru
@@ -628,12 +634,22 @@ export default function ApaCanalInvoicePublic({
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="font-semibold">
-                    <td className="whitespace-nowrap" style={{ padding: "0 2mm" }}>{invoice.meterNumber || "—"}</td>
-                    <td className="whitespace-nowrap" style={{ padding: "0 2mm" }}>{invoice.meterPrevReading || "—"}</td>
-                    <td className="whitespace-nowrap" style={{ padding: "0 2mm" }}>{invoice.meterCurrReading || "—"}</td>
-                    <td className="whitespace-nowrap" style={{ padding: "0 2mm" }}>{invoice.isEstimatedVolume ? "DA" : ""}</td>
-                  </tr>
+                  {/* Un rând per contor (din 1C pot fi zeci); ce nu încape pe prima pagină continuă pe paginile următoare. */}
+                  {sp.meters.map((mt, i) => (
+                    <tr key={i} className="font-semibold">
+                      <td className="whitespace-nowrap" style={{ padding: "0 2mm" }}>{mt.serial || "—"}</td>
+                      <td className="whitespace-nowrap" style={{ padding: "0 2mm" }}>{mt.prev || "—"}</td>
+                      <td className="whitespace-nowrap" style={{ padding: "0 2mm" }}>{mt.curr || "—"}</td>
+                      <td className="whitespace-nowrap" style={{ padding: "0 2mm" }}>{mt.estimated ? "DA" : ""}</td>
+                    </tr>
+                  ))}
+                  {sp.metersRest.length > 0 && (
+                    <tr>
+                      <td colSpan={4} className="text-center" style={{ padding: "0.6mm 0 0", fontSize: "2.8mm", color: COLOR_CHART_TEXT }}>
+                        … încă {sp.metersRest.length} {sp.metersRest.length === 1 ? "contor" : "contoare"} — pagina 2 (din {sp.metersTotal})
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             ),
@@ -676,8 +692,8 @@ export default function ApaCanalInvoicePublic({
                     corecții acumulate în aceeași perioadă din exportul 1C) au mai mult de o
                     linie de apă și/sau de canalizare (până la câteva zeci, în cazuri rare).
                     Afișarea doar a primei linii ar ascunde restul sumelor reale facturate. */}
-                {[...apaItems, ...canalItems].map((item, i, arr) => (
-                  <tr key={item.id} style={i < arr.length - 1 ? { borderBottom: `1px solid ${COLOR_BORDER_LIGHT}` } : undefined}>
+                {sp.services.map((item, i, arr) => (
+                  <tr key={item.id} style={i < arr.length - 1 || sp.servicesRest.length > 0 ? { borderBottom: `1px solid ${COLOR_BORDER_LIGHT}` } : undefined}>
                     <td className="whitespace-nowrap" style={{ padding: "0.8mm 0" }}>
                       {isApa(item.description) ? "Serviciul de alimentare cu apa" : "Serviciul de canalizare"}
                     </td>
@@ -686,6 +702,13 @@ export default function ApaCanalInvoicePublic({
                     <td className="text-right tabular-nums" style={{ padding: "0.8mm 0" }}>{num2(item.lineTotal)}</td>
                   </tr>
                 ))}
+                {sp.servicesRest.length > 0 && (
+                  <tr>
+                    <td colSpan={4} className="text-center" style={{ padding: "0.8mm 0", color: COLOR_CHART_TEXT }}>
+                      … încă {sp.servicesRest.length} {sp.servicesRest.length === 1 ? "linie" : "linii"} de servicii — vezi pagina {1 + contPages.findIndex((p) => p.kind === "services") + 1} (din {sp.servicesTotal})
+                    </td>
+                  </tr>
+                )}
                 {/* Fără nicio linie de serviciu — indicii contorului nu s-au schimbat față de
                     perioada precedentă (consum 0), deci nu s-a calculat nimic de facturat acum;
                     un tabel complet gol arată ca o eroare de afișare, nu ca "n-ai consumat". */}
@@ -784,6 +807,10 @@ export default function ApaCanalInvoicePublic({
           ))}
         </div>
 
+        {contPages.length > 0 && (
+          <div aria-hidden style={{ position: "absolute", right: "5mm", bottom: "1.5mm", fontSize: "2.6mm", color: COLOR_CHART_TEXT }}>Pagina 1 din {totalPages}</div>
+        )}
+
         {(layout?.customImages ?? []).map((img) => (
           <CustomImageField
             key={img.id}
@@ -827,14 +854,19 @@ export default function ApaCanalInvoicePublic({
         // element încă lat de 297mm în DOM, factura scalată apărea "lipită" în stânga, cu tot
         // spațiul gol rămas mereu în dreapta.
         <div ref={scaleWrapRef} className="invoice-scale-measure">
-          <div
-            className="invoice-scale-outer"
-            style={{ width: `${PAGE_W_MM * MM_TO_PX * autoScale}px`, height: `${PAGE_H_MM * MM_TO_PX * autoScale}px` }}
-          >
-            <div className="invoice-scale-inner" style={{ "--invoice-scale": autoScale } as React.CSSProperties}>
-              {pageContent}
+          {[pageContent, ...contPages.map((cp, i) => (
+            <ApaCanalContinuationPage key={i} invoice={invoice} page={cp} pageNo={i + 2} totalPages={totalPages} />
+          ))].map((node, i) => (
+            <div
+              key={i}
+              className="invoice-scale-outer"
+              style={{ width: `${PAGE_W_MM * MM_TO_PX * autoScale}px`, height: `${PAGE_H_MM * MM_TO_PX * autoScale}px`, marginBottom: i < totalPages - 1 ? "12px" : undefined }}
+            >
+              <div className="invoice-scale-inner" style={{ "--invoice-scale": autoScale } as React.CSSProperties}>
+                {node}
+              </div>
             </div>
-          </div>
+          ))}
         </div>
       )}
 
@@ -882,6 +914,7 @@ export default function ApaCanalInvoicePublic({
            de scala calculată pentru ecran. */
         @media print {
           .invoice-scale-outer { width: auto !important; height: auto !important; margin: 0 !important; }
+          .invoice-scale-outer + .invoice-scale-outer { break-before: page; page-break-before: always; }
           .invoice-scale-inner { transform: none !important; }
         }
 
@@ -902,5 +935,85 @@ export default function ApaCanalInvoicePublic({
         }
       `}</style>
     </>
+  );
+}
+
+/**
+ * Pagină de continuare (A4 pe lat): contoarele sau liniile de servicii care nu au încăput pe prima pagină. Antet cu datele facturii, apoi tabelul rămas.
+ * Se folosește și în editorul de șablon (previzualizare), de aceea își aduce propriul CSS.
+ */
+export function ApaCanalContinuationPage({ invoice, page, pageNo, totalPages }: { invoice: ApaCanalInvoiceData; page: ContPage; pageNo: number; totalPages: number }) {
+  const th = { padding: "1mm 2mm", fontWeight: 500, color: COLOR_BORDER, borderBottom: `1px solid ${COLOR_BOX_BLUE}` } as const;
+  const td = { padding: "1.2mm 2mm", borderBottom: `1px solid ${COLOR_BORDER_LIGHT}` } as const;
+  return (
+    <div className="invoice-cont-page">
+      <style>{`
+        .invoice-cont-page { position: relative; width: 297mm; height: 210mm; padding: 6mm 8mm 6mm 8mm; box-sizing: border-box; background: #ffffff; color: ${COLOR_TEXT}; font-family: Arial, Helvetica, sans-serif; overflow: hidden; }
+        .invoice-cont-page * { box-sizing: border-box; }
+        @media screen { .invoice-cont-page { margin: 0 auto; box-shadow: 0 1px 3px rgba(0,0,0,0.15); } }
+        @media print { .invoice-cont-page { box-shadow: none; } }
+      `}</style>
+      <h1 style={{ fontSize: "4mm", fontWeight: 600, margin: 0 }}>Factura {invoice.number} — continuare</h1>
+      <div style={{ height: "1.1mm", width: "100%", background: COLOR_BOX_BLUE, margin: "1.5mm 0 2.5mm" }} />
+      <div style={{ fontSize: "3.2mm", lineHeight: 1.6 }}>
+        <p>
+          <b>Cont personal: {invoice.contPersonal || "—"}</b>
+          {invoice.consumerName || invoice.client?.name ? <> · <b className="uppercase">{invoice.consumerName || invoice.client?.name}</b></> : null}
+          {invoice.billingPeriodLabel ? <> · Perioada de calcul: <b>{invoice.billingPeriodLabel.toUpperCase()}</b></> : null}
+        </p>
+        {invoice.consumAddress && <p>Adresa locului de consum: {invoice.consumAddress}</p>}
+      </div>
+      <h2 style={{ fontSize: "3.6mm", fontWeight: 700, margin: "4mm 0 1.5mm" }}>
+        {page.kind === "meters" ? `Contoare (continuare, de la nr. ${page.from})` : `Servicii (continuare, de la linia ${page.from})`}
+      </h2>
+      {page.kind === "meters" ? (
+        <table style={{ fontSize: "3.3mm", width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr className="text-left">
+              <th style={{ ...th, width: "12mm" }}>Nr.</th>
+              <th style={th}>Numărul contorului</th>
+              <th style={{ ...th, textAlign: "right" }}>Indicii precedenți</th>
+              <th style={{ ...th, textAlign: "right" }}>Indicii actuali</th>
+              <th style={{ ...th, textAlign: "center" }}>Volum estimativ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {page.rows.map((mt, i) => (
+              <tr key={i} className="font-semibold">
+                <td style={td}>{page.from + i}</td>
+                <td style={td}>{mt.serial || "—"}</td>
+                <td className="tabular-nums" style={{ ...td, textAlign: "right" }}>{mt.prev || "—"}</td>
+                <td className="tabular-nums" style={{ ...td, textAlign: "right" }}>{mt.curr || "—"}</td>
+                <td style={{ ...td, textAlign: "center" }}>{mt.estimated ? "DA" : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <table style={{ fontSize: "3.3mm", width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr className="text-left">
+              <th style={{ ...th, width: "12mm" }}>Nr.</th>
+              <th style={th}>Denumirea serviciului</th>
+              <th style={{ ...th, textAlign: "right" }}>Volumul, m3</th>
+              <th style={{ ...th, textAlign: "right" }}>Tariful lei/m3</th>
+              <th style={{ ...th, textAlign: "right" }}>Suma calculată</th>
+            </tr>
+          </thead>
+          <tbody>
+            {page.rows.map((it, i) => (
+              <tr key={it.id}>
+                <td style={td}>{page.from + i}</td>
+                <td style={td}>{isApa(it.description) ? "Serviciul de alimentare cu apa" : "Serviciul de canalizare"}</td>
+                <td className="tabular-nums" style={{ ...td, textAlign: "right" }}>{factorOrDash(it.quantity, it.lineTotal)}</td>
+                <td className="tabular-nums" style={{ ...td, textAlign: "right" }}>{factorOrDash(it.unitPrice, it.lineTotal)}</td>
+                <td className="tabular-nums" style={{ ...td, textAlign: "right" }}>{num2(it.lineTotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div style={{ position: "absolute", right: "8mm", bottom: "4mm", fontSize: "2.8mm", color: COLOR_CHART_TEXT }}>Pagina {pageNo} din {totalPages}</div>
+    </div>
   );
 }

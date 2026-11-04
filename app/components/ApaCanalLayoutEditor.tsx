@@ -30,7 +30,8 @@ import {
   type BoxMm,
 } from "@/lib/apa-canal-layout";
 import type { LayoutState } from "@/app/actions/company";
-import ApaCanalInvoicePublic, { buildApaCanalVars, type ApaCanalInvoiceData } from "./ApaCanalInvoicePublic";
+import ApaCanalInvoicePublic, { ApaCanalContinuationPage, buildApaCanalVars, type ApaCanalInvoiceData } from "./ApaCanalInvoicePublic";
+import { continuationPages, pageLimits, splitForPages } from "@/lib/apa-canal-invoice-vars";
 import { useToast } from "./toast";
 import { useT } from "@/lib/i18n/context";
 
@@ -92,6 +93,28 @@ const SAMPLES: Record<string, { label: string; data: ApaCanalInvoiceData }> = {
     data: { ...BASE_SAMPLE, items: [], subtotal: 0, grandTotal: 0, datoriiAvans: 0, monthlyConsumption: MONTHS.map((label) => ({ label, value: 0 })) },
   },
 };
+
+/** Factură de test cu un număr ales de contoare și de linii de servicii (pentru a vedea cum se paginează). */
+const pad5 = (n: number) => String(n).padStart(5, "0");
+function makeSample(nMeters: number, nServices: number): ApaCanalInvoiceData {
+  const meters = Array.from({ length: nMeters }, (_, i) => ({ serial: String(294170 + i * 137), prev: pad5(640 + i * 7), curr: pad5(660 + i * 7 + (i % 5)), estimated: i % 9 === 8 }));
+  const items = Array.from({ length: nServices }, (_, i) =>
+    i % 2 === 0
+      ? { id: `s${i}`, description: "Serviciul de alimentare cu apa", quantity: 13, unitPrice: 23.45, lineTotal: 304.85 }
+      : { id: `s${i}`, description: "Serviciul de canalizare", quantity: 13, unitPrice: 13.75, lineTotal: 178.75 },
+  );
+  const subtotal = Math.round(items.reduce((a, it) => a + it.lineTotal, 0) * 100) / 100;
+  return {
+    ...BASE_SAMPLE,
+    meterNumber: meters[0]?.serial ?? null,
+    meterPrevReading: meters[0]?.prev ?? null,
+    meterCurrReading: meters[0]?.curr ?? null,
+    meters: nMeters >= 2 ? meters : undefined,
+    items,
+    subtotal,
+    grandTotal: Math.round((subtotal + BASE_SAMPLE.datoriiAvans) * 100) / 100,
+  };
+}
 
 // ── Istoric (anulare / refacere) ───────────────────────────────────────────────────────────────────
 
@@ -276,9 +299,15 @@ export default function ApaCanalLayoutEditor({
   const [snap, setSnap] = useState(0);
   const [grid, setGrid] = useState(true);
   const [sampleKey, setSampleKey] = useState("standard");
+  // Simulare la alegere: câte contoare și câte linii de servicii are factura de test (vezi „Date de test”)
+  const [simMeters, setSimMeters] = useState(12);
+  const [simServices, setSimServices] = useState(8);
   const [showReal, setShowReal] = useState(false);
   const [flowMeasured, setFlow] = useState<Flow | null>(null);
-  const sample = SAMPLES[sampleKey]?.data ?? BASE_SAMPLE;
+  const sample = useMemo(() => (sampleKey === "custom" ? makeSample(simMeters, simServices) : SAMPLES[sampleKey]?.data ?? BASE_SAMPLE), [sampleKey, simMeters, simServices]);
+  // Paginile de continuare ale facturii de test, după limitele din șablon (de la câte contoare / servicii se trece pe o pagină nouă)
+  const limits = useMemo(() => pageLimits(layout.limits), [layout.limits]);
+  const contPages = useMemo(() => continuationPages(splitForPages(sample, limits), limits), [sample, limits]);
 
   // Șablon salvat cu o versiune veche (doar câteva elemente au poziție): elementele neatinse rămân la pozițiile din cod,
   // exact cum le arată factura publică. După „Pornește de la factura standard” sau după salvare, pozițiile vin din factura reală măsurată.
@@ -606,8 +635,28 @@ export default function ApaCanalLayoutEditor({
             {tr("Date de test")}
             <select className="h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5" value={sampleKey} onChange={(e) => setSampleKey(e.target.value)}>
               {Object.entries(SAMPLES).map(([k, s]) => <option key={k} value={k}>{tr(s.label)}</option>)}
+              <option value="custom">{tr("Simulare: contoare și servicii la alegere")}</option>
             </select>
           </label>
+          {sampleKey === "custom" && (
+            <>
+              <label className="flex items-center gap-1 font-medium">
+                {tr("Contoare")}
+                <input type="number" min={1} max={60} value={simMeters} onChange={(e) => setSimMeters(Math.min(60, Math.max(1, Math.floor(Number(e.target.value)) || 1)))} className="h-9 w-16 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 text-center" data-sim-meters />
+              </label>
+              <label className="flex items-center gap-1 font-medium">
+                {tr("Linii de servicii")}
+                <input type="number" min={1} max={60} value={simServices} onChange={(e) => setSimServices(Math.min(60, Math.max(1, Math.floor(Number(e.target.value)) || 1)))} className="h-9 w-16 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 text-center" data-sim-services />
+              </label>
+            </>
+          )}
+          <span className="flex items-center gap-1 font-medium" title={tr("Pe prima pagină rămân cel mult atâtea rânduri; restul trece pe pagini de continuare (în factura publică și în PDF).")}>
+            {tr("Pagină nouă după")}
+            <input type="number" min={1} max={60} value={limits.meters} onChange={(e) => edit((l) => ({ ...l, limits: { ...l.limits, meters: Math.min(60, Math.max(1, Math.floor(Number(e.target.value)) || 1)) } }), "limit-meters")} className="h-9 w-14 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 text-center" data-limit-meters />
+            {tr("contoare")}
+            <input type="number" min={1} max={60} value={limits.services} onChange={(e) => edit((l) => ({ ...l, limits: { ...l.limits, services: Math.min(60, Math.max(1, Math.floor(Number(e.target.value)) || 1)) } }), "limit-services")} className="h-9 w-14 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 text-center" data-limit-services />
+            {tr("linii de servicii")}
+          </span>
           <span className="ml-auto text-ink-soft">
             {tr("A4 landscape · {PAGE_W_MM}×{PAGE_H_MM} mm{v1}", { PAGE_W_MM, PAGE_H_MM, v1: scale ? ` · ${Math.round(scale * 100)}%` : "" })}
           </span>
@@ -636,6 +685,24 @@ export default function ApaCanalLayoutEditor({
             </div>
           )}
         </div>
+
+        {/* Paginile de continuare ale facturii de test: apar când contoarele sau serviciile depășesc limitele de mai sus */}
+        {scale !== null && (
+          <div className="card flex flex-col gap-2 p-3 text-xs" data-cont-preview="">
+            <b className="text-sm">{contPages.length > 0 ? tr("Factura de test are {n} pagini", { n: 1 + contPages.length }) : tr("Factura de test încape pe o singură pagină")}</b>
+            {contPages.length > 0 && (
+              <div className="flex flex-col gap-3 overflow-auto rounded-xl border border-[var(--color-line)] bg-zinc-200 p-3">
+                {contPages.map((cp, i) => (
+                  <div key={i} style={{ width: PAGE_W_PX * scale, height: PAGE_H_PX * scale }}>
+                    <div style={{ width: PAGE_W_PX, height: PAGE_H_PX, transform: `scale(${scale})`, transformOrigin: "top left" }}>
+                      <ApaCanalContinuationPage invoice={sample} page={cp} pageNo={i + 2} totalPages={1 + contPages.length} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Factura reală, așa cum o vede clientul / PDF-ul, cu șablonul SALVAT */}
         <div className="card flex flex-col gap-2 p-3 text-xs">

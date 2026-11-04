@@ -10,7 +10,7 @@ import {
   sanitizeApaCanalLayout,
   type ApaCanalElementKey,
 } from "../apa-canal-layout";
-import { buildApaCanalVars, factorOrDash, isApa, niceStep, num2, type ApaCanalInvoiceData, type ConsumPoint } from "../apa-canal-invoice-vars";
+import { buildApaCanalVars, continuationPages, factorOrDash, isApa, niceStep, num2, pageLimits, splitForPages, type ApaCanalInvoiceData, type ConsumPoint, type ContPage, type InvoiceMeter } from "../apa-canal-invoice-vars";
 import { fmtDate, money, INVOICE_STATUS, type InvoiceStatusKey } from "../../app/components/invoice-meta";
 
 /**
@@ -172,10 +172,53 @@ function contLine1(doc: Doc, invoice: ApaCanalInvoiceData, x: number, top: numbe
 }
 
 /** Lățimile coloanelor tabelului contorului (conținutul cel mai lat + 2mm padding pe fiecare parte). */
-function meterColumns(doc: Doc, invoice: ApaCanalInvoiceData, s: number): number[] {
+function meterColumns(doc: Doc, meters: InvoiceMeter[], s: number): number[] {
   const heads = [["Numărul", "contorului"], ["Indicii", "precedenți"], ["Indicii", "actuali"], ["Volum", "estimativ"]];
-  const vals = [invoice.meterNumber || "—", invoice.meterPrevReading || "—", invoice.meterCurrReading || "—", invoice.isEstimatedVolume ? "DA" : ""];
-  return heads.map((h, i) => Math.max(widthMm(doc, h[0], s), widthMm(doc, h[1], s), widthMm(doc, vals[i], s, true)) + 4);
+  const rowVals = (m: InvoiceMeter) => [m.serial || "—", m.prev || "—", m.curr || "—", m.estimated ? "DA" : ""];
+  return heads.map((h, i) => Math.max(widthMm(doc, h[0], s), widthMm(doc, h[1], s), ...meters.map((m) => widthMm(doc, rowVals(m)[i], s, true))) + 4);
+}
+
+/**
+ * Pagină de continuare (A4 pe lat): contoarele sau liniile de servicii care nu au încăput pe prima pagină — aceeași machetă ca în pagina din browser
+ * (ApaCanalContinuationPage): antet cu datele facturii, apoi tabelul rămas, cu numărul paginii în colț.
+ */
+function drawContinuationPage(doc: Doc, invoice: ApaCanalInvoiceData, page: ContPage, pageNo: number, totalPages: number) {
+  const L = 8, R = 289, W = R - L;
+  put(doc, `Factura ${invoice.number} — continuare`, L, 6, 4, 1.5, { bold: true });
+  hline(doc, L, R, 13.2, 1.1, BLUE);
+  const who = (invoice.consumerName || invoice.client?.name || "").toUpperCase();
+  const info = `Cont personal: ${invoice.contPersonal || "—"}${who ? ` · ${who}` : ""}${invoice.billingPeriodLabel ? ` · Perioada de calcul: ${invoice.billingPeriodLabel.toUpperCase()}` : ""}`;
+  put(doc, info, L, 17, 3.2, 1.6, { bold: true, color: "#000000" });
+  if (invoice.consumAddress) put(doc, `Adresa locului de consum: ${invoice.consumAddress}`, L, 17 + 3.2 * 1.6, 3.2, 1.6, { color: "#000000" });
+  put(doc, page.kind === "meters" ? `Contoare (continuare, de la nr. ${page.from})` : `Servicii (continuare, de la linia ${page.from})`, L, 30, 3.6, 1.5, { bold: true });
+
+  const s = 3.3, rowH = 6.2;
+  const cols = [12, 0.34, 0.2, 0.2, 0.26].map((v, i) => (i === 0 ? v : v * (W - 12)));
+  const xs: number[] = [];
+  cols.reduce((x, w) => (xs.push(x), x + w), L);
+  const heads = page.kind === "meters" ? ["Nr.", "Numărul contorului", "Indicii precedenți", "Indicii actuali", "Volum estimativ"] : ["Nr.", "Denumirea serviciului", "Volumul, m3", "Tariful lei/m3", "Suma calculată"];
+  const align: Align[] = ["left", "left", "right", "right", page.kind === "meters" ? "center" : "right"];
+  let y = 38;
+  heads.forEach((h, c) => put(doc, h, xs[c] + 2, y + 1, s, 1.5, { color: BORDER, align: align[c], width: cols[c] - 4 }));
+  y += 1 + s * 1.5 + 1;
+  hline(doc, L, R, y, PX, BLUE);
+  y += PX;
+  if (page.kind === "meters") {
+    page.rows.forEach((m, i) => {
+      const cells = [String(page.from + i), m.serial || "—", m.prev || "—", m.curr || "—", m.estimated ? "DA" : ""];
+      cells.forEach((t, c) => put(doc, t, xs[c] + 2, y + 1.2, s, 1.5, { bold: c > 0, color: TEXT, align: align[c], width: cols[c] - 4 }));
+      y += rowH;
+      hline(doc, L, R, y - PX, PX, BORDER_LIGHT);
+    });
+  } else {
+    page.rows.forEach((it, i) => {
+      const cells = [String(page.from + i), isApa(it.description) ? "Serviciul de alimentare cu apa" : "Serviciul de canalizare", factorOrDash(it.quantity, it.lineTotal), factorOrDash(it.unitPrice, it.lineTotal), num2(it.lineTotal)];
+      cells.forEach((t, c) => put(doc, t, xs[c] + 2, y + 1.2, s, 1.5, { color: TEXT, align: align[c], width: cols[c] - 4 }));
+      y += rowH;
+      hline(doc, L, R, y - PX, PX, BORDER_LIGHT);
+    });
+  }
+  put(doc, `Pagina ${pageNo} din ${totalPages}`, L, 203.6, 2.8, 1.5, { color: CHART_TEXT, align: "right", width: W });
 }
 
 const TABLE_BASELINE_ROWS = 2;
@@ -188,15 +231,18 @@ export async function buildApaCanalInvoicePdf(o: { invoice: ApaCanalInvoiceData;
   const custom = !!layout && Object.keys(layout).length > 0;
   const vars = buildApaCanalVars(invoice, company);
   const points: ConsumPoint[] = o.history.length ? o.history : Array.isArray(invoice.monthlyConsumption) ? (invoice.monthlyConsumption as ConsumPoint[]) : [];
-  const apaItems = invoice.items.filter((it) => isApa(it.description));
-  const canalItems = invoice.items.filter((it) => !isApa(it.description) && /canalizare/i.test(it.description));
-  const rows = [...apaItems, ...canalItems];
+  // Contoare și linii de servicii: pe prima pagină cel mult limitele din șablon (implicit 6 + 6), restul pe pagini de continuare (ca în pagina din browser).
+  const limits = pageLimits(layout?.limits);
+  const sp = splitForPages(invoice, limits);
+  const contPages = continuationPages(sp, limits);
+  const totalPages = 1 + contPages.length;
+  const rows = sp.services;
 
   const { doc, done } = newDoc({ landscape: true, title: `Factura ${invoice.number}`, author: company.apaCanalCompanyLine || company.companyName || "Apă-Canal" });
   const [logoBuf, ...imgBufs] = await Promise.all([imageBuffer(company.apaCanalLogo), ...(layout?.customImages ?? []).map((i) => imageBuffer(i.dataUrl))]);
 
   // Tabelul de servicii crește cu fiecare linie în plus; ce e sub el coboară cu atât (plafonat la marginea de jos a paginii).
-  const overflow = Math.max(0, rows.length - TABLE_BASELINE_ROWS) * TABLE_ROW_HEIGHT_MM;
+  const overflow = Math.max(0, rows.length + (sp.servicesRest.length ? 1 : 0) - TABLE_BASELINE_ROWS) * TABLE_ROW_HEIGHT_MM;
   const SHIFTED: ApaCanalElementKey[] = ["recalculariText", "totalsConnectorLine", "totalsBox", "atentieBox"];
   // Fără șablon, coloana din mijloc (cont personal + tabelul contorului) are lățimea conținutului ei, lipită de coloana din dreapta; graficul ocupă restul din stânga.
   const COL3_X = APA_CANAL_LAYOUT_DEFAULTS.logo.xMm, COL_GAP = 5;
@@ -208,7 +254,7 @@ export async function buildApaCanalInvoicePdf(o: { invoice: ApaCanalInvoiceData;
       widthMm(doc, "Adresa locului de consum:", cs, true),
       widthMm(doc, invoice.consumAddress || "—", cs, true),
       widthMm(doc, (invoice.consumerName || invoice.client?.name || "").toUpperCase(), cs, true),
-      meterColumns(doc, invoice, APA_CANAL_DEFAULT_FONT_MM.meterTable ?? 3.6).reduce((a, v) => a + v, 0),
+      meterColumns(doc, sp.meters, APA_CANAL_DEFAULT_FONT_MM.meterTable ?? 3.6).reduce((a, v) => a + v, 0),
     );
     return Math.max(60, COL3_X - COL_GAP - w);
   })();
@@ -350,16 +396,24 @@ export async function buildApaCanalInvoicePdf(o: { invoice: ApaCanalInvoiceData;
     if (!drawOverride("meterTable", b)) {
       const s = sizeOf("meterTable", 3.6), bold = boldOf("meterTable");
       const heads = [["Numărul", "contorului"], ["Indicii", "precedenți"], ["Indicii", "actuali"], ["Volum", "estimativ"]];
-      const vals = [invoice.meterNumber || "—", invoice.meterPrevReading || "—", invoice.meterCurrReading || "—", invoice.isEstimatedVolume ? "DA" : ""];
       let x = b.x;
-      const cws = meterColumns(doc, invoice, s);
+      const cws = meterColumns(doc, sp.meters, s);
+      const rowStep = s * 1.3;
       heads.forEach((h, i) => {
         const cw = cws[i];
         put(doc, h[0], x, b.y, s, 1.5, { color: BORDER, align: "center", width: cw });
         put(doc, h[1], x, b.y + s * 1.5, s, 1.5, { color: BORDER, align: "center", width: cw });
-        put(doc, vals[i], x, b.y + s * 3 + 1, s, 1.5, { bold: true, color: TEXT, align: "center", width: cw });
+        // un rând per contor (din 1C pot fi zeci): ce nu încape pe prima pagină continuă pe paginile următoare
+        sp.meters.forEach((mt, r) => {
+          const val = [mt.serial || "—", mt.prev || "—", mt.curr || "—", mt.estimated ? "DA" : ""][i];
+          put(doc, val, x, b.y + s * 3 + 1 + r * rowStep, s, 1.5, { bold: true, color: TEXT, align: "center", width: cw });
+        });
         x += cw;
       });
+      if (sp.metersRest.length > 0) {
+        const tw = cws.reduce((a, v) => a + v, 0);
+        put(doc, `… încă ${sp.metersRest.length} ${sp.metersRest.length === 1 ? "contor" : "contoare"} — pagina 2 (din ${sp.metersTotal})`, b.x, b.y + s * 3 + 1 + sp.meters.length * rowStep + 0.4, 2.8, 1.5, { color: CHART_TEXT, align: "center", width: tw });
+      }
     }
   }
 
@@ -420,11 +474,15 @@ export async function buildApaCanalInvoicePdf(o: { invoice: ApaCanalInvoiceData;
         body.forEach((r, i) => {
           r.forEach((t, c) => cell(c, t, y + 0.8, TEXT, ob));
           y += 0.8 + lineH + 0.8;
-          if (i < body.length - 1) {
+          if (i < body.length - 1 || sp.servicesRest.length > 0) {
             hline(doc, b.x, b.x + b.w, y, PX, BORDER_LIGHT);
             y += PX;
           }
         });
+        if (sp.servicesRest.length > 0) {
+          const pg = 1 + contPages.findIndex((p) => p.kind === "services") + 1;
+          put(doc, `… încă ${sp.servicesRest.length} ${sp.servicesRest.length === 1 ? "linie" : "linii"} de servicii — vezi pagina ${pg} (din ${sp.servicesTotal})`, b.x, y + 0.8, s, 1.5, { color: CHART_TEXT, align: "center", width: b.w });
+        }
       }
     }
   }
@@ -516,6 +574,16 @@ export async function buildApaCanalInvoicePdf(o: { invoice: ApaCanalInvoiceData;
 
   // ── Imagini adăugate liber ──
   (layout?.customImages ?? []).forEach((img, i) => drawImage(doc, imgBufs[i] ?? null, img.xMm, img.yMm, img.widthMm, img.heightMm));
+
+  // ── Paginile de continuare ──
+  if (contPages.length > 0) {
+    put(doc, `Pagina 1 din ${totalPages}`, 5, 205.2, 2.6, 1.5, { color: CHART_TEXT, align: "right", width: 287 });
+    contPages.forEach((cp, i) => {
+      doc.addPage();
+      doc.page.margins.bottom = -100000;
+      drawContinuationPage(doc, invoice, cp, i + 2, totalPages);
+    });
+  }
 
   doc.end();
   return done;

@@ -1,5 +1,5 @@
 import "server-only";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import iconv from "iconv-lite";
 import { ObjectId } from "mongodb";
 import type { Prisma } from "@prisma/client";
@@ -161,6 +161,8 @@ export type ExistingInvoiceLite = {
   consumerName?: string | null;
   sectorNr?: string | null;
   isEstimatedVolume?: boolean | null;
+  /** Amprenta listei de contoare (vezi Invoice.metersSig). */
+  metersSig?: string | null;
 };
 
 // Scadența facturilor Apă-Canal = ziua de 25 a lunii facturii (vezi lib/apa-canal-due.ts).
@@ -275,6 +277,20 @@ export function buildApaCanalPlan(
     }
     if (str(r["Источник"]) !== "Контролер") agg.estimat = true;
     readingByUid.set(uid, agg);
+  }
+
+  // Contoarele fiecărui abonat: ultima citire a fiecărui contor (1C trimite câte un rând de citire per contor), ca factura să le arate pe toate.
+  type MeterRow = { serial: string; prev: number; curr: number; date: string; estimated: boolean };
+  const metersByUid = new Map<string, Map<string, MeterRow>>();
+  for (const r of data.citiri) {
+    const serial = str(r["ИзмерительныйПрибор"]);
+    if (!serial) continue;
+    const uid = str(r.UID);
+    const byMeter = metersByUid.get(uid) ?? new Map<string, MeterRow>();
+    const date = str(r["ДатаПоказаний"]);
+    const old = byMeter.get(serial);
+    if (!old || date >= old.date) byMeter.set(serial, { serial, prev: Number(r["ПредыдущиеПоказания"]) || 0, curr: Number(r["Показания"]) || 0, date, estimated: str(r["Источник"]) !== "Контролер" });
+    metersByUid.set(uid, byMeter);
   }
 
   const itemsByUid = new Map<string, Record<string, unknown>[]>();
@@ -434,6 +450,10 @@ export function buildApaCanalPlan(
     const meterNumber = reading?.meter || (meter ? str(meter["ИзмерительныйПрибор"]) || null : null);
     const meterCurrReadingNum = reading ? reading.curr : null;
     const meterReadingEstimated = reading ? reading.estimat : false;
+    // Cu 2+ contoare, lista lor intră pe factură (serie + indici la fiecare); cu unul singur rămân câmpurile obișnuite.
+    const metersList = [...(metersByUid.get(uid)?.values() ?? [])].sort((a, b) => a.serial.localeCompare(b.serial, "ro", { numeric: true }));
+    const metersJson = metersList.length >= 2 ? metersList.map((m) => ({ serial: m.serial, prev: pad5(m.prev), curr: pad5(m.curr), estimated: m.estimated })) : null;
+    const metersSig = metersJson ? createHash("sha1").update(JSON.stringify(metersJson)).digest("hex").slice(0, 12) : null;
 
     // Factura există deja (același abonat, aceeași perioadă): nu se creează alta. Dacă 1C trimite acum alte
     // valori (ex. nr. contorului corectat, citiri, sume), factura existentă se ACTUALIZEAZĂ cu ele — altfel o
@@ -460,6 +480,7 @@ export function buildApaCanalPlan(
         txt("Adresă consum", consumAddress, stored.consumAddress);
         txt("Sector", sectorNr, stored.sectorNr);
         if (name && !name.includes("?") && name !== (stored.consumerName ?? null)) diffs.push({ camp: "Nume", api: name, aplicatie: stored.consumerName || "—" });
+        if ((metersSig ?? "") !== (stored.metersSig ?? "")) diffs.push({ camp: "Contoare", api: metersJson ? `${metersJson.length} contoare` : "1 contor", aplicatie: stored.metersSig ? "alt set de contoare" : "1 contor" });
         if (reading && meterReadingEstimated !== (stored.isEstimatedVolume ?? false)) diffs.push({ camp: "Volum estimat", api: meterReadingEstimated ? "da" : "nu", aplicatie: stored.isEstimatedVolume ? "da" : "nu" });
       }
       // Fișa plătitorului: oglindă 1C (doar de la cea mai nouă factură a lui — o lună veche are date vechi), independent de diferențele facturii.
@@ -482,6 +503,8 @@ export function buildApaCanalPlan(
             meterPrevReading: apiValues.citirePrec,
             meterCurrReading: apiValues.citireCurenta,
             isEstimatedVolume: meterReadingEstimated,
+            meters: (metersJson ?? []) as unknown as Prisma.InputJsonValue,
+            metersSig,
             subtotal: apiValues.calculat,
             datoriiAvans: apiValues.datorie,
             grandTotal: apiValues.deAchitat,
@@ -618,6 +641,7 @@ export function buildApaCanalPlan(
       meterPrevReading: reading ? pad5(reading.prev) : null,
       meterCurrReading: reading ? pad5(reading.curr) : null,
       isEstimatedVolume: meterReadingEstimated,
+      ...(metersJson ? { meters: metersJson as unknown as Prisma.InputJsonValue, metersSig } : {}),
       billingPeriodLabel: `${LUNI_RO[issueDate.getUTCMonth()]} ${issueDate.getUTCFullYear()}`,
       recalculari: 0,
       penalitati: 0,
@@ -827,7 +851,7 @@ export async function importApaCanalBuffer(buf: Buffer, opts: { ownerId: string;
       select: {
         id: true, number: true, clientId: true, issueDate: true, meterNumber: true, meterPrevReading: true,
         meterCurrReading: true, subtotal: true, datoriiAvans: true, grandTotal: true, dueDate: true,
-        consumAddress: true, consumerName: true, sectorNr: true, isEstimatedVolume: true,
+        consumAddress: true, consumerName: true, sectorNr: true, isEstimatedVolume: true, metersSig: true,
       },
     }),
   ]);
