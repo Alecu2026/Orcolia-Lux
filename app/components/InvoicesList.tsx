@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { setInvoiceStatus, deleteInvoice } from "@/app/actions/invoices";
 import {
@@ -553,20 +553,22 @@ export default function InvoicesList({
         <span className="text-[11px] font-semibold text-ink-soft">{t("Plăți")}</span>
         {(
           [
-            { key: "all", label: "Toate", tip: "", statuses: [] as string[], quick: "" as InvQuery["quick"], n: null as number | null },
-            { key: "settled", label: "Achitate", tip: "Au achitat factura anterioară: datoria de pe această factură e 0 (sau au avans)", statuses: [], quick: "settled" as InvQuery["quick"], n: payCounts?.settled ?? null },
-            { key: "debt", label: "Neachitate", tip: "Nu au achitat integral factura anterioară: datoria s-a reportat pe această factură", statuses: [], quick: "debt" as InvQuery["quick"], n: payCounts?.debt ?? null },
-            { key: "partial", label: "Parțial achitate", tip: "Au achitat doar o parte din factura anterioară", statuses: [], quick: "partial" as InvQuery["quick"], n: payCounts?.partial ?? null },
-            { key: "advance", label: "Cu avans", tip: "Au plătit în plus: avans pe această factură", statuses: [], quick: "advance" as InvQuery["quick"], n: payCounts?.advance ?? null },
-            { key: "paidprev", label: "Cu plată primită", tip: "Au plătit ceva între factura anterioară și aceasta", statuses: [], quick: "paidprev" as InvQuery["quick"], n: payCounts?.paidprev ?? null },
-            { key: "paidinv", label: "Facturi achitate", tip: "Facturile cu statusul Achitată (se știe după ce factura următoare arată datorie 0, sau când avansul acoperă factura)", statuses: ["PAID"], quick: "" as InvQuery["quick"], n: payCounts?.paidInv ?? null },
-            { key: "overdue", label: "Restante", tip: "Facturi la care factura următoare a arătat datorie (restante confirmate)", statuses: ["OVERDUE"], quick: "" as InvQuery["quick"], n: payCounts?.overdue ?? null },
+            { key: "all", label: "Toate", tip: "", statuses: [] as string[], quick: "" as InvQuery["quick"], n: null as number | null, group: "" },
+            { key: "settled", label: "Achitate", tip: "Au achitat factura anterioară: datoria de pe această factură e 0 (sau au avans)", statuses: [], quick: "settled" as InvQuery["quick"], n: payCounts?.settled ?? null, group: "Factura anterioară:" },
+            { key: "debt", label: "Neachitate", tip: "Nu au achitat integral factura anterioară: datoria s-a reportat pe această factură", statuses: [], quick: "debt" as InvQuery["quick"], n: payCounts?.debt ?? null, group: "Factura anterioară:" },
+            { key: "partial", label: "Parțial achitate", tip: "Au achitat doar o parte din factura anterioară", statuses: [], quick: "partial" as InvQuery["quick"], n: payCounts?.partial ?? null, group: "Factura anterioară:" },
+            { key: "advance", label: "Cu avans", tip: "Au plătit în plus: avans pe această factură", statuses: [], quick: "advance" as InvQuery["quick"], n: payCounts?.advance ?? null, group: "Factura anterioară:" },
+            { key: "paidprev", label: "Cu plată primită", tip: "Au plătit ceva între factura anterioară și aceasta", statuses: [], quick: "paidprev" as InvQuery["quick"], n: payCounts?.paidprev ?? null, group: "Factura anterioară:" },
+            { key: "paidinv", label: "Facturi achitate", tip: "Facturile cu statusul Achitată (se știe după ce factura următoare arată datorie 0, sau când avansul acoperă factura)", statuses: ["PAID"], quick: "" as InvQuery["quick"], n: payCounts?.paidInv ?? null, group: "Factura lunii:" },
+            { key: "overdue", label: "Restante", tip: "Facturi la care factura următoare a arătat datorie (restante confirmate)", statuses: ["OVERDUE"], quick: "" as InvQuery["quick"], n: payCounts?.overdue ?? null, group: "Factura lunii:" },
           ]
-        ).map((c) => {
+        ).map((c, ci, arr) => {
+          const startGroup = c.group !== "" && c.group !== arr[ci - 1]?.group;
           const on = c.key === "all" ? query.statuses.length === 0 && !query.quick : query.quick === c.quick && query.statuses.length === c.statuses.length && c.statuses.every((s) => query.statuses.includes(s));
           return (
+            <Fragment key={c.key}>
+            {startGroup && <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-ink-soft/80" title={t(c.group === "Factura lunii:" ? "Statusul facturii din luna aleasă (se știe din factura următoare)" : "Cum a achitat factura de luna trecută (se vede din soldul de pe factura lunii alese)")}>{t(c.group)}</span>}
             <button
-              key={c.key}
               type="button"
               aria-pressed={on}
               onClick={() => patchQuery(on || c.key === "all" ? { statuses: [], quick: "" } : { statuses: c.statuses, quick: c.quick })}
@@ -575,6 +577,7 @@ export default function InvoicesList({
             >
               {t(c.label)}{c.n != null && <span className="ml-1 tabular-nums opacity-80">{c.n.toLocaleString("ro-RO")}</span>}
             </button>
+            </Fragment>
           );
         })}
       </div>
@@ -587,9 +590,9 @@ export default function InvoicesList({
         {view.sums ? (
           <>
             <span className="text-ink-soft">{t("Σ total:")} <b className="tabular-nums text-ink">{fmtMoney(view.sums.total, view.sums.currency)}</b></span>
-            <span className="text-ink-soft">{t("achitat:")} <b className="tabular-nums text-st-done">{fmtMoney(view.sums.paid, view.sums.currency)}</b></span>
-            <span className="text-ink-soft">{t("neachitat:")} <b className="tabular-nums text-ink">{fmtMoney(view.sums.open, view.sums.currency)}</b></span>
-            {view.sums.overdueCount > 0 && <span className="text-ink-soft">{t("din care restant:")} <b className="tabular-nums text-st-cancelled">{fmtMoney(view.sums.overdue, view.sums.currency)}</b> ({view.sums.overdueCount.toLocaleString("ro-RO")})</span>}
+            <span className="text-ink-soft" title={t("Cât au plătit între facturi (la fel ca „Încasat” din raport)")}>{t("achitat:")} <b className="tabular-nums text-st-done">{fmtMoney(view.sums.paid, view.sums.currency)}</b></span>
+            <span className="text-ink-soft" title={t("Datoria reportată pe facturi (la fel ca „Datorie” din raport)")}>{t("neachitat:")} <b className="tabular-nums text-ink">{fmtMoney(view.sums.open, view.sums.currency)}</b></span>
+            {view.sums.overdueCount > 0 && <span className="text-ink-soft" title={t("Facturile lunii cu statusul Restantă: totalul lor de plată")}>{t("facturi restante:")} <b className="tabular-nums text-st-cancelled">{fmtMoney(view.sums.overdue, view.sums.currency)}</b> ({view.sums.overdueCount.toLocaleString("ro-RO")})</span>}
             {view.sums.mixedCurrency && <span className="text-ink-soft" title={t("Sumele sunt doar în valuta principală; filtrează după valută pentru celelalte.")}>{t("(mai multe valute)")}</span>}
           </>
         ) : (

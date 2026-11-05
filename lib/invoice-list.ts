@@ -233,11 +233,11 @@ export type InvSums = {
   mixedCurrency: boolean;
   /** Σ facturi neanulate. */
   total: number;
-  /** Σ achitate. */
+  /** Apă-Canal: Σ cât au plătit între facturi (ca „Încasat” din raport); celelalte facturi: Σ achitate. */
   paid: number;
-  /** Σ neachitate (nici achitate, nici anulate). */
+  /** Apă-Canal: Σ datoria reportată pe factură (ca „Datorie” din raport); celelalte facturi: Σ neachitate (nici achitate, nici anulate). */
   open: number;
-  /** Din care cu scadența trecută. */
+  /** Facturile restante (Apă-Canal: statusul „Restantă”; celelalte: scadența trecută): suma totalului lor de plată. */
   overdue: number;
   overdueCount: number;
 };
@@ -342,12 +342,21 @@ export function queryInvoices(rows: InvRow[], f: InvQuery, nowMs: number = Date.
     if (!c) byCur.set(r.currency, (c = { n: 0, total: 0, paid: 0, open: 0, overdue: 0, overdueN: 0 }));
     c.n++;
     if (r.status !== "CANCELLED") c.total += r.grandTotal;
-    if (r.status === "PAID") c.paid += r.grandTotal;
-    if (unpaid) {
-      c.open += r.grandTotal;
-      // „restant”: la Apă-Canal după status (o factură fără factură următoare rămâne „Trimisă” chiar după scadență, vezi lib/payment-chain.ts), la celelalte după scadență — la fel ca chipul „Restante”
-      const late = r.kind === "APA_CANAL" ? r.status === "OVERDUE" : r.dueMs != null && r.dueMs < nowMs;
-      if (late) { c.overdue += r.grandTotal; c.overdueN++; }
+    if (r.kind === "APA_CANAL") {
+      // Apă-Canal: aceleași sume ca în „Raport servicii” — achitat = cât au plătit între facturi, neachitat = datoria reportată pe factură (nu „Total de plată”, care conține și datoriile / avansurile
+      // vechi: avansurile negative ar scădea suma și aceeași datorie s-ar număra de mai multe ori)
+      if (r.status !== "DRAFT" && r.status !== "CANCELLED") {
+        if (r.prevPaid != null && r.prevPaid > 0.005) c.paid += r.prevPaid;
+        if (r.debt > 0.005) c.open += r.debt;
+      }
+      // „restante” după status (o factură fără factură următoare rămâne „Trimisă” chiar după scadență, vezi lib/payment-chain.ts), ca la chipul „Restante”: totalul lor de plată
+      if (r.status === "OVERDUE") { c.overdue += r.grandTotal; c.overdueN++; }
+    } else {
+      if (r.status === "PAID") c.paid += r.grandTotal;
+      if (unpaid) {
+        c.open += r.grandTotal;
+        if (r.dueMs != null && r.dueMs < nowMs) { c.overdue += r.grandTotal; c.overdueN++; } // restant = scadența trecută
+      }
     }
   }
   let main = "MDL", mainN = -1;
