@@ -18,6 +18,7 @@ export function filtersToListOpts(f: NotifyFilters): ListPayersOpts {
     sector: f.sector || undefined,
     invoiceStatus: (f.invoiceStatus || undefined) as InvoiceStatus | undefined,
     debt: f.debt || undefined,
+    bal: f.bal || undefined,
     minDebt: f.minDebt ? Number(f.minDebt) : undefined,
     maxDebt: f.maxDebt ? Number(f.maxDebt) : undefined,
     contact: f.contact || undefined,

@@ -44,7 +44,7 @@ async function idbSet(key: string, value: unknown): Promise<void> {
   }
 }
 
-type Stored = { at: number; etag: string | null; rows: InvTuple[] };
+type Stored = { at: number; etag: string | null; rows: InvTuple[]; /** serviciile lunii încă nu sunt calculate pe server */ inc?: boolean };
 
 /**
  * Cookie cu versiunile lunilor pe care le are browserul (ultimele 6, `AAAA-LL-versiune` separate prin punct): serverul nu mai cere descărcarea unei luni din HTML (preload) dacă o are deja.
@@ -76,7 +76,7 @@ export async function prefetchInvoiceDataset(): Promise<void> {
     if (!j.rows) return;
     const etag = res.headers.get("etag");
     const at = Date.now();
-    await idbSet(keyOf(month), { at, etag, rows: j.rows } satisfies Stored);
+    await idbSet(keyOf(month), { at, etag, rows: j.rows, inc: (j as { inc?: number }).inc === 1 } satisfies Stored);
     await idbSet(LATEST_KEY, { month, etag, at });
     rememberVersion(month, etag);
   } catch {
@@ -84,7 +84,7 @@ export async function prefetchInvoiceDataset(): Promise<void> {
   }
 }
 
-type Shard = { at: number; etag: string | null; rows: InvRow[] };
+type Shard = { at: number; etag: string | null; rows: InvRow[]; inc?: boolean };
 // luni deja decodate în această sesiune (revenirea la o perioadă văzută e instantanee)
 const memo = new Map<string, Shard>();
 
@@ -97,6 +97,7 @@ export function useInvoiceDataset(monthsWanted: string[] | null) {
   const shardsRef = useRef<Map<string, Shard>>(new Map());
   const [rows, setRows] = useState<InvRow[] | null>(null);
   const [version, setVersion] = useState(0);
+  const [incomplete, setIncomplete] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
@@ -114,14 +115,15 @@ export function useInvoiceDataset(monthsWanted: string[] | null) {
 
   const publish = useCallback(() => {
     const want = wantRef.current;
-    if (want.length === 0) { setRows(null); return; }
+    if (want.length === 0) { setRows(null); setIncomplete(false); return; }
     const parts: InvRow[][] = [];
     for (const m of want) {
       const sh = shardsRef.current.get(m);
-      if (!sh) { setRows(null); return; } // încă lipsește o lună
+      if (!sh) { setRows(null); setIncomplete(false); return; } // încă lipsește o lună
       parts.push(sh.rows);
     }
     setRows(parts.length === 1 ? parts[0] : parts.flat());
+    setIncomplete(want.some((m) => shardsRef.current.get(m)?.inc));
     setVersion((v) => v + 1);
   }, []);
 
@@ -145,13 +147,14 @@ export function useInvoiceDataset(monthsWanted: string[] | null) {
           if (res.status === 404) { shardsRef.current.set(month, { at, etag: null, rows: [] }); return; } // luna nu mai are facturi
           throw new Error(String(res.status));
         }
-        const j = (await res.json()) as { rows?: InvTuple[] };
+        const j = (await res.json()) as { rows?: InvTuple[]; inc?: number };
         const etag = res.headers.get("etag");
         const tuples = j.rows ?? [];
-        const next: Shard = { at, etag, rows: decodeInvoices(tuples) };
+        const inc = j.inc === 1;
+        const next: Shard = { at, etag, rows: decodeInvoices(tuples), inc };
         shardsRef.current.set(month, next);
         memo.set(month, next);
-        void idbSet(keyOf(month), { at, etag, rows: tuples } satisfies Stored).then(() => rememberVersion(month, etag));
+        void idbSet(keyOf(month), { at, etag, rows: tuples, inc } satisfies Stored).then(() => rememberVersion(month, etag));
       } finally {
         inflight.current.delete(month);
       }
@@ -194,7 +197,7 @@ export function useInvoiceDataset(monthsWanted: string[] | null) {
           if (shardsRef.current.has(m)) return;
           const st = await idbGet<Stored>(keyOf(m));
           if (cancelled || !st?.rows) return;
-          const sh: Shard = { at: st.at, etag: st.etag, rows: decodeInvoices(st.rows) };
+          const sh: Shard = { at: st.at, etag: st.etag, rows: decodeInvoices(st.rows), inc: st.inc };
           shardsRef.current.set(m, sh);
           memo.set(m, sh);
           rememberVersion(m, st.etag);
@@ -218,6 +221,17 @@ export function useInvoiceDataset(monthsWanted: string[] | null) {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [wantKey, loadAll]);
+
+  // O lună cu serviciile încă necalculate (se completează pe server, în fundal): o reverificăm din 15 în 15 secunde până se completează (cerere condiționată: 304 cât nu s-a schimbat)
+  useEffect(() => {
+    if (!incomplete) return;
+    let tries = 0;
+    const id = setInterval(() => {
+      if (++tries > 40) { clearInterval(id); return; } // cel mult ~10 minute; apoi doar la reîncărcarea paginii
+      void loadAll(true);
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [incomplete, loadAll]);
 
   /** Modificare locală a unei facturi (status, dată achitare…) — apare imediat în listă; se aplică în luna în care se află. */
   const patchInvoice = useCallback((id: string, patch: Partial<InvRow>) => {
@@ -255,8 +269,8 @@ export function useInvoiceDataset(monthsWanted: string[] | null) {
   const refresh = useCallback(() => loadAll(true), [loadAll]);
 
   return useMemo(
-    () => ({ rows, version, loading, error, loadedAt, patchInvoice, removeInvoice, restoreRows, snapshotRows, refresh }),
-    [rows, version, loading, error, loadedAt, patchInvoice, removeInvoice, restoreRows, snapshotRows, refresh],
+    () => ({ rows, version, loading, error, loadedAt, incomplete, patchInvoice, removeInvoice, restoreRows, snapshotRows, refresh }),
+    [rows, version, loading, error, loadedAt, incomplete, patchInvoice, removeInvoice, restoreRows, snapshotRows, refresh],
   );
 }
 

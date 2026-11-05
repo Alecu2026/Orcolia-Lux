@@ -9,7 +9,7 @@ import { listSections, sectionMaps } from "@/lib/queries/sections";
 import { deriveSectionId } from "@/lib/sections";
 import { listClients } from "@/lib/queries/clients";
 import { mineWhere } from "@/lib/queries/appointments";
-import { buildPayerWhere, matchesMonthInvoice, monthRange, parsePayerMonth, parseInstalledFrom } from "@/lib/queries/payers";
+import { buildPayerWhere, listPayerMonths, matchesMonthInvoice, monthRange, parsePayerMonth, parseInstalledFrom } from "@/lib/queries/payers";
 import { clientNamesFor } from "@/lib/queries/client-names";
 import { filtersToListOptsAsync } from "@/lib/queries/payer-notify";
 import { sanitizeFilters } from "@/lib/payer-notify";
@@ -363,7 +363,8 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
     const invoiceStatusFilter = fo.invoiceStatus;
     const debtFilter = fo.debt;
     // Cu o lună aleasă, soldul/statusul se filtrează pe factura acelei luni (mai jos, în memorie), nu pe ultima.
-    const month = parsePayerMonth(sp.get("month"));
+    // filtrul de plăți (datorie / avans / plată primită) se aplică pe factura lunii alese; fără lună — pe cea mai recentă lună cu facturi
+    const month = parsePayerMonth(sp.get("month")) ?? (fo.bal ? (await listPayerMonths())[0]?.month : undefined);
     const where = await buildPayerWhere({
       ...fo,
       invoiceStatus: month ? undefined : invoiceStatusFilter,
@@ -403,7 +404,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
         select: {
           clientId: true, number: true, issueDate: true, status: true, billingPeriodLabel: true, sectorNr: true,
           meterPrevReading: true, meterCurrReading: true, subtotal: true, datoriiAvans: true, recalculari: true,
-          penalitati: true, grandTotal: true, currency: true,
+          penalitati: true, grandTotal: true, currency: true, prevPaid: true, paidAmount: true,
         },
       }),
       prisma.oneCRecord.findMany({
@@ -425,7 +426,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
       .filter((p) => {
         if (!month) return true;
         const inv = lastInvoice.get(p.id);
-        return inv && matchesMonthInvoice(inv, { debt: debtFilter, invoiceStatus: invoiceStatusFilter, minDebt: fo.minDebt, maxDebt: fo.maxDebt });
+        return inv && matchesMonthInvoice(inv, { debt: debtFilter, invoiceStatus: invoiceStatusFilter, minDebt: fo.minDebt, maxDebt: fo.maxDebt, bal: fo.bal });
       })
       .filter((p) => {
         if (!installedFrom) return true;
@@ -497,7 +498,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
     const HEADERS = [
       "Abonat", "Cont personal", "Adresă", "Sector", "Perioadă", "Data facturii", "Nr. factură", "Status factură",
       "Index anterior", "Index curent", "Consum apă (m³)", "Tarif apă", "Consum canal (m³)", "Tarif canal",
-      "Calculat", "Sold anterior / regularizare", "Recalculări", "Penalități", "Total de plată", "Valută",
+      "Calculat", "Sold anterior / regularizare", "Recalculări", "Penalități", "Total de plată", "Scadență", "Plătit înainte de factură", "Achitat din factură", "Valută",
     ];
     const rows = stRows.map((inv) => ({
       "Abonat": client.name,
@@ -519,6 +520,9 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
       "Recalculări": inv.recalculari,
       "Penalități": inv.penalitati,
       "Total de plată": inv.grandTotal,
+      "Scadență": inv.dueDate ? fmtDate(inv.dueDate) : "",
+      "Plătit înainte de factură": inv.prevPaid ?? "",
+      "Achitat din factură": inv.paidAmount ?? "",
       "Valută": inv.currency,
     }));
     if (rows.length > 0) {
@@ -529,7 +533,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
         "Consum canal (m³)": totals.canalQty, "Tarif canal": "",
         "Calculat": totals.subtotal, "Sold anterior / regularizare": totals.datoriiAvans,
         "Recalculări": totals.recalculari, "Penalități": totals.penalitati,
-        "Total de plată": totals.grandTotal, "Valută": stRows[0]?.currency ?? "MDL",
+        "Total de plată": totals.grandTotal, "Scadență": "", "Plătit înainte de factură": totals.paid, "Achitat din factură": "", "Valută": stRows[0]?.currency ?? "MDL",
       });
     }
 

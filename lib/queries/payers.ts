@@ -7,6 +7,7 @@ import { cachedAsync } from "../ttl-cache";
 import { contractDate, contractFilterBounds, contractKey, type ContractExpFilter } from "../contract-expiry";
 import { metrologyFilterBounds, type MetrologyFilter } from "../metrology";
 import { payerIssueBounds, type PayerIssueFilter } from "../meter-issue-register";
+import { matchesPayBal } from "../payment-chain";
 
 const PAGE_SIZE = 50;
 /** Câți plătitori pe pagină alege utilizatorul (?perPage=) — plafonat ca să nu încărcăm mii de rânduri odată. */
@@ -27,7 +28,7 @@ export type PayerRow = {
   phone: string | null;
   activated: boolean;
   invoiceCount: number;
-  latestInvoice: { number: string; status: InvoiceStatus; grandTotal: number; currency: string; dueDate: string | null } | null;
+  latestInvoice: { number: string; status: InvoiceStatus; grandTotal: number; currency: string; dueDate: string | null; /** „Datorii(+) / avans(−)” de pe factură */ debt?: number; /** cât s-a plătit între factura anterioară și aceasta */ prevPaid?: number | null; /** cât din factură s-a achitat (null = încă nu se știe) */ paidAmount?: number | null } | null;
   consumAddress: string | null;
   /** ISO — ultima notificare trimisă din /notificari-platitori (null = niciodată). */
   lastNotifiedAt: string | null;
@@ -45,6 +46,7 @@ export type PayerRow = {
 
 export type PayerSector = "privat" | "comunal";
 export type PayerDebtFilter = "has" | "none";
+export type PayerBalanceFilter = "owes" | "advance" | "paidprev" | "partial" | "unpaid";
 export type PayerSort = "name" | "debtDesc" | "debtAsc" | "installDesc" | "installAsc";
 
 const SECTOR_VALUE: Record<PayerSector, string> = {
@@ -58,6 +60,8 @@ export type ListPayersOpts = {
   sector?: PayerSector;
   invoiceStatus?: InvoiceStatus;
   debt?: PayerDebtFilter;
+  /** Plățile deduse din lanțul de facturi, pe factura lunii alese (sau, fără lună, a celei mai recente luni): cu datorie / cu avans / cu plată primită înainte de factură / parțial achitate. */
+  bal?: PayerBalanceFilter;
   street?: string;
   sort?: PayerSort;
   /** Nume cu "?" literal — caracter pe care Windows-1251 (codificarea exportului 1C importat)
@@ -137,10 +141,11 @@ export async function listPayerMonths(): Promise<{ month: string; count: number 
 
 /** Filtrele de sold/status aplicate pe factura unei luni (în memorie). */
 export function matchesMonthInvoice(
-  inv: { status: InvoiceStatus; grandTotal: number },
-  opts: Pick<ListPayersOpts, "debt" | "invoiceStatus" | "minDebt" | "maxDebt">,
+  inv: { status: InvoiceStatus; grandTotal: number; datoriiAvans?: number | null; prevPaid?: number | null; paidAmount?: number | null },
+  opts: Pick<ListPayersOpts, "debt" | "invoiceStatus" | "minDebt" | "maxDebt" | "bal">,
 ): boolean {
   if (opts.invoiceStatus && inv.status !== opts.invoiceStatus) return false;
+  if (opts.bal && !matchesPayBal(opts.bal, { status: inv.status, debt: inv.datoriiAvans, prevPaid: inv.prevPaid, paid: inv.paidAmount })) return false;
   if (opts.debt === "has" && !(inv.grandTotal > 0)) return false;
   if (opts.debt === "none" && inv.grandTotal > 0) return false;
   if (opts.minDebt != null && inv.grandTotal < opts.minDebt) return false;
@@ -367,13 +372,13 @@ const PAYER_SELECT = {
   id: true, name: true, meterSeries: true, apaCanalContract: true, email: true, phone: true,
   portalPasswordHash: true, consumAddress: true, lastNotifiedAt: true, contractExpiresAt: true, metrologyDueAt: true, meterIssuesOpen: true, meterIssueDueAt: true, createdAt: true,
 } as const;
-const INVOICE_SELECT = { clientId: true, number: true, status: true, grandTotal: true, currency: true, dueDate: true, issueDate: true } as const;
+const INVOICE_SELECT = { clientId: true, number: true, status: true, grandTotal: true, currency: true, dueDate: true, issueDate: true, datoriiAvans: true, prevPaid: true, paidAmount: true } as const;
 
 // MongoDB sortează în memorie cel mult 32 MB (eroarea 292 QueryExceededMemoryLimitNoDiskUseAllowed) — cu zeci de mii de
 // facturi `orderBy: issueDate` pe tot setul cade. La citirile în bloc NU sortăm în bază, ci aici, în JS.
 const byIssueDesc = <T extends { issueDate: Date }>(rows: T[]): T[] => rows.sort((a, b) => b.issueDate.getTime() - a.issueDate.getTime());
 type PayerClient = Prisma.ClientGetPayload<{ select: typeof PAYER_SELECT }>;
-type PayerInvoice = { number: string; status: InvoiceStatus; grandTotal: number; currency: string; dueDate: Date | null };
+type PayerInvoice = { number: string; status: InvoiceStatus; grandTotal: number; currency: string; dueDate: Date | null; datoriiAvans?: number | null; prevPaid?: number | null; paidAmount?: number | null };
 
 function toPayerRow(c: PayerClient, latest: PayerInvoice | undefined, invoiceCount: number, installedAt: string | null): PayerRow {
   return {
@@ -392,6 +397,9 @@ function toPayerRow(c: PayerClient, latest: PayerInvoice | undefined, invoiceCou
           grandTotal: latest.grandTotal,
           currency: latest.currency,
           dueDate: latest.dueDate ? latest.dueDate.toISOString() : null,
+          debt: latest.datoriiAvans ?? 0,
+          prevPaid: latest.prevPaid ?? null,
+          paidAmount: latest.paidAmount ?? null,
         }
       : null,
     consumAddress: c.consumAddress,
@@ -440,7 +448,8 @@ export async function listPayers(opts: ListPayersOpts = {}) {
 
   const page = Math.max(1, opts.page ?? 1);
   const perPage = normalizePerPage(opts.perPage);
-  const month = parsePayerMonth(opts.month);
+  // filtrul de plăți (datorie / avans / plată primită) se aplică pe factura unei luni; fără lună aleasă — pe cea mai recentă lună cu facturi
+  const month = parsePayerMonth(opts.month) ?? (opts.bal ? (await listPayerMonths())[0]?.month : undefined);
   const installedFrom = parseInstalledFrom(opts.installedFrom);
   const installSort = opts.sort === "installDesc" || opts.sort === "installAsc";
   if (month) return listPayersForMonth(month, { ...opts, installedFrom }, page, perPage);
@@ -493,7 +502,7 @@ export type PayerContact = { id: string; name: string; email: string | null; pho
  */
 export async function listMatchingPayerContacts(opts: ListPayersOpts = {}): Promise<PayerContact[]> {
   if (DEMO) return [];
-  const month = parsePayerMonth(opts.month);
+  const month = parsePayerMonth(opts.month) ?? (opts.bal ? (await listPayerMonths())[0]?.month : undefined);
   const installedFrom = parseInstalledFrom(opts.installedFrom);
   if (month) return (await matchPayersForMonth(month, { ...opts, installedFrom })).matched;
   if (installedFrom || opts.sort === "installDesc" || opts.sort === "installAsc") {
@@ -729,7 +738,7 @@ export async function getPayerTickets(clientId: string) {
  * local din browser: încărcat o singură dată, apoi filtrat/sortat/paginat în JS, fără interogări la fiecare filtru.
  * Trei citiri în bloc (clienți, facturi, date de instalare) potrivite în memorie — aceeași tehnică ca exportul.
  */
-type LatestInvoice = { number: string; status: InvoiceStatus; grandTotal: number; currency: string; dueDate: Date | null };
+type LatestInvoice = { number: string; status: InvoiceStatus; grandTotal: number; currency: string; dueDate: Date | null; datoriiAvans?: number | null; prevPaid?: number | null; paidAmount?: number | null };
 
 // MongoDB întoarce valorile în format EJSON ({ $oid }, { $date }, { $numberDouble }…) — le aducem la tipuri JS.
 const ejId = (v: unknown): string | null => (typeof v === "string" ? v : v && typeof v === "object" && "$oid" in v ? String((v as { $oid: unknown }).$oid) : null);
@@ -761,7 +770,7 @@ async function latestInvoiceStats(): Promise<{ latest: Map<string, LatestInvoice
     const raw = (await prisma.invoice.aggregateRaw({
       pipeline: [
         { $match: { clientId: { $ne: null } } },
-        { $project: { clientId: 1, number: 1, status: 1, grandTotal: 1, currency: 1, dueDate: 1, issueDate: 1 } },
+        { $project: { clientId: 1, number: 1, status: 1, grandTotal: 1, currency: 1, dueDate: 1, issueDate: 1, datoriiAvans: 1, prevPaid: 1, paidAmount: 1 } },
         { $sort: { clientId: 1, issueDate: -1 } },
         {
           $group: {
@@ -772,6 +781,9 @@ async function latestInvoiceStats(): Promise<{ latest: Map<string, LatestInvoice
             grandTotal: { $first: "$grandTotal" },
             currency: { $first: "$currency" },
             dueDate: { $first: "$dueDate" },
+            datoriiAvans: { $first: "$datoriiAvans" },
+            prevPaid: { $first: "$prevPaid" },
+            paidAmount: { $first: "$paidAmount" },
           },
         },
       ],
@@ -789,6 +801,9 @@ async function latestInvoiceStats(): Promise<{ latest: Map<string, LatestInvoice
         grandTotal: ejNum(r.grandTotal),
         currency: String(r.currency ?? "MDL"),
         dueDate: ejDate(r.dueDate),
+        datoriiAvans: ejNum(r.datoriiAvans),
+        prevPaid: r.prevPaid == null ? null : ejNum(r.prevPaid),
+        paidAmount: r.paidAmount == null ? null : ejNum(r.paidAmount),
       });
     }
     return { latest, count };
@@ -836,6 +851,7 @@ export async function getPayerSnapshot(): Promise<SnapTuple[]> {
       sectorBy.get(c.id) ?? null, c.meterReadingEstimated ? 1 : 0, contractKey(c.contractExpiresAt), contractKey(c.metrologyDueAt),
       c.meterIssuesOpen ?? 0, contractKey(c.meterIssueDueAt), c.meterLorawan ? 1 : 0,
       c.createdAt.toISOString().slice(0, 10), placeBy.get(c.id) ?? null,
+      inv?.datoriiAvans ?? null, inv?.prevPaid ?? null, inv?.paidAmount ?? null,
     ];
   });
 }
@@ -856,7 +872,7 @@ export async function getPayerMonthSlice(month: string): Promise<MonthTuple[]> {
   for (const inv of invoices) {
     if (!inv.clientId || seen.has(inv.clientId)) continue;
     seen.add(inv.clientId);
-    out.push([inv.clientId, inv.number, inv.status, inv.grandTotal, inv.currency, inv.dueDate ? inv.dueDate.getTime() : null]);
+    out.push([inv.clientId, inv.number, inv.status, inv.grandTotal, inv.currency, inv.dueDate ? inv.dueDate.getTime() : null, inv.datoriiAvans ?? 0, inv.prevPaid ?? null, inv.paidAmount ?? null]);
   }
   return out;
 }

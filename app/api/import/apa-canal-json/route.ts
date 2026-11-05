@@ -2,6 +2,7 @@ import { revalidateTag } from "next/cache";
 import { rebuildPayerSnap } from "@/lib/services/payer-cache";
 import { rebuildInvoiceSnap } from "@/lib/services/invoice-cache";
 import { normalizeApaCanalDueDates } from "@/lib/services/apa-canal-due";
+import { syncPaymentChains } from "@/lib/services/payment-chain";
 import { deletePrivate, readPrivate } from "@/lib/storage";
 import { getCurrentUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
@@ -51,6 +52,7 @@ export async function POST(req: Request) {
   revalidateTag("clients", { expire: 0 });
   await rebuildPayerSnap("import 1C").catch((e) => console.error("[payer-cache] după import:", e));
   await normalizeApaCanalDueDates().catch((e) => console.error("[apa-canal] scadența după 1C:", e));
+  await syncPaymentChains("import 1C").catch((e) => console.error("[apa-canal] plățile după 1C:", e));
   await rebuildInvoiceSnap("import 1C").catch((e) => console.error("[invoice-cache] după import 1C:", e));
 
   await logAudit(

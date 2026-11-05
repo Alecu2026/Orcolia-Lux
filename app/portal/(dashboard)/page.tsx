@@ -23,7 +23,12 @@ export default async function PortalDashboardPage({
   const [templates, home] = await Promise.all([listPortalTemplates(), getPortalHome(client.id)]);
   const allInvoices = home.invoices;
   const currency = allInvoices[0]?.currency ?? "MDL";
-  const totalDue = allInvoices.filter((i) => i.status === "SENT" || i.status === "OVERDUE").reduce((sum, i) => sum + i.grandTotal, 0);
+  // Facturile Apă-Canal poartă soldul anterior (datorii / avans), deci totalul de plată e cel al CELEI MAI RECENTE facturi Apă-Canal (neanulate), dacă nu e achitată — nu suma lor (ar număra datoria de mai multe ori).
+  // Facturile obișnuite sunt independente: se adună cele neachitate.
+  const latestApa = allInvoices.find((i) => i.kind === "APA_CANAL" && i.status !== "CANCELLED");
+  const apaDue = latestApa && latestApa.status !== "PAID" ? Math.max(0, latestApa.grandTotal) : 0;
+  const otherDue = allInvoices.filter((i) => i.kind !== "APA_CANAL" && i.currency === currency && (i.status === "SENT" || i.status === "OVERDUE")).reduce((sum, i) => sum + i.grandTotal, 0);
+  const totalDue = apaDue + otherDue;
 
   return (
     <div className="flex flex-col gap-4">

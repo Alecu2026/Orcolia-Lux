@@ -89,6 +89,8 @@ export async function buildStatementPdf(o: { statement: PayerStatement; clientNa
     { k: "recalc", h: t("Recalculări"), w: 62, a: "right" as const },
     { k: "pen", h: t("Penalități"), w: 58, a: "right" as const },
     { k: "total", h: t("Total de plată"), w: 78, a: "right" as const },
+    { k: "prevPaid", h: t("Plătit înainte de factură"), w: 68, a: "right" as const },
+    { k: "paid", h: t("Achitat din factură"), w: 68, a: "right" as const },
     { k: "status", h: t("Status"), w: 62, a: "center" as const },
   ];
   const sum = cols.reduce((a, c) => a + c.w, 0);
@@ -126,10 +128,11 @@ export async function buildStatementPdf(o: { statement: PayerStatement; clientNa
     cell(1, r.meterPrevReading ?? "—"); cell(2, r.meterCurrReading ?? "—"); cell(3, vol(r.apaQty)); cell(4, vol(r.canalQty));
     cell(5, amount(r.subtotal, r.currency)); cell(6, amount(r.datoriiAvans, r.currency)); cell(7, amount(r.recalculari, r.currency)); cell(8, amount(r.penalitati, r.currency));
     cell(9, amount(r.grandTotal, r.currency), true);
+    cell(10, r.prevPaid == null ? "—" : amount(r.prevPaid, r.currency)); cell(11, r.paidAmount == null ? "—" : amount(r.paidAmount, r.currency));
     // status ca „pastilă”
     const label = t(st.label);
-    const pw = Math.min(cols[10].w - 8, doc.font("B").fontSize(7).widthOfString(label) + 14);
-    const px = xs[10] + (cols[10].w - pw) / 2;
+    const pw = Math.min(cols[12].w - 8, doc.font("B").fontSize(7).widthOfString(label) + 14);
+    const px = xs[12] + (cols[12].w - pw) / 2;
     doc.roundedRect(px, y + 8, pw, 14, 7).fill(st.bg);
     txt(label, px, y + 12, pw, { bold: true, size: 7, color: st.fg, align: "center" });
     doc.moveTo(L, y + rowH).lineTo(R, y + rowH).lineWidth(0.4).stroke(C.line);
@@ -143,7 +146,7 @@ export async function buildStatementPdf(o: { statement: PayerStatement; clientNa
   doc.moveTo(L, y).lineTo(R, y).lineWidth(1).stroke(C.brand);
   const tcell = (i: number, s: string) => txt(s, xs[i] + PAD, y + 10, cols[i].w - PAD * 2, { bold: true, size: 9, color: C.brandDark, align: cols[i].a });
   tcell(0, t("TOTAL")); tcell(3, vol(tot.apaQty)); tcell(4, vol(tot.canalQty)); tcell(5, money(tot.subtotal)); tcell(6, money(tot.datoriiAvans));
-  tcell(7, money(tot.recalculari)); tcell(8, money(tot.penalitati)); tcell(9, money(tot.grandTotal));
+  tcell(7, money(tot.recalculari)); tcell(8, money(tot.penalitati)); tcell(9, money(tot.grandTotal)); tcell(10, money(tot.paid));
   y += rowH;
 
   // ── subsol: companie + pagina x / y ──

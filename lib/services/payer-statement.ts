@@ -37,6 +37,12 @@ export type PayerStatementRow = {
   penalitati: number;
   grandTotal: number;
   currency: string;
+  /** Scadența facturii. */
+  dueDate: Date | null;
+  /** Cât s-a plătit între factura anterioară și aceasta (dedus din lanțul de facturi, vezi lib/payment-chain.ts); null = prima factură. */
+  prevPaid: number | null;
+  /** Cât din ACEASTĂ factură s-a achitat; null = încă nu se știe (apare când se emite factura următoare). */
+  paidAmount: number | null;
 };
 
 export type PayerStatement = {
@@ -52,12 +58,13 @@ export type PayerStatement = {
     address: string | null;
   };
   rows: PayerStatementRow[];
-  totals: { apaQty: number; canalQty: number; subtotal: number; datoriiAvans: number; recalculari: number; penalitati: number; grandTotal: number };
+  totals: { apaQty: number; canalQty: number; subtotal: number; datoriiAvans: number; recalculari: number; penalitati: number; grandTotal: number; /** Suma plăților deduse (istoricul plăților). */ paid: number };
 };
 
 type StatementInvoice = {
   id: string; publicToken: string; number: string; status: InvoiceStatus; issueDate: Date; billingPeriodLabel: string | null; sectorNr: string | null; contPersonal: string | null; consumAddress: string | null;
   meterPrevReading: string | null; meterCurrReading: string | null; subtotal: number; datoriiAvans: number; recalculari: number; penalitati: number; grandTotal: number; currency: string;
+  dueDate: Date | null; prevPaid: number | null; paidAmount: number | null;
   items: { description: string; quantity: number; unitPrice: number }[];
 };
 
@@ -94,7 +101,7 @@ async function statementInvoices(clientId: string, forPortal: boolean): Promise<
       {
         $project: {
           publicToken: 1, number: 1, status: 1, issueDate: 1, billingPeriodLabel: 1, sectorNr: 1, contPersonal: 1, consumAddress: 1,
-          meterPrevReading: 1, meterCurrReading: 1, subtotal: 1, datoriiAvans: 1, recalculari: 1, penalitati: 1, grandTotal: 1, currency: 1,
+          meterPrevReading: 1, meterCurrReading: 1, subtotal: 1, datoriiAvans: 1, recalculari: 1, penalitati: 1, grandTotal: 1, currency: 1, dueDate: 1, prevPaid: 1, paidAmount: 1,
           items: { $map: { input: "$items", as: "i", in: { description: "$$i.description", quantity: "$$i.quantity", unitPrice: "$$i.unitPrice" } } },
         },
       },
@@ -118,6 +125,9 @@ async function statementInvoices(clientId: string, forPortal: boolean): Promise<
     penalitati: ejNum(r.penalitati),
     grandTotal: ejNum(r.grandTotal),
     currency: String(r.currency ?? "MDL"),
+    dueDate: r.dueDate == null ? null : ejDate(r.dueDate),
+    prevPaid: r.prevPaid == null ? null : ejNum(r.prevPaid),
+    paidAmount: r.paidAmount == null ? null : ejNum(r.paidAmount),
     items: ((r.items as Record<string, unknown>[] | undefined) ?? []).map((it) => ({ description: String(it.description ?? ""), quantity: ejNum(it.quantity), unitPrice: ejNum(it.unitPrice) })),
   }));
 }
@@ -135,7 +145,7 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
   ]);
   if (!client) return null;
 
-  const totals = { apaQty: 0, canalQty: 0, subtotal: 0, datoriiAvans: 0, recalculari: 0, penalitati: 0, grandTotal: 0 };
+  const totals = { apaQty: 0, canalQty: 0, subtotal: 0, datoriiAvans: 0, recalculari: 0, penalitati: 0, grandTotal: 0, paid: 0 };
   const rows: PayerStatementRow[] = invoices.map((inv) => {
     const apaItem = inv.items.find((it) => isApa(it.description));
     const canalItem = inv.items.find((it) => isCanal(it.description));
@@ -146,6 +156,7 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
     totals.recalculari += inv.recalculari;
     totals.penalitati += inv.penalitati;
     totals.grandTotal += inv.grandTotal;
+    totals.paid += inv.prevPaid ?? 0;
     return {
       invoiceId: inv.id,
       publicToken: inv.publicToken,
@@ -167,6 +178,9 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
       penalitati: inv.penalitati,
       grandTotal: inv.grandTotal,
       currency: inv.currency,
+      dueDate: inv.dueDate,
+      prevPaid: inv.prevPaid,
+      paidAmount: inv.paidAmount,
     };
   });
 
@@ -200,6 +214,7 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
       recalculari: round2(totals.recalculari),
       penalitati: round2(totals.penalitati),
       grandTotal: round2(totals.grandTotal),
+      paid: round2(totals.paid),
     },
   };
 }

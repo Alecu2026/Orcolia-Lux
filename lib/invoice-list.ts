@@ -20,6 +20,8 @@ export function serviceOfItems(items: { description: string; quantity: number; l
   return w && s ? 3 : w ? 1 : s ? 2 : 0;
 }
 
+import { matchesPayBal } from "./payment-chain";
+
 export const INVOICE_STATUS_CODES = ["DRAFT", "SENT", "PAID", "CANCELLED", "OVERDUE"] as const;
 export type InvoiceStatusName = (typeof INVOICE_STATUS_CODES)[number];
 
@@ -34,6 +36,12 @@ export type InvTuple = [
   total: number, currency: string, clientName: string | null, token: string, extra: string | null,
   /** serviciile facturii Apă-Canal: 0 niciunul / necunoscut, 1 doar apă, 2 doar canalizare, 3 amândouă — lipsește în snapshot-urile mai vechi */
   svc?: InvSvc,
+  /** „Datorii(+) / avans(−)” de pe factură (soldul anterior) — lipsește în snapshot-urile mai vechi */
+  debt?: number,
+  /** cât din această factură s-a achitat (dedus din lanțul de facturi; null = încă nu se știe) */
+  paid?: number | null,
+  /** cât s-a plătit între factura anterioară și aceasta (null = prima factură / necunoscut) */
+  prevPaid?: number | null,
 ];
 
 /** Un rând decodat. `_h` = text de căutare (minuscule): număr, client, consumator, cont personal. */
@@ -50,6 +58,9 @@ export type InvRow = {
   clientName: string | null;
   publicToken: string;
   svc: InvSvc;
+  debt: number;
+  paid: number | null;
+  prevPaid: number | null;
   /** Text suplimentar de căutare (consumator + cont personal), păstrat ca să se poată re-codifica snapshot-ul după o modificare locală. */
   _x: string | null;
   _h: string;
@@ -59,7 +70,7 @@ export type InvRow = {
 export function encodeInvoices(rows: InvRow[]): InvTuple[] {
   return rows.map((r): InvTuple => [
     r.id, r.number, Math.max(0, INVOICE_STATUS_CODES.indexOf(r.status)), r.kind === "APA_CANAL" ? 1 : 0, r.issueMs, r.dueMs, r.paidMs,
-    r.grandTotal, r.currency, r.clientName, r.publicToken, r._x, r.svc,
+    r.grandTotal, r.currency, r.clientName, r.publicToken, r._x, r.svc, r.debt, r.paid, r.prevPaid,
   ]);
 }
 
@@ -80,6 +91,9 @@ export function decodeInvoices(tuples: InvTuple[]): InvRow[] {
       clientName: t[9],
       publicToken: t[10],
       svc: t[12] ?? 0,
+      debt: t[13] ?? 0,
+      paid: t[14] ?? null,
+      prevPaid: t[15] ?? null,
       _x: t[11],
       _h: (t[1] + "\n" + (t[9] ?? "") + "\n" + (t[11] ?? "")).toLowerCase(),
     };
@@ -160,7 +174,7 @@ export type InvKind = "" | "APA_CANAL" | "STANDARD";
 /** Filtru pe servicii (facturi Apă-Canal): doar apă / doar canalizare / amândouă / fără servicii. */
 export type InvService = "" | "WATER" | "SEWER" | "BOTH" | "NONE";
 const SERVICE_CODE: Record<Exclude<InvService, "">, InvSvc> = { NONE: 0, WATER: 1, SEWER: 2, BOTH: 3 };
-export type InvQuick = "" | "unpaid" | "overdue" | "nodue" | "paidnodate";
+export type InvQuick = "" | "unpaid" | "overdue" | "nodue" | "paidnodate" | "debt" | "advance" | "paidprev" | "partial";
 export type InvSort = "" | "number" | "client" | "issue" | "due" | "paid" | "total" | "status";
 
 export type InvQuery = {
@@ -295,6 +309,11 @@ export function queryInvoices(rows: InvRow[], f: InvQuery, nowMs: number = Date.
       if (f.quick === "overdue" && !(unpaid && r.dueMs != null && r.dueMs < nowMs)) continue;
       if (f.quick === "nodue" && r.dueMs != null) continue;
       if (f.quick === "paidnodate" && !(r.status === "PAID" && r.paidMs == null)) continue;
+      // plățile deduse din lanțul de facturi (datorie / avans pe factură): vezi lib/payment-chain.ts
+      if (f.quick === "debt" && !(r.kind === "APA_CANAL" && matchesPayBal("owes", r))) continue;
+      if (f.quick === "advance" && !(r.kind === "APA_CANAL" && matchesPayBal("advance", r))) continue;
+      if (f.quick === "paidprev" && !matchesPayBal("paidprev", r)) continue;
+      if (f.quick === "partial" && !matchesPayBal("partial", r)) continue;
     }
     if (min != null && r.grandTotal < min) continue;
     if (max != null && r.grandTotal > max) continue;
@@ -346,23 +365,61 @@ export function queryInvoices(rows: InvRow[], f: InvQuery, nowMs: number = Date.
  * Serverul trimite rânduri defalcate pe (serviciu, status, valută), iar browserul le adună după filtrele active (status, valută).
  */
 export type InvServiceKey = "WATER" | "SEWER" | "BOTH" | "NONE";
-export type InvServiceRow = { svc: InvServiceKey; status: string; currency: string; n: number; total: number };
+/** n = facturi, total = Σ total de plată, calc = Σ calculat (total − datorii / avans: venitul facturat în perioadă), paid = Σ achitat (la facturile achitate), rest = Σ rest de plată (la cele neachitate). */
+export type InvServiceRow = { svc: InvServiceKey; status: string; currency: string; n: number; total: number; calc: number; paid: number; rest: number };
+
+const SVC_KEYS: InvServiceKey[] = ["NONE", "WATER", "SEWER", "BOTH"];
+
+/**
+ * Raportul pe servicii DIN facturile deja încărcate (snapshot-urile din browser sau de pe server): o singură trecere, fără nicio interogare în baza de date.
+ * Doar facturile Apă-Canal; rândurile sunt grupate pe (serviciu, status, valută), ca la `sumServiceReport`.
+ */
+export function groupServiceRows(rows: InvRow[]): InvServiceRow[] {
+  const acc = new Map<string, InvServiceRow>();
+  for (const r of rows) {
+    if (r.kind !== "APA_CANAL") continue;
+    const svc = SVC_KEYS[r.svc] ?? "NONE";
+    const k = svc + "|" + r.status + "|" + r.currency;
+    let cur = acc.get(k);
+    if (!cur) acc.set(k, (cur = { svc, status: r.status, currency: r.currency, n: 0, total: 0, calc: 0, paid: 0, rest: 0 }));
+    cur.n++;
+    cur.total += r.grandTotal;
+    cur.calc += r.grandTotal - r.debt; // total de plată = calculat + datorii / avans
+    // achitat: cât s-a plătit din factură (dedus din lanț); la cele marcate achitate fără să se știe cât (ultima factură), tot totalul pozitiv
+    if (r.status === "PAID") cur.paid += r.paid ?? Math.max(0, r.grandTotal);
+    // rest de plată: la cele neachitate (trimise / restante), totalul pozitiv minus ce s-a achitat parțial
+    else if (r.status === "SENT" || r.status === "OVERDUE") cur.rest += Math.max(0, r.grandTotal - (r.paid ?? 0));
+  }
+  return [...acc.values()].map((x) => ({ ...x, total: round2(x.total), calc: round2(x.calc), paid: round2(x.paid), rest: round2(x.rest) }));
+}
 
 /** Adună rândurile raportului: statusurile alese (fără alegere: toate în afară de anulate) și valuta aleasă (altfel cea mai frecventă). */
-export function sumServiceReport(rows: InvServiceRow[], statuses: string[], currency: string) {
-  const ok = rows.filter((r) => (statuses.length ? statuses.includes(r.status) : r.status !== "CANCELLED"));
+export function sumServiceReport(rows: InvServiceRow[], currency: string) {
+  // facturile anulate nu se numără; raportul arată mereu și achitate, și neachitate (filtrul de status al listei nu îl restrânge)
+  const ok = rows.filter((r) => r.status !== "CANCELLED");
   const byCur = new Map<string, number>();
   for (const r of ok) byCur.set(r.currency, (byCur.get(r.currency) ?? 0) + r.n);
   let main = currency || "MDL", best = -1;
   if (!currency) for (const [c, n] of byCur) if (n > best) { main = c; best = n; }
-  const out: Record<InvServiceKey, { n: number; total: number }> = { WATER: { n: 0, total: 0 }, SEWER: { n: 0, total: 0 }, BOTH: { n: 0, total: 0 }, NONE: { n: 0, total: 0 } };
+  const zero = () => ({ n: 0, total: 0, calc: 0, paidN: 0, paid: 0, unpaidN: 0, rest: 0, overdueN: 0 });
+  const out: Record<InvServiceKey, ReturnType<typeof zero>> = { WATER: zero(), SEWER: zero(), BOTH: zero(), NONE: zero() };
   for (const r of ok) {
     if (r.currency !== main) continue;
-    out[r.svc].n += r.n;
-    out[r.svc].total += r.total;
+    const o = out[r.svc];
+    o.n += r.n;
+    o.total += r.total;
+    o.calc += r.calc;
+    if (r.status === "PAID") { o.paidN += r.n; o.paid += r.paid; }
+    else if (r.status === "SENT" || r.status === "OVERDUE") { o.unpaidN += r.n; o.rest += r.rest; if (r.status === "OVERDUE") o.overdueN += r.n; }
   }
-  for (const k of Object.keys(out) as InvServiceKey[]) out[k].total = round2(out[k].total);
-  return { currency: main, mixedCurrency: byCur.size > 1, by: out };
+  const all = zero();
+  for (const k of Object.keys(out) as InvServiceKey[]) {
+    const o = out[k];
+    o.total = round2(o.total); o.calc = round2(o.calc); o.paid = round2(o.paid); o.rest = round2(o.rest);
+    for (const f of Object.keys(all) as (keyof typeof all)[]) all[f] += o[f];
+  }
+  for (const f of ["total", "calc", "paid", "rest"] as const) all[f] = round2(all[f]);
+  return { currency: main, mixedCurrency: byCur.size > 1, by: out, all };
 }
 
 /** Forma pe care o primește tabelul (date ca ISO, ca să rămână serializabile între server și client). */
@@ -378,6 +435,9 @@ export type InvoiceListItem = {
   currency: string;
   clientName: string | null;
   publicToken: string;
+  debt: number;
+  paid: number | null;
+  prevPaid: number | null;
 };
 
 const iso = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString());
@@ -387,6 +447,7 @@ export function toListItem(r: InvRow): InvoiceListItem {
     id: r.id, number: r.number, status: r.status, kind: r.kind,
     issueDate: new Date(r.issueMs).toISOString(), dueDate: iso(r.dueMs), paidAt: iso(r.paidMs),
     grandTotal: r.grandTotal, currency: r.currency, clientName: r.clientName, publicToken: r.publicToken,
+    debt: r.debt, paid: r.paid, prevPaid: r.prevPaid,
   };
 }
 
@@ -405,7 +466,7 @@ const KEYS: [keyof InvQuery, string][] = [
   ["q", "q"], ["kind", "kind"], ["service", "svc"], ["quick", "quick"], ["min", "min"], ["max", "max"], ["currency", "cur"],
   ["issueFrom", "if"], ["issueTo", "it"], ["dueFrom", "df"], ["dueTo", "dt"], ["paidFrom", "pf"], ["paidTo", "pt"], ["sort", "sort"], ["dir", "dir"],
 ];
-const QUICK = new Set(["unpaid", "overdue", "nodue", "paidnodate"]);
+const QUICK = new Set(["unpaid", "overdue", "nodue", "paidnodate", "debt", "advance", "paidprev", "partial"]);
 const SORTS = new Set(["number", "client", "issue", "due", "paid", "total", "status"]);
 
 export function queryToParams(f: InvQuery, sp: URLSearchParams = new URLSearchParams()): URLSearchParams {

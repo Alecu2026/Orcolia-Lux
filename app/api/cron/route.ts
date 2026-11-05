@@ -11,6 +11,7 @@ import { pollInbox } from "@/lib/services/imap-poller";
 import { prewarmPayers } from "@/lib/services/payer-cache";
 import { prewarmMeters } from "@/lib/services/meter-cache";
 import { normalizeApaCanalDueDates } from "@/lib/services/apa-canal-due";
+import { syncPaymentChains } from "@/lib/services/payment-chain";
 import { prewarmInvoices } from "@/lib/services/invoice-cache";
 import { checkContractExpiry } from "@/lib/services/contract-expiry";
 import { checkMetrologyExpiry } from "@/lib/services/metrology-expiry";
@@ -48,6 +49,8 @@ async function run() {
 
   // Scadența facturilor Apă-Canal = 25 a lunii (corectează și ce a rămas pe alte date): înainte de pre-încălzirea listelor
   await normalizeApaCanalDueDates().catch((e) => console.error("[cron] scadența facturilor Apă-Canal:", e));
+  // plățile din lanțul de facturi (statusuri achitat / restant, cât s-a plătit): facturile noi / modificate + o parte din istoricul neprocesat, în cel mult ~20 s
+  await syncPaymentChains("cron zilnic").catch((e) => console.error("[cron] plățile din lanțul de facturi:", e));
 
   // ── Toate job-urile în paralel ───────────────────────────────────────────
   const [remindersR, , , , statusR, newTasksR, apptR, unansweredR, autoCloseR, imapR] = await Promise.allSettled([

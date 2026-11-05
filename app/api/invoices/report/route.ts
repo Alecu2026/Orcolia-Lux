@@ -17,8 +17,8 @@ export async function GET(req: Request) {
   const p = new URL(req.url).searchParams.get("p") ?? "all";
   if (!isValidPeriod(p)) return Response.json({ error: "Perioadă necunoscută." }, { status: 400 });
   try {
-    const rows = await getInvoiceServiceReport(p);
-    return Response.json({ rows }, { headers: { "Cache-Control": "private, no-store" } });
+    const r = await getInvoiceServiceReport(p);
+    return Response.json(r, { headers: { "Cache-Control": "private, no-store" } });
   } catch (e) {
     console.error("[invoices-report] eșuat:", e);
     return Response.json({ error: "Nu am putut calcula raportul." }, { status: 500 });

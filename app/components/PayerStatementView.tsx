@@ -45,6 +45,8 @@ export default async function PayerStatementView({ statement, portal = false }: 
                 <th className={thNum}>{t("Recalculări")}</th>
                 <th className={thNum}>{t("Penalități")}</th>
                 <th className={thNum}>{t("Total de plată")}</th>
+                <th className={thNum} title={t("Cât s-a plătit între factura anterioară și aceasta (dedus din soldul de pe factură)")}>{t("Plătit înainte de factură")}</th>
+                <th className={thNum} title={t("Cât din această factură s-a achitat (dedus din datoria de pe factura următoare)")}>{t("Achitat din factură")}</th>
                 <th className={th}>{t("Status")}</th>
               </tr>
             </thead>
@@ -58,6 +60,7 @@ export default async function PayerStatementView({ statement, portal = false }: 
                         {r.billingPeriodLabel ?? fmtDate(r.issueDate)}
                       </Link>
                       <span className="block text-[10px] text-ink-soft">{r.number}</span>
+                      {r.dueDate && <span className="block text-[10px] text-ink-soft">{t("Scadență")} {fmtDate(r.dueDate)}</span>}
                     </td>
                     <td className={tdNum}>{r.meterPrevReading ?? "—"}</td>
                     <td className={tdNum}>{r.meterCurrReading ?? "—"}</td>
@@ -68,6 +71,8 @@ export default async function PayerStatementView({ statement, portal = false }: 
                     <td className={tdNum}>{nr(r.recalculari, r.currency)}</td>
                     <td className={tdNum}>{nr(r.penalitati, r.currency)}</td>
                     <td className={`${tdNum} font-semibold`}>{nr(r.grandTotal, r.currency)}</td>
+                    <td className={`${tdNum} ${r.prevPaid != null && r.prevPaid > 0.005 ? "text-st-done" : ""}`}>{r.prevPaid == null ? "—" : nr(r.prevPaid, r.currency)}</td>
+                    <td className={tdNum}>{r.paidAmount == null ? <span title={t("Încă nu se știe: apare când se emite factura următoare")}>—</span> : nr(r.paidAmount, r.currency)}</td>
                     <td className={td}>
                       <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${st.cls}`}>{t(st.label)}</span>
                     </td>
@@ -86,6 +91,8 @@ export default async function PayerStatementView({ statement, portal = false }: 
                 <td className={tdNum}>{nr(totals.recalculari, currency)}</td>
                 <td className={tdNum}>{nr(totals.penalitati, currency)}</td>
                 <td className={tdNum}>{nr(totals.grandTotal, currency)}</td>
+                <td className={tdNum} title={t("Suma plăților deduse din lanțul de facturi")}>{nr(totals.paid, currency)}</td>
+                <td className={td} />
                 <td className={td} />
               </tr>
             </tbody>
@@ -118,6 +125,9 @@ export default async function PayerStatementView({ statement, portal = false }: 
                   <CompactField label={t("Sold anterior / regularizare")}>{nr(r.datoriiAvans, r.currency)}</CompactField>
                   <CompactField label={t("Recalculări")}>{nr(r.recalculari, r.currency)}</CompactField>
                   <CompactField label={t("Penalități")}>{nr(r.penalitati, r.currency)}</CompactField>
+                  {r.dueDate && <CompactField label={t("Scadență")}>{fmtDate(r.dueDate)}</CompactField>}
+                  <CompactField label={t("Plătit înainte de factură")}>{r.prevPaid == null ? "—" : nr(r.prevPaid, r.currency)}</CompactField>
+                  <CompactField label={t("Achitat din factură")}>{r.paidAmount == null ? "—" : nr(r.paidAmount, r.currency)}</CompactField>
                 </dl>
                 <div className="border-t border-[var(--color-line)]/60 px-2.5 py-1.5">
                   <Link href={invoiceHref(r)} className="tap inline-flex h-7 items-center rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft">{t("Deschide factura")}</Link>
@@ -137,6 +147,7 @@ export default async function PayerStatementView({ statement, portal = false }: 
               <CompactField label={t("Sold anterior / regularizare")}>{nr(totals.datoriiAvans, currency)}</CompactField>
               <CompactField label={t("Recalculări")}>{nr(totals.recalculari, currency)}</CompactField>
               <CompactField label={t("Penalități")}>{nr(totals.penalitati, currency)}</CompactField>
+              <CompactField label={t("Total plătit")}>{nr(totals.paid, currency)}</CompactField>
             </dl>
           </CompactCard>
         </div>

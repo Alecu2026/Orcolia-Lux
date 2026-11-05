@@ -15,6 +15,7 @@ export type PortalInvoiceItem = {
   issue: string;
   due: string | null;
   token: string;
+  kind: string;
 };
 
 export type PortalHome = { invoices: PortalInvoiceItem[]; period: string; meters: PortalMeterDto[] };
@@ -29,7 +30,7 @@ export function getPortalHome(clientId: string): Promise<PortalHome> {
       prisma.invoice.findMany({
         where: { clientId, status: { not: "DRAFT" } },
         orderBy: { issueDate: "desc" },
-        select: { id: true, number: true, status: true, grandTotal: true, currency: true, issueDate: true, dueDate: true, publicToken: true },
+        select: { id: true, number: true, status: true, kind: true, grandTotal: true, currency: true, issueDate: true, dueDate: true, publicToken: true },
       }),
       listPortalMeters(clientId).catch((e) => {
         console.error("[portal] contoarele plătitorului:", e);
@@ -46,6 +47,7 @@ export function getPortalHome(clientId: string): Promise<PortalHome> {
         issue: i.issueDate.toISOString(),
         due: i.dueDate ? i.dueDate.toISOString() : null,
         token: i.publicToken,
+        kind: i.kind,
       })),
       period: meters.period,
       meters: meters.meters,

@@ -4,6 +4,7 @@ import { after } from "next/server";
 import { rebuildPayerSnap } from "@/lib/services/payer-cache";
 import { rebuildInvoiceSnap } from "@/lib/services/invoice-cache";
 import { normalizeApaCanalDueDates } from "@/lib/services/apa-canal-due";
+import { syncPaymentChains } from "@/lib/services/payment-chain";
 import { env } from "@/lib/env";
 import { logAudit } from "@/lib/services/audit";
 import { importApaCanalBuffer } from "@/lib/services/apa-canal-import";
@@ -56,6 +57,7 @@ async function run(req: Request) {
       // Cache-ul zilnic al listei de plătitori se reface acum, ca prima deschidere de dimineață să fie instantanee.
       await rebuildPayerSnap("cron 1C").catch((e) => console.error("[payer-cache] după cron:", e));
       await normalizeApaCanalDueDates().catch((e) => console.error("[apa-canal] scadența după 1C:", e));
+      await syncPaymentChains("sincronizare 1C").catch((e) => console.error("[apa-canal] plățile după 1C:", e));
       await rebuildInvoiceSnap("cron 1C").catch((e) => console.error("[invoice-cache] după cron 1C:", e));
       const msg = `Automat: ${applied.clientsCreated} clienți noi, ${applied.clientsUpdated} actualizați, ${applied.invoicesCreated} facturi noi, ${applied.invoicesUpdated} actualizate (din ${plan.stats.documenteTotale} abonați).`;
       await recordSync(true, msg, { wrote: true, contentHash: hash });

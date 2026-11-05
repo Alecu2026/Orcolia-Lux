@@ -15,6 +15,7 @@ import {
   decodeInvoices,
   defaultPeriod,
   encodeInvoices,
+  groupServiceRows,
   monthBoundsMs,
   monthOf,
   periodFitsLocally,
@@ -46,8 +47,8 @@ import {
  */
 
 // „m3”: snapshot-urile au și serviciile facturii (apă / canalizare); cele vechi („inv:m:”) se șterg la prewarm și lunile se reconstruiesc la prima cerere
-const SHARD_PREFIX = "inv:m3:";
-const OLD_SHARD_PREFIX = "inv:m:";
+const SHARD_PREFIX = "inv:m4:";
+const OLD_SHARD_PREFIXES = ["inv:m:", "inv:m3:"];
 const ALL_ID = "inv:all";
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const META_CHECK_MS = 10_000;
@@ -67,7 +68,7 @@ export type InvoiceShard = {
   incomplete?: boolean;
 };
 
-type Artifact = { v: 3; at: number; month: string; total: number; rows: InvTuple[] };
+type Artifact = { v: 3; at: number; month: string; total: number; rows: InvTuple[]; /** 1 = serviciile (apă / canalizare) ale facturilor încă nu sunt calculate; se completează în fundal */ inc?: 1 };
 
 type State = {
   l1: Map<string, InvoiceShard>;
@@ -153,12 +154,13 @@ function getInvoiceMonthsFresh(): Promise<MonthCount[]> {
 
 const TUPLE_SELECT = {
   id: true, number: true, status: true, kind: true, issueDate: true, dueDate: true, paidAt: true, grandTotal: true, currency: true,
-  publicToken: true, consumerName: true, contPersonal: true, clientId: true,
+  publicToken: true, consumerName: true, contPersonal: true, clientId: true, datoriiAvans: true, paidAmount: true, prevPaid: true,
 } as const;
 
 type TupleSource = {
   id: string; number: string; status: string; kind: string; issueDate: Date; dueDate: Date | null; paidAt: Date | null; grandTotal: number;
   currency: string; publicToken: string; consumerName: string | null; contPersonal: string | null;
+  datoriiAvans: number; paidAmount: number | null; prevPaid: number | null;
 };
 function toTuple(r: TupleSource, clientName: string | null, svc: InvSvc = 0): InvTuple {
   return [
@@ -166,7 +168,7 @@ function toTuple(r: TupleSource, clientName: string | null, svc: InvSvc = 0): In
     r.issueDate.getTime(), r.dueDate ? r.dueDate.getTime() : null, r.paidAt ? r.paidAt.getTime() : null,
     r.grandTotal, r.currency, clientName, r.publicToken,
     [r.consumerName, r.contPersonal].filter(Boolean).join("\n") || null,
-    svc,
+    svc, r.datoriiAvans ?? 0, r.paidAmount ?? null, r.prevPaid ?? null,
   ];
 }
 
@@ -301,7 +303,7 @@ export function rebuildInvoiceShard(month: string, reason = "manual", carry = fa
       }
       return toTuple(r, r.clientId ? (names.get(r.clientId) ?? null) : null, svc);
     });
-    const art: Artifact = { v: 3, at: startedAt.getTime(), month, total: tuples.length, rows: tuples };
+    const art: Artifact = { v: 3, at: startedAt.getTime(), month, total: tuples.length, rows: tuples, ...(incomplete ? { inc: 1 as const } : {}) };
     const gz = gzipSync(Buffer.from(JSON.stringify(art), "utf8"), { level: 6 });
     const version = createHash("sha1").update(gz).digest("hex").slice(0, 16);
     // o lună fără servicii calculate nu se salvează în baza de date (ar rămâne așa): se salvează abia după completare
@@ -420,7 +422,7 @@ export async function getInvoiceShardPayload(month: string): Promise<{ version: 
   if (seq === 0 || S.l1.get(month) !== shard) return { version: shard.version, gz: shard.gz };
   const hit = S.patched.get(month);
   if (hit?.seq === seq) return { version: hit.version, gz: hit.gz };
-  const art: Artifact = { v: 3, at: shard.builtAt, month, total: shard.rows.length, rows: encodeInvoices(shard.rows) };
+  const art: Artifact = { v: 3, at: shard.builtAt, month, total: shard.rows.length, rows: encodeInvoices(shard.rows), ...(shard.incomplete ? { inc: 1 as const } : {}) };
   const gz = gzipSync(Buffer.from(JSON.stringify(art), "utf8"), { level: 4 });
   const version = `${shard.version}p${seq}`;
   if (seq === (S.patchSeq.get(month) ?? 0)) S.patched.set(month, { seq, gz, version });
@@ -478,7 +480,6 @@ export async function syncInvoiceToCache(id: string): Promise<void> {
       S.patched.delete(m);
     }
     S.lists.clear();
-    dropReports();
     // numărul de facturi pe lună se schimbă doar la creare / ștergere / mutare între luni (nu la schimbarea statusului)
     if (!oldMonth || !r || monthOf(r.issueDate.getTime()) !== oldMonth) S.index = null;
     invalidateOneC();
@@ -516,7 +517,6 @@ export async function invalidateInvoices(opts: { soft?: boolean; months?: string
   invalidateOneC(); // „Total PWA” / „Diferență” din Tabel 1C vin din facturi
   const soft = !!opts.soft;
   S.lists.clear();
-  dropReports();
   S.index = null;
   dropClientNames();
   if (opts.months?.length) {
@@ -551,7 +551,7 @@ export async function prewarmInvoices(): Promise<boolean> {
   // rândul vechi al listei întregi (înainte de împărțirea pe luni) nu mai folosește nimănui
   void prisma.payerCacheEntry.deleteMany({ where: { id: { in: ["inv:snapshot"] } } }).catch(() => {});
   // snapshot-urile lunare vechi (fără servicii) nu mai sunt folosite: se șterg ca să nu ocupe loc în baza de date
-  void prisma.payerCacheEntry.deleteMany({ where: { id: { startsWith: OLD_SHARD_PREFIX } } }).catch(() => {});
+  void prisma.payerCacheEntry.deleteMany({ where: { OR: OLD_SHARD_PREFIXES.map((p) => ({ id: { startsWith: p } })) } }).catch(() => {});
   const months = await getInvoiceMonths();
   let did = false;
   for (const { month } of months.slice(0, 2)) {
@@ -571,21 +571,6 @@ export async function prewarmInvoices(): Promise<boolean> {
 
 // ───────────────────────────── raport pe servicii ─────────────────────────────
 
-const gr = globalThis as unknown as {
-  __invReports?: { done: Map<string, { at: number; rows: InvServiceRow[] }>; flights: Map<string, Promise<InvServiceRow[]>>; epoch: number };
-};
-const REPORTS = (gr.__invReports ??= { done: new Map(), flights: new Map(), epoch: 0 });
-const REPORT_TTL_MS = 5 * 60_000;
-const REPORT_CONCURRENCY = 3;
-const REPORT_MAX_MONTHS = 240;
-
-/** Orice modificare a facturilor: rezultatele calculate (și cele în curs de calcul) nu mai sunt valabile. */
-function dropReports() {
-  REPORTS.done.clear();
-  REPORTS.flights.clear();
-  REPORTS.epoch++;
-}
-
 /** O linie de serviciu „există” dacă are consum sau sumă (formularul salvează mereu ambele linii, chiar și cu canalizare 0). */
 const svcLine = (re: string) => ({
   $gt: [
@@ -597,50 +582,45 @@ const svcLine = (re: string) => ({
   ],
 });
 
-/** O lună: facturile Apă-Canal grupate pe (are apă, are canalizare, status, valută). Liniile se caută prin indexul pe invoiceId; rezultatul stă în memorie câteva minute. */
-function serviceReportForMonth(month: string): Promise<InvServiceRow[]> {
-  const hit = REPORTS.done.get(month);
-  if (hit && Date.now() - hit.at < REPORT_TTL_MS) return Promise.resolve(hit.rows);
-  // aceeași lună cerută de mai mulți deodată → o singură agregare
-  const flying = REPORTS.flights.get(month);
-  if (flying) return flying;
-  const epoch = REPORTS.epoch;
-  const run = computeServiceReport(month, epoch).finally(() => {
-    if (REPORTS.epoch === epoch) REPORTS.flights.delete(month);
-  });
-  REPORTS.flights.set(month, run);
-  return run;
-}
+const gr = globalThis as unknown as { __invReports?: Map<string, { version: string; rows: InvServiceRow[]; incomplete: boolean; at: number }> };
+const REPORTS = (gr.__invReports ??= new Map());
+const REPORT_CONCURRENCY = 2;
+const REPORT_FRESH_MS = 60_000;
+const REPORT_MAX_MONTHS = 240;
 
-async function computeServiceReport(month: string, epoch: number): Promise<InvServiceRow[]> {
-  const startedAt = Date.now();
-  const [a, b] = monthBoundsMs(month);
-  const raw = (await prisma.invoice.aggregateRaw({
-    pipeline: [
-      { $match: { kind: "APA_CANAL", issueDate: { $gte: { $date: new Date(a).toISOString() }, $lt: { $date: new Date(b).toISOString() } } } },
-      { $lookup: { from: "InvoiceItem", localField: "_id", foreignField: "invoiceId", as: "items" } },
-      { $project: { status: 1, currency: 1, grandTotal: 1, w: svcLine("alimentare cu ap[aă]"), s: svcLine("canalizare") } },
-      { $group: { _id: { w: "$w", s: "$s", st: "$status", c: "$currency" }, n: { $sum: 1 }, total: { $sum: "$grandTotal" } } },
-    ],
-  })) as unknown as { _id: { w: boolean; s: boolean; st: string; c: string }; n: number; total: number }[];
-  const rows = raw.map((r): InvServiceRow => ({
-    svc: r._id.w && r._id.s ? "BOTH" : r._id.w ? "WATER" : r._id.s ? "SEWER" : "NONE",
-    status: r._id.st, currency: r._id.c, n: r.n, total: r.total,
-  }));
-  // o modificare în timpul agregării → rezultatul nu se păstrează (ar arăta cifre vechi)
-  if (REPORTS.epoch === epoch) {
-    if (REPORTS.done.size >= REPORT_MAX_MONTHS) REPORTS.done.delete(REPORTS.done.keys().next().value as string);
-    REPORTS.done.set(month, { at: startedAt, rows });
+/**
+ * O lună din raport, CALCULATĂ DIN SNAPSHOT (memorie sau baza de date, comprimat), nu din facturi: nicio agregare, nicio căutare de linii — doar o trecere peste câteva zeci de mii de rânduri
+ * deja pregătite. Rezultatul stă în memorie legat de versiunea snapshot-ului, deci se invalidează singur la orice modificare (versiunea se schimbă) și nu are nevoie de nicio golire.
+ */
+async function serviceReportForMonth(month: string): Promise<{ rows: InvServiceRow[]; incomplete: boolean }> {
+  const hit = REPORTS.get(month);
+  // rezultat din ultimul minut: fără nicio verificare. Mai vechi: o verificare mică a versiunii (fără să încărcăm snapshot-ul lunii) — la o perioadă lungă, restul lunilor nu se mai despachetează
+  if (hit && Date.now() - hit.at < REPORT_FRESH_MS) return hit;
+  if (hit) {
+    const metas = await readMetas(month);
+    const cur = S.l1.get(month);
+    const dirty = Math.max(metas.shard?.dirtyAt?.getTime() ?? 0, metas.all?.dirtyAt?.getTime() ?? 0, localHard(month));
+    const ver = cur ? shardVersion(cur) : metas.shard?.version;
+    if (metas.shard && dirty <= metas.shard.builtAt.getTime() && ver === hit.version) {
+      hit.at = Date.now();
+      return hit;
+    }
   }
-  return rows;
+  const shard = await getInvoiceShard(month);
+  const version = shardVersion(shard);
+  const out = { version, rows: groupServiceRows(shard.rows), incomplete: !!shard.incomplete, at: Date.now() };
+  if (REPORTS.size >= REPORT_MAX_MONTHS) REPORTS.delete(REPORTS.keys().next().value as string);
+  REPORTS.set(month, out);
+  return out;
 }
 
-/** Raportul pe servicii pentru o perioadă (`AAAA-LL` / `last3` / `year:AAAA` / `all`): rândurile lunilor, adunate pe (serviciu, status, valută). */
-export async function getInvoiceServiceReport(period: string): Promise<InvServiceRow[]> {
-  if (DEMO) return [];
+/** Raportul pe servicii pentru o perioadă (`AAAA-LL` / `last3` / `year:AAAA` / `all`), adunat din snapshot-urile lunilor. `incomplete`: serviciile unei luni încă se calculează în fundal. */
+export async function getInvoiceServiceReport(period: string): Promise<{ rows: InvServiceRow[]; incomplete: boolean }> {
+  if (DEMO) return { rows: [], incomplete: false };
   const months = await getInvoiceMonths();
-  const list = periodMonths(period, months).filter((m) => months.some((x) => x.month === m));
-  const perMonth: InvServiceRow[][] = new Array(list.length);
+  const known = new Set(months.map((x) => x.month));
+  const list = periodMonths(period, months).filter((m) => known.has(m));
+  const perMonth: { rows: InvServiceRow[]; incomplete: boolean }[] = new Array(list.length);
   let next = 0;
   await Promise.all(Array.from({ length: Math.min(REPORT_CONCURRENCY, list.length) }, async () => {
     while (next < list.length) {
@@ -649,12 +629,14 @@ export async function getInvoiceServiceReport(period: string): Promise<InvServic
     }
   }));
   const acc = new Map<string, InvServiceRow>();
-  for (const r of perMonth.flat()) {
-    const k = `${r.svc}|${r.status}|${r.currency}`;
-    const cur = acc.get(k);
-    if (cur) { cur.n += r.n; cur.total += r.total; } else acc.set(k, { ...r });
+  for (const m of perMonth) {
+    for (const r of m.rows) {
+      const k = `${r.svc}|${r.status}|${r.currency}`;
+      const cur = acc.get(k);
+      if (cur) { cur.n += r.n; cur.total += r.total; cur.calc += r.calc; cur.paid += r.paid; cur.rest += r.rest; } else acc.set(k, { ...r });
+    }
   }
-  return [...acc.values()];
+  return { rows: [...acc.values()], incomplete: perMonth.some((m) => m.incomplete) };
 }
 
 // ───────────────────────────── pagina / lista ─────────────────────────────
@@ -762,6 +744,10 @@ async function queryServer(q: InvQuery, period: string, months: MonthCount[], pa
   if (q.quick === "overdue") and.push(unpaid, { dueDate: { not: null } }, { dueDate: { lt: now } });
   if (q.quick === "nodue") and.push({ OR: [{ dueDate: null }, { dueDate: { isSet: false } }] });
   if (q.quick === "paidnodate") and.push({ status: "PAID" }, { OR: [{ paidAt: null }, { paidAt: { isSet: false } }] });
+  if (q.quick === "debt") and.push({ kind: "APA_CANAL" }, { datoriiAvans: { gt: 0.005 } });
+  if (q.quick === "advance") and.push({ kind: "APA_CANAL" }, { datoriiAvans: { lt: -0.005 } });
+  if (q.quick === "paidprev") and.push({ prevPaid: { gt: 0.005 } });
+  if (q.quick === "partial") and.push(unpaid, { paidAmount: { gt: 0.005 } });
   const dayStart = (key: string) => {
     const d = dayOfKey(key);
     return d == null ? null : new Date(d * 86_400_000 - bucharestOffsetMs(d * 86_400_000));

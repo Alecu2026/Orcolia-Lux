@@ -178,7 +178,9 @@ export default function PayerNotifyManager({
   const BOOT_KEY = `boot:${basePath}`;
 
   // ── Stare: filtrele sunt locale (schimbarea lor e instantanee în UI), datele vin de pe server ──
-  const [filters, setFilters] = useState<NotifyFilters>(initial.filters);
+  // Filtrul de plăți se aplică pe factura unei luni: fără lună aleasă (ex. dintr-un link sau filtre salvate) se alege cea mai recentă — aceeași regulă pe ecran, la trimitere și la export
+  const pinMonth = (f: NotifyFilters): NotifyFilters => (f.bal && !f.month && months[0] ? { ...f, month: months[0].month } : f);
+  const [filters, setFilters] = useState<NotifyFilters>(() => pinMonth(initial.filters));
   const [draft, setDraft] = useState<Record<TextKey, string>>({
     q: initial.filters.q, street: initial.filters.street, minDebt: initial.filters.minDebt, maxDebt: initial.filters.maxDebt,
   });
@@ -340,7 +342,7 @@ export default function PayerNotifyManager({
           if (countActiveFilters(f) > 0 || f.sort) {
             // Citire din localStorage după hidratare (serverul nu o poate face) — același tipar ca în TasksManager.
             // eslint-disable-next-line react-hooks/set-state-in-effect
-            setFilters(f);
+            setFilters(pinMonth(f));
             setDraft({ q: f.q, street: f.street, minDebt: f.minDebt, maxDebt: f.maxDebt });
           }
           if (pp !== initial.perPage) setPerPage(pp);
@@ -669,6 +671,44 @@ export default function PayerNotifyManager({
         </button>
       )}
 
+      {/* ── Plăți pe luna aleasă: un click pe factura lunii (achitate / neachitate / restante / cu datorie / cu avans / cu plată primită / parțial) ── */}
+      {months.length > 0 && (() => {
+        const pm = filters.month || months[0].month;
+        const chips: { key: string; label: string; status: string; bal: NotifyFilters["bal"] }[] = [
+          { key: "all", label: "Toate", status: "", bal: "" },
+          { key: "paid", label: "Achitate", status: "PAID", bal: "" },
+          { key: "unpaid", label: "Neachitate", status: "", bal: "unpaid" },
+          { key: "overdue", label: "Restante", status: "OVERDUE", bal: "" },
+          { key: "owes", label: "Cu datorie", status: "", bal: "owes" },
+          { key: "advance", label: "Cu avans", status: "", bal: "advance" },
+          { key: "paidprev", label: "Cu plată primită", status: "", bal: "paidprev" },
+          { key: "partial", label: "Parțial achitate", status: "", bal: "partial" },
+        ];
+        return (
+          <div className="mb-1.5 flex flex-wrap items-center gap-1.5" data-pay-chips="">
+            <span className="text-[11px] font-semibold text-ink-soft">{t("Plăți pe luna")}</span>
+            <select value={pm} onChange={(e) => setFilter({ month: e.target.value })} className={fld("x")} aria-label={t("Luna facturii")}>
+              {months.map((m) => <option key={m.month} value={m.month}>{monthLabel(m.month)} ({nf(m.count)})</option>)}
+            </select>
+            {chips.map((c) => {
+              const on = c.key === "all" ? !filters.invoiceStatus && !filters.bal : filters.invoiceStatus === c.status && filters.bal === c.bal;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setFilter(on || c.key === "all" ? { invoiceStatus: "", bal: "" } : { invoiceStatus: c.status, bal: c.bal, month: pm })}
+                  title={t("Plătitorii după factura lunii alese; datoria și plățile sunt deduse din lanțul de facturi")}
+                  className={`tap h-7 cursor-pointer rounded-lg border px-2.5 text-[11px] ${on ? "border-brand bg-brand text-white font-semibold" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+                >
+                  {t(c.label)}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* ── Filtre (stil Task-uri: colorate când sunt active) ─────────────────── */}
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
         <input
@@ -719,6 +759,14 @@ export default function PayerNotifyManager({
         <select value={filters.invoiceStatus} onChange={(e) => setFilter({ invoiceStatus: e.target.value })} className={fld(filters.invoiceStatus)} aria-label={t("Status factură")}>
           <option value="">{t("Status factură")}</option>
           {INVOICE_STATUS_LIST.map((s) => <option key={s} value={s}>{t(INVOICE_STATUS[s].label)}</option>)}
+        </select>
+        <select value={filters.bal} onChange={(e) => setFilter({ bal: e.target.value as NotifyFilters["bal"], ...(e.target.value && !filters.month && months[0] ? { month: months[0].month } : {}) })} className={fld(filters.bal)} aria-label={t("Plăți")} title={t("Plățile deduse din lanțul de facturi, pe factura lunii alese (fără lună: pe ultima factură)")}>
+          <option value="">{t("Plăți: toate")}</option>
+          <option value="unpaid">{t("Neachitate (trimise / restante)")}</option>
+          <option value="owes">{t("Cu datorie (sold anterior neachitat)")}</option>
+          <option value="advance">{t("Cu avans")}</option>
+          <option value="paidprev">{t("Cu plată primită înainte de factură")}</option>
+          <option value="partial">{t("Parțial achitate")}</option>
         </select>
         <select value={filters.notified} onChange={(e) => setFilter({ notified: e.target.value as NotifyFilters["notified"] })} className={fld(filters.notified)} aria-label={t("Ultima notificare")}>
           <option value="">{t("Notificat: oricând")}</option>

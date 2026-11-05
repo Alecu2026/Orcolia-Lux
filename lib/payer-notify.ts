@@ -10,6 +10,7 @@ import { matchesContractFilter, type ContractExpFilter } from "./contract-expiry
 import { matchesMetrologyFilter, METROLOGY_FILTER_VALUES, type MetrologyFilter } from "./metrology";
 import { matchesPayerIssueFilter, PAYER_ISSUE_FILTER_VALUES, type PayerIssueFilter } from "./meter-issue-register";
 import { todayKey } from "./date";
+import { matchesPayBal } from "./payment-chain";
 
 // ── Filtre ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,8 @@ export type NotifyFilters = {
   uloc: string;
   invoiceStatus: string;
   debt: "" | "has" | "none";
+  /** Plățile deduse din lanțul de facturi, pe factura aleasă (cea a lunii alese, altfel ultima): cu datorie / cu avans / cu plată primită înainte de factură / parțial achitate. */
+  bal: "" | "owes" | "advance" | "paidprev" | "partial" | "unpaid";
   minDebt: string;
   maxDebt: string;
   /** Ce date de contact are plătitorul (necesare pentru a-l putea notifica). */
@@ -66,7 +69,7 @@ export type NotifyFilters = {
 };
 
 export const EMPTY_FILTERS: NotifyFilters = {
-  q: "", street: "", month: "", account: "", sector: "", usector: "", uloc: "", invoiceStatus: "", debt: "",
+  q: "", street: "", month: "", account: "", sector: "", usector: "", uloc: "", invoiceStatus: "", debt: "", bal: "",
   minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", newFrom: "", placeFrom: "", sort: "", nameFix: "", invoices: "", estimated: "", lorawan: "", contractExp: "", metrologyExp: "", meterIssues: "",
 };
 
@@ -163,6 +166,7 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     uloc: cleanSectorList(get(src, "uloc")),
     invoiceStatus: ONE_OF(get(src, "invoiceStatus"), ["DRAFT", "SENT", "PAID", "OVERDUE", "CANCELLED"] as const),
     debt: ONE_OF(get(src, "debt"), ["has", "none"] as const),
+    bal: ONE_OF(get(src, "bal"), ["owes", "advance", "paidprev", "partial", "unpaid"] as const),
     minDebt: cleanMoney(get(src, "minDebt")),
     maxDebt: cleanMoney(get(src, "maxDebt")),
     contact: ONE_OF(get(src, "contact"), ["email", "phone", "both", "any", "none", "noemail", "nophone"] as const),
@@ -465,9 +469,13 @@ export type SnapTuple = [
   added?: string | null,
   /** „YYYY-MM-DD” — începutul consumului din 1C (loc de consum nou) */
   placeStart?: string | null,
+  /** „Datorii(+) / avans(−)” de pe ultima factură; cât s-a plătit înainte de ea; cât din ea s-a achitat (lipsesc în listele salvate înainte de această versiune) */
+  invDebt?: number | null,
+  invPrevPaid?: number | null,
+  invPaid?: number | null,
 ];
 /** Factura unei luni: [clientId, număr, status, total, valută, scadență ms]. */
-export type MonthTuple = [clientId: string, number: string, status: string, total: number, currency: string, dueMs: number | null];
+export type MonthTuple = [clientId: string, number: string, status: string, total: number, currency: string, dueMs: number | null, debt?: number, prevPaid?: number | null, paid?: number | null];
 
 const collatorRo = new Intl.Collator("ro");
 /** Sortarea după nume folosită peste tot (aceeași ordine pe server și în browser). */
@@ -488,7 +496,7 @@ export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[
     latestInvoice:
       t[8] == null
         ? null
-        : { number: t[8], status: (t[9] ?? "SENT") as SnapInvoice["status"], grandTotal: t[10] ?? 0, currency: t[11] ?? "MDL", dueDate: iso(t[12]) },
+        : { number: t[8], status: (t[9] ?? "SENT") as SnapInvoice["status"], grandTotal: t[10] ?? 0, currency: t[11] ?? "MDL", dueDate: iso(t[12]), debt: t[26] ?? 0, prevPaid: t[27] ?? null, paidAmount: t[28] ?? null },
     consumAddress: t[13],
     lastNotifiedAt: iso(t[14]),
     installedAt: t[15],
@@ -515,7 +523,7 @@ export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[
 
 export function decodeMonth(tuples: MonthTuple[]): Map<string, SnapInvoice> {
   return new Map(
-    tuples.map((t) => [t[0], { number: t[1], status: t[2] as SnapInvoice["status"], grandTotal: t[3], currency: t[4], dueDate: iso(t[5]) }]),
+    tuples.map((t) => [t[0], { number: t[1], status: t[2] as SnapInvoice["status"], grandTotal: t[3], currency: t[4], dueDate: iso(t[5]), debt: t[6] ?? 0, prevPaid: t[7] ?? null, paidAmount: t[8] ?? null }]),
   );
 }
 
@@ -598,7 +606,7 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
   const uLocs = parseSectorFilter(f.uloc);
   const order = f.sort === "debtDesc" || f.sort === "debtAsc" || f.sort === "installDesc" || f.sort === "installAsc" ? orderFor(rows, f.sort) : null;
   const wantStatus = f.invoiceStatus;
-  const money = f.debt !== "" || hasMin || hasMax || wantStatus !== "";
+  const money = f.debt !== "" || hasMin || hasMax || wantStatus !== "" || f.bal !== "";
   const out: SnapRow[] = [];
 
   for (let k = 0, n = rows.length; k < n; k++) {
@@ -645,6 +653,7 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
     if (money) {
       const inv = r.latestInvoice;
       if (wantStatus && inv?.status !== wantStatus) continue;
+      if (f.bal && !matchesPayBal(f.bal, { status: inv?.status ?? "", debt: inv?.debt, prevPaid: inv?.prevPaid, paid: inv?.paidAmount })) continue;
       const t = r._dk;
       if (f.debt === "has" && !(inv && t > 0)) continue;
       if (f.debt === "none" && !(inv && t <= 0)) continue;

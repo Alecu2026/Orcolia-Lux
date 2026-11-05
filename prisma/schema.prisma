@@ -643,6 +643,11 @@ model Invoice {
   // `metersSig` = amprenta listei, ca importul să observe schimbările fără să citească lista din toate facturile.
   meters              Json?
   metersSig           String?
+  // Plățile deduse din lanțul de facturi al plătitorului (lib/payment-chain.ts): cât din ACEASTĂ factură s-a achitat (cunoscut când există factura următoare), cât s-a plătit între factura anterioară și aceasta,
+  // și când s-a calculat (gol = încă neprocesată).
+  paidAmount          Float?
+  prevPaid            Float?
+  chainAt             DateTime?
 
   // Relații opționale (nullable)
   clientId  String? @db.ObjectId
@@ -678,6 +683,8 @@ model Invoice {
   // Ultima factură pe client (snapshot-ul de plătitori): sortare după client + dată fără sortare în memorie
   @@index([clientId, issueDate])
   @@index([issueDate]) // listele pe luni și căutarea peste perioade (creat și la rulare de lib/services/invoice-cache.ts)
+  @@index([chainAt]) // plățile din lanțul de facturi: facturile încă neprocesate (creat și la rulare de lib/services/payment-chain.ts)
+  @@index([updatedAt]) // facturile modificate de la ultima rulare a lanțului de plăți (idem)
   @@index([createdAt])
 }
 
