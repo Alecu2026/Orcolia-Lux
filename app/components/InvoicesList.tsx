@@ -631,63 +631,57 @@ export default function InvoicesList({
         </label>
       </div>
       {showReport && (
-        <div className="mb-1.5 max-w-xl rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)]/50 px-2 py-1.5 text-[11px]" data-inv-report="">
+        <div className="mb-1.5 max-w-3xl rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)]/50 px-2 py-1.5 text-[11px]" data-inv-report="">
           {reportErr ? (
             <p className="text-st-cancelled">{reportErr}</p>
           ) : !reportSum ? (
             <p className="text-ink-soft">{t("se încarcă…")}</p>
           ) : (
             <>
-              <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] tabular-nums">
-                <thead>
-                  <tr className="text-ink-soft">
-                    <th className="py-0.5 text-left font-semibold">{t("Serviciu")}</th>
-                    <th className="py-0.5 text-right font-semibold">{t("Facturi")}</th>
-                    <th className="py-0.5 text-right font-semibold" title={t("Venitul calculat în perioadă: totalul de plată minus datoria / avansul reportat")}>{t("Calculat")}</th>
-                    <th className="py-0.5 text-right font-semibold" title={t("Au achitat factura anterioară (datoria de pe factură e 0 sau au avans)")}>{t("Achitate")}</th>
-                    <th className="py-0.5 text-right font-semibold" title={t("Cât au plătit între facturi (dedus din soldul de pe factură)")}>{t("Încasat (sumă)")}</th>
-                    <th className="py-0.5 text-right font-semibold" title={t("Nu au achitat integral factura anterioară: datoria s-a reportat pe factură")}>{t("Neachitate")}</th>
-                    <th className="py-0.5 text-right font-semibold">{t("Datorie (sumă)")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(
-                    [["WATER", "Doar apă"], ["SEWER", "Doar canalizare"], ["BOTH", "Apă + canalizare"], ["NONE", "Fără servicii (consum și sumă zero)"], ["", "Total"]] as const
-                  ).map(([k, label]) => {
-                    const o = k === "" ? reportSum.all : reportSum.by[k];
-                    if (k === "NONE" && o.n === 0) return null;
-                    // numerele sunt butoane: aplică în listă serviciul și statusul (achitate / neachitate), ca să vezi CARE sunt
-                    const pick = (quick: InvQuery["quick"]) => patchQuery({ service: k, statuses: [], quick });
-                    const link = (on: boolean, children: React.ReactNode, quick: InvQuery["quick"], disabled: boolean) => (
-                      <button type="button" disabled={disabled || o.n === 0} onClick={() => pick(quick)} title={t("Arată în listă care sunt")} className={`cursor-pointer underline decoration-dotted underline-offset-2 hover:text-brand disabled:cursor-default disabled:no-underline ${on ? "font-bold text-brand" : ""}`}>{children}</button>
-                    );
-                    const svcOff = serverMode && k !== "";
-                    const active = query.service === k;
-                    const paidOn = active && query.quick === "settled";
-                    const unpaidOn = active && query.quick === "debt";
-                    return (
-                      <tr key={k || "all"} className={`border-t border-[var(--color-line)] ${k === "" ? "font-semibold" : k === "NONE" ? "text-ink-soft" : ""}`}>
-                        <td className="py-0.5">
-                          {k === "" ? t(label) : (
-                            <button type="button" disabled={svcOff} onClick={() => patchQuery({ service: query.service === k ? "" : k, statuses: [] })} title={t("Arată doar aceste facturi în listă")} className={`cursor-pointer text-left underline decoration-dotted underline-offset-2 hover:text-brand disabled:cursor-default disabled:no-underline ${query.service === k && !query.statuses.length ? "font-bold text-brand" : ""}`}>{t(label)}</button>
-                          )}
-                        </td>
-                        <td className="py-0.5 text-right">{o.n.toLocaleString("ro-RO")}</td>
-                        <td className="py-0.5 text-right">{fmtMoney(o.calc, reportSum.currency)}</td>
-                        <td className="py-0.5 text-right">{link(paidOn, o.settledN.toLocaleString("ro-RO"), "settled", svcOff)}</td>
-                        <td className="py-0.5 text-right font-semibold text-st-done">{fmtMoney(o.paid, reportSum.currency)}</td>
-                        <td className="py-0.5 text-right">{link(unpaidOn, <>{o.owesN.toLocaleString("ro-RO")}{o.overdueN > 0 && <span className="text-st-cancelled"> ({o.overdueN.toLocaleString("ro-RO")} {t("restante")})</span>}</>, "debt", svcOff)}</td>
-                        <td className="py-0.5 text-right font-semibold">{fmtMoney(o.rest, reportSum.currency)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              {/* un card pe serviciu (nu tabel): sumele mari nu mai ies din ecran, pe telefon și pe desktop deopotrivă */}
+              <div className="flex flex-col gap-1.5">
+                {(
+                  [["WATER", "Doar apă"], ["SEWER", "Doar canalizare"], ["BOTH", "Apă + canalizare"], ["NONE", "Fără servicii (consum și sumă zero)"], ["", "Total"]] as const
+                ).map(([k, label]) => {
+                  const o = k === "" ? reportSum.all : reportSum.by[k];
+                  if (k === "NONE" && o.n === 0) return null;
+                  // numerele sunt butoane: aplică în listă serviciul și statusul (achitate / neachitate), ca să vezi CARE sunt
+                  const pick = (quick: InvQuery["quick"]) => patchQuery({ service: k, statuses: [], quick });
+                  const link = (on: boolean, children: React.ReactNode, quick: InvQuery["quick"], disabled: boolean) => (
+                    <button type="button" disabled={disabled || o.n === 0} onClick={() => pick(quick)} title={t("Arată în listă care sunt")} className={`cursor-pointer underline decoration-dotted underline-offset-2 hover:text-brand disabled:cursor-default disabled:no-underline ${on ? "font-bold text-brand" : ""}`}>{children}</button>
+                  );
+                  const svcOff = serverMode && k !== "";
+                  const active = query.service === k;
+                  const paidOn = active && query.quick === "settled";
+                  const unpaidOn = active && query.quick === "debt";
+                  const cell = "min-w-0";
+                  const lab = "block text-[10px] leading-tight text-ink-soft";
+                  const num = "block break-words font-semibold tabular-nums leading-tight";
+                  return (
+                    <div key={k || "all"} className={`rounded-lg border px-2 py-1.5 ${k === "" ? "border-brand/40 bg-brand-soft/40" : "border-[var(--color-line)] bg-[var(--color-surface)]"} ${k === "NONE" ? "text-ink-soft" : ""}`}>
+                      <div className="mb-1 flex items-baseline justify-between gap-2">
+                        {k === "" ? (
+                          <span className="font-semibold">{t(label)}</span>
+                        ) : (
+                          <button type="button" disabled={svcOff} onClick={() => patchQuery({ service: query.service === k ? "" : k, statuses: [] })} title={t("Arată doar aceste facturi în listă")} className={`cursor-pointer text-left font-semibold underline decoration-dotted underline-offset-2 hover:text-brand disabled:cursor-default disabled:no-underline ${query.service === k && !query.statuses.length ? "text-brand" : ""}`}>{t(label)}</button>
+                        )}
+                        <span className="shrink-0 tabular-nums"><b>{o.n.toLocaleString("ro-RO")}</b> <span className="text-ink-soft">{t("facturi")}</span></span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-3 lg:grid-cols-5">
+                        <div className={cell}><span className={lab} title={t("Venitul calculat în perioadă: totalul de plată minus datoria / avansul reportat")}>{t("Calculat")}</span><span className={num}>{fmtMoney(o.calc, reportSum.currency)}</span></div>
+                        <div className={cell}><span className={lab} title={t("Au achitat factura anterioară (datoria de pe factură e 0 sau au avans)")}>{t("Achitate")}</span><span className={num}>{link(paidOn, o.settledN.toLocaleString("ro-RO"), "settled", svcOff)}</span></div>
+                        <div className={cell}><span className={lab} title={t("Cât au plătit între facturi (dedus din soldul de pe factură)")}>{t("Încasat (sumă)")}</span><span className={`${num} text-st-done`}>{fmtMoney(o.paid, reportSum.currency)}</span></div>
+                        <div className={cell}><span className={lab} title={t("Nu au achitat integral factura anterioară: datoria s-a reportat pe factură")}>{t("Neachitate")}</span><span className={num}>{link(unpaidOn, o.owesN.toLocaleString("ro-RO"), "debt", svcOff)}</span></div>
+                        <div className={cell}><span className={lab}>{t("Datorie (sumă)")}</span><span className={`${num} text-st-cancelled`}>{fmtMoney(o.rest, reportSum.currency)}</span></div>
+                      </div>
+                      <p className="mt-1 text-[10px] text-ink-soft">{t("Facturile lunii: {a} achitate · {b} restante", { a: o.paidInvN.toLocaleString("ro-RO"), b: o.overdueN.toLocaleString("ro-RO") })}</p>
+                    </div>
+                  );
+                })}
               </div>
               {reportIncomplete && <p className="mt-1 text-st-progress" data-report-incomplete="">{t("Serviciile unor luni se mai calculează în fundal: cifrele se completează singure în câteva minute.")}</p>}
               <p className="mt-1 text-ink-soft">
-                {t("Doar facturile Apă-Canal din perioada aleasă (fără cele anulate), pe valută; filtrele listei nu o restrâng. Plățile se citesc din soldul de pe fiecare factură: „Achitate” = au achitat factura anterioară (datorie 0 sau avans), „Încasat” = cât au plătit între facturi, „Neachitate” = datoria s-a reportat pe factură (suma = „Datorie”; pe mai multe luni aceeași datorie poate apărea de mai multe ori).")}
+                {t("Doar facturile Apă-Canal din perioada aleasă (fără cele anulate și ciornele), pe valută; filtrele listei nu o restrâng. Plățile se citesc din soldul de pe fiecare factură: „Achitate” = au achitat factura anterioară (datorie 0 sau avans), „Încasat” = cât au plătit între facturi, „Neachitate” = datoria s-a reportat pe factură (suma = „Datorie”; pe mai multe luni aceeași datorie poate apărea de mai multe ori). „Facturile lunii” = statusul fiecărei facturi, aflat din factura următoare.")}
                 {reportSum.mixedCurrency && ` ${t("(mai multe valute)")}`}
               </p>
             </>

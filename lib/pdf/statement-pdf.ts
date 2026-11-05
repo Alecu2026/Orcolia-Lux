@@ -59,11 +59,14 @@ export async function buildStatementPdf(o: { statement: PayerStatement; clientNa
   const first = statement.rows[0], last = statement.rows[statement.rows.length - 1];
   const period = first && last ? (first.billingPeriodLabel === last.billingPeriodLabel ? (first.billingPeriodLabel ?? "") : `${first.billingPeriodLabel ?? ""} – ${last.billingPeriodLabel ?? ""}`) : "—";
   const acct = statement.client.account;
+  const sm = statement.summary;
   const cards: { label: string; value: string; w: number; hi?: boolean }[] = [
-    { label: statement.client.accountKind === "contract" ? t("Contract") : t("Cont personal"), value: acct ?? "—", w: 0.17 },
-    { label: t("Adresă"), value: statement.client.address ?? "—", w: 0.38 },
-    { label: `${t("Perioadă")} · ${statement.rows.length} ${t("facturi")}`, value: period, w: 0.25 },
-    { label: t("Total de plată"), value: `${money(statement.totals.grandTotal)} ${currency}`, w: 0.2, hi: true },
+    { label: statement.client.accountKind === "contract" ? t("Contract") : t("Cont personal"), value: acct ?? "—", w: 0.13 },
+    { label: t("Adresă"), value: statement.client.address ?? "—", w: 0.25 },
+    { label: `${t("Perioadă")} · ${statement.rows.length} ${t("facturi")}`, value: period, w: 0.18 },
+    { label: t("Total de achitat"), value: `${money(sm.due)} ${currency}`, w: 0.14 },
+    { label: t("Total achitat"), value: `${money(sm.paid)} ${currency}`, w: 0.14 },
+    { label: sm.remaining > 0.005 ? t("Mai are de achitat") : sm.advance > 0.005 ? t("Avans") : t("Mai are de achitat"), value: `${money(sm.remaining > 0.005 ? sm.remaining : sm.advance)} ${currency}`, w: 0.16, hi: true },
   ];
   let cx = L;
   const gap = 8, cy = 98, ch = 40;
@@ -73,7 +76,7 @@ export async function buildStatementPdf(o: { statement: PayerStatement; clientNa
     doc.roundedRect(cx, cy, cw, ch, 6).fill(c.hi ? C.brandSoft : C.zebra);
     doc.roundedRect(cx, cy, cw, ch, 6).lineWidth(0.6).stroke(c.hi ? C.brand : C.line);
     txt(c.label.toUpperCase(), cx + 9, cy + 7, cw - 18, { size: 6.5, color: C.soft, bold: true });
-    txt(c.value, cx + 9, cy + 19, cw - 18, { size: c.hi ? 12 : 9.5, bold: true, color: c.hi ? C.brandDark : C.ink });
+    txt(c.value, cx + 9, cy + 19, cw - 18, { size: c.hi ? 11 : 9, bold: true, color: c.hi ? C.brandDark : C.ink });
     cx += cw + gap;
   }
 

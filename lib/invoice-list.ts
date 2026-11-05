@@ -345,7 +345,9 @@ export function queryInvoices(rows: InvRow[], f: InvQuery, nowMs: number = Date.
     if (r.status === "PAID") c.paid += r.grandTotal;
     if (unpaid) {
       c.open += r.grandTotal;
-      if (r.dueMs != null && r.dueMs < nowMs) { c.overdue += r.grandTotal; c.overdueN++; }
+      // „restant”: la Apă-Canal după status (o factură fără factură următoare rămâne „Trimisă” chiar după scadență, vezi lib/payment-chain.ts), la celelalte după scadență — la fel ca chipul „Restante”
+      const late = r.kind === "APA_CANAL" ? r.status === "OVERDUE" : r.dueMs != null && r.dueMs < nowMs;
+      if (late) { c.overdue += r.grandTotal; c.overdueN++; }
     }
   }
   let main = "MDL", mainN = -1;
@@ -398,13 +400,13 @@ export function groupServiceRows(rows: InvRow[]): InvServiceRow[] {
 
 /** Adună rândurile raportului: statusurile alese (fără alegere: toate în afară de anulate) și valuta aleasă (altfel cea mai frecventă). */
 export function sumServiceReport(rows: InvServiceRow[], currency: string) {
-  // facturile anulate nu se numără; raportul arată mereu și achitate, și neachitate (filtrul de status al listei nu îl restrânge)
-  const ok = rows.filter((r) => r.status !== "CANCELLED");
+  // facturile anulate și ciornele nu se numără; raportul arată mereu și achitate, și neachitate (filtrul de status al listei nu îl restrânge)
+  const ok = rows.filter((r) => r.status !== "CANCELLED" && r.status !== "DRAFT");
   const byCur = new Map<string, number>();
   for (const r of ok) byCur.set(r.currency, (byCur.get(r.currency) ?? 0) + r.n);
   let main = currency || "MDL", best = -1;
   if (!currency) for (const [c, n] of byCur) if (n > best) { main = c; best = n; }
-  const zero = () => ({ n: 0, total: 0, calc: 0, settledN: 0, paid: 0, owesN: 0, rest: 0, overdueN: 0 });
+  const zero = () => ({ n: 0, total: 0, calc: 0, settledN: 0, paid: 0, owesN: 0, rest: 0, overdueN: 0, paidInvN: 0 });
   const out: Record<InvServiceKey, ReturnType<typeof zero>> = { WATER: zero(), SEWER: zero(), BOTH: zero(), NONE: zero() };
   for (const r of ok) {
     if (r.currency !== main) continue;
@@ -417,6 +419,7 @@ export function sumServiceReport(rows: InvServiceRow[], currency: string) {
     o.owesN += r.owes;
     o.rest += r.rest;
     if (r.status === "OVERDUE") o.overdueN += r.n;
+    if (r.status === "PAID") o.paidInvN += r.n; // facturile lunii deja achitate (statusul din lanț)
   }
   const all = zero();
   for (const k of Object.keys(out) as InvServiceKey[]) {

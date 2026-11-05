@@ -60,7 +60,24 @@ export type PayerStatement = {
   };
   rows: PayerStatementRow[];
   totals: { apaQty: number; canalQty: number; subtotal: number; datoriiAvans: number; recalculari: number; penalitati: number; grandTotal: number; /** Suma plăților deduse (istoricul plăților). */ paid: number };
+  /**
+   * Situația pe tot istoricul (fără facturile ciornă / anulate): cât a avut de achitat în total (tot ce s-a calculat + datoria de la prima factură),
+   * cât a achitat, cât mai are de achitat sau cât avans are acum (după ultima factură). due − paid = remaining − advance.
+   */
+  summary: { due: number; paid: number; remaining: number; advance: number; currency: string };
 };
+
+/** Totalurile de pe tot istoricul: soldul curent = „Total de plată” de pe ultima factură; ce s-a calculat = „Total de plată” − „Datorii / avans” de pe fiecare factură. */
+export function statementSummary(rows: Pick<PayerStatementRow, "status" | "grandTotal" | "datoriiAvans" | "currency">[]): PayerStatement["summary"] {
+  const live = rows.filter((r) => r.status !== "DRAFT" && r.status !== "CANCELLED");
+  const currency = live[0]?.currency ?? rows[0]?.currency ?? "MDL";
+  if (live.length === 0) return { due: 0, paid: 0, remaining: 0, advance: 0, currency };
+  const billed = live.reduce((s, r) => s + (r.grandTotal - r.datoriiAvans), 0);
+  const opening = Math.max(0, live[0].datoriiAvans); // datoria de dinainte de prima factură
+  const balance = live[live.length - 1].grandTotal; // + = mai are de achitat, − = avans
+  const due = billed + opening;
+  return { due: round2(due), paid: round2(due - balance), remaining: round2(Math.max(0, balance)), advance: round2(Math.max(0, -balance)), currency };
+}
 
 type StatementInvoice = {
   id: string; publicToken: string; number: string; status: InvoiceStatus; issueDate: Date; billingPeriodLabel: string | null; sectorNr: string | null; contPersonal: string | null; consumAddress: string | null;
@@ -221,5 +238,6 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
       grandTotal: round2(totals.grandTotal),
       paid: round2(totals.paid),
     },
+    summary: statementSummary(rows),
   };
 }

@@ -24,8 +24,34 @@ export default async function PayerStatementView({ statement, portal = false }: 
   const nr = (n: number, cur: string) =>
     n.toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + (cur === currency ? "" : ` ${cur}`);
 
+  // Situația pe tot istoricul: cât a avut de achitat, cât a achitat, cât mai are de achitat sau cât avans are (staff, cabinet client și pagina de tipărire — aceeași vizualizare)
+  const sm = statement.summary;
+  const money = (n: number) => n.toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const owes = sm.remaining > 0.005;
+  const hasAdvance = sm.advance > 0.005;
+  const tile = "rounded-xl border px-3.5 py-2.5 print:border-zinc-300";
+  const tileLabel = "text-[10px] font-semibold uppercase tracking-wide";
+  const tileVal = "mt-0.5 text-lg font-bold leading-tight tabular-nums";
+
   return (
     <>
+    {rows.length > 0 && (
+      <div className="mb-3 grid grid-cols-2 gap-2.5 lg:grid-cols-3" data-statement-balance="">
+        <div className={`${tile} border-[var(--color-line)] bg-[var(--color-surface)]`}>
+          <p className={`${tileLabel} text-ink-soft`}>{t("Total de achitat")}</p>
+          <p className={tileVal}>{money(sm.due)} <span className="text-xs font-semibold">{sm.currency}</span></p>
+          <p className="text-[10px] text-ink-soft">{t("tot ce s-a calculat, cu datoria de la început")}</p>
+        </div>
+        <div className={`${tile} border-st-done/40 bg-st-done/10`}>
+          <p className={`${tileLabel} text-st-done`}>{t("Total achitat")}</p>
+          <p className={`${tileVal} text-st-done`}>{money(sm.paid)} <span className="text-xs font-semibold">{sm.currency}</span></p>
+        </div>
+        <div className={`${tile} col-span-2 lg:col-span-1 ${owes ? "border-st-cancelled/40 bg-st-cancelled/10" : "border-brand/40 bg-brand-soft"}`}>
+          <p className={`${tileLabel} ${owes ? "text-st-cancelled" : "text-brand-strong"}`}>{owes ? t("Mai are de achitat") : hasAdvance ? t("Avans") : t("Mai are de achitat")}</p>
+          <p className={`${tileVal} ${owes ? "text-st-cancelled" : "text-brand-strong"}`}>{money(owes ? sm.remaining : sm.advance)} <span className="text-xs font-semibold">{sm.currency}</span></p>
+        </div>
+      </div>
+    )}
     {rows.length === 0 ? (
       <div className="card p-8 text-center text-sm text-ink-soft">{t("Niciun rând de decontare — plătitorul nu are încă nicio factură Apă-Canal.")}</div>
     ) : (

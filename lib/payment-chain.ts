@@ -45,10 +45,11 @@ const EPS = 0.005;
 /** Filtrele de plăți (aceeași definiție în lista de facturi, în filtrele de plătitori / notificări și în cererile de pe server). */
 export type PayBal = "settled" | "owes" | "advance" | "paidprev" | "partial" | "unpaid";
 export function matchesPayBal(bal: PayBal, inv: { status: string; debt: number | null | undefined; prevPaid: number | null | undefined; paid: number | null | undefined }): boolean {
+  if (inv.status === "DRAFT" || inv.status === "CANCELLED") return false; // ciornele și facturile anulate nu intră în nicio situație a plăților
   switch (bal) {
     // Pe factura lunii X, plata facturii anterioare se vede din datoria de pe ea (factura X nu poate fi încă „achitată”: asta se află luna viitoare):
     // datoria / avansul de pe factură e suficient: nu depinde de calculul în fundal (prevPaid) — datorie ≤ 0 înseamnă că factura anterioară s-a achitat integral
-    case "settled": return (inv.debt ?? 0) <= EPS && !(inv.status === "DRAFT" || inv.status === "CANCELLED"); // a achitat factura anterioară (datorie 0 sau avans)
+    case "settled": return (inv.debt ?? 0) <= EPS; // a achitat factura anterioară (datorie 0 sau avans)
     case "owes": return (inv.debt ?? 0) > EPS; // nu a achitat-o integral: datoria s-a reportat pe această factură
     case "advance": return (inv.debt ?? 0) < -EPS; // are avans
     case "paidprev": return (inv.prevPaid ?? 0) > EPS; // a plătit între factura anterioară și aceasta

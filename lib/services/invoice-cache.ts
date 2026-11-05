@@ -744,11 +744,11 @@ async function queryServer(q: InvQuery, period: string, months: MonthCount[], pa
   if (q.quick === "overdue") and.push(unpaid, { dueDate: { not: null } }, { dueDate: { lt: now } });
   if (q.quick === "nodue") and.push({ OR: [{ dueDate: null }, { dueDate: { isSet: false } }] });
   if (q.quick === "paidnodate") and.push({ status: "PAID" }, { OR: [{ paidAt: null }, { paidAt: { isSet: false } }] });
-  if (q.quick === "debt") and.push({ kind: "APA_CANAL" }, { datoriiAvans: { gt: 0.005 } });
-  if (q.quick === "advance") and.push({ kind: "APA_CANAL" }, { datoriiAvans: { lt: -0.005 } });
-  if (q.quick === "paidprev") and.push({ prevPaid: { gt: 0.005 } });
+  if (q.quick === "debt") and.push({ kind: "APA_CANAL" }, { status: { notIn: ["DRAFT", "CANCELLED"] } }, { datoriiAvans: { gt: 0.005 } });
+  if (q.quick === "advance") and.push({ kind: "APA_CANAL" }, { status: { notIn: ["DRAFT", "CANCELLED"] } }, { datoriiAvans: { lt: -0.005 } });
+  if (q.quick === "paidprev") and.push({ status: { notIn: ["DRAFT", "CANCELLED"] } }, { prevPaid: { gt: 0.005 } });
   if (q.quick === "settled") and.push({ kind: "APA_CANAL" }, { status: { notIn: ["DRAFT", "CANCELLED"] } }, { datoriiAvans: { lte: 0.005 } });
-  if (q.quick === "partial") and.push({ prevPaid: { gt: 0.005 } }, { datoriiAvans: { gt: 0.005 } });
+  if (q.quick === "partial") and.push({ status: { notIn: ["DRAFT", "CANCELLED"] } }, { prevPaid: { gt: 0.005 } }, { datoriiAvans: { gt: 0.005 } });
   const dayStart = (key: string) => {
     const d = dayOfKey(key);
     return d == null ? null : new Date(d * 86_400_000 - bucharestOffsetMs(d * 86_400_000));

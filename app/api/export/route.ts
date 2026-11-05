@@ -535,6 +535,10 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
         "Recalculări": totals.recalculari, "Penalități": totals.penalitati,
         "Total de plată": totals.grandTotal, "Scadență": "", "Plătit înainte de factură": totals.paid, "Achitat din factură": "", "Valută": stRows[0]?.currency ?? "MDL",
       });
+      // situația pe tot istoricul: cât a avut de achitat, cât a achitat, cât mai are de achitat / avans (valoarea în coloana „Total de plată”)
+      const sm = statement.summary;
+      const sumRow = (label: string, value: number) => ({ ...Object.fromEntries(HEADERS.map((h) => [h, ""])), "Abonat": label, "Total de plată": value, "Valută": sm.currency }) as (typeof rows)[number];
+      rows.push(sumRow("Total de achitat (tot ce s-a calculat + datoria de la început)", sm.due), sumRow("Total achitat", sm.paid), sumRow(sm.remaining > 0.005 || sm.advance <= 0.005 ? "Mai are de achitat" : "Avans", sm.remaining > 0.005 ? sm.remaining : sm.advance));
     }
 
     // Content-Disposition trebuie să fie ASCII (Latin-1) — Ș/Ț (U+0218/9, U+021A/B) nu încap și
