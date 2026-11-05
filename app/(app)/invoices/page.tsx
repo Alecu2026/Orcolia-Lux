@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { env } from "@/lib/env";
 import InvoicesList from "@/app/components/InvoicesList";
+import PaymentChainRunner from "@/app/components/PaymentChainRunner";
 import { INVOICES_PS_COOKIE, INVOICES_V_COOKIE } from "@/lib/payer-prefs";
 import { normalizeInvoicePerPage, queryFromParams } from "@/lib/invoice-list";
 import { ssrInvoicePage } from "@/lib/services/invoice-cache";
@@ -44,6 +45,12 @@ export default async function InvoicesPage({
 
   return (
     <div className="w-full">
+      {/* doar administratorii: cât mai sunt facturi cu statusul necalculat din avans / datorii, apare butonul „Recalculează acum” (termină tot istoricul dintr-un foc) */}
+      {can(user, "admin") && (
+        <div className="mb-2">
+          <PaymentChainRunner />
+        </div>
+      )}
       <InvoicesList
         initial={{ items: res.items, page: res.page, total: res.total, totalPages: Math.max(1, Math.ceil(res.total / Math.min(perPage, 100))), perPage, query, period: res.period, months: res.months, sums: res.sums }}
         origin={env.appUrl}
