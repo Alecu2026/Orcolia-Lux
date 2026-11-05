@@ -747,7 +747,7 @@ async function queryServer(q: InvQuery, period: string, months: MonthCount[], pa
   if (q.quick === "debt") and.push({ kind: "APA_CANAL" }, { datoriiAvans: { gt: 0.005 } });
   if (q.quick === "advance") and.push({ kind: "APA_CANAL" }, { datoriiAvans: { lt: -0.005 } });
   if (q.quick === "paidprev") and.push({ prevPaid: { gt: 0.005 } });
-  if (q.quick === "settled") and.push({ kind: "APA_CANAL" }, { prevPaid: { gt: 0.005 } }, { datoriiAvans: { lte: 0.005 } });
+  if (q.quick === "settled") and.push({ kind: "APA_CANAL" }, { status: { notIn: ["DRAFT", "CANCELLED"] } }, { datoriiAvans: { lte: 0.005 } });
   if (q.quick === "partial") and.push({ prevPaid: { gt: 0.005 } }, { datoriiAvans: { gt: 0.005 } });
   const dayStart = (key: string) => {
     const d = dayOfKey(key);

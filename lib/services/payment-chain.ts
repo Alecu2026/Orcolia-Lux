@@ -67,7 +67,12 @@ async function distinctClients(match: Record<string, unknown>, limit?: number): 
 /** Câte facturi Apă-Canal nu au fost încă procesate (pentru ecranul de administrare). */
 export async function countPendingChains(): Promise<number> {
   if (DEMO) return 0;
-  return prisma.invoice.count({ where: { kind: "APA_CANAL", chainAt: null } });
+  // numărare brută: la facturile vechi câmpul `chainAt` LIPSEȘTE, iar filtrul Prisma `chainAt: null` nu le prinde (ar da 0 și calculul n-ar mai porni niciodată); `null` în MongoDB prinde și lipsa
+  const raw = (await prisma.invoice.aggregateRaw({
+    pipeline: [{ $match: { kind: "APA_CANAL", chainAt: null } }, { $count: "n" }] as never,
+    options: { allowDiskUse: true },
+  })) as unknown as { n?: number }[];
+  return Number(raw[0]?.n ?? 0);
 }
 
 type RawUpdate = { q: Record<string, unknown>; u: Record<string, unknown> };

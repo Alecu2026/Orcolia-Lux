@@ -47,7 +47,8 @@ export type PayBal = "settled" | "owes" | "advance" | "paidprev" | "partial" | "
 export function matchesPayBal(bal: PayBal, inv: { status: string; debt: number | null | undefined; prevPaid: number | null | undefined; paid: number | null | undefined }): boolean {
   switch (bal) {
     // Pe factura lunii X, plata facturii anterioare se vede din datoria de pe ea (factura X nu poate fi încă „achitată”: asta se află luna viitoare):
-    case "settled": return (inv.prevPaid ?? 0) > EPS && (inv.debt ?? 0) <= EPS; // a achitat factura anterioară (datorie 0 sau avans)
+    // datoria / avansul de pe factură e suficient: nu depinde de calculul în fundal (prevPaid) — datorie ≤ 0 înseamnă că factura anterioară s-a achitat integral
+    case "settled": return (inv.debt ?? 0) <= EPS && !(inv.status === "DRAFT" || inv.status === "CANCELLED"); // a achitat factura anterioară (datorie 0 sau avans)
     case "owes": return (inv.debt ?? 0) > EPS; // nu a achitat-o integral: datoria s-a reportat pe această factură
     case "advance": return (inv.debt ?? 0) < -EPS; // are avans
     case "paidprev": return (inv.prevPaid ?? 0) > EPS; // a plătit între factura anterioară și aceasta
@@ -85,9 +86,10 @@ export function deriveChain(list: ChainInvoice[]): ChainResult[] {
     let paidAmount: number | null;
     let paidOnMs: number | null = null;
     if (inv.total <= EPS) {
-      // avansul acoperă factura
+      // avansul din luna trecută acoperă tot consumul lunii (calculat ≤ avans): factura e achitată din avans, imediat, fără să aștepte factura următoare;
+      // „achitat din factură” = tot ce s-a calculat în luna aceasta (se vede în decontare și în listă, nu 0)
       status = "PAID";
-      paidAmount = 0;
+      paidAmount = r2(Math.max(0, inv.total - inv.debt));
       paidOnMs = inv.issueMs;
     } else if (next) {
       const remaining = clamp(next.debt, 0, owed);
