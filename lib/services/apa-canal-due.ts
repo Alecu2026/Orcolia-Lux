@@ -8,9 +8,8 @@ import { apaCanalDueDate, apaCanalDueKeyForMonth, APA_CANAL_DUE_DAY } from "../a
  * scadență (sau fără), apoi corectează doar acele luni. Rulează zilnic (cron) și după fiecare import / sincronizare 1C; fără nimic de corectat
  * costă o singură interogare. Întoarce câte facturi s-au modificat (și atunci listele din cache se reconstruiesc).
  */
-export async function normalizeApaCanalDueDates(): Promise<number> {
-  if (DEMO) return 0;
-  // grupuri (luna emiterii, scadența de pe factură): puține (luni × câteva valori), oricâte facturi ar fi
+/** Lunile (după luna emiterii, în UTC) care au facturi cu scadența diferită de cea corectă: grupuri puține (luni × câteva valori), oricâte facturi ar fi. */
+async function staleDueMonths(): Promise<Set<string>> {
   const groups = (await prisma.invoice.aggregateRaw({
     pipeline: [
       { $match: { kind: "APA_CANAL" } },
@@ -33,7 +32,23 @@ export async function normalizeApaCanalDueDates(): Promise<number> {
     if (!ym || !/^\d{4}-\d{2}$/.test(ym)) continue;
     if (g._id.due !== apaCanalDueKeyForMonth(ym)) bad.add(ym);
   }
+  return bad;
+}
 
+const gDue = globalThis as unknown as { __dueStale?: { at: number; n: number } };
+/** Câte luni au scadențe greșite — pentru administrare; ținut 10 minute (agregarea citește facturile Apă-Canal). */
+export async function countStaleDueMonths(force = false): Promise<number> {
+  if (DEMO) return 0;
+  const hit = gDue.__dueStale;
+  if (!force && hit && Date.now() - hit.at < 10 * 60_000) return hit.n;
+  const n = (await staleDueMonths()).size;
+  gDue.__dueStale = { at: Date.now(), n };
+  return n;
+}
+
+export async function normalizeApaCanalDueDates(): Promise<number> {
+  if (DEMO) return 0;
+  const bad = await staleDueMonths();
   let changed = 0;
   for (const ym of bad) {
     const [y, mo] = ym.split("-").map(Number);
@@ -57,6 +72,7 @@ export async function normalizeApaCanalDueDates(): Promise<number> {
     })) as { nModified?: number };
     changed += res.nModified ?? 0;
   }
+  gDue.__dueStale = { at: Date.now(), n: 0 };
   if (changed > 0) {
     console.log(`[apa-canal] scadența adusă la ziua de ${APA_CANAL_DUE_DAY} a lunii următoare pentru ${changed} facturi`);
     // listele de plătitori și de facturi arată scadența: se reconstruiesc

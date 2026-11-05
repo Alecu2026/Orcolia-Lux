@@ -3225,6 +3225,7 @@ export const EN: Record<string, string> = {
   "Numărul de facturi și suma pe apă, canalizare și ambele (pentru perioada aleasă)": "Number of invoices and amount for water, sewerage and both (for the chosen period)",
   "Serviciu": "Service",
   "Doar apă": "Water only",
+  "Scadențele unor luni sunt greșite (corect: 25 a lunii următoare emiterii) și {n} facturi nu au statusul calculat din avans / datorii.": "The due dates of some months are wrong (correct: the 25th of the month after issue) and {n} invoices do not have their status calculated from advance / debts yet.",
   "Se recalculează plățile din lanțul de facturi… au rămas {n} facturi.": "Recalculating the payments from the chain of invoices… {n} invoices left.",
   "{n} facturi nu au statusul calculat din avans / datorii.": "{n} invoices do not have their status calculated from advance / debts yet.",
   "Recalculează acum": "Recalculate now",

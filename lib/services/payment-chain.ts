@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { deriveChain, type ChainInvoice } from "../payment-chain";
+import { countStaleDueMonths, normalizeApaCanalDueDates } from "./apa-canal-due";
 
 /**
  * Recalcularea plăților din lanțul de facturi al fiecărui plătitor (regulile: lib/payment-chain.ts): statusul fiecărei facturi (achitată / restantă / trimisă), cât s-a achitat din ea
@@ -166,6 +167,31 @@ export async function recomputePaymentChains(opts: Opts = {}): Promise<ChainStat
   } finally {
     g.__payChainRunning = false;
   }
+}
+
+const gk = globalThis as unknown as { __chainKick?: { at: number; pending: number } };
+
+/**
+ * Pornește recalcularea în fundal când există facturi neprocesate (statusurile „Achitată / Restantă” încă nu s-au calculat pe istoric): apelată la deschiderea listei de facturi,
+ * ca administratorul să nu trebuiască să apese nimic — fiecare deschidere continuă munca (câte ~20 s), până se termină. Verificarea e ținută 60 s, iar rularea simultană e împiedicată.
+ */
+export async function kickPaymentChains(run: (fn: () => Promise<unknown>) => void): Promise<void> {
+  if (DEMO || g.__payChainRunning) return;
+  // scadențe greșite (verificare ținută 10 minute): se corectează în fundal, înaintea plăților
+  if ((await countStaleDueMonths().catch(() => 0)) > 0) run(async () => void (await normalizeApaCanalDueDates()));
+  const hit = gk.__chainKick;
+  let pending: number;
+  if (hit && Date.now() - hit.at < 60_000) pending = hit.pending;
+  else {
+    pending = await countPendingChains().catch(() => 0);
+    gk.__chainKick = { at: Date.now(), pending };
+  }
+  if (pending <= 0) return;
+  run(async () => {
+    const s = await recomputePaymentChains({ budgetMs: 20_000, reason: "la deschiderea listei de facturi" });
+    gk.__chainKick = undefined; // la următoarea deschidere se numără din nou
+    if (s.clients === 0) console.log("[payment-chain] nimic de procesat");
+  });
 }
 
 /** Apelul obișnuit după orice schimbare din 1C și din cron: plătitorii cu facturi noi / modificate (și, treptat, istoricul neprocesat), în cel mult ~20 s (rutele au limită de 60 s; restul rămâne pentru rularea următoare). */

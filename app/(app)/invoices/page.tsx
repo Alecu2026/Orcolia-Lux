@@ -7,6 +7,8 @@ import InvoicesList from "@/app/components/InvoicesList";
 import { INVOICES_PS_COOKIE, INVOICES_V_COOKIE } from "@/lib/payer-prefs";
 import { normalizeInvoicePerPage, queryFromParams } from "@/lib/invoice-list";
 import { ssrInvoicePage } from "@/lib/services/invoice-cache";
+import { kickPaymentChains } from "@/lib/services/payment-chain";
+import { after } from "next/server";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,8 @@ export default async function InvoicesPage({
   // Fără ?ps= în adresă se folosește ultima alegere (cookie): „Toate" apare complet din prima afișare.
   const perPage = normalizeInvoicePerPage(sp.ps ?? jar.get(INVOICES_PS_COOKIE)?.value);
   // Pe server desenăm cel mult 100 de rânduri; restul vin din lista locală (virtualizată).
+  // statusurile „Achitată / Restantă” se calculează din avans / datorii: dacă istoricul nu e încă procesat, rularea continuă în fundal (nu așteaptă nimeni după ea)
+  await kickPaymentChains((fn) => after(() => fn().catch((e) => console.error("[payment-chain] fundal:", e))));
   const res = await ssrInvoicePage(query, sp.m ?? null, wantedPage, Math.min(perPage, 100));
 
   // Prima vizită (sau luna s-a schimbat): browserul începe descărcarea primei luni chiar de la primirea HTML-ului. Dacă are deja versiunea curentă (cookie)
