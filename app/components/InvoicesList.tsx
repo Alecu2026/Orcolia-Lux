@@ -42,6 +42,7 @@ import {
   type MonthCount,
 } from "@/lib/invoice-list";
 import { useT } from "@/lib/i18n/context";
+import { matchesPayBal } from "@/lib/payment-chain";
 
 /** Peste atâtea rânduri se desenează doar cele vizibile (virtualizare), ca la plătitori. */
 const VIRTUAL_MIN = 80;
@@ -366,20 +367,19 @@ export default function InvoicesList({
 
   // Contoarele chipurilor „Plăți” (pe perioada aleasă, din facturile deja încărcate): o singură trecere
   const payCounts = useMemo(() => {
-    const c = { paid: 0, unpaid: 0, overdue: 0, debt: 0, advance: 0, paidprev: 0, partial: 0 };
+    const c = { paidInv: 0, settled: 0, debt: 0, partial: 0, advance: 0, paidprev: 0, overdue: 0 };
     if (!ds.rows) return null;
     for (const r of ds.rows) {
-      if (r.status === "PAID") c.paid++;
-      else if (r.status === "SENT" || r.status === "OVERDUE") {
-        c.unpaid++;
-        if (r.status === "OVERDUE") c.overdue++;
-        if (r.paid != null && r.paid > 0.005) c.partial++;
-      }
+      if (r.status === "PAID") c.paidInv++;
+      if (r.status === "OVERDUE") c.overdue++;
       if (r.kind === "APA_CANAL") {
-        if (r.debt > 0.005) c.debt++;
-        else if (r.debt < -0.005) c.advance++;
+        // plățile se citesc din soldul de PE factura lunii (plata facturii anterioare)
+        if (matchesPayBal("settled", r)) c.settled++;
+        if (matchesPayBal("owes", r)) c.debt++;
+        if (matchesPayBal("partial", r)) c.partial++;
+        if (matchesPayBal("advance", r)) c.advance++;
       }
-      if (r.prevPaid != null && r.prevPaid > 0.005) c.paidprev++;
+      if (matchesPayBal("paidprev", r)) c.paidprev++;
     }
     return c;
   }, [ds.rows]);
@@ -473,6 +473,7 @@ export default function InvoicesList({
           <option value="overdue">{t("Restante (scadența trecută)")}</option>
           <option value="nodue">{t("Fără scadență")}</option>
           <option value="paidnodate">{t("Achitate fără dată")}</option>
+          <option value="settled">{t("Au achitat factura anterioară")}</option>
           <option value="debt">{t("Cu datorie (sold anterior neachitat)")}</option>
           <option value="advance">{t("Cu avans")}</option>
           <option value="paidprev">{t("Cu plată primită înainte de factură")}</option>
@@ -552,14 +553,14 @@ export default function InvoicesList({
         <span className="text-[11px] font-semibold text-ink-soft">{t("Plăți")}</span>
         {(
           [
-            { key: "all", label: "Toate", statuses: [] as string[], quick: "" as InvQuery["quick"], n: null as number | null },
-            { key: "paid", label: "Achitate", statuses: ["PAID"], quick: "" as InvQuery["quick"], n: payCounts?.paid ?? null },
-            { key: "unpaid", label: "Neachitate", statuses: [], quick: "unpaid" as InvQuery["quick"], n: payCounts?.unpaid ?? null },
-            { key: "overdue", label: "Restante", statuses: ["OVERDUE"], quick: "" as InvQuery["quick"], n: payCounts?.overdue ?? null },
-            { key: "debt", label: "Cu datorie", statuses: [], quick: "debt" as InvQuery["quick"], n: payCounts?.debt ?? null },
-            { key: "advance", label: "Cu avans", statuses: [], quick: "advance" as InvQuery["quick"], n: payCounts?.advance ?? null },
-            { key: "paidprev", label: "Cu plată primită", statuses: [], quick: "paidprev" as InvQuery["quick"], n: payCounts?.paidprev ?? null },
-            { key: "partial", label: "Parțial achitate", statuses: [], quick: "partial" as InvQuery["quick"], n: payCounts?.partial ?? null },
+            { key: "all", label: "Toate", tip: "", statuses: [] as string[], quick: "" as InvQuery["quick"], n: null as number | null },
+            { key: "settled", label: "Achitate", tip: "Au achitat factura anterioară: datoria de pe această factură e 0 (sau au avans)", statuses: [], quick: "settled" as InvQuery["quick"], n: payCounts?.settled ?? null },
+            { key: "debt", label: "Neachitate", tip: "Nu au achitat integral factura anterioară: datoria s-a reportat pe această factură", statuses: [], quick: "debt" as InvQuery["quick"], n: payCounts?.debt ?? null },
+            { key: "partial", label: "Parțial achitate", tip: "Au achitat doar o parte din factura anterioară", statuses: [], quick: "partial" as InvQuery["quick"], n: payCounts?.partial ?? null },
+            { key: "advance", label: "Cu avans", tip: "Au plătit în plus: avans pe această factură", statuses: [], quick: "advance" as InvQuery["quick"], n: payCounts?.advance ?? null },
+            { key: "paidprev", label: "Cu plată primită", tip: "Au plătit ceva între factura anterioară și aceasta", statuses: [], quick: "paidprev" as InvQuery["quick"], n: payCounts?.paidprev ?? null },
+            { key: "paidinv", label: "Facturi achitate", tip: "Facturile cu statusul Achitată (se știe după ce factura următoare arată datorie 0, sau când avansul acoperă factura)", statuses: ["PAID"], quick: "" as InvQuery["quick"], n: payCounts?.paidInv ?? null },
+            { key: "overdue", label: "Restante", tip: "Facturi la care factura următoare a arătat datorie (restante confirmate)", statuses: ["OVERDUE"], quick: "" as InvQuery["quick"], n: payCounts?.overdue ?? null },
           ]
         ).map((c) => {
           const on = c.key === "all" ? query.statuses.length === 0 && !query.quick : query.quick === c.quick && query.statuses.length === c.statuses.length && c.statuses.every((s) => query.statuses.includes(s));
@@ -569,7 +570,7 @@ export default function InvoicesList({
               type="button"
               aria-pressed={on}
               onClick={() => patchQuery(on || c.key === "all" ? { statuses: [], quick: "" } : { statuses: c.statuses, quick: c.quick })}
-              title={t("Arată în listă care sunt")}
+              title={c.tip ? t(c.tip) : t("Arată în listă care sunt")}
               className={`tap h-7 cursor-pointer rounded-lg border px-2.5 text-[11px] ${on ? "border-brand bg-brand font-semibold text-white" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
             >
               {t(c.label)}{c.n != null && <span className="ml-1 tabular-nums opacity-80">{c.n.toLocaleString("ro-RO")}</span>}
@@ -644,10 +645,10 @@ export default function InvoicesList({
                     <th className="py-0.5 text-left font-semibold">{t("Serviciu")}</th>
                     <th className="py-0.5 text-right font-semibold">{t("Facturi")}</th>
                     <th className="py-0.5 text-right font-semibold" title={t("Venitul calculat în perioadă: totalul de plată minus datoria / avansul reportat")}>{t("Calculat")}</th>
-                    <th className="py-0.5 text-right font-semibold">{t("Achitate")}</th>
-                    <th className="py-0.5 text-right font-semibold">{t("Achitat (sumă)")}</th>
-                    <th className="py-0.5 text-right font-semibold">{t("Neachitate")}</th>
-                    <th className="py-0.5 text-right font-semibold">{t("Rest de plată")}</th>
+                    <th className="py-0.5 text-right font-semibold" title={t("Au achitat factura anterioară (datoria de pe factură e 0 sau au avans)")}>{t("Achitate")}</th>
+                    <th className="py-0.5 text-right font-semibold" title={t("Cât au plătit între facturi (dedus din soldul de pe factură)")}>{t("Încasat (sumă)")}</th>
+                    <th className="py-0.5 text-right font-semibold" title={t("Nu au achitat integral factura anterioară: datoria s-a reportat pe factură")}>{t("Neachitate")}</th>
+                    <th className="py-0.5 text-right font-semibold">{t("Datorie (sumă)")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -657,14 +658,14 @@ export default function InvoicesList({
                     const o = k === "" ? reportSum.all : reportSum.by[k];
                     if (k === "NONE" && o.n === 0) return null;
                     // numerele sunt butoane: aplică în listă serviciul și statusul (achitate / neachitate), ca să vezi CARE sunt
-                    const pick = (statuses: string[]) => patchQuery({ service: k, statuses });
-                    const link = (on: boolean, children: React.ReactNode, statuses: string[], disabled: boolean) => (
-                      <button type="button" disabled={disabled || o.n === 0} onClick={() => pick(statuses)} title={t("Arată în listă care sunt")} className={`cursor-pointer underline decoration-dotted underline-offset-2 hover:text-brand disabled:cursor-default disabled:no-underline ${on ? "font-bold text-brand" : ""}`}>{children}</button>
+                    const pick = (quick: InvQuery["quick"]) => patchQuery({ service: k, statuses: [], quick });
+                    const link = (on: boolean, children: React.ReactNode, quick: InvQuery["quick"], disabled: boolean) => (
+                      <button type="button" disabled={disabled || o.n === 0} onClick={() => pick(quick)} title={t("Arată în listă care sunt")} className={`cursor-pointer underline decoration-dotted underline-offset-2 hover:text-brand disabled:cursor-default disabled:no-underline ${on ? "font-bold text-brand" : ""}`}>{children}</button>
                     );
                     const svcOff = serverMode && k !== "";
                     const active = query.service === k;
-                    const paidOn = active && query.statuses.length === 1 && query.statuses[0] === "PAID";
-                    const unpaidOn = active && query.statuses.length === 2 && query.statuses.includes("SENT") && query.statuses.includes("OVERDUE");
+                    const paidOn = active && query.quick === "settled";
+                    const unpaidOn = active && query.quick === "debt";
                     return (
                       <tr key={k || "all"} className={`border-t border-[var(--color-line)] ${k === "" ? "font-semibold" : k === "NONE" ? "text-ink-soft" : ""}`}>
                         <td className="py-0.5">
@@ -674,9 +675,9 @@ export default function InvoicesList({
                         </td>
                         <td className="py-0.5 text-right">{o.n.toLocaleString("ro-RO")}</td>
                         <td className="py-0.5 text-right">{fmtMoney(o.calc, reportSum.currency)}</td>
-                        <td className="py-0.5 text-right">{link(paidOn, o.paidN.toLocaleString("ro-RO"), ["PAID"], svcOff)}</td>
+                        <td className="py-0.5 text-right">{link(paidOn, o.settledN.toLocaleString("ro-RO"), "settled", svcOff)}</td>
                         <td className="py-0.5 text-right font-semibold text-st-done">{fmtMoney(o.paid, reportSum.currency)}</td>
-                        <td className="py-0.5 text-right">{link(unpaidOn, <>{o.unpaidN.toLocaleString("ro-RO")}{o.overdueN > 0 && <span className="text-st-cancelled"> ({o.overdueN.toLocaleString("ro-RO")} {t("restante")})</span>}</>, ["SENT", "OVERDUE"], svcOff)}</td>
+                        <td className="py-0.5 text-right">{link(unpaidOn, <>{o.owesN.toLocaleString("ro-RO")}{o.overdueN > 0 && <span className="text-st-cancelled"> ({o.overdueN.toLocaleString("ro-RO")} {t("restante")})</span>}</>, "debt", svcOff)}</td>
                         <td className="py-0.5 text-right font-semibold">{fmtMoney(o.rest, reportSum.currency)}</td>
                       </tr>
                     );
@@ -686,7 +687,7 @@ export default function InvoicesList({
               </div>
               {reportIncomplete && <p className="mt-1 text-st-progress" data-report-incomplete="">{t("Serviciile unor luni se mai calculează în fundal: cifrele se completează singure în câteva minute.")}</p>}
               <p className="mt-1 text-ink-soft">
-                {t("Doar facturile Apă-Canal din perioada aleasă (fără cele anulate), pe valută; filtrele listei nu o restrâng. „Achitat” = cât s-a plătit, dedus din soldul facturilor următoare; „Rest de plată” = totalul de plată al celor neachitate (include datoria reportată, deci pe mai multe luni se poate număra de mai multe ori).")}
+                {t("Doar facturile Apă-Canal din perioada aleasă (fără cele anulate), pe valută; filtrele listei nu o restrâng. Plățile se citesc din soldul de pe fiecare factură: „Achitate” = au achitat factura anterioară (datorie 0 sau avans), „Încasat” = cât au plătit între facturi, „Neachitate” = datoria s-a reportat pe factură (suma = „Datorie”; pe mai multe luni aceeași datorie poate apărea de mai multe ori).")}
                 {reportSum.mixedCurrency && ` ${t("(mai multe valute)")}`}
               </p>
             </>

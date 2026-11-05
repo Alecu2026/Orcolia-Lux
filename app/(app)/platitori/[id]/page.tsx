@@ -173,6 +173,7 @@ export default async function PayerDetailPage({
                       <th className={`${TH} text-right`}>{tr("Calculat")}</th>
                       <th className={`${TH} text-right`}>{tr("Datorie/avans")}</th>
                       <th className={`${TH} text-right`}>{tr("De achitat")}</th>
+                      <th className={`${TH} text-right`} title={tr("Cât din această factură s-a achitat (dedus din datoria de pe factura următoare)")}>{tr("Achitat")}</th>
                       <th className={TH}>{tr("Status")}</th>
                       <th className={TH} />
                     </tr>
@@ -192,6 +193,9 @@ export default async function PayerDetailPage({
                           <td className={`${TD} text-right tabular-nums`}>{isAc ? money(inv.subtotal, inv.currency) : "—"}</td>
                           <td className={`${TD} text-right tabular-nums`}>{isAc ? money(inv.datoriiAvans ?? 0, inv.currency) : "—"}</td>
                           <td className={`${TD} text-right font-semibold tabular-nums`}>{money(inv.grandTotal, inv.currency)}</td>
+                          <td className={`${TD} text-right tabular-nums`} title={inv.paidAmount == null ? tr("Încă nu se știe: apare când se emite factura următoare") : undefined}>
+                            {isAc && inv.paidAmount != null ? <span className={inv.paidAmount > 0.005 ? "text-st-done" : ""}>{money(inv.paidAmount, inv.currency)}</span> : "—"}
+                          </td>
                           <td className={TD}>
                             <span className={`inline-block rounded-full px-2 py-px text-[10px] font-medium ${st.cls}`}>{tr(st.label)}</span>
                           </td>

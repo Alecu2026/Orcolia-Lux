@@ -114,7 +114,12 @@ export default async function PayerStatementView({ statement, portal = false }: 
                     <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{t(st.label)}</span>
                   </>
                 }
-                trailing={<span className="font-semibold tabular-nums">{nr(r.grandTotal, r.currency)}</span>}
+                trailing={
+                  <span className="flex flex-col items-end leading-tight">
+                    <span className="font-semibold tabular-nums">{nr(r.grandTotal, r.currency)}</span>
+                    {r.paidAmount != null && r.paidAmount > 0.005 && <span className="text-[10px] text-st-done">{t("achitat")} {nr(r.paidAmount, r.currency)}</span>}
+                  </span>
+                }
               >
                 <dl>
                   <CompactField label={t("Index ant.")}>{r.meterPrevReading ?? "—"}</CompactField>

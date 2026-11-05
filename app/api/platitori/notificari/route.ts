@@ -53,6 +53,7 @@ export async function GET(req: Request) {
       invoices: invoices.slice(0, 300).map((i) => ({
         id: i.id, publicToken: i.publicToken, number: i.number, status: i.status, grandTotal: i.grandTotal, currency: i.currency,
         issueDate: i.issueDate, dueDate: i.dueDate, paidAt: i.paidAt, billingPeriodLabel: i.billingPeriodLabel,
+        paidAmount: i.paidAmount, prevPaid: i.prevPaid, debt: i.datoriiAvans,
       })),
       notifications,
       notes,

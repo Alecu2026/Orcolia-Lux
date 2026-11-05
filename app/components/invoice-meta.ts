@@ -8,7 +8,7 @@ export type InvoiceStatusKey =
 export const INVOICE_STATUS: Record<InvoiceStatusKey, { label: string; cls: string }> = {
   DRAFT: { label: "Ciornă", cls: "bg-st-new/12 text-st-new" },
   SENT: { label: "Trimisă", cls: "bg-st-confirmed/12 text-st-confirmed" },
-  PAID: { label: "Plătită", cls: "bg-st-done/12 text-st-done" },
+  PAID: { label: "Achitată", cls: "bg-st-done/12 text-st-done" },
   CANCELLED: { label: "Anulată", cls: "bg-st-cancelled/12 text-st-cancelled" },
   OVERDUE: { label: "Restantă", cls: "bg-st-progress/12 text-st-progress" },
 };

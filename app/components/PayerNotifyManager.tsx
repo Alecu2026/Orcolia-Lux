@@ -674,15 +674,25 @@ export default function PayerNotifyManager({
       {/* ── Plăți pe luna aleasă: un click pe factura lunii (achitate / neachitate / restante / cu datorie / cu avans / cu plată primită / parțial) ── */}
       {months.length > 0 && (() => {
         const pm = filters.month || months[0].month;
+        // pe factura lunii X, plata facturii anterioare se vede din datoria de pe ea (factura X însăși nu poate fi încă „achitată”)
+        const TIPS: Record<string, string> = {
+          settled: "Au achitat factura anterioară: datoria de pe factura lunii alese e 0 (sau au avans)",
+          owes: "Nu au achitat integral factura anterioară: datoria s-a reportat pe factura lunii alese",
+          partial: "Au achitat doar o parte din factura anterioară",
+          advance: "Au plătit în plus: avans pe factura lunii alese",
+          paidprev: "Au plătit ceva între factura anterioară și cea a lunii alese",
+          overdue: "Facturi la care factura următoare a arătat datorie (restante confirmate)",
+          paidinv: "Factura lunii alese are statusul Achitată (se știe după ce factura următoare arată datorie 0, sau când avansul o acoperă)",
+        };
         const chips: { key: string; label: string; status: string; bal: NotifyFilters["bal"] }[] = [
           { key: "all", label: "Toate", status: "", bal: "" },
-          { key: "paid", label: "Achitate", status: "PAID", bal: "" },
-          { key: "unpaid", label: "Neachitate", status: "", bal: "unpaid" },
-          { key: "overdue", label: "Restante", status: "OVERDUE", bal: "" },
-          { key: "owes", label: "Cu datorie", status: "", bal: "owes" },
+          { key: "settled", label: "Achitate", status: "", bal: "settled" },
+          { key: "owes", label: "Neachitate", status: "", bal: "owes" },
+          { key: "partial", label: "Parțial achitate", status: "", bal: "partial" },
           { key: "advance", label: "Cu avans", status: "", bal: "advance" },
           { key: "paidprev", label: "Cu plată primită", status: "", bal: "paidprev" },
-          { key: "partial", label: "Parțial achitate", status: "", bal: "partial" },
+          { key: "paidinv", label: "Factură achitată", status: "PAID", bal: "" },
+          { key: "overdue", label: "Restante", status: "OVERDUE", bal: "" },
         ];
         return (
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5" data-pay-chips="">
@@ -698,7 +708,7 @@ export default function PayerNotifyManager({
                   type="button"
                   aria-pressed={on}
                   onClick={() => setFilter(on || c.key === "all" ? { invoiceStatus: "", bal: "" } : { invoiceStatus: c.status, bal: c.bal, month: pm })}
-                  title={t("Plătitorii după factura lunii alese; datoria și plățile sunt deduse din lanțul de facturi")}
+                  title={TIPS[c.key] ? t(TIPS[c.key]) : t("Plătitorii după factura lunii alese; datoria și plățile sunt deduse din lanțul de facturi")}
                   className={`tap h-7 cursor-pointer rounded-lg border px-2.5 text-[11px] ${on ? "border-brand bg-brand text-white font-semibold" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
                 >
                   {t(c.label)}
@@ -763,6 +773,7 @@ export default function PayerNotifyManager({
         <select value={filters.bal} onChange={(e) => setFilter({ bal: e.target.value as NotifyFilters["bal"], ...(e.target.value && !filters.month && months[0] ? { month: months[0].month } : {}) })} className={fld(filters.bal)} aria-label={t("Plăți")} title={t("Plățile deduse din lanțul de facturi, pe factura lunii alese (fără lună: pe ultima factură)")}>
           <option value="">{t("Plăți: toate")}</option>
           <option value="unpaid">{t("Neachitate (trimise / restante)")}</option>
+          <option value="settled">{t("Au achitat factura anterioară")}</option>
           <option value="owes">{t("Cu datorie (sold anterior neachitat)")}</option>
           <option value="advance">{t("Cu avans")}</option>
           <option value="paidprev">{t("Cu plată primită înainte de factură")}</option>

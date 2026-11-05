@@ -43,19 +43,31 @@ export type ChainResult = {
 const EPS = 0.005;
 
 /** Filtrele de plăți (aceeași definiție în lista de facturi, în filtrele de plătitori / notificări și în cererile de pe server). */
-export type PayBal = "owes" | "advance" | "paidprev" | "partial" | "unpaid";
+export type PayBal = "settled" | "owes" | "advance" | "paidprev" | "partial" | "unpaid";
 export function matchesPayBal(bal: PayBal, inv: { status: string; debt: number | null | undefined; prevPaid: number | null | undefined; paid: number | null | undefined }): boolean {
   switch (bal) {
-    case "owes": return (inv.debt ?? 0) > EPS; // are datorie din facturile trecute
+    // Pe factura lunii X, plata facturii anterioare se vede din datoria de pe ea (factura X nu poate fi încă „achitată”: asta se află luna viitoare):
+    case "settled": return (inv.prevPaid ?? 0) > EPS && (inv.debt ?? 0) <= EPS; // a achitat factura anterioară (datorie 0 sau avans)
+    case "owes": return (inv.debt ?? 0) > EPS; // nu a achitat-o integral: datoria s-a reportat pe această factură
     case "advance": return (inv.debt ?? 0) < -EPS; // are avans
     case "paidprev": return (inv.prevPaid ?? 0) > EPS; // a plătit între factura anterioară și aceasta
-    case "partial": return (inv.paid ?? 0) > EPS && inv.status !== "PAID" && inv.status !== "CANCELLED"; // parțial achitată
+    case "partial": return (inv.prevPaid ?? 0) > EPS && (inv.debt ?? 0) > EPS; // a achitat doar o parte din factura anterioară
     case "unpaid": return inv.status === "SENT" || inv.status === "OVERDUE"; // trimisă sau restantă
   }
 }
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const FROZEN = new Set(["DRAFT", "CANCELLED"]);
+
+/**
+ * Plățile deduse pentru facturile UNUI plătitor, în orice ordine primite (doar cele Apă-Canal intră în lanț). Se folosește la afișarea fișei plătitorului, a decontării și a dialogului,
+ * ca statusul „Achitată” și sumele plătite să se vadă corect imediat, chiar înainte de recalcularea în masă a istoricului (care scrie aceleași valori pe facturi).
+ */
+export function derivePayerInvoices<T extends { id: string; kind?: string | null; issueDate: Date; status: string; datoriiAvans?: number | null; grandTotal: number }>(list: T[]): Map<string, ChainResult> {
+  const apa = list.filter((x) => (x.kind ?? "APA_CANAL") === "APA_CANAL").sort((a, b) => a.issueDate.getTime() - b.issueDate.getTime());
+  const res = deriveChain(apa.map((x) => ({ id: x.id, issueMs: x.issueDate.getTime(), dueMs: null, status: x.status, debt: x.datoriiAvans ?? 0, total: x.grandTotal })));
+  return new Map(res.map((r) => [r.id, r]));
+}
 
 /** `list` = facturile aceluiași plătitor, în ordinea emiterii (cele mai vechi primele). */
 export function deriveChain(list: ChainInvoice[]): ChainResult[] {

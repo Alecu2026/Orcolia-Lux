@@ -1,6 +1,7 @@
 import "server-only";
 import type { InvoiceStatus } from "@prisma/client";
 import { prisma } from "../prisma";
+import { derivePayerInvoices } from "../payment-chain";
 
 /**
  * "Decontare" per plătitor: un rând per lună facturată + totaluri, în același spirit cu raportul
@@ -146,6 +147,8 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
   if (!client) return null;
 
   const totals = { apaQty: 0, canalQty: 0, subtotal: 0, datoriiAvans: 0, recalculari: 0, penalitati: 0, grandTotal: 0, paid: 0 };
+  // statusul și plățile din lanțul de facturi, calculate pe loc (corecte imediat, fără să așteptăm recalcularea în masă)
+  const derived = derivePayerInvoices(invoices);
   const rows: PayerStatementRow[] = invoices.map((inv) => {
     const apaItem = inv.items.find((it) => isApa(it.description));
     const canalItem = inv.items.find((it) => isCanal(it.description));
@@ -156,12 +159,14 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
     totals.recalculari += inv.recalculari;
     totals.penalitati += inv.penalitati;
     totals.grandTotal += inv.grandTotal;
-    totals.paid += inv.prevPaid ?? 0;
+    const dv = derived.get(inv.id);
+    const prevPaid = dv ? dv.prevPaid : inv.prevPaid;
+    totals.paid += prevPaid ?? 0;
     return {
       invoiceId: inv.id,
       publicToken: inv.publicToken,
       number: inv.number,
-      status: inv.status,
+      status: (dv?.status ?? inv.status) as InvoiceStatus,
       issueDate: inv.issueDate,
       billingPeriodLabel: inv.billingPeriodLabel,
       sectorNr: inv.sectorNr,
@@ -179,8 +184,8 @@ export async function getPayerStatement(clientId: string, opts: { forPortal?: bo
       grandTotal: inv.grandTotal,
       currency: inv.currency,
       dueDate: inv.dueDate,
-      prevPaid: inv.prevPaid,
-      paidAmount: inv.paidAmount,
+      prevPaid,
+      paidAmount: dv ? dv.paidAmount : inv.paidAmount,
     };
   });
 

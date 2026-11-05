@@ -16,7 +16,7 @@ const C = { brand: "#0d9488", brandDark: "#0f766e", brandSoft: "#ccfbf1", ink: "
 const STATUS: Record<string, { label: string; fg: string; bg: string }> = {
   DRAFT: { label: "Ciornă", fg: "#475569", bg: "#e2e8f0" },
   SENT: { label: "Trimisă", fg: "#1d4ed8", bg: "#dbeafe" },
-  PAID: { label: "Plătită", fg: "#15803d", bg: "#dcfce7" },
+  PAID: { label: "Achitată", fg: "#15803d", bg: "#dcfce7" },
   OVERDUE: { label: "Restantă", fg: "#b45309", bg: "#fef3c7" },
   CANCELLED: { label: "Anulată", fg: "#b91c1c", bg: "#fee2e2" },
 };

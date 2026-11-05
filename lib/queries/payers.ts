@@ -7,7 +7,7 @@ import { cachedAsync } from "../ttl-cache";
 import { contractDate, contractFilterBounds, contractKey, type ContractExpFilter } from "../contract-expiry";
 import { metrologyFilterBounds, type MetrologyFilter } from "../metrology";
 import { payerIssueBounds, type PayerIssueFilter } from "../meter-issue-register";
-import { matchesPayBal } from "../payment-chain";
+import { derivePayerInvoices, matchesPayBal } from "../payment-chain";
 
 const PAGE_SIZE = 50;
 /** Câți plătitori pe pagină alege utilizatorul (?perPage=) — plafonat ca să nu încărcăm mii de rânduri odată. */
@@ -46,7 +46,7 @@ export type PayerRow = {
 
 export type PayerSector = "privat" | "comunal";
 export type PayerDebtFilter = "has" | "none";
-export type PayerBalanceFilter = "owes" | "advance" | "paidprev" | "partial" | "unpaid";
+export type PayerBalanceFilter = "settled" | "owes" | "advance" | "paidprev" | "partial" | "unpaid";
 export type PayerSort = "name" | "debtDesc" | "debtAsc" | "installDesc" | "installAsc";
 
 const SECTOR_VALUE: Record<PayerSector, string> = {
@@ -702,7 +702,7 @@ export async function getPayer(id: string): Promise<PayerDetail | null> {
 }
 
 export async function getPayerInvoices(clientId: string) {
-  return prisma.invoice.findMany({
+  const rows = await prisma.invoice.findMany({
     where: { clientId },
     orderBy: { issueDate: "desc" },
     select: {
@@ -722,6 +722,12 @@ export async function getPayerInvoices(clientId: string) {
       datoriiAvans: true,
       kind: true,
     },
+  });
+  // statusul și plățile din lanțul de facturi, calculate pe loc (corecte imediat, fără să așteptăm recalcularea în masă)
+  const derived = derivePayerInvoices(rows);
+  return rows.map((r) => {
+    const d = derived.get(r.id);
+    return d ? { ...r, status: d.status as InvoiceStatus, paidAmount: d.paidAmount, prevPaid: d.prevPaid } : { ...r, paidAmount: null as number | null, prevPaid: null as number | null };
   });
 }
 

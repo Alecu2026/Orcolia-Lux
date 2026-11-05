@@ -29,7 +29,7 @@ export type NotifyFilters = {
   invoiceStatus: string;
   debt: "" | "has" | "none";
   /** Plățile deduse din lanțul de facturi, pe factura aleasă (cea a lunii alese, altfel ultima): cu datorie / cu avans / cu plată primită înainte de factură / parțial achitate. */
-  bal: "" | "owes" | "advance" | "paidprev" | "partial" | "unpaid";
+  bal: "" | "settled" | "owes" | "advance" | "paidprev" | "partial" | "unpaid";
   minDebt: string;
   maxDebt: string;
   /** Ce date de contact are plătitorul (necesare pentru a-l putea notifica). */
@@ -166,7 +166,7 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     uloc: cleanSectorList(get(src, "uloc")),
     invoiceStatus: ONE_OF(get(src, "invoiceStatus"), ["DRAFT", "SENT", "PAID", "OVERDUE", "CANCELLED"] as const),
     debt: ONE_OF(get(src, "debt"), ["has", "none"] as const),
-    bal: ONE_OF(get(src, "bal"), ["owes", "advance", "paidprev", "partial", "unpaid"] as const),
+    bal: ONE_OF(get(src, "bal"), ["settled", "owes", "advance", "paidprev", "partial", "unpaid"] as const),
     minDebt: cleanMoney(get(src, "minDebt")),
     maxDebt: cleanMoney(get(src, "maxDebt")),
     contact: ONE_OF(get(src, "contact"), ["email", "phone", "both", "any", "none", "noemail", "nophone"] as const),

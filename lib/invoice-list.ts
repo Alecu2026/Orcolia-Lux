@@ -174,7 +174,7 @@ export type InvKind = "" | "APA_CANAL" | "STANDARD";
 /** Filtru pe servicii (facturi Apă-Canal): doar apă / doar canalizare / amândouă / fără servicii. */
 export type InvService = "" | "WATER" | "SEWER" | "BOTH" | "NONE";
 const SERVICE_CODE: Record<Exclude<InvService, "">, InvSvc> = { NONE: 0, WATER: 1, SEWER: 2, BOTH: 3 };
-export type InvQuick = "" | "unpaid" | "overdue" | "nodue" | "paidnodate" | "debt" | "advance" | "paidprev" | "partial";
+export type InvQuick = "" | "unpaid" | "overdue" | "nodue" | "paidnodate" | "settled" | "debt" | "advance" | "paidprev" | "partial";
 export type InvSort = "" | "number" | "client" | "issue" | "due" | "paid" | "total" | "status";
 
 export type InvQuery = {
@@ -310,6 +310,7 @@ export function queryInvoices(rows: InvRow[], f: InvQuery, nowMs: number = Date.
       if (f.quick === "nodue" && r.dueMs != null) continue;
       if (f.quick === "paidnodate" && !(r.status === "PAID" && r.paidMs == null)) continue;
       // plățile deduse din lanțul de facturi (datorie / avans pe factură): vezi lib/payment-chain.ts
+      if (f.quick === "settled" && !(r.kind === "APA_CANAL" && matchesPayBal("settled", r))) continue;
       if (f.quick === "debt" && !(r.kind === "APA_CANAL" && matchesPayBal("owes", r))) continue;
       if (f.quick === "advance" && !(r.kind === "APA_CANAL" && matchesPayBal("advance", r))) continue;
       if (f.quick === "paidprev" && !matchesPayBal("paidprev", r)) continue;
@@ -365,8 +366,11 @@ export function queryInvoices(rows: InvRow[], f: InvQuery, nowMs: number = Date.
  * Serverul trimite rânduri defalcate pe (serviciu, status, valută), iar browserul le adună după filtrele active (status, valută).
  */
 export type InvServiceKey = "WATER" | "SEWER" | "BOTH" | "NONE";
-/** n = facturi, total = Σ total de plată, calc = Σ calculat (total − datorii / avans: venitul facturat în perioadă), paid = Σ achitat (la facturile achitate), rest = Σ rest de plată (la cele neachitate). */
-export type InvServiceRow = { svc: InvServiceKey; status: string; currency: string; n: number; total: number; calc: number; paid: number; rest: number };
+/**
+ * n = facturi, total = Σ total de plată, calc = Σ calculat (total − datorii / avans: venitul facturat în perioadă). Plățile se citesc din soldul de PE factură (plata facturii anterioare):
+ * settled = câte au achitat factura anterioară, paid = Σ încasat între facturi, owes = câte au datorie reportată, rest = Σ datorie reportată.
+ */
+export type InvServiceRow = { svc: InvServiceKey; status: string; currency: string; n: number; total: number; calc: number; settled: number; paid: number; owes: number; rest: number };
 
 const SVC_KEYS: InvServiceKey[] = ["NONE", "WATER", "SEWER", "BOTH"];
 
@@ -381,14 +385,13 @@ export function groupServiceRows(rows: InvRow[]): InvServiceRow[] {
     const svc = SVC_KEYS[r.svc] ?? "NONE";
     const k = svc + "|" + r.status + "|" + r.currency;
     let cur = acc.get(k);
-    if (!cur) acc.set(k, (cur = { svc, status: r.status, currency: r.currency, n: 0, total: 0, calc: 0, paid: 0, rest: 0 }));
+    if (!cur) acc.set(k, (cur = { svc, status: r.status, currency: r.currency, n: 0, total: 0, calc: 0, settled: 0, paid: 0, owes: 0, rest: 0 }));
     cur.n++;
     cur.total += r.grandTotal;
     cur.calc += r.grandTotal - r.debt; // total de plată = calculat + datorii / avans
-    // achitat: cât s-a plătit din factură (dedus din lanț); la cele marcate achitate fără să se știe cât (ultima factură), tot totalul pozitiv
-    if (r.status === "PAID") cur.paid += r.paid ?? Math.max(0, r.grandTotal);
-    // rest de plată: la cele neachitate (trimise / restante), totalul pozitiv minus ce s-a achitat parțial
-    else if (r.status === "SENT" || r.status === "OVERDUE") cur.rest += Math.max(0, r.grandTotal - (r.paid ?? 0));
+    if (matchesPayBal("settled", r)) cur.settled++; // a achitat factura anterioară
+    if (r.prevPaid != null && r.prevPaid > 0.005) cur.paid += r.prevPaid; // cât a plătit între facturi
+    if (matchesPayBal("owes", r)) { cur.owes++; cur.rest += r.debt; } // datoria reportată
   }
   return [...acc.values()].map((x) => ({ ...x, total: round2(x.total), calc: round2(x.calc), paid: round2(x.paid), rest: round2(x.rest) }));
 }
@@ -401,7 +404,7 @@ export function sumServiceReport(rows: InvServiceRow[], currency: string) {
   for (const r of ok) byCur.set(r.currency, (byCur.get(r.currency) ?? 0) + r.n);
   let main = currency || "MDL", best = -1;
   if (!currency) for (const [c, n] of byCur) if (n > best) { main = c; best = n; }
-  const zero = () => ({ n: 0, total: 0, calc: 0, paidN: 0, paid: 0, unpaidN: 0, rest: 0, overdueN: 0 });
+  const zero = () => ({ n: 0, total: 0, calc: 0, settledN: 0, paid: 0, owesN: 0, rest: 0, overdueN: 0 });
   const out: Record<InvServiceKey, ReturnType<typeof zero>> = { WATER: zero(), SEWER: zero(), BOTH: zero(), NONE: zero() };
   for (const r of ok) {
     if (r.currency !== main) continue;
@@ -409,8 +412,11 @@ export function sumServiceReport(rows: InvServiceRow[], currency: string) {
     o.n += r.n;
     o.total += r.total;
     o.calc += r.calc;
-    if (r.status === "PAID") { o.paidN += r.n; o.paid += r.paid; }
-    else if (r.status === "SENT" || r.status === "OVERDUE") { o.unpaidN += r.n; o.rest += r.rest; if (r.status === "OVERDUE") o.overdueN += r.n; }
+    o.settledN += r.settled;
+    o.paid += r.paid;
+    o.owesN += r.owes;
+    o.rest += r.rest;
+    if (r.status === "OVERDUE") o.overdueN += r.n;
   }
   const all = zero();
   for (const k of Object.keys(out) as InvServiceKey[]) {
@@ -466,7 +472,7 @@ const KEYS: [keyof InvQuery, string][] = [
   ["q", "q"], ["kind", "kind"], ["service", "svc"], ["quick", "quick"], ["min", "min"], ["max", "max"], ["currency", "cur"],
   ["issueFrom", "if"], ["issueTo", "it"], ["dueFrom", "df"], ["dueTo", "dt"], ["paidFrom", "pf"], ["paidTo", "pt"], ["sort", "sort"], ["dir", "dir"],
 ];
-const QUICK = new Set(["unpaid", "overdue", "nodue", "paidnodate", "debt", "advance", "paidprev", "partial"]);
+const QUICK = new Set(["unpaid", "overdue", "nodue", "paidnodate", "settled", "debt", "advance", "paidprev", "partial"]);
 const SORTS = new Set(["number", "client", "issue", "due", "paid", "total", "status"]);
 
 export function queryToParams(f: InvQuery, sp: URLSearchParams = new URLSearchParams()): URLSearchParams {

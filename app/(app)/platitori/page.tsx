@@ -7,6 +7,7 @@ import { can } from "@/lib/permissions";
 import { env } from "@/lib/env";
 import ImportButton from "@/app/components/ImportButton";
 import ApaCanalApiSync from "@/app/components/ApaCanalApiSync";
+import PaymentChainRunner from "@/app/components/PaymentChainRunner";
 import PayerNotifyManager from "@/app/components/PayerNotifyManager";
 import { timed } from "@/lib/timing";
 import { ssrPayerPage } from "@/lib/services/payer-cache";
@@ -62,6 +63,7 @@ export default async function PayersPage({
           >
             {t("Tabel 1C")}
           </Link>
+          {can(user, "admin") && <PaymentChainRunner />}
           {canSyncApi && <ApaCanalApiSync />}
           {canImport && <ImportButton entity="payers" hideAi />}
         </div>

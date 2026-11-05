@@ -633,7 +633,7 @@ export async function getInvoiceServiceReport(period: string): Promise<{ rows: I
     for (const r of m.rows) {
       const k = `${r.svc}|${r.status}|${r.currency}`;
       const cur = acc.get(k);
-      if (cur) { cur.n += r.n; cur.total += r.total; cur.calc += r.calc; cur.paid += r.paid; cur.rest += r.rest; } else acc.set(k, { ...r });
+      if (cur) { cur.n += r.n; cur.total += r.total; cur.calc += r.calc; cur.settled += r.settled; cur.paid += r.paid; cur.owes += r.owes; cur.rest += r.rest; } else acc.set(k, { ...r });
     }
   }
   return { rows: [...acc.values()], incomplete: perMonth.some((m) => m.incomplete) };
@@ -747,7 +747,8 @@ async function queryServer(q: InvQuery, period: string, months: MonthCount[], pa
   if (q.quick === "debt") and.push({ kind: "APA_CANAL" }, { datoriiAvans: { gt: 0.005 } });
   if (q.quick === "advance") and.push({ kind: "APA_CANAL" }, { datoriiAvans: { lt: -0.005 } });
   if (q.quick === "paidprev") and.push({ prevPaid: { gt: 0.005 } });
-  if (q.quick === "partial") and.push(unpaid, { paidAmount: { gt: 0.005 } });
+  if (q.quick === "settled") and.push({ kind: "APA_CANAL" }, { prevPaid: { gt: 0.005 } }, { datoriiAvans: { lte: 0.005 } });
+  if (q.quick === "partial") and.push({ prevPaid: { gt: 0.005 } }, { datoriiAvans: { gt: 0.005 } });
   const dayStart = (key: string) => {
     const d = dayOfKey(key);
     return d == null ? null : new Date(d * 86_400_000 - bucharestOffsetMs(d * 86_400_000));
