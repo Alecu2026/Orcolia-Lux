@@ -35,7 +35,7 @@ export default function PortalRegisterConfirmForm({
       <input
         name="newPassword"
         type="password"
-        placeholder={t("Parolă (minim 10 caractere)")}
+        placeholder={t("Parolă (minim 6 caractere)")}
         autoComplete="new-password"
         required
         minLength={10} maxLength={128}

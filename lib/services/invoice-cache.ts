@@ -289,8 +289,28 @@ export function rebuildInvoiceShard(month: string, reason = "manual", carry = fa
     // Serviciile facturilor: dintr-un calcul proaspăt (vezi `enqueueSvcFill`), sau — la o modificare minoră — din luna veche aflată în memorie; ce nu se știe încă rămâne 0 și se completează în fundal.
     const fresh = SVC.maps.get(month);
     const known = fresh && Date.now() - fresh.at < SVC_MAP_TTL_MS ? fresh.map : null;
-    const prev = S.l1.get(month);
+    // serviciile unei facturi nu se schimbă când se schimbă statusul / plățile: se păstrează din luna veche — din memorie sau, dacă serverul abia a pornit, din versiunea salvată în baza de date
+    // (altfel, după fiecare recalculare a plăților toate facturile ar apărea „Fără servicii” până la agregarea grea din fundal)
+    let prev = S.l1.get(month);
+    if (!known && carry && (!prev || prev.incomplete)) prev = (await loadFromDb(month).catch(() => null)) ?? undefined;
     const carried: Map<string, InvSvc> | null = !known && carry && prev && !prev.incomplete ? new Map(prev.rows.filter((r) => r.kind === "APA_CANAL").map((r): [string, InvSvc] => [r.id, r.svc])) : null;
+    // facturile noi (care nu erau în luna veche): serviciile lor se calculează direct (câteva căutări de linii), fără agregarea întregii luni
+    if (carried) {
+      const fresh2 = invoices.filter((r) => r.kind === "APA_CANAL" && !carried.has(r.id)).map((r) => r.id);
+      if (fresh2.length > 0 && fresh2.length <= 3000) {
+        for (let i = 0; i < fresh2.length; i += 500) {
+          const ids = fresh2.slice(i, i + 500);
+          const items = await prisma.invoiceItem.findMany({ where: { invoiceId: { in: ids } }, select: { invoiceId: true, description: true, quantity: true, lineTotal: true } });
+          const byInv = new Map<string, { description: string; quantity: number; lineTotal: number }[]>();
+          for (const it of items) {
+            const a = byInv.get(it.invoiceId);
+            if (a) a.push(it);
+            else byInv.set(it.invoiceId, [it]);
+          }
+          for (const id of ids) carried.set(id, serviceOfItems(byInv.get(id) ?? []));
+        }
+      }
+    }
     const svcSrc: Map<string, InvSvc> | null = known ?? carried;
     if (known) SVC.maps.delete(month);
     let incomplete = false;
@@ -387,7 +407,7 @@ async function resolveShard(month: string): Promise<InvoiceShard> {
       }
     }
   }
-  return rebuildInvoiceShard(month, meta ? "modificat" : "lipsește");
+  return rebuildInvoiceShard(month, meta ? "modificat" : "lipsește", !!meta); // serviciile se păstrează din versiunea salvată
 }
 
 /** Snapshot-ul unei luni: din memorie, altfel din baza de date, altfel reconstruit (doar când lipsește sau a fost modificat). */
@@ -534,7 +554,7 @@ export async function invalidateInvoices(opts: { soft?: boolean; months?: string
     console.error("[invoice-cache] nu am putut marca modificarea:", e);
   }
   // lunile deja în memorie se reîmprospătează singure (la prima cerere sau în fundal); luna cea mai recentă o refacem din timp
-  for (const m of S.l1.keys()) scheduleRebuild(m, soft ? SOFT_DELAY_MS : HARD_DELAY_MS, soft ? "modificare minoră" : "după modificare");
+  for (const m of S.l1.keys()) scheduleRebuild(m, soft ? SOFT_DELAY_MS : HARD_DELAY_MS, soft ? "modificare minoră" : "după modificare", true);
 }
 
 /** După un import / o sincronizare în masă: toate lunile sunt depășite; luna cea mai recentă se reface acum (cititorul n-o mai așteaptă). */
@@ -542,7 +562,7 @@ export async function rebuildInvoiceSnap(reason = "manual"): Promise<void> {
   if (DEMO) return;
   await invalidateInvoices();
   const months = await getInvoiceMonths();
-  if (months[0]) await rebuildInvoiceShard(months[0].month, reason);
+  if (months[0]) await rebuildInvoiceShard(months[0].month, reason, true);
 }
 
 /** Pentru cron-ul zilnic: reface luna curentă și cea precedentă dacă lipsesc, sunt depășite sau au > 20 h. */

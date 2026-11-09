@@ -262,11 +262,11 @@ export async function updateUser(
         taskViewMemberIds: parseIdList(formData, "taskViewMemberIds"),
         ...(newTeamIds ? { teams: { set: newTeamIds.map((tid) => ({ id: tid })) } } : {}),
         ...(newSectionId !== undefined ? { sectionId: newSectionId } : {}),
-        ...(newPassword.length >= 8 ? { passwordHash: await hashPassword(newPassword) } : {}),
+        ...(newPassword !== "" ? { passwordHash: await hashPassword(newPassword) } : {}),
       },
     });
     // Cont dezactivat sau parolă schimbată: sesiunile existente nu mai trebuie să funcționeze.
-    if ((!isActive && before.isActive) || newPassword.length >= 8) {
+    if ((!isActive && before.isActive) || newPassword !== "") {
       if (id !== admin.id) await prisma.session.deleteMany({ where: { userId: id } });
     }
   } catch (e) {
@@ -288,7 +288,7 @@ export async function updateUser(
     details: before
       ? {
           changes: diffFields(before, { name, email, role, isActive }, USER_SPEC),
-          extra: newPassword.length >= 8 ? [{ label: "Parolă", value: "schimbată de administrator" }] : undefined,
+          extra: newPassword !== "" ? [{ label: "Parolă", value: "schimbată de administrator" }] : undefined,
         }
       : null,
   });
