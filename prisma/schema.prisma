@@ -1426,6 +1426,9 @@ model MeterReading {
   /// plătitorul a contestat citirea din emailul de verificare („nu e corectă / nu eu am trimis-o”); personalul e anunțat
   disputedAt   DateTime?
   disputeNote  String?
+  /// trimisă către 1C (vezi lib/services/onec-readings.ts): momentul și indexul trimis. Dacă indexul se corectează după trimitere, citirea apare din nou „de trimis”.
+  sent1cAt     DateTime?
+  sent1cValue  Float?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -1433,6 +1436,25 @@ model MeterReading {
   @@index([period, readAt])
   @@index([meterId, readAt])
   @@index([userId, period])
+}
+
+/// Jurnalul trimiterilor de citiri către 1C (o înregistrare per apăsare a butonului „Trimite către 1C” sau per rundă): ce s-a găsit, ce s-a trimis, ce a confirmat 1C.
+model OneCSendLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  at        DateTime @default(now())
+  userId    String?  @db.ObjectId
+  userName  String
+  /// citiri găsite „de trimis” / documente formate / documente trimise și confirmate / documente neconfirmate sau respinse
+  readings  Int
+  documents Int
+  sent      Int
+  failed    Int
+  /// suma lungimilor întoarse de 1C (trebuie să fie egală cu numărul de documente trimise)
+  confirmed Int
+  /// JSON: pe surse, pe loturi, motive de eșec
+  details   String?
+
+  @@index([at])
 }
 
 /// Rută de citire: ce contoare (după datele din 1C: sector / localitate / stradă) citește un cititor și în ce zile ale lunii.

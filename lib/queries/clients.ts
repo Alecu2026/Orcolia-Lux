@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../prisma";
 import { DEMO, demoClients } from "../demo";
 import { clientNamesFor } from "./client-names";
-import { searchClientIndex } from "../services/client-search";
+import { searchClientIndex, type ClientHit, type ClientKind } from "../services/client-search";
 
 export type ClientListItem = {
   id: string;
@@ -100,7 +100,7 @@ export async function listClients(
 }
 
 /** Search rapid pentru autocomplete (formular programare). */
-export async function searchClients(_userId: string, q: string, limit = 8) {
+export async function searchClients(_userId: string, q: string, limit = 8, kind?: ClientKind): Promise<ClientHit[]> {
   const search = q.trim();
   if (!search) return [];
   if (DEMO) {
@@ -111,22 +111,33 @@ export async function searchClients(_userId: string, q: string, limit = 8) {
           (c.phone ?? "").includes(search),
       )
       .slice(0, limit)
-      .map((c) => ({ id: c.id, name: c.name, phone: c.phone }));
+      .map((c) => ({ id: c.id, name: c.name, phone: c.phone, account: null, payer: false }));
   }
   // Din indexul din memorie (vezi lib/services/client-search.ts); dacă nu e la zi (tocmai s-a scris un client) — din baza de date, ca până acum.
-  const hit = searchClientIndex(search, limit);
+  const hit = searchClientIndex(search, limit, kind);
   if (hit) return hit;
-  return prisma.client.findMany({
-    where: {
-      OR: [
-        { name: { contains: search, mode: "insensitive" } },
-        { phone: { contains: search } },
-      ],
-    },
-    select: { id: true, name: true, phone: true },
+  const textMatch = [
+    { name: { contains: search, mode: "insensitive" as const } },
+    { phone: { contains: search } },
+    ...(kind === "payer" ? [{ meterSeries: { contains: search } }, { apaCanalContract: { contains: search } }] : []),
+  ];
+  const and: object[] = [{ OR: textMatch }];
+  if (kind === "payer") and.push({ OR: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] });
+  if (kind === "client") and.push({ NOT: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] });
+  const rows = await prisma.client.findMany({
+    where: { AND: and },
+    select: { id: true, name: true, phone: true, meterSeries: true, apaCanalContract: true },
     take: limit,
     orderBy: { name: "asc" },
   });
+  return rows.map((r) => ({ id: r.id, name: r.name, phone: r.phone, account: r.meterSeries ?? r.apaCanalContract ?? null, payer: !!(r.meterSeries || r.apaCanalContract) }));
+}
+
+/** Un client după id (la editare: ca să se știe dacă e plătitor sau client obișnuit și cum se numește). */
+export async function clientBrief(id: string): Promise<ClientHit | null> {
+  if (DEMO) return null;
+  const r = await prisma.client.findUnique({ where: { id }, select: { id: true, name: true, phone: true, meterSeries: true, apaCanalContract: true } });
+  return r ? { id: r.id, name: r.name, phone: r.phone, account: r.meterSeries ?? r.apaCanalContract ?? null, payer: !!(r.meterSeries || r.apaCanalContract) } : null;
 }
 
 /**

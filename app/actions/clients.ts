@@ -10,8 +10,9 @@ import { clientSchema } from "@/lib/validation";
 import { DEMO } from "@/lib/demo";
 import { logAudit } from "@/lib/services/audit";
 import { CLIENT_SPEC, diffFields } from "@/lib/services/audit-diff";
+import { linkCallsToClient } from "@/lib/services/phone-lookup";
 
-export type ClientState = { ok?: boolean; error?: string; id?: string } | undefined;
+export type ClientState = { ok?: boolean; error?: string; id?: string; name?: string } | undefined;
 
 const actor = (u: CurrentUser) => ({ id: u.id, name: u.name, role: u.role, isSuperAdmin: u.isSuperAdmin });
 
@@ -40,6 +41,8 @@ export async function createClient(
     return { error: parsed.error.issues[0]?.message ?? "Date invalide." };
   }
   const d = parsed.data;
+  // adresa (opțională) se păstrează în „adresa de consum”, ca la plătitori: apare și în popup-ul apelului și pe fișă
+  const address = clean(formData.get("address"))?.slice(0, 300) ?? null;
   const client = await prisma.client.create({
     data: {
       userId: user.id,
@@ -48,13 +51,18 @@ export async function createClient(
       email: d.email || null,
       telegramChatId: d.telegramChatId || null,
       notes: d.notes || null,
+      consumAddress: address,
     },
     select: { id: true },
   });
   await logAudit(actor(user), { action: "client.create", module: "Clients", objectId: client.id, objectName: d.name });
+  // creat dintr-un apel PBX: apelul (și celelalte de la același număr) se leagă de clientul nou, ca numele lui să apară în listă și în popup
+  if (d.phone || clean(formData.get("callId"))) {
+    await linkCallsToClient(client.id, d.name, d.phone || null, clean(formData.get("callId"))).catch((e) => console.error("[clients] legarea apelurilor PBX:", String((e as Error)?.message ?? e).slice(0, 160)));
+  }
   revalidatePath("/clients");
   updateTag("clients");
-  return { ok: true, id: client.id };
+  return { ok: true, id: client.id, name: d.name };
 }
 
 export type QuickCreateResult =
@@ -147,13 +155,15 @@ export async function updateClient(
     return { error: parsed.error.issues[0]?.message ?? "Date invalide." };
   }
   const d = parsed.data;
+  // ID-ul Telegram nu mai e în formularul clientului: dacă lipsește din cerere, valoarea existentă rămâne neatinsă
+  const tgGiven = formData.has("telegramChatId");
   await prisma.client.update({
     where: { id },
     data: {
       name: d.name,
       phone: d.phone || null,
       email: d.email || null,
-      telegramChatId: d.telegramChatId || null,
+      ...(tgGiven ? { telegramChatId: d.telegramChatId || null } : {}),
       notes: d.notes || null,
     },
   });
@@ -166,7 +176,7 @@ export async function updateClient(
     oldValue: JSON.stringify({ name: owned.name, phone: owned.phone, email: owned.email }),
     newValue: JSON.stringify({ name: d.name, phone: d.phone || null, email: d.email || null }),
     details: {
-      changes: diffFields(owned, { name: d.name, phone: d.phone || null, email: d.email || null, telegramChatId: d.telegramChatId || null, notes: d.notes || null }, CLIENT_SPEC),
+      changes: diffFields(owned, { name: d.name, phone: d.phone || null, email: d.email || null, telegramChatId: tgGiven ? d.telegramChatId || null : owned.telegramChatId, notes: d.notes || null }, CLIENT_SPEC),
     },
   });
   revalidatePath("/clients");

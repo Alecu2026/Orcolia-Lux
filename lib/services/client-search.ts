@@ -14,7 +14,7 @@ import { clientSearchEpoch } from "../lookup-memory";
 const MAX_AGE_MS = 5 * 60_000;
 const MIN_REBUILD_MS = 15_000;
 
-type Index = { builtAt: number; epoch: number; ids: string[]; names: string[]; lower: string[]; phones: string[] };
+type Index = { builtAt: number; epoch: number; ids: string[]; names: string[]; lower: string[]; phones: string[]; /** contul personal / nr. contractului 1C (gol la clienții obișnuiți): are doar plătitorul */ accts: string[] };
 type State = { idx: Index | null; building: Promise<void> | null; lastStart: number };
 const g = globalThis as unknown as { __clientSearch?: State };
 const S: State = (g.__clientSearch ??= { idx: null, building: null, lastStart: 0 });
@@ -22,7 +22,7 @@ const S: State = (g.__clientSearch ??= { idx: null, building: null, lastStart: 0
 async function build(): Promise<void> {
   const t0 = Date.now();
   const epoch = clientSearchEpoch();
-  const rows = await prisma.client.findMany({ select: { id: true, name: true, phone: true } });
+  const rows = await prisma.client.findMany({ select: { id: true, name: true, phone: true, meterSeries: true, apaCanalContract: true } });
   // aceeași ordine ca MongoDB (comparare pe octeți UTF-8 ≈ pe unități UTF-16 pentru textul obișnuit)
   rows.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const idx: Index = {
@@ -32,6 +32,7 @@ async function build(): Promise<void> {
     names: rows.map((r) => r.name),
     lower: rows.map((r) => r.name.toLowerCase()),
     phones: rows.map((r) => r.phone ?? ""),
+    accts: rows.map((r) => r.meterSeries ?? r.apaCanalContract ?? ""),
   };
   S.idx = idx;
   console.log(`[client-search] index reconstruit: ${rows.length} clienți, ${Date.now() - t0} ms`);
@@ -50,16 +51,24 @@ function startBuild(): void {
 /**
  * Primele `limit` potriviri (nume conține textul, fără diferență de majuscule, SAU telefon îl conține), în ordinea numelui; `null` dacă indexul nu e (încă) la zi — atunci se folosește baza de date.
  */
-export function searchClientIndex(q: string, limit: number): { id: string; name: string; phone: string | null }[] | null {
+export type ClientKind = "payer" | "client";
+export type ClientHit = { id: string; name: string; phone: string | null; /** contul personal / nr. contractului (doar la plătitori) */ account: string | null; payer: boolean };
+
+export function searchClientIndex(q: string, limit: number, kind?: ClientKind): ClientHit[] | null {
   const cur = S.idx;
   const fresh = !!cur && cur.epoch === clientSearchEpoch() && Date.now() - cur.builtAt < MAX_AGE_MS;
   if (!fresh && Date.now() - S.lastStart >= MIN_REBUILD_MS) startBuild();
   if (!fresh || !cur) return null;
   const needle = q.toLowerCase();
-  const out: { id: string; name: string; phone: string | null }[] = [];
-  const { lower, phones } = cur;
+  const out: ClientHit[] = [];
+  const { lower, phones, accts } = cur;
   for (let i = 0; i < lower.length && out.length < limit; i++) {
-    if (lower[i].includes(needle) || (phones[i] !== "" && phones[i].includes(q))) out.push({ id: cur.ids[i], name: cur.names[i], phone: phones[i] === "" ? null : phones[i] });
+    const payer = accts[i] !== "";
+    if (kind === "payer" ? !payer : kind === "client" ? payer : false) continue;
+    // numele sau telefonul; la plătitori și contul personal / contractul (căutare după număr)
+    if (lower[i].includes(needle) || (phones[i] !== "" && phones[i].includes(q)) || (payer && needle.length >= 3 && accts[i].toLowerCase().includes(needle))) {
+      out.push({ id: cur.ids[i], name: cur.names[i], phone: phones[i] === "" ? null : phones[i], account: payer ? accts[i] : null, payer });
+    }
   }
   return out;
 }

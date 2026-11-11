@@ -24,7 +24,8 @@ import { uploadTaskFile } from "@/lib/upload-client";
 import { useToast } from "./toast";
 import { IconTrash, IconX, IconChevronLeft, IconChevronRight, IconPencil } from "./icons";
 import CardActionsMenu from "./CardActionsMenu";
-import QuickSelect from "./QuickSelect";
+import ProjectPicker from "./ProjectPicker";
+import ClientPayerPicker from "./ClientPayerPicker";
 import MultiAssignPicker from "./MultiAssignPicker";
 import AssignmentLocked from "./AssignmentLocked";
 import AddressInput from "./AddressInput";
@@ -1225,16 +1226,8 @@ export function EditDialog({
             <option value="HIGH">{m.priority.HIGH}</option>
             <option value="URGENT">{m.priority.URGENT}</option>
           </select>
-          <select name="projectId" defaultValue={task.projectId ?? ""} className={dlgInput}>
-            <option value="">{m.tasks.noProjectEdit}</option>
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          {clients.length > 0 && (
-            <select name="clientId" defaultValue={task.clientId ?? ""} className={dlgInput}>
-              <option value="">{m.tasks.noClient}</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
+          <ProjectPicker projects={projects} defaultId={task.projectId ?? ""} />
+          <ClientPayerPicker defaultId={task.clientId ?? ""} />
           <AddressInput defaultValue={task.address ?? ""} className={dlgInput} onChange={(v) => { addressRef.current = v; }} />
           <div className="grid gap-2 sm:grid-cols-2">
             <ServiceTypeSelect defaultValue={task.serviceType ?? ""} />
@@ -1404,7 +1397,7 @@ export function CreateDialog({
             {templates && templates.length > 0 && onPickTemplate && (
               <select
                 value={prefill?.templateId ?? ""}
-                onChange={(e) => (e.target.value ? onPickTemplate(e.target.value, (formRef.current?.elements.namedItem("clientId") as HTMLSelectElement | null)?.value || undefined) : onClearTemplate?.())}
+                onChange={(e) => (e.target.value ? onPickTemplate(e.target.value, (formRef.current?.elements.namedItem("clientId") as HTMLInputElement | null)?.value || undefined) : onClearTemplate?.())}
                 aria-label={t("Folosește un șablon")}
                 title={t("Folosește un șablon")}
                 className="h-8 max-w-[9.5rem] cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 text-[11px] text-ink-soft outline-none focus:border-brand"
@@ -1434,27 +1427,13 @@ export function CreateDialog({
               <option value="URGENT">{m.priority.URGENT}</option>
             </select>
           </div>
-          <QuickSelect
-            name="projectId"
-            options={projects}
-            placeholder={m.tasks.noProject}
-            optionPrefix="Proiect: "
+          <ProjectPicker
+            projects={projects}
             canCreate={canCreateProject}
-            createLabel="proiect"
             onQuickCreate={quickCreateProject}
-            defaultValue={prefill?.projectId || (initialProjectId ?? "")}
+            defaultId={prefill?.projectId || (initialProjectId ?? "")}
           />
-          {clients.length > 0 && (
-            <select
-              name="clientId"
-              defaultValue={prefill?.clientId || (initialClientId ?? "")}
-              onChange={(e) => void fillPayerVariables(e.target.value)}
-              className={dlgInput}
-            >
-              <option value="">{m.tasks.noClient}</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
+          <ClientPayerPicker defaultId={prefill?.clientId || (initialClientId ?? "")} onPick={(id) => void fillPayerVariables(id)} />
           <AddressInput defaultValue={prefill?.address ?? initialAddress ?? ""} className={dlgInput} />
           <div className="grid gap-2 sm:grid-cols-2">
             <ServiceTypeSelect defaultValue="" />

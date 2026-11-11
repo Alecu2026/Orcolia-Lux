@@ -203,7 +203,7 @@ function CallCard({ call: c, canEdit, canTask, canClient, onDismiss }: { call: A
       <div className="mb-2 flex flex-wrap gap-1.5">
         {ctx?.isPayer && <Link href={`/platitori/${ctx.clientId}`} className={`${btn} bg-brand text-white hover:bg-brand-strong`}>{tr("Fișa plătitorului →")}</Link>}
         {q && <Link href={`/platitori?q=${q}`} className={btn}>{tr("🔎 Filtrează în Plătitori")}</Link>}
-        {!ctx && canClient && <Link href="/clients?create=1" className={btn}>{tr("+ Client nou")}</Link>}
+        {!ctx && canClient && <Link href={`/clients?create=1&pphone=${encodeURIComponent(c.phone ?? "")}&pcall=${encodeURIComponent(c.callId)}`} className={btn}>{tr("+ Client nou")}</Link>}
         {canTask && <Link href={prefill("ticket")} className={btn}>{tr("🎫 Cerere")}</Link>}
         {canTask && <Link href={prefill("task")} className={btn}>{tr("✔ Sarcină")}</Link>}
         {canTask && (

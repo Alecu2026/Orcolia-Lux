@@ -315,7 +315,7 @@ function CallDialog({ call: c, onClose, onChanged, onPlay, canManage, canTask, c
         <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
           {ctx?.isPayer && <Link href={`/platitori/${ctx.clientId}`} className={`${actBtn} border-brand bg-brand text-white hover:bg-brand-strong`}>{tr("Fișa plătitorului →")}</Link>}
           {q && <Link href={`/platitori?q=${q}`} className={actBtn}>{tr("🔎 Filtrează în Plătitori")}</Link>}
-          {!c.clientId && canClient && <Link href="/clients?create=1" className={actBtn}>{tr("+ Client nou")}</Link>}
+          {!c.clientId && canClient && <Link href={`/clients?create=1&pphone=${encodeURIComponent(c.phone ?? "")}&pcall=${encodeURIComponent(c.callId)}`} className={actBtn}>{tr("+ Client nou")}</Link>}
           {canTask && <Link href={prefill("ticket")} className={actBtn}>{tr("🎫 Cerere")}</Link>}
           {canTask && <Link href={prefill("task")} className={actBtn}>{tr("✔ Sarcină")}</Link>}
         </div>

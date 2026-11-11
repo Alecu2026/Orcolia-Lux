@@ -7,16 +7,19 @@ import { can } from "@/lib/permissions";
 import { CLIENTS_V_COOKIE } from "@/lib/payer-prefs";
 import { CLIENT_HEAD_ROWS, CLIENT_INLINE_MAX, type ClientRow } from "@/lib/clients-snapshot";
 import { getClientSnap } from "@/lib/services/client-cache";
+import { lookupPhonePrefill } from "@/lib/services/phone-lookup";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ create?: string }>;
+  searchParams: Promise<{ create?: string; pphone?: string; pcall?: string }>;
 }) {
   const user = await requirePermission("clients.view");
-  const { create } = await searchParams;
+  const { create, pphone, pcall } = await searchParams;
+  // „+ Client nou” dintr-un apel PBX: numărul vine în adresă; ce știm deja despre el (client existent, abonat din 1C) se completează singur
+  const fromCall = create === "1" && pphone ? { ...(await lookupPhonePrefill(pphone.slice(0, 40))), callId: pcall && pcall.length <= 120 ? pcall : null } : null;
 
   // Lista vine din memoria serverului (lib/services/client-cache.ts). Puțini clienți: toți, direct în pagină, ca înainte. Mulți: doar cei mai recenți; lista completă o aduce browserul o singură
   // dată (IndexedDB, ETag) și filtrarea, sortarea și paginarea rulează tot în browser — vezi DataTable. Fără cache (ex. fără `prisma generate`) se citește ca înainte din baza de date.
@@ -45,7 +48,7 @@ export default async function ClientsPage({
 
   return (
     <div className="w-full">
-      <ClientsTable canExport={can(user, "clients.export")} canImport={can(user, "clients.import")} items={rows} total={total} version={version} openCreate={create === "1"} canEdit={can(user, "clients.edit")} canCreate={can(user, "clients.create")} canDelete={can(user, "clients.delete")} />
+      <ClientsTable canExport={can(user, "clients.export")} canImport={can(user, "clients.import")} items={rows} total={total} version={version} openCreate={create === "1"} prefill={fromCall} canEdit={can(user, "clients.edit")} canCreate={can(user, "clients.create")} canDelete={can(user, "clients.delete")} />
     </div>
   );
 }

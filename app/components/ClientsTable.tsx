@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { deleteClient, updateClientFieldAction, type ClientFieldPatch } from "@/app/actions/clients";
-import ClientDialog, { type ClientEdit } from "./ClientDialog";
+import ClientDialog, { type ClientEdit, type ClientPrefill } from "./ClientDialog";
 import DataTable, { type Col, type Filter } from "./DataTable";
 import { EditableText } from "./InlineCells";
 import ExportButton from "./ExportButton";
@@ -30,9 +30,9 @@ const topBtn =
   "tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]";
 
 /** Clienți (CRM) — același tabel dens, cu filtre locale, ca la Plătitori. Click pe rând = editare. */
-export default function ClientsTable({ items, total = items.length, version = null, openCreate, canEdit = true, canCreate = true, canDelete = true, canExport = true, canImport = true }: {
+export default function ClientsTable({ items, total = items.length, version = null, openCreate, prefill = null, canEdit = true, canCreate = true, canDelete = true, canExport = true, canImport = true }: {
   canExport?: boolean;
-  canImport?: boolean; items: ClientRow[]; /** Câți clienți sunt în total (când pagina a primit doar primele rânduri). */ total?: number; /** Versiunea listei complete de pe server; null = pagina are deja toți clienții. */ version?: string | null; openCreate?: boolean; canEdit?: boolean; canCreate?: boolean; canDelete?: boolean }) {
+  canImport?: boolean; items: ClientRow[]; /** Câți clienți sunt în total (când pagina a primit doar primele rânduri). */ total?: number; /** Versiunea listei complete de pe server; null = pagina are deja toți clienții. */ version?: string | null; openCreate?: boolean; /** Date pentru clientul nou creat dintr-un apel PBX (telefon, nume / adresă găsite). */ prefill?: ClientPrefill | null; canEdit?: boolean; canCreate?: boolean; canDelete?: boolean }) {
   const t = useT();
   const toast = useToast();
   const m = useMessages();
@@ -163,7 +163,7 @@ export default function ClientsTable({ items, total = items.length, version = nu
           </>
         )}
       />
-      {dialog.open && <ClientDialog client={dialog.client} onClose={() => setDialog({ open: false, client: null })} />}
+      {dialog.open && <ClientDialog client={dialog.client} prefill={dialog.client ? null : prefill} onClose={() => setDialog({ open: false, client: null })} />}
     </>
   );
 }

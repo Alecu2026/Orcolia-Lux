@@ -24,6 +24,7 @@ import { dateTag } from "@/lib/i18n/t";
 import { IconChevronLeft, IconChevronRight, IconX } from "./icons";
 import { useToast } from "./toast";
 import ReadingForm from "./ReadingForm";
+import SendTo1cButton from "./SendTo1cButton";
 import VirtualList from "./VirtualList";
 import { useFieldDataset } from "./useFieldDataset";
 import { onQueueSynced, removeQueued, retryQueued, syncNow, useFieldQueue } from "./field-queue";
@@ -613,14 +614,7 @@ export default function FieldReadings({
         ) : ds.loading ? (
           <span className="text-ink-soft">{t("se încarcă lista completă…")}</span>
         ) : null}
-        {canExport && <button
-          type="button"
-          title={t("Trimite citirile către 1C (în pregătire: deocamdată nu face nimic)")}
-          data-send-1c=""
-          className="tap ml-auto inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-brand/50 bg-[var(--color-surface)] px-2 text-[12px] font-medium text-brand hover:bg-brand-soft"
-        >
-          {t("Trimite către 1C")}
-        </button>}
+        {canExport && <SendTo1cButton />}
         {canExport && <button
           type="button"
           onClick={exportCsv}

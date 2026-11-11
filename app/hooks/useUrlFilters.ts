@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 // Params that should NOT be saved/restored (transient navigation state)
-const SKIP = new Set(["page", "open", "create", "project", "date"]);
+const SKIP = new Set(["page", "open", "create", "project", "date", "pphone", "pcall"]);
 
 export function useUrlFilters(storageKey: string) {
   const router = useRouter();

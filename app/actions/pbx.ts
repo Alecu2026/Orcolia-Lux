@@ -6,6 +6,7 @@ import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 
 import { getCallerContext, type CallerContext } from "@/lib/services/pbx";
+import { linkCallsToClient } from "@/lib/services/phone-lookup";
 
 export type PbxEventRow = { id: string; cmd: string | null; receivedAt: string; payload: Record<string, unknown> };
 
@@ -61,4 +62,15 @@ export async function getCallerContextAction(clientId: string): Promise<CallerCo
   if (!can(user, "pbx.view")) return null;
   if (DEMO || !/^[0-9a-f]{24}$/i.test(clientId ?? "")) return null;
   return getCallerContext(clientId);
+}
+
+/** Leagă apelul (și celelalte apeluri fără client de la același număr) de un client existent — când numărul există deja în CRM, dar apelul n-a fost potrivit. */
+export async function linkCallToClientAction(callId: string, clientId: string): Promise<{ ok: true; linked: number } | { ok: false; error: string }> {
+  const user = await requireUser();
+  if (!can(user, "pbx.manage")) return { ok: false, error: "Fără permisiune." };
+  if (DEMO) return { ok: false, error: "Mod demo." };
+  if (typeof callId !== "string" || !callId || callId.length > 120 || !/^[0-9a-f]{24}$/i.test(clientId ?? "")) return { ok: false, error: "Date invalide." };
+  const c = await prisma.client.findUnique({ where: { id: clientId }, select: { id: true, name: true, phone: true } });
+  if (!c) return { ok: false, error: "Clientul nu există." };
+  return { ok: true, linked: await linkCallsToClient(c.id, c.name, c.phone, callId) };
 }

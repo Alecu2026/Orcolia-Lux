@@ -69,6 +69,14 @@ export const env = {
   cronSecret: optional("CRON_SECRET"),
   // Contoarele LoRaWAN: adresa serverului de noduri și codul de acces (antet `token`). Fără LORAWAN_TOKEN extragerea nu pornește.
   lorawan: { url: optional("LORAWAN_URL", "https://node.dns.accahul.md/tocrm"), token: optional("LORAWAN_TOKEN") },
+  // Trimiterea citirilor către 1C (butonul „Trimite către 1C” din Citiri teren): adresa serviciului și codul de acces (antet `token`). Fără ONEC_READINGS_TOKEN trimiterea nu pornește.
+  onecReadings: {
+    url: optional("ONEC_READINGS_URL", "https://node.dns.accahul.md/to1c"),
+    token: optional("ONEC_READINGS_TOKEN"),
+    /** documente într-o cerere (implicit 200) și cereri în paralel (implicit 3) */
+    batch: Math.min(500, Math.max(1, int("ONEC_READINGS_BATCH", 200))),
+    concurrency: Math.min(6, Math.max(1, int("ONEC_READINGS_CONCURRENCY", 3))),
+  },
   emailInboundSecret: optional("EMAIL_INBOUND_SECRET"),
 
   smtp: {
