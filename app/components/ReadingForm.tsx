@@ -307,6 +307,11 @@ export default function ReadingForm({
       }
       return;
     }
+    // poza contorului e obligatorie la o citire (nu și la o neregulă raportată fără index, ex. contor inaccesibil)
+    if (!photo && !photoUrl) {
+      setErr(t("Poza contorului este obligatorie: fă o poză înainte de a salva citirea."));
+      return;
+    }
     if (geo.state !== "ok" && !confirmed && !window.confirm(t("Locația nu a fost obținută. Salvezi citirea fără locație?"))) return;
     if (!navigator.onLine) {
       await saveOffline(confirmed);
@@ -521,7 +526,7 @@ export default function ReadingForm({
       </div>
 
       <div className="mt-3">
-        <p className="mb-1 text-xs font-semibold text-ink-soft">{t("Poza contorului (opțional)")}</p>
+        <p className="mb-1 text-xs font-semibold text-ink-soft">{t("Poza contorului (obligatorie) *")}</p>
         {(preview || photoUrl) && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={preview ?? (photoUrl ? thumbUrl(photoUrl, 640) : "")} decoding="async" alt={t("Poza contorului")} className="mb-2 max-h-48 w-full rounded-xl border border-[var(--color-line)] object-cover" />

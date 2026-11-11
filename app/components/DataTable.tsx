@@ -14,6 +14,8 @@ import {
 import { IconChevronLeft, IconChevronRight } from "./icons";
 import CompactCard, { CompactField } from "./CompactCard";
 import VirtualList from "./VirtualList";
+import FiltersToggle from "./FiltersToggle";
+import { useFiltersOpen } from "./useFiltersOpen";
 import { useT } from "@/lib/i18n/context";
 
 /**
@@ -253,6 +255,7 @@ export default function DataTable<T extends { id: string }>({
   const [vwin, setVwin] = useState({ top: 0, h: 720 });
   const [rowH, setRowH] = useState<number>(ROW_EST.compact);
   const STORAGE = `dt:${storageKey}`;
+  const [fOpen, toggleF] = useFiltersOpen(storageKey);
 
   // Restaurează filtrele/sortarea/numărul de rânduri salvate (după hidratare — serverul nu are localStorage).
   useEffect(() => {
@@ -575,7 +578,8 @@ export default function DataTable<T extends { id: string }>({
   return (
     <div>
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-        {filters.map((f) =>
+        {filters.length > 0 && <FiltersToggle open={fOpen} onToggle={toggleF} activeCount={activeCount} />}
+        {fOpen && filters.map((f) =>
           f.kind === "select" ? (
             <FilterSelect key={f.key} fkey={f.key} label={f.label} options={f.options} value={values[f.key] ?? ""} onPick={pickFilter} />
           ) : f.kind === "date" ? (

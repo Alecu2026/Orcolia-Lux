@@ -30,6 +30,8 @@ export type PbxCallRow = {
   groupName: string | null;
   lineName: string | null;
   note: string | null;
+  /** Adresa clientului potrivit cu apelul (adresa de consum de pe fișa lui), dacă o are. */
+  address: string | null;
 };
 
 export type NotifyCallRow = {
@@ -62,6 +64,8 @@ type N = number | null;
 export type PbxTuple = [
   id: string, callId: string, dir: S, phone: S, e164: S, diversion: S, pbxUser: S, ext: S, status: S, state: S, dur: N, wait: N, atMs: number, lastCmd: S, events: number,
   clientId: S, clientName: S, rec: 0 | 1, rating: N, group: S, line: S, note: S, updatedMs: number,
+  /** adresa clientului (lipsește în listele salvate înainte de această versiune) */
+  address?: S,
 ];
 export type NotifyTuple = [
   id: string, campaignId: string, clientId: string, clientName: string, phone: string, text: string, atMs: number, dialedMs: N, operator: S, callId: S, status: string, note: S,
@@ -81,7 +85,7 @@ export const PBX_DELTA_MAX = 3000;
 export function decodeCall(t: PbxTuple): PbxCallRow {
   return {
     id: t[0], callId: t[1], direction: t[2], phone: t[3], phoneE164: t[4], diversion: t[5], pbxUser: t[6], ext: t[7], status: t[8], state: t[9], durationSec: t[10], waitSec: t[11],
-    at: new Date(t[12]).toISOString(), lastCmd: t[13], eventCount: t[14], clientId: t[15], clientName: t[16], hasRecording: t[17] === 1, rating: t[18], groupName: t[19], lineName: t[20], note: t[21],
+    at: new Date(t[12]).toISOString(), lastCmd: t[13], eventCount: t[14], clientId: t[15], clientName: t[16], hasRecording: t[17] === 1, rating: t[18], groupName: t[19], lineName: t[20], note: t[21], address: t[23] ?? null,
   };
 }
 

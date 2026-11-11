@@ -296,12 +296,20 @@ export function buildApaCanalPlan(
     if (!old || date >= old.date) byMeter.set(key, { serial, label, prev: Number(r["ПредыдущиеПоказания"]) || 0, curr: Number(r["Показания"]) || 0, date, estimated: str(r["Источник"]) !== "Контролер" });
     metersByUid.set(uid, byMeter);
   }
-  // Abonații cu mai multe citiri primesc și contoarele active din lista de contoare care nu au citire în această perioadă (fără indici), ca factura să arate TOATE seriile.
-  // Cei cu un singur contor nu se ating (un contor înlocuit între timp n-ar trebui să apară ca al doilea rând).
+  // Fiecare factură primește TOATE contoarele care funcționau în luna ei și nu au citire în perioadă (fără indici): și facturile mai vechi, nu doar ultima. Un contor intră dacă era
+  // montat la data citirii documentului și nu fusese scos până atunci — astfel un contor înlocuit ulterior nu apare ca rând în plus pe o factură veche, iar cel scos după acea lună
+  // rămâne pe factura lunii respective. Fără o dată de citire în document se păstrează regula veche (doar abonații cu 2+ citiri, doar contoare nescoase).
+  const noDate = (d: string) => !d || d.startsWith("0001-01-01");
   for (const m of data.contoare) {
     const uid = str(m.UID);
     const byMeter = metersByUid.get(uid);
-    if (!byMeter || byMeter.size < 2 || removed(m)) continue;
+    if (!byMeter) continue;
+    const ref = (readingByUid.get(uid)?.dataPokazanii ?? "").slice(0, 10);
+    if (ref) {
+      const inst = str(m["ДатаУстановки"]).slice(0, 10);
+      const rem = str(m["ДатаСнятия"]).slice(0, 10);
+      if ((!noDate(inst) && inst > ref) || (!noDate(rem) && rem <= ref)) continue;
+    } else if (byMeter.size < 2 || removed(m)) continue;
     const label = str(m["ПодчиненныйПотребительНаименование"]);
     const serial = str(m["СубПрибор"]) || str(m["ИзмерительныйПрибор"]);
     if (!serial) continue;

@@ -9,6 +9,7 @@ import { phoneQuery } from "./IncomingCallPopup";
 import { useToast } from "./toast";
 import { IconX } from "./icons";
 import { useT } from "@/lib/i18n/context";
+import { addressCounts, REPEAT_OPTIONS, repeatsAtLeast } from "@/lib/address-repeat";
 import { decodeCall, type PbxCallRow } from "@/lib/pbx-data";
 import { usePbxDataset } from "./usePbxDataset";
 
@@ -64,6 +65,8 @@ export default function PbxTable({ rows: head, webhookUrl, tokenConfigured, canM
   // `head` = primele rânduri primite cu pagina; lista completă vine în browser (IndexedDB) și se completează la ~20 s doar cu rândurile schimbate (apelurile noi apar singure)
   const ds = usePbxDataset<PbxCallRow>("calls", head, decodeCall);
   const rows = ds.rows;
+  // câte apeluri vin de la aceeași adresă (pentru filtrul „Adresă repetată”)
+  const addrCounts = useMemo(() => addressCounts(rows, (c) => c.address), [rows]);
   const [detail, setDetail] = useState<PbxCallRow | null>(null);
   const [playing, setPlaying] = useState<PbxCallRow | null>(null);
   const [copied, setCopied] = useState(false);
@@ -102,6 +105,7 @@ export default function PbxTable({ rows: head, webhookUrl, tokenConfigured, canM
     },
     { key: "phone", label: "Număr", minW: 120, sort: (c) => c.phone, render: (c) => <span className="font-mono">{pretty(c.phone)}</span> },
     { key: "client", label: "Client", minW: 160, maxW: 220, sort: (c) => c.clientName, render: (c) => (c.clientName ? <span title={c.clientName}>{c.clientName}</span> : <span className="text-ink-soft">{tr("necunoscut")}</span>) },
+    { key: "address", label: "Adresă", minW: 160, maxW: 260, sort: (c) => c.address, render: (c) => (c.address ? <span title={c.address}>{c.address}</span> : dash) },
     {
       key: "result", label: "Rezultat", minW: 100, sort: (c) => resultOf(c).label,
       render: (c) => { const r = resultOf(c); return <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium leading-[14px] ${r.cls}`}>{tr(r.label)}</span>; },
@@ -137,8 +141,8 @@ export default function PbxTable({ rows: head, webhookUrl, tokenConfigured, canM
   const filters = useMemo<Filter<PbxCallRow>[]>(
     () => [
       {
-        kind: "text", key: "q", label: "Caută", grow: true, placeholder: "Caută număr, client, operator, ID apel…",
-        test: (c, v) => [c.phone, c.phoneE164, c.clientName, c.pbxUser, c.callId, c.ext].some((x) => (x ?? "").toLowerCase().includes(v.replace(/^\+/, ""))),
+        kind: "text", key: "q", label: "Caută", grow: true, placeholder: "Caută număr, client, adresă, operator, ID apel…",
+        test: (c, v) => [c.phone, c.phoneE164, c.clientName, c.address, c.pbxUser, c.callId, c.ext].some((x) => (x ?? "").toLowerCase().includes(v.replace(/^\+/, ""))),
       },
       {
         kind: "select", key: "dir", label: "Direcție: toate",
@@ -172,8 +176,10 @@ export default function PbxTable({ rows: head, webhookUrl, tokenConfigured, canM
         options: [{ value: "yes", label: "Cu înregistrare" }, { value: "no", label: "Fără" }],
         test: (c, v) => (v === "yes" ? c.hasRecording : !c.hasRecording),
       },
+      { kind: "text", key: "addr", label: "Adresă", placeholder: "Filtrează după adresă…", test: (c, v) => (c.address ?? "").toLowerCase().includes(v) },
+      { kind: "select", key: "repeat", label: "Adresă repetată: toate", options: REPEAT_OPTIONS, test: (c, v) => repeatsAtLeast(addrCounts, c.address, v) },
     ],
-    [],
+    [addrCounts],
   );
 
   return (

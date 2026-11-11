@@ -40,10 +40,21 @@ type CallRec = {
   state: string | null; durationSec: number | null; waitSec: number | null; startAt: Date | null; firstSeenAt: Date; lastCmd: string | null; eventCount: number; clientId: string | null;
   clientName: string | null; recordingUrl: string | null; rating: number | null; groupName: string | null; lineName: string | null; note: string | null; updatedAt: Date;
 };
-const callTuple = (c: CallRec): PbxTuple => [
+const callTuple = (c: CallRec, address: string | null = null): PbxTuple => [
   c.id, c.callId, c.direction, c.phone, c.phoneE164, c.diversion, c.pbxUser, c.ext, c.status, c.state, c.durationSec, c.waitSec, (c.startAt ?? c.firstSeenAt).getTime(), c.lastCmd, c.eventCount,
-  c.clientId, c.clientName, c.recordingUrl ? 1 : 0, c.rating, c.groupName, c.lineName, c.note, c.updatedAt.getTime(),
+  c.clientId, c.clientName, c.recordingUrl ? 1 : 0, c.rating, c.groupName, c.lineName, c.note, c.updatedAt.getTime(), address,
 ];
+
+/** Adresa (de consum) a clienților potriviți cu apelurile: interogări mici, pe id, doar pentru clienții care apar în rândurile cerute. */
+async function addressesFor(rows: { clientId: string | null }[]): Promise<Map<string, string>> {
+  const ids = [...new Set(rows.map((r) => r.clientId).filter((x): x is string => !!x))];
+  const out = new Map<string, string>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const found = await prisma.client.findMany({ where: { id: { in: ids.slice(i, i + 500) } }, select: { id: true, consumAddress: true } });
+    for (const c of found) if (c.consumAddress) out.set(c.id, c.consumAddress);
+  }
+  return out;
+}
 const bitsOf = (c: Pick<CallRec, "status" | "state" | "durationSec" | "recordingUrl" | "rating">): Bits => ({ status: c.status, state: c.state, dur: c.durationSec, rec: c.recordingUrl ? 1 : 0, rating: c.rating });
 
 type NotifyRec = {
@@ -80,7 +91,8 @@ async function bitsFor(callIds: string[], into: Map<string, Bits>): Promise<void
 async function buildCalls(): Promise<Snap> {
   const startedAt = Date.now();
   const [rows, count] = await Promise.all([prisma.pbxCall.findMany({ select: CALL_SELECT, orderBy: { updatedAt: "desc" }, take: PBX_DATASET_MAX }), rawCount("PbxCall")]);
-  const tuples = rows.map(callTuple);
+  const addr = await addressesFor(rows);
+  const tuples = rows.map((r) => callTuple(r, r.clientId ? addr.get(r.clientId) ?? null : null));
   const byCall = new Map<string, Bits>();
   for (const c of rows) byCall.set(c.callId, bitsOf(c));
   return pack(startedAt, tuples, count, byCall);
@@ -127,7 +139,8 @@ export async function getSnap(kind: PbxKind, fresh = false): Promise<Snap> {
 /** Primele rânduri (cele mai recent modificate), proaspete din baza de date, pentru ca pagina să se afișeze imediat — restul vine din lista completă din browser. */
 export async function callsHead(): Promise<{ rows: PbxCallRow[]; count: number }> {
   const [rows, count] = await Promise.all([prisma.pbxCall.findMany({ select: CALL_SELECT, orderBy: { updatedAt: "desc" }, take: PBX_HEAD_ROWS }), rawCount("PbxCall")]);
-  return { rows: rows.map((r) => decodeCall(callTuple(r))), count };
+  const addr = await addressesFor(rows);
+  return { rows: rows.map((r) => decodeCall(callTuple(r, r.clientId ? addr.get(r.clientId) ?? null : null))), count };
 }
 
 export async function notifyHead(): Promise<{ rows: NotifyCallRow[]; count: number }> {
@@ -147,7 +160,8 @@ export async function pbxDelta(kind: PbxKind, since: number): Promise<PbxPayload
       rawCount("PbxCall"),
     ]);
     if (rows.length > PBX_DELTA_MAX) return { v: 1, rows: [], cursor, count, reset: true };
-    return { v: 1, rows: rows.map(callTuple), cursor, count };
+    const addr = await addressesFor(rows);
+    return { v: 1, rows: rows.map((r) => callTuple(r, r.clientId ? addr.get(r.clientId) ?? null : null)), cursor, count };
   }
   void ensureIndex("NotifyCall", { updatedAt: 1 }, "NotifyCall_updatedAt_idx");
   const [own, pbxChanged, count] = await Promise.all([

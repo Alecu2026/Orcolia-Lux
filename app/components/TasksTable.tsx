@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { addressCounts, REPEAT_OPTIONS, repeatsAtLeast } from "@/lib/address-repeat";
 import { describeSchedule, parseReminderSchedule } from "@/lib/reminder-schedule";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -682,6 +683,8 @@ export default function TasksTable({
     },
   ];
 
+  // câte sarcini / cereri au aceeași adresă (pentru filtrul „Adresă repetată”)
+  const addrCounts = useMemo(() => addressCounts(rows, (t) => t.address), [rows]);
   const filters = useMemo<Filter<Task>[]>(() => {
     const today = todayKey(TZ);
     const dueKey = (t: Task) => derivedOf(t).due;
@@ -791,10 +794,11 @@ export default function TasksTable({
           return k >= today && k <= addDaysToKey(today, 30, TZ);
         },
       },
+      { kind: "select", key: "repeat", label: "Adresă repetată", options: REPEAT_OPTIONS, test: (t, v) => repeatsAtLeast(addrCounts, t.address, v) },
       { kind: "date", key: "from", label: "Termen de la", test: (t, v) => { const k = dueKey(t); return !!k && k >= v; } },
       { kind: "date", key: "to", label: "Termen până la", test: (t, v) => { const k = dueKey(t); return !!k && k <= v; } },
     ];
-  }, [m, users, teams, sections, teamMembers, projects, clients, categories, ticketMode, portalTemplates]);
+  }, [m, users, teams, sections, teamMembers, projects, clients, categories, ticketMode, portalTemplates, addrCounts]);
 
   const current = openId ? rows.find((t) => t.id === openId) ?? null : null;
 
