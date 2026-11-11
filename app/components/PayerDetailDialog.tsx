@@ -245,6 +245,7 @@ export default function PayerDetailDialog({
         </Section>
 
         <Section title={t("Contor & portal")}>
+          <Item label={t("Tipul de consumator")} value={((s) => (s === 3 ? t("Apă + canalizare") : s === 2 ? t("Doar canalizare") : s === 1 ? t("Doar apă") : null))((row as { service?: number }).service)} />
           <Item label={t("Contor instalat")} value={row.installedAt ? row.installedAt.split("-").reverse().join(".") : null} />
           <Item label={t("Început consum")} value={detail?.payer?.consumStart ? detail.payer.consumStart.slice(0, 10).split("-").reverse().join(".") : null} loading={pending} />
           <Item label={t("Sfârșit consum")} value={detail?.payer?.consumEnd ? detail.payer.consumEnd.slice(0, 10).split("-").reverse().join(".") : null} loading={pending} />

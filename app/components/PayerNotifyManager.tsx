@@ -36,6 +36,8 @@ import { INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatusKey } from "./in
 import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useToast } from "./toast";
 import { useLocale, useT } from "@/lib/i18n/context";
+import FiltersToggle from "./FiltersToggle";
+import { useFiltersOpen } from "./useFiltersOpen";
 import { dateTag } from "@/lib/i18n/t";
 import PayerNotifyDialog, { type Recipient } from "./PayerNotifyDialog";
 import PayerTemplatesDialog from "./PayerTemplatesDialog";
@@ -164,6 +166,7 @@ export default function PayerNotifyManager({
 }) {
   const toast = useToast();
   const t = useT();
+  const [fOpen, toggleF] = useFiltersOpen(browseOnly ? "payers" : "notify");
   const tag = dateTag(useLocale());
   const nf = (n: number) => n.toLocaleString(tag);
   const money = (n: number) => n.toLocaleString(tag, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -721,6 +724,8 @@ export default function PayerNotifyManager({
 
       {/* ── Filtre (stil Task-uri: colorate când sunt active) ─────────────────── */}
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+        <FiltersToggle open={fOpen} onToggle={toggleF} activeCount={active} />
+        <div className={fOpen ? "contents" : "hidden"}>
         <input
           value={draft.q}
           onChange={(e) => onText("q", e.target.value)}
@@ -740,6 +745,22 @@ export default function PayerNotifyManager({
           {months.map((m) => (
             <option key={m.month} value={m.month}>{t("Factura pe {month}", { month: monthLabel(m.month) })} ({nf(m.count)})</option>
           ))}
+        </select>
+        <select
+          value={filters.noInvoice}
+          onChange={(e) => setFilter({ noInvoice: e.target.value as NotifyFilters["noInvoice"], ...(e.target.value && !filters.month && months[0] ? { month: months[0].month } : {}) })}
+          className={fld(filters.noInvoice)}
+          aria-label={t("Factură în luna aleasă")}
+          title={t("Alege luna din „Luna facturii”: arată plătitorii care NU au primit factură în luna aceea")}
+        >
+          <option value="">{t("Factură în lună: cu factură")}</option>
+          <option value="1">{t("Fără factură în luna aleasă")}</option>
+        </select>
+        <select value={filters.service} onChange={(e) => setFilter({ service: e.target.value as NotifyFilters["service"] })} className={fld(filters.service)} aria-label={t("Serviciu")}>
+          <option value="">{t("Serviciu: toate")}</option>
+          <option value="water">{t("Doar apă")}</option>
+          <option value="sewer">{t("Doar canalizare")}</option>
+          <option value="both">{t("Apă + canalizare")}</option>
         </select>
         <select value={filters.contact} onChange={(e) => setFilter({ contact: e.target.value as NotifyFilters["contact"] })} className={fld(filters.contact)} aria-label={t("Date de contact")}>
           <option value="">{t("Contact: toți")}</option>
@@ -888,6 +909,7 @@ export default function PayerNotifyManager({
           <option value="installDesc">{t("Instalare: recente")}</option>
           <option value="installAsc">{t("Instalare: vechi")}</option>
         </select>
+        </div>
         {(active > 0 || filters.sort) && (
           <button
             type="button"
@@ -1380,6 +1402,8 @@ export default function PayerNotifyManager({
           userEmail={userEmail}
           templates={templates}
           onSaveTemplate={createTemplate}
+          // programarea: dacă sunt bifați TOȚI cei din filtru, se salvează filtrele (destinatarii se recalculează la fiecare rulare); altfel lista fixă de acum
+          scheduleTarget={{ filters: view.total > 0 && compose.recipients.length === view.total ? sanitizeFilters(filters) : null }}
           onClose={closeCompose}
           onSent={onSent}
           onSelectFailed={(ids) => {

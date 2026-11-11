@@ -327,6 +327,29 @@ export async function placeStartMap(): Promise<Map<string, string>> {
   return new Map([...best].map(([id, v]) => [id, v.s]));
 }
 
+/**
+ * Serviciul fiecărui plătitor din ultimul lui document 1C (OneCRecord): 1 = doar apă, 2 = doar canalizare, 3 = apă + canalizare (după volum / sumă calculate). Fără niciun consum
+ * calculat, plătitorul nu apare în hartă (= necunoscut). Proiecție mică, citită o singură dată la construirea listei.
+ */
+export async function serviceMap(): Promise<Map<string, 1 | 2 | 3>> {
+  if (DEMO) return new Map();
+  const rows = await prisma.oneCRecord.findMany({
+    where: { clientId: { not: null } },
+    select: { clientId: true, dataDoc: true, apaVolum: true, apaSuma: true, canalVolum: true, canalSuma: true },
+  });
+  const best = new Map<string, { d: string; v: 1 | 2 | 3 }>();
+  for (const r of rows) {
+    if (!r.clientId) continue;
+    const water = (r.apaSuma ?? 0) > 0 || (r.apaVolum ?? 0) > 0;
+    const sewer = (r.canalSuma ?? 0) > 0 || (r.canalVolum ?? 0) > 0;
+    if (!water && !sewer) continue;
+    const d = r.dataDoc ?? "";
+    const cur = best.get(r.clientId);
+    if (!cur || d >= cur.d) best.set(r.clientId, { d, v: water && sewer ? 3 : water ? 1 : 2 });
+  }
+  return new Map([...best].map(([id, v]) => [id, v.v]));
+}
+
 let sectorMemo: { at: number; map: Map<string, string> } | null = null;
 /**
  * Sectorul din 1C („Участок”) al fiecărui plătitor, din ultima lui înregistrare 1C (OneCRecord). Doar plătitorii cu sector completat.
@@ -839,12 +862,13 @@ async function latestInvoiceStatsFromRows(): Promise<{ latest: Map<string, Lates
  */
 export async function getPayerSnapshot(): Promise<SnapTuple[]> {
   if (DEMO) return [];
-  const [clients, stats, installBy, sectorBy, placeBy] = await Promise.all([
+  const [clients, stats, installBy, sectorBy, placeBy, svcBy] = await Promise.all([
     prisma.client.findMany({ where: PAYER_BASE, select: { ...PAYER_SELECT, lastInvoiceSectorNr: true, meterReadingEstimated: true, meterLorawan: true } }),
     latestInvoiceStats(),
     installDateMap(),
     payerSectorMap(true),
     placeStartMap(),
+    serviceMap(),
   ]);
   const { latest, count } = stats && stats.latest.size > 0 ? stats : await latestInvoiceStatsFromRows();
   return clients.map((c): SnapTuple => {
@@ -858,6 +882,7 @@ export async function getPayerSnapshot(): Promise<SnapTuple[]> {
       c.meterIssuesOpen ?? 0, contractKey(c.meterIssueDueAt), c.meterLorawan ? 1 : 0,
       c.createdAt.toISOString().slice(0, 10), placeBy.get(c.id) ?? null,
       inv?.datoriiAvans ?? null, inv?.prevPaid ?? null, inv?.paidAmount ?? null,
+      svcBy.get(c.id) ?? 0,
     ];
   });
 }

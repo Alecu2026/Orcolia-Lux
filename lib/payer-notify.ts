@@ -56,6 +56,10 @@ export type NotifyFilters = {
   nameFix: "" | "1";
   /** "none" = plătitori fără nicio factură (de ex. conturi de test de curățat). */
   invoices: "" | "none";
+  /** "1" = doar plătitorii FĂRĂ factură în luna aleasă (`month`; fără lună aleasă = cea mai recentă). */
+  noInvoice: "" | "1";
+  /** Serviciul plătitorului (după ultimul document 1C): doar apă / doar canalizare / apă + canalizare. */
+  service: "" | "water" | "sewer" | "both";
   /** "yes" = plătitori la care ultima citire a contorului e calculată (estimată), nu citită; "no" = cu citire reală. */
   estimated: "" | "yes" | "no";
   /** "yes" = plătitori cu cel puțin un contor LoRaWAN (transmite automat); "no" = fără. */
@@ -70,7 +74,7 @@ export type NotifyFilters = {
 
 export const EMPTY_FILTERS: NotifyFilters = {
   q: "", street: "", month: "", account: "", sector: "", usector: "", uloc: "", invoiceStatus: "", debt: "", bal: "",
-  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", newFrom: "", placeFrom: "", sort: "", nameFix: "", invoices: "", estimated: "", lorawan: "", contractExp: "", metrologyExp: "", meterIssues: "",
+  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", newFrom: "", placeFrom: "", sort: "", nameFix: "", invoices: "", noInvoice: "", service: "", estimated: "", lorawan: "", contractExp: "", metrologyExp: "", meterIssues: "",
 };
 
 /** „Toate" = o pagină cât toată lista (plafon de siguranță; sunt ~19.000 de plătitori). */
@@ -181,6 +185,8 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     sort: ONE_OF(get(src, "sort"), ["debtDesc", "debtAsc", "installDesc", "installAsc"] as const),
     nameFix: ONE_OF(get(src, "nameFix"), ["1"] as const),
     invoices: ONE_OF(get(src, "invoices"), ["none"] as const),
+    noInvoice: ONE_OF(get(src, "noInvoice"), ["1"] as const),
+    service: ONE_OF(get(src, "service"), ["water", "sewer", "both"] as const),
     estimated: ONE_OF(get(src, "estimated"), ["yes", "no"] as const),
     lorawan: ONE_OF(get(src, "lorawan"), ["yes", "no"] as const),
     contractExp: ONE_OF(get(src, "contractExp"), ["none", "expired", "10d", "30d"] as const),
@@ -430,7 +436,7 @@ export type SnapInvoice = NonNullable<PayerRow["latestInvoice"]>;
  * trecere simplă prin 19.000 de rânduri cu comparații pe numere (fără parsare de date, fără șiruri): _h = text de căutare, _he/_hp = are email /
  * telefon, _nm = ultima notificare (ms, 0 = niciodată), _st = sector (0 necunoscut, 1 privat, 2 comunal), _dk = soldul facturii afișate (NaN = fără factură).
  */
-export type SnapRow = PayerRow & { sector: string | null; /** sectorul din 1C („Участок”) */ uch: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number; /** ultima citire a contorului e calculată (estimată) */ estimated: boolean; /** are cel puțin un contor LoRaWAN */ lorawan: boolean; /** „YYYY-MM-DD” — adăugat în CRM (consumator nou) */ addedOn: string | null; /** „YYYY-MM-DD” — începutul consumului din 1C (loc de consum nou) */ placeStart: string | null };
+export type SnapRow = PayerRow & { /** serviciul: 0 necunoscut, 1 apă, 2 canalizare, 3 apă + canalizare */ service: 0 | 1 | 2 | 3; sector: string | null; /** sectorul din 1C („Участок”) */ uch: string | null; _h: string; _he: boolean; _hp: boolean; _nm: number; _st: 0 | 1 | 2; _dk: number; /** ultima citire a contorului e calculată (estimată) */ estimated: boolean; /** are cel puțin un contor LoRaWAN */ lorawan: boolean; /** „YYYY-MM-DD” — adăugat în CRM (consumator nou) */ addedOn: string | null; /** „YYYY-MM-DD” — începutul consumului din 1C (loc de consum nou) */ placeStart: string | null };
 
 const SECTOR_CODE = (s: string | null): 0 | 1 | 2 => (s === "Sector privat" ? 1 : s === "Sector comunal" ? 2 : 0);
 
@@ -473,6 +479,8 @@ export type SnapTuple = [
   invDebt?: number | null,
   invPrevPaid?: number | null,
   invPaid?: number | null,
+  /** serviciul din ultimul document 1C: 0 necunoscut, 1 doar apă, 2 doar canalizare, 3 apă + canalizare (lipsește în listele salvate înainte de această versiune) */
+  svc?: 0 | 1 | 2 | 3,
 ];
 /** Factura unei luni: [clientId, număr, status, total, valută, scadență ms]. */
 export type MonthTuple = [clientId: string, number: string, status: string, total: number, currency: string, dueMs: number | null, debt?: number, prevPaid?: number | null, paid?: number | null];
@@ -509,6 +517,7 @@ export function decodeSnapshot(tuples: SnapTuple[], presorted = false): SnapRow[
     _st: SECTOR_CODE(t[16]),
     _dk: t[8] == null ? NaN : (t[10] ?? 0),
     estimated: t[18] === 1,
+    service: t[29] ?? 0,
     lorawan: t[23] === 1,
     addedOn: t[24] ?? null,
     placeStart: t[25] ?? null,
@@ -531,6 +540,16 @@ const SECTOR_NAME = { privat: "Sector privat", comunal: "Sector comunal" } as co
 
 /** Rândurile unei luni (cu factura acelei luni în loc de ultima), construite O DATĂ per hartă de luni și refolosite la fiecare filtru. */
 const monthRowsCache = new WeakMap<Map<string, SnapInvoice>, WeakMap<SnapRow[], SnapRow[]>>();
+const noMonthRowsCache = new WeakMap<Map<string, SnapInvoice>, WeakMap<SnapRow[], SnapRow[]>>();
+/** Plătitorii FĂRĂ factură în luna dată (memorat, ca lista să păstreze aceeași identitate între filtrări și ordinea de sortare să se refolosească). */
+function rowsWithoutMonth(rows: SnapRow[], monthMap: Map<string, SnapInvoice>): SnapRow[] {
+  let per = noMonthRowsCache.get(monthMap);
+  if (!per) noMonthRowsCache.set(monthMap, (per = new WeakMap()));
+  let out = per.get(rows);
+  if (!out) per.set(rows, (out = rows.filter((r) => !monthMap.has(r.id))));
+  return out;
+}
+
 function rowsForMonth(rows: SnapRow[], monthMap: Map<string, SnapInvoice>): SnapRow[] {
   let perRows = monthRowsCache.get(monthMap);
   if (!perRows) monthRowsCache.set(monthMap, (perRows = new WeakMap()));
@@ -591,7 +610,7 @@ function orderFor(rows: SnapRow[], sort: "debtDesc" | "debtAsc" | "installDesc" 
 export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: Map<string, SnapInvoice> | null, notifySet: Set<string> | null = null): SnapRow[] {
   const crit = notifyCriterion(f);
   if (crit && !notifySet) return []; // mulțimea „notificați în perioada…" încă nu e încărcată: apelantul o cere și reface lista
-  const rows = f.month ? (monthMap ? rowsForMonth(allRows, monthMap) : []) : allRows;
+  const rows = f.month ? (monthMap ? (f.noInvoice ? rowsWithoutMonth(allRows, monthMap) : rowsForMonth(allRows, monthMap)) : []) : allRows;
   const q = f.q.trim().toLowerCase();
   const street = f.street.trim().toLowerCase();
   const min = f.minDebt === "" ? NaN : Number(f.minDebt);
@@ -644,6 +663,7 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
     if (f.invoices === "none" && r.latestInvoice) continue;
     if (f.estimated === "yes" ? !r.estimated : f.estimated === "no" ? r.estimated : false) continue;
     if (f.lorawan === "yes" ? !r.lorawan : f.lorawan === "no" ? r.lorawan : false) continue;
+    if (f.service && r.service !== (f.service === "water" ? 1 : f.service === "sewer" ? 2 : 3)) continue;
     if (f.newFrom && !(r.addedOn && r.addedOn >= f.newFrom)) continue;
     if (f.placeFrom && !(r.placeStart && r.placeStart >= f.placeFrom)) continue;
     if (f.contractExp && !matchesContractFilter(r.contractExpiresAt, f.contractExp, today)) continue;

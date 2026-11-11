@@ -1612,3 +1612,30 @@ model PortalReadingPending {
   @@unique([clientId, meterId])
   @@index([expiresAt])
 }
+
+/// Notificări către plătitori / clienți programate (o singură dată, zilnic, săptămânal, lunar sau la interval): rulează singure (cron / procesul serverului), apar în jurnalul de notificări.
+model NotifySchedule {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  /// "payers" | "clients"
+  audience      String
+  /// plătitori: filtrele din pagina Notificări (JSON, vezi NotifyFilters) — destinatarii se recalculează la fiecare rulare; clienți: { q, contact }
+  filters       Json?
+  /// selecție fixă de id-uri (când nu s-au folosit filtre)
+  ids           String[]
+  /// mesajul: { email: {enabled, subject, body}, sms: {enabled, body, ascii}, call: {enabled, body, voice} }
+  message       Json
+  /// programul (vezi lib/reminder-schedule.ts: ReminderSchedule)
+  schedule      Json
+  active        Boolean   @default(true)
+  nextRunAt     DateTime?
+  lastRunAt     DateTime?
+  lastResult    String?
+  runCount      Int       @default(0)
+  createdById   String    @db.ObjectId
+  createdByName String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([active, nextRunAt])
+}

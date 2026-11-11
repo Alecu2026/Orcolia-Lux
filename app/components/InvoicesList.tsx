@@ -1,5 +1,8 @@
 "use client";
 
+import DebtAgingButton from "./DebtAgingButton";
+import FiltersToggle from "./FiltersToggle";
+import { useFiltersOpen } from "./useFiltersOpen";
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { setInvoiceStatus, deleteInvoice } from "@/app/actions/invoices";
@@ -117,6 +120,7 @@ export default function InvoicesList({
   const [page, setPage] = useState(initial.page);
   const [wantPerPage, setWantPerPage] = useState(initial.perPage);
   const [showMore, setShowMore] = useState(() => hasAdvanced(initial.query));
+  const [fOpen, toggleF] = useFiltersOpen("invoices");
   const [goto, setGoto] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
@@ -423,6 +427,8 @@ export default function InvoicesList({
   return (
     <>
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+        <FiltersToggle open={fOpen} onToggle={toggleF} activeCount={nFilters} />
+        <div className={fOpen ? "contents" : "hidden"}>
         <input
           value={search}
           onChange={(e) => onSearch(e.target.value)}
@@ -488,6 +494,7 @@ export default function InvoicesList({
         >
           {showMore ? t("Mai puține filtre ▴") : t("Mai multe filtre ▾")}
         </button>
+        </div>
         {nFilters > 0 && (
           <button
             type="button"
@@ -512,7 +519,7 @@ export default function InvoicesList({
         </div>
       </div>
 
-      {showMore && (
+      {showMore && fOpen && (
         <div className="mb-1.5 flex flex-wrap items-end gap-x-3 gap-y-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)]/50 px-2 py-1.5 text-[11px]" data-inv-advanced="">
           <label className="flex flex-col gap-0.5">
             <span className="text-ink-soft">{t("Sumă")}</span>
@@ -600,13 +607,16 @@ export default function InvoicesList({
         )}
         {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}
         {useLocal && <span className="text-ink-soft" title={t("Lista e ținută în memorie și filtrată instant în browser.")}>{t("⚡ local")}</span>}
+        <span className="ml-auto inline-flex items-center gap-1.5">
+          <DebtAgingButton />
+        </span>
         <button
           type="button"
           onClick={() => setShowReport((v) => !v)}
           aria-expanded={showReport}
           data-inv-report-toggle=""
           title={t("Numărul de facturi și suma pe apă, canalizare și ambele (pentru perioada aleasă)")}
-          className={`tap ml-auto h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${showReport ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+          className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${showReport ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
         >
           {showReport ? t("Raport servicii ▴") : t("Raport servicii ▾")}
         </button>

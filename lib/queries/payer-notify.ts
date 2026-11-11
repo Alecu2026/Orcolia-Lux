@@ -103,6 +103,23 @@ export async function filtersToListOptsAsync(f: NotifyFilters): Promise<ListPaye
       ? prisma.oneCRecord.findMany({ where: { clientId: { not: null }, inceputConsum: { gte: f.placeFrom } }, select: { clientId: true } }).then((rows) => [...new Set(rows.map((r) => r.clientId).filter((x): x is string => !!x))])
       : null,
   );
+  // serviciul (apă / canalizare / ambele) și „fără factură în luna aleasă”: id-urile din lista din memorie (aceeași regulă ca în browser), intersectate cu restul. Fără asta, o trimitere
+  // sau un export cu aceste filtre active ar ajunge la TOȚI plătitorii care se potrivesc celorlalte filtre.
+  if (f.service || f.noInvoice) {
+    const { getPayerSnap, getMonthSlice } = await import("../services/payer-cache");
+    const snap = await getPayerSnap();
+    const want = f.service === "water" ? 1 : f.service === "sewer" ? 2 : f.service === "both" ? 3 : 0;
+    const month = f.noInvoice ? f.month || snap.months[0]?.month || "" : "";
+    const withInvoice = month ? (await getMonthSlice(month)).map : null;
+    const ids: string[] = [];
+    for (const r of snap.rows) {
+      if (want && r.service !== want) continue;
+      if (withInvoice && withInvoice.has(r.id)) continue;
+      ids.push(r.id);
+    }
+    sectorIds = await restrict(sectorIds, Promise.resolve(ids));
+    if (f.noInvoice) opts.month = undefined; // luna a servit doar la excludere: nu se mai cer plătitorii CU factură în ea
+  }
   if (!crit) return sectorIds ? { ...opts, idsIn: sectorIds } : opts;
   const ids = await notifiedClientIds(crit);
   if (!sectorIds) return crit.negate ? { ...opts, idsNotIn: ids } : { ...opts, idsIn: ids };

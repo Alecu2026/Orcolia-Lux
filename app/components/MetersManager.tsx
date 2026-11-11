@@ -19,6 +19,8 @@ import { METERS_PP_COOKIE } from "@/lib/payer-prefs";
 import { INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatusKey } from "./invoice-meta";
 import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useLocale, useT } from "@/lib/i18n/context";
+import FiltersToggle from "./FiltersToggle";
+import { useFiltersOpen } from "./useFiltersOpen";
 import { dateTag } from "@/lib/i18n/t";
 import { useToast } from "./toast";
 import CompactCard, { CompactField } from "./CompactCard";
@@ -98,6 +100,7 @@ export default function MetersManager({
   canExport?: boolean;
 }) {
   const t = useT();
+  const [fOpen, toggleF] = useFiltersOpen("meters");
   const toast = useToast();
   const tag = dateTag(useLocale());
   const nf = (n: number) => n.toLocaleString(tag);
@@ -358,6 +361,8 @@ export default function MetersManager({
     <div>
       {/* ── Filtre (stil Plătitori: colorate când sunt active) ─────────────────── */}
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+        <FiltersToggle open={fOpen} onToggle={toggleF} activeCount={active} />
+        <div className={fOpen ? "contents" : "hidden"}>
         <input
           value={draft.q}
           onChange={(e) => onText("q", e.target.value)}
@@ -396,6 +401,12 @@ export default function MetersManager({
           <option value="">{t("Sursa citirii: toate")}</option>
           {sources.map((s) => <option key={s} value={s}>{enumLabel(s, t)}</option>)}
           {filters.sursa && !sources.includes(filters.sursa) && <option value={filters.sursa}>{enumLabel(filters.sursa, t)}</option>}
+        </select>
+        <select value={filters.svc} onChange={(e) => setFilter({ svc: e.target.value as MeterFilters["svc"] })} className={fld(filters.svc)} aria-label={t("Serviciu")}>
+          <option value="">{t("Serviciu: toate")}</option>
+          <option value="water">{t("Doar apă")}</option>
+          <option value="sewer">{t("Doar canalizare")}</option>
+          <option value="both">{t("Apă + canalizare")}</option>
         </select>
         <select value={filters.estimated} onChange={(e) => setFilter({ estimated: e.target.value as MeterFilters["estimated"] })} className={fld(filters.estimated)} aria-label={t("Citire estimată")}>
           <option value="">{t("Estimare: toate")}</option>
@@ -460,6 +471,7 @@ export default function MetersManager({
           <option value="metroAsc">{t("Verificare metrologică: cele mai apropiate")}</option>
           <option value="debtDesc">{t("Sold: descrescător")}</option>
         </select>
+        </div>
         {(active > 0 || filters.sort) && (
           <button type="button" onClick={clearAll} className="tap h-7 rounded-lg border border-[var(--color-line)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)]">
             {t("Resetează filtrele")}{active > 0 ? ` (${active})` : ""}

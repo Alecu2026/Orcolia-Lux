@@ -27,6 +27,8 @@ import Link from "next/link";
 import { useToast } from "./toast";
 import { IconX } from "./icons";
 import VoicePicker from "./VoicePicker";
+import ReminderPicker from "./ReminderPicker";
+import { createNotifyScheduleAction } from "@/app/actions/notify-schedules";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 
@@ -76,7 +78,16 @@ export default function PayerNotifyDialog({
   onClose,
   onSent,
   onSelectFailed,
+  audience = "payers",
+  scheduleTarget = null,
 }: {
+  /** Cine primește: plătitorii (implicit) sau clienții obișnuiți. */
+  audience?: "payers" | "clients";
+  /**
+   * Dacă e dat, mesajul se poate și PROGRAMA (o dată / zilnic / săptămânal / lunar / la interval), nu doar trimite acum. `filters` = criteriile salvate (destinatarii se recalculează
+   * la fiecare rulare); `null` = selecția fixă de acum.
+   */
+  scheduleTarget?: { filters: object | null } | null;
   recipients: Recipient[];
   previewName: string;
   previewVars: NotifyVars;
@@ -128,6 +139,11 @@ export default function PayerNotifyDialog({
   const [formError, setFormError] = useState<string | null>(null);
   const [savingTpl, setSavingTpl] = useState(false);
   const [tplName, setTplName] = useState("");
+
+  const [schedMode, setSchedMode] = useState(false);
+  const [schedName, setSchedName] = useState("");
+  const [scheduling, setScheduling] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
 
   const [processed, setProcessed] = useState(0);
   const [emailStats, setEmailStats] = useState<Channel>({ sent: 0, failed: 0, skipped: 0 });
@@ -260,6 +276,46 @@ export default function PayerNotifyDialog({
     if (!err) setPhase("confirm");
   }
 
+  /** Salvează mesajul ca notificare programată (nu trimite nimic acum): programul se citește din câmpurile ascunse ale selectorului de reamintire. */
+  async function saveSchedule() {
+    const err = validate();
+    if (err) { setFormError(err); return; }
+    if (usePdf && !useEmail && !useSms && !useCall) { setFormError(tr("PDF-ul tipărit nu se poate programa: alege email, SMS sau apel.")); return; }
+    if (!schedName.trim()) { setFormError(tr("Dă un nume programării.")); return; }
+    const root = pickerRef.current;
+    const raw = (root?.querySelector('input[name="reminderSchedule"]') as HTMLInputElement | null)?.value ?? "";
+    const fixed = Number((root?.querySelector('input[name="reminderIntervalMinutes"]') as HTMLInputElement | null)?.value ?? 0);
+    let schedule: unknown = null;
+    if (raw) {
+      try { schedule = JSON.parse(raw); } catch { schedule = null; }
+    } else if (fixed > 0) {
+      schedule = { kind: "every", every: fixed, unit: "minutes", anchor: new Date().toISOString() };
+    }
+    if (!schedule) { setFormError(tr("Alege când se trimite (dată și oră sau repetare).")); return; }
+    setFormError(null);
+    setScheduling(true);
+    try {
+      const res = await createNotifyScheduleAction({
+        name: schedName,
+        audience,
+        filters: scheduleTarget?.filters ?? null,
+        ids: scheduleTarget?.filters ? [] : recipients.map((r) => r.id),
+        message: payload(),
+        schedule,
+      });
+      if (res.ok) {
+        toast.success(res.nextRunAt ? tr("Programat. Prima trimitere: {when}", { when: new Date(res.nextRunAt).toLocaleString(tag) }) : tr("Programat."));
+        onClose();
+      } else {
+        setFormError(tr(res.error));
+      }
+    } catch {
+      setFormError(tr("Nu am putut salva programarea. Încearcă din nou."));
+    } finally {
+      setScheduling(false);
+    }
+  }
+
   function tally(results: RecipientResult[]) {
     const add = (prev: Channel, key: "email" | "sms" | "call") => {
       const next = { ...prev };
@@ -348,6 +404,7 @@ export default function PayerNotifyDialog({
           index: i,
           totalPlanned: ids.length,
           ids: chunks[i],
+          audience,
           ...payload(),
         });
         if (!res.ok) {
@@ -655,14 +712,42 @@ export default function PayerNotifyDialog({
               </button>
             </div>
 
+            {scheduleTarget && (
+              <div className="rounded-xl border border-[var(--color-line)] p-3">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                  <input type="checkbox" checked={schedMode} onChange={(e) => setSchedMode(e.target.checked)} className="size-4 accent-[var(--color-brand)]" />
+                  {tr("Programează trimiterea (la o dată și oră, sau repetat)")}
+                </label>
+                {schedMode && (
+                  <div className="mt-2 flex flex-col gap-2">
+                    <input value={schedName} onChange={(e) => setSchedName(e.target.value)} maxLength={80} placeholder={tr("Numele programării (ex. Reamintire lunară datorii)")} className={`${inputCls} h-10`} />
+                    <div ref={pickerRef}>
+                      <ReminderPicker interval={null} schedule={null} />
+                    </div>
+                    <p className="text-xs text-ink-soft">
+                      {scheduleTarget.filters
+                        ? tr("Destinatarii se recalculează la fiecare trimitere, din filtrele de acum. Fiecare trimitere apare în Jurnalul de notificări.")
+                        : tr("Se trimite către cei {n} aleși acum. Fiecare trimitere apare în Jurnalul de notificări.", { n: nf(recipients.length) })}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {formError && <p className="text-sm text-st-cancelled">{formError}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={onClose} className="tap h-11 rounded-xl border border-[var(--color-line)] px-4 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]">
                 {tr("Anulează")}
               </button>
-              <button type="button" onClick={goConfirm} className="tap h-11 rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong">
-                {tr("Continuă")}
-              </button>
+              {schedMode ? (
+                <button type="button" onClick={() => void saveSchedule()} disabled={scheduling} className="tap h-11 rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong disabled:opacity-60">
+                  {scheduling ? tr("Se salvează…") : tr("Programează")}
+                </button>
+              ) : (
+                <button type="button" onClick={goConfirm} className="tap h-11 rounded-xl bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong">
+                  {tr("Continuă")}
+                </button>
+              )}
             </div>
           </div>
         )}

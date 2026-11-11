@@ -21,8 +21,8 @@ export function register() {
   setTimeout(() => {
     // Sarcini + programări (reamintiri noi) + reminderele vechi ale programărilor către clienți (până acum le procesa doar cron-ul extern).
     const tick = () =>
-      Promise.all([import("./lib/services/tasks"), import("./lib/services/appointment-reminders"), import("./lib/services/reminders"), import("./lib/delivery-log"), import("./lib/services/contract-expiry"), import("./lib/services/metrology-expiry"), import("./lib/services/meter-issue-deadlines"), import("./lib/services/lorawan")])
-        .then(([tasks, appts, legacy, d, contracts, metrology, issues, lorawan]) =>
+      Promise.all([import("./lib/services/tasks"), import("./lib/services/appointment-reminders"), import("./lib/services/reminders"), import("./lib/delivery-log"), import("./lib/services/contract-expiry"), import("./lib/services/metrology-expiry"), import("./lib/services/meter-issue-deadlines"), import("./lib/services/lorawan"), import("./lib/services/notify-schedules")])
+        .then(([tasks, appts, legacy, d, contracts, metrology, issues, lorawan, schedules]) =>
           d.withDeliveryMeta({ source: "timer" }, () =>
             Promise.all([
               tasks.checkTaskReminders().catch((e) => console.error("[startup] reamintirile sarcinilor:", e)),
@@ -36,6 +36,8 @@ export function register() {
               issues.checkMeterIssueDeadlines().catch((e) => console.error("[startup] termenele neregulilor de contor:", e)),
               // contoarele LoRaWAN: o dată pe zi, după ora 23:30 (ora firmei) — cele mai multe verificări costă doar o comparație de oră
               lorawan.checkLorawanSchedule().catch((e) => console.error("[startup] contoarele LoRaWAN:", e)),
+              // notificările programate către plătitori / clienți (la ora aleasă, la fiecare minut se verifică ce e scadent)
+              schedules.runDueNotifySchedules().catch((e) => console.error("[startup] notificările programate:", e)),
             ]),
           ),
         )

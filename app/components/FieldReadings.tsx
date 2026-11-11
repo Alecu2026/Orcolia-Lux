@@ -20,11 +20,14 @@ import { ISSUE_LABELS, isIssueKind, SERIOUS_ISSUES } from "@/lib/meter-issues";
 import { prepareRoutes, routeOf } from "@/lib/meter-routes";
 import { DEFAULT_PER_PAGE, NOTIFY_PER_PAGE, normalizePerPageClient, perPageLabel } from "@/lib/payer-notify";
 import { useLocale, useT } from "@/lib/i18n/context";
+import FiltersToggle from "./FiltersToggle";
+import { useFiltersOpen } from "./useFiltersOpen";
 import { dateTag } from "@/lib/i18n/t";
 import { IconChevronLeft, IconChevronRight, IconX } from "./icons";
 import { useToast } from "./toast";
 import ReadingForm from "./ReadingForm";
 import SendTo1cButton from "./SendTo1cButton";
+import EstimatedReportButton from "./EstimatedReportButton";
 import VirtualList from "./VirtualList";
 import { useFieldDataset } from "./useFieldDataset";
 import { onQueueSynced, removeQueued, retryQueued, syncNow, useFieldQueue } from "./field-queue";
@@ -160,6 +163,7 @@ export default function FieldReadings({
 }) {
   const t = useT();
   const toast = useToast();
+  const [fOpen, toggleF] = useFiltersOpen("field-readings");
   const tag = dateTag(useLocale());
   const nf = (n: number) => n.toLocaleString(tag);
   const ds = useFieldDataset();
@@ -440,6 +444,8 @@ export default function FieldReadings({
 
       {/* ── Filtre ────────────────────────────────────────────────────────── */}
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+        <FiltersToggle open={fOpen} onToggle={toggleF} activeCount={active} />
+        <div className={fOpen ? "contents" : "hidden"}>
         <input
           value={draft.q}
           onChange={(e) => onText("q", e.target.value)}
@@ -590,6 +596,7 @@ export default function FieldReadings({
           <option value="consumAsc">{t("Consum: crescător")}</option>
           <option value="lastOld">{t("Ultimul index: cel mai vechi")}</option>
         </select>
+        </div>
         {(active > 0 || filters.sort) && (
           <button type="button" onClick={clearAll} className="tap h-8 rounded-lg border border-[var(--color-line)] px-2 text-[12px] text-ink-soft hover:bg-[var(--color-surface-2)]">
             {t("Resetează filtrele")}{active > 0 ? ` (${active})` : ""}
@@ -614,7 +621,10 @@ export default function FieldReadings({
         ) : ds.loading ? (
           <span className="text-ink-soft">{t("se încarcă lista completă…")}</span>
         ) : null}
-        {canExport && <SendTo1cButton />}
+        <span className="ml-auto inline-flex items-center gap-1.5">
+          <EstimatedReportButton />
+          {canExport && <SendTo1cButton />}
+        </span>
         {canExport && <button
           type="button"
           onClick={exportCsv}

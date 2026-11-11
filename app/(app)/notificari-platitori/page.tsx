@@ -12,6 +12,9 @@ import { deliveryFilterFromState, normalizeDeliveryPageSize } from "@/lib/querie
 import { listPayerLog, listPayerLogChunk } from "@/lib/queries/payer-log";
 import { DELIVERY_FIRST_CHUNK, DELIVERY_PS_COOKIE, normalizeDeliveryPs, sanitizeDeliveryState } from "@/lib/delivery-meta";
 import PayerNotifyManager from "@/app/components/PayerNotifyManager";
+import ClientNotifyManager from "@/app/components/ClientNotifyManager";
+import NotifySchedulesPanel from "@/app/components/NotifySchedulesPanel";
+import { listSchedules } from "@/lib/services/notify-schedules";
 import DeliveryLogsClient from "@/app/components/DeliveryLogsClient";
 import { getT } from "@/lib/i18n/server-t";
 
@@ -31,13 +34,53 @@ export default async function PayerNotificationsPage({
   const user = await requirePermission("payers.view");
   const sp = await searchParams;
   const journal = sp.view === "jurnal";
+  const clientsView = sp.view === "clienti";
+  const schedulesView = sp.view === "programari";
+  const payersView = !journal && !clientsView && !schedulesView;
 
   const tabs = (
-    <div role="tablist" className="mb-3 inline-flex gap-1 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1">
-      <Link href="/notificari-platitori" role="tab" aria-selected={!journal} className={tabCls(!journal)}>{t("Plătitori")}</Link>
+    <div role="tablist" className="mb-3 inline-flex flex-wrap gap-1 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface)] p-1">
+      <Link href="/notificari-platitori" role="tab" aria-selected={payersView} className={tabCls(payersView)}>{t("Plătitori")}</Link>
+      <Link href="/notificari-platitori?view=clienti" role="tab" aria-selected={clientsView} className={tabCls(clientsView)}>{t("Clienți")}</Link>
+      <Link href="/notificari-platitori?view=programari" role="tab" aria-selected={schedulesView} className={tabCls(schedulesView)}>{t("Programate")}</Link>
       <Link href="/notificari-platitori?view=jurnal" role="tab" aria-selected={journal} className={tabCls(journal)}>{t("Jurnal notificări")}</Link>
     </div>
   );
+
+  // ── Notificări către clienți (cei obișnuiți, fără plătitori) ──
+  if (clientsView) {
+    const templates = await listPayerTemplates();
+    return (
+      <div className="w-full">
+        {tabs}
+        <p className="mb-3 text-sm text-ink-soft">
+          {t("Clienții obișnuiți din CRM (fără plătitorii din 1C). Bifează destinatarii sau ia-i pe toți din filtru și trimite-le email, SMS sau apel — acum sau programat (o dată, zilnic, săptămânal, lunar). Totul apare în Jurnalul de notificări.")}
+        </p>
+        <ClientNotifyManager
+          initialTemplates={templates}
+          canSend={can(user, "payers.notify")}
+          emailEnabled={env.smtp.enabled}
+          smsEnabled={env.sms.enabled}
+          callEnabled={env.voice.enabled}
+          userEmail={user.email}
+        />
+      </div>
+    );
+  }
+
+  // ── Notificările programate (plătitori și clienți) ──
+  if (schedulesView) {
+    const schedules = await listSchedules();
+    return (
+      <div className="w-full">
+        {tabs}
+        <p className="mb-3 text-sm text-ink-soft">
+          {t("Notificările programate către plătitori și clienți se trimit singure la data și ora aleasă (o dată, zilnic, săptămânal, lunar sau la interval), la fel ca reamintirile sarcinilor și cererilor. Se creează din fereastra de trimitere, cu „Programează trimiterea”.")}
+        </p>
+        <NotifySchedulesPanel initial={JSON.parse(JSON.stringify(schedules))} canManage={can(user, "payers.notify")} />
+      </div>
+    );
+  }
 
   // ── Jurnalul notificărilor trimise plătitorilor (aceeași schemă de viteză ca la Plătitori: pagini sau „Toate” pe bucăți, rânduri virtualizate) ──
   if (journal) {

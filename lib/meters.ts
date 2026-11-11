@@ -29,6 +29,8 @@ export type MeterFilters = {
   sursa: string;
   /** "yes" = doar contoarele a căror ultimă citire e calculată (estimată), nu citită; "no" = doar cele citite. */
   estimated: "" | "yes" | "no";
+  /** Serviciul contorului (după volumul / suma calculate în ultimul document 1C): doar apă, doar canalizare sau apă + canalizare. */
+  svc: "" | "water" | "sewer" | "both";
   /** "address" = adrese la care sunt mai multe contoare active; "subscriber" = abonați cu mai multe contoare active. */
   shared: "" | "address" | "subscriber";
   kind: "" | "person" | "company";
@@ -53,7 +55,7 @@ export type MeterFilters = {
 };
 
 export const EMPTY_METER_FILTERS: MeterFilters = {
-  q: "", street: "", status: "", reading: "", consum: "", sursa: "", estimated: "", shared: "", kind: "", sector: "", usector: "", uloc: "", account: "", debt: "",
+  q: "", street: "", status: "", reading: "", consum: "", sursa: "", estimated: "", svc: "", shared: "", kind: "", sector: "", usector: "", uloc: "", account: "", debt: "",
   invoiceStatus: "", installedFrom: "", installedTo: "", source: "", metrology: "", issue: "", sort: "",
 };
 
@@ -81,6 +83,7 @@ export function sanitizeMeterFilters(src: Source): MeterFilters {
     consum: ONE_OF(get(src, "consum"), ["positive", "zero"] as const),
     sursa: txt(get(src, "sursa"), 60),
     estimated: ONE_OF(get(src, "estimated"), ["yes", "no"] as const),
+    svc: ONE_OF(get(src, "svc"), ["water", "sewer", "both"] as const),
     shared: ONE_OF(get(src, "shared"), ["address", "subscriber"] as const),
     kind: ONE_OF(get(src, "kind"), ["person", "company"] as const),
     sector: ONE_OF(get(src, "sector"), ["privat", "comunal"] as const),
@@ -345,6 +348,11 @@ export function filterMeters(allRows: MeterRow[], f: MeterFilters): MeterRow[] {
     if (f.consum === "positive" ? !(r._ct > 0) : f.consum === "zero" ? r._ct !== 0 : false) continue;
     if (sursa && (r.sursa ?? "").toLowerCase() !== sursa) continue;
     if (f.estimated === "yes" ? !isEstimatedSource(r.sursa) : f.estimated === "no" ? r.curr == null || isEstimatedSource(r.sursa) : false) continue;
+    if (f.svc) {
+      const water = (r.apaVol ?? 0) > 0 || (r.apaSum ?? 0) > 0;
+      const sewer = (r.canalVol ?? 0) > 0 || (r.canalSum ?? 0) > 0;
+      if (f.svc === "water" ? !(water && !sewer) : f.svc === "sewer" ? !(sewer && !water) : !(water && sewer)) continue;
+    }
     if (f.shared === "address" ? r._ac < 2 : f.shared === "subscriber" ? r.meterCount < 2 : false) continue;
     if (f.kind === "person" ? !r.person : f.kind === "company" ? r.person : false) continue;
     if (sectorCode && r._st !== sectorCode) continue;
