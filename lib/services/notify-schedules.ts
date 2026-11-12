@@ -5,6 +5,7 @@ import { computeNextRun, parseReminderSchedule, type ReminderSchedule } from "..
 import { NOTIFY_CHUNK_SIZE, NOTIFY_MAX_RECIPIENTS, isEmail, normalizePhone, sanitizeFilters, type NotifyFilters } from "../payer-notify";
 import { listMatchingPayerContacts } from "../queries/payers";
 import { filtersToListOptsAsync } from "../queries/payer-notify";
+import { CRM_CLIENT_WHERE } from "../queries/clients";
 import { logAudit } from "./audit";
 import { deliverNotificationChunk, validateMessage, type SendChunkInput } from "./payer-notify-send";
 
@@ -42,7 +43,8 @@ export type ScheduleDto = {
 
 type Row = Awaited<ReturnType<typeof prisma.notifySchedule.findFirst>> & object;
 
-const NOT_PAYER = { NOT: [{ meterSeries: { not: null } }, { apaCanalContract: { not: null } }] };
+// Exact aceiași clienți ca în pagina Clienți (/clients). În Mongo un câmp lipsă ≠ null, deci `not: null` ar fi eliminat TOȚI clienții.
+const NOT_PAYER = CRM_CLIENT_WHERE;
 
 export function sanitizeClientCriteria(raw: unknown): ClientCriteria {
   const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};

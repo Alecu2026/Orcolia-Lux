@@ -36,7 +36,7 @@ export default function ClientNotifyManager({
   const t = useT();
   const toast = useToast();
   const [q, setQ] = useState("");
-  const [contact, setContact] = useState<"" | "any" | "email" | "phone" | "both">("any");
+  const [contact, setContact] = useState<"" | "any" | "email" | "phone" | "both">("");
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<ClientTargetRow[]>([]);
   const [total, setTotal] = useState(0);
