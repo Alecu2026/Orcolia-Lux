@@ -46,6 +46,10 @@ export type OneCDocument = {
   nr_contract: string | null;
   sursa: OneCSource;
   contoare: { nr_uzina: string; indice: number }[];
+  /** identificatorul trimiterii (o apăsare pe „Trimite către 1C”), același în TOATE documentele ei: 1C păstrează doar documentele cu cel mai nou `lot` și le șterge pe celelalte (resturile trimiterilor de dinainte) */
+  lot?: string;
+  /** doar la primul document al primului lot dintr-o trimitere: 1C șterge buffer-ul vechi înainte de a adăuga lotul */
+  sterge_buffer?: true;
 };
 
 /**
@@ -74,6 +78,17 @@ export function parseConfirmedCount(body: string): number | null {
   return null;
 }
 
+/**
+ * Modul „buffer”: 1C adaugă documentele într-un document-buffer comun și întoarce TOTALUL din buffer (cumulat, cu eventualele resturi), nu lungimea listei primite.
+ * Lotul de `n` documente e confirmat dacă totalul a crescut cu cel puțin `n` față de `prev` (totalul de dinainte), sau dacă buffer-ul a fost golit înainte de lot
+ * (semnalul `sterge_buffer` / un `lot` nou, ori golit de 1C între timp) și conține cel puțin lotul. `added` = câte documente socotim primite.
+ */
+export function judgeBufferReply(prev: number, n: number, total: number, reset: boolean): { ok: boolean; added: number } {
+  if (total - prev >= n) return { ok: true, added: n };
+  if (total >= n && (reset || total < prev)) return { ok: true, added: n };
+  return { ok: false, added: Math.max(0, total - prev) };
+}
+
 /** Câte citiri / documente pe sursă (pentru previzualizare și rezultat). */
 export type SourceCount = { source: OneCSource; readings: number; documents: number };
 
@@ -90,6 +105,8 @@ export type SendPreview = {
   /** citiri care nu pot fi trimise: contorul / abonatul nu mai e în lista din 1C */
   unmatched: number;
   documents: number;
+  /** citirile de trimis (inclusiv cele care nu pot fi trimise), pe luna citirii: arată de unde vin și citirile rămase după o ștergere (se verifică două luni) */
+  byPeriod: Record<string, number>;
   /** retrimitere completă: se trimit și citirile deja trimise */
   resend: boolean;
   bySource: SourceCount[];
@@ -98,7 +115,7 @@ export type SendPreview = {
 };
 
 /** Un lot trimis: câte documente, ce a confirmat 1C, starea HTTP, durata și începutul răspunsului (pentru depanare). */
-export type SendBatchLog = { batch: number; documents: number; confirmed: number | null; ok: boolean; status: number | null; message: string | null; ms: number; body: string | null };
+export type SendBatchLog = { batch: number; documents: number; /** totalul din buffer-ul 1C după lot (modul buffer) */ total?: number | null; /** semnalul „șterge buffer-ul” a plecat cu acest lot */ reset?: boolean; confirmed: number | null; ok: boolean; status: number | null; message: string | null; ms: number; body: string | null };
 
 /** Rezultatul testului de conexiune (se trimite o listă goală; 1C ar trebui să răspundă 0). */
 export type PingResult = { ok: boolean; status: number | null; ms: number; confirmed: number | null; body: string | null; message: string | null; host: string };
@@ -146,6 +163,8 @@ export type SendResult = {
   failedReadingIds: string[];
   bySource: SourceCount[];
   message: string | null;
+  /** identificatorul trimiterii (`lot`): același la toate rundele unei apăsări */
+  session: string | null;
   /** retrimitere completă: momentul de la care citirile marcate „trimis” sunt din rularea curentă (rundele următoare nu le mai trimit); altfel null */
   since: string | null;
 };

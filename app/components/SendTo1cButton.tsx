@@ -101,12 +101,14 @@ export default function SendTo1cButton() {
       const tot: Totals = { sent: 0, failed: 0, confirmed: 0, readings: 0, unmatched: 0, markErrors: 0, ms: 0, bySource: new Map(), failedItems: [], batches: [] };
       let exclude: string[] = [];
       let since: string | null = null;
+      let session: string | null = null;
       push({ kind: "info", text: t("Trimit citirile către 1C…") });
       for (let round = 0; round < 60 && !stop.current; round++) {
-        const r = await fetch("/api/contoare/send-1c", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "send", exclude, first: round === 0, resend: resendAll, since }) });
+        const r = await fetch("/api/contoare/send-1c", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "send", exclude, first: round === 0, resend: resendAll, since, session }) });
         const j = (await r.json().catch(() => null)) as (SendResult & { error?: string }) | null;
         if (!r.ok || !j || j.error) throw new Error(j?.error ?? String(r.status));
         if (j.since) since = j.since;
+        if (j.session) session = j.session;
         tot.sent += j.sent;
         tot.failed += j.failed;
         tot.confirmed += j.confirmed;
@@ -188,7 +190,7 @@ export default function SendTo1cButton() {
               <div>
                 <h2 className="text-lg font-bold">{t("Trimite citirile către 1C")}</h2>
                 <p className="mt-1 text-xs text-ink-soft">
-                  {t("Citirile lunii (cititor, portal, LoRaWAN) se trimit ca documente „Introducerea indicilor contoarelor pentru un abonat”, câte unul pentru fiecare abonat și sursă. 1C întoarce lungimea listei primite, iar aici se compară cu cea trimisă.")}
+                  {t("Citirile lunii (cititor, portal, LoRaWAN) se trimit ca documente „Introducerea indicilor contoarelor pentru un abonat”, câte unul pentru fiecare abonat și sursă. Fiecare trimitere are un identificator de lot (câmpul „lot”, în toate documentele); primul document poartă și „sterge_buffer”, ca 1C să șteargă buffer-ul vechi. 1C întoarce totalul din buffer, iar aici se verifică dacă a crescut cu cât s-a trimis.")}
                 </p>
               </div>
               <button type="button" disabled={running} onClick={() => setOpen(false)} className="tap grid size-9 shrink-0 place-items-center rounded-lg text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label={t("Închide")}>
@@ -241,6 +243,7 @@ export default function SendTo1cButton() {
                     {preview.unmatched > 0 && <li className="text-amber-700 dark:text-amber-300">{t("Care nu pot fi trimise (lipsește contul / contractul sau contorul): {n}", { n: nf(preview.unmatched) })}</li>}
                     <li>{t("Estimate (Расчетный): 0 — aplicația nu generează citiri estimate, ele rămân calculate de 1C.")}</li>
                     <li>{t("Luni verificate: {a}", { a: preview.periods.join(", ") })}</li>
+                    {Object.keys(preview.byPeriod).length > 0 && <li>{t("Citiri de trimis, pe luna citirii: {a}", { a: Object.entries(preview.byPeriod).sort(([x], [y]) => x.localeCompare(y)).map(([p, n]) => `${p}: ${nf(n)}`).join(" · ") })}</li>}
                   </ul>
                 </div>
 

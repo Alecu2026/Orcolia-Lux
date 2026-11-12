@@ -10,6 +10,7 @@ import {
   ONEC_SOURCE,
   SUBSCRIBER_TYPE,
   oneCSourceOf,
+  judgeBufferReply,
   parseConfirmedCount,
   type FailedItem,
   type OneCDocument,
@@ -56,6 +57,8 @@ type Pending = {
   readAt: Date;
   sursa: OneCSource;
   corrected: boolean;
+  /** luna citirii, „YYYY-MM” */
+  period: string;
 };
 
 type Prepared = {
@@ -67,6 +70,8 @@ type Prepared = {
   correctedReadings: number;
   alreadySent: number;
   unmatched: FailedItem[];
+  /** citiri de trimis (cu cele care nu pot fi trimise), pe luna citirii */
+  byPeriod: Record<string, number>;
 };
 
 const same = (a: number, b: number) => Math.abs(a - b) < 1e-9;
@@ -79,7 +84,7 @@ async function prepare(exclude: ReadonlySet<string> = new Set(), opts: { resend?
   const [rows, snap] = await Promise.all([
     prisma.meterReading.findMany({
       where: { period: { in: periods } },
-      select: { id: true, meterId: true, contor: true, value: true, readAt: true, source: true, sent1cAt: true, sent1cValue: true },
+      select: { id: true, meterId: true, contor: true, value: true, readAt: true, source: true, sent1cAt: true, sent1cValue: true, period: true },
       orderBy: { readAt: "asc" },
     }),
     getMeterSnap(),
@@ -98,7 +103,7 @@ async function prepare(exclude: ReadonlySet<string> = new Set(), opts: { resend?
     }
     const isCorrected = r.sent1cAt != null && !unchanged;
     if (exclude.has(r.id)) continue;
-    pending.push({ id: r.id, meterId: r.meterId, contor: r.contor, raw: r.value, value: round3(r.value), readAt: r.readAt, sursa: oneCSourceOf(r.source), corrected: isCorrected });
+    pending.push({ id: r.id, meterId: r.meterId, contor: r.contor, raw: r.value, value: round3(r.value), readAt: r.readAt, sursa: oneCSourceOf(r.source), corrected: isCorrected, period: r.period });
   }
 
   const unmatched: FailedItem[] = [];
@@ -144,7 +149,9 @@ async function prepare(exclude: ReadonlySet<string> = new Set(), opts: { resend?
       return { doc: { id, ...g.head, contoare: g.readings.map((r) => ({ nr_uzina: r.contor, indice: r.value })) } satisfies OneCDocument, readings: g.readings };
     });
 
-  return { docs, periods, newReadings: pending.filter((r) => !r.corrected).length, correctedReadings: pending.filter((r) => r.corrected).length, alreadySent, unmatched };
+  const byPeriod: Record<string, number> = {};
+  for (const p of pending) byPeriod[p.period] = (byPeriod[p.period] ?? 0) + 1;
+  return { byPeriod, docs, periods, newReadings: pending.filter((r) => !r.corrected).length, correctedReadings: pending.filter((r) => r.corrected).length, alreadySent, unmatched };
 }
 
 function countBySource(docs: Prepared["docs"]): SourceCount[] {
@@ -169,6 +176,7 @@ export async function previewSend(resend = false): Promise<SendPreview> {
     alreadySent: p.alreadySent,
     unmatched: p.unmatched.length,
     documents: p.docs.length,
+    byPeriod: p.byPeriod,
     resend,
     bySource: countBySource(p.docs),
     sample: p.docs.slice(0, SAMPLE_DOCS).map((d) => d.doc),
@@ -186,7 +194,16 @@ function describeNetworkError(e: unknown): string {
   return `Nu m-am putut conecta la serviciul 1C (${code || err?.message || "eroare necunoscută"}).`;
 }
 
-type PostOut = { ok: boolean; status: number | null; confirmed: number | null; message: string | null; ms: number; body: string | null };
+type PostOut = { ok: boolean; status: number | null; confirmed: number | null; message: string | null; ms: number; body: string | null; /** modul buffer: totalul din buffer-ul 1C întors de răspuns */ total?: number | null };
+
+/**
+ * Cum se verifică răspunsul 1C:
+ *  - `batch`: răspunsul = lungimea listei trimise;
+ *  - `buffer`: răspunsul = TOTALUL din documentul-buffer al 1C după adăugare (cumulat, cu eventualele resturi de ieri). `prev` = totalul de dinainte; lotul e confirmat dacă totalul a crescut cu cel puțin
+ *    cât s-a trimis, sau dacă buffer-ul a fost golit între timp (semnalul `sterge_buffer` / un `lot` nou, sau golit de 1C) și conține cel puțin lotul;
+ *  - `probe`: lista goală, doar citește mărimea buffer-ului.
+ */
+type Expect = { kind: "batch" } | { kind: "buffer"; prev: number; reset: boolean } | { kind: "probe" };
 
 const hostOf = () => {
   try {
@@ -197,7 +214,7 @@ const hostOf = () => {
 };
 
 /** O cerere către serviciul 1C: lista de documente ca JSON, codul de acces în antetul `token`. Nu aruncă niciodată; nu loghează codul de acces. */
-async function postList(docs: OneCDocument[]): Promise<PostOut> {
+async function postList(docs: OneCDocument[], expect: Expect = { kind: "batch" }): Promise<PostOut> {
   const t0 = Date.now();
   try {
     const res = await fetch(env.onecReadings.url, {
@@ -216,6 +233,13 @@ async function postList(docs: OneCDocument[]): Promise<PostOut> {
     if (!res.ok) return { ok: false, status: res.status, confirmed: null, message: `Serviciul 1C a răspuns cu eroarea ${res.status}${body ? `: ${body.slice(0, 160)}` : ""}.`, ms, body };
     const confirmed = parseConfirmedCount(text);
     if (confirmed == null) return { ok: false, status: res.status, confirmed: null, message: `Răspuns neînțeles de la 1C: „${body.slice(0, 160)}”. Verifică în 1C dacă documentele au fost primite înainte de a retrimite.`, ms, body };
+    if (expect.kind === "probe") return { ok: true, status: res.status, confirmed, total: confirmed, message: null, ms, body };
+    if (expect.kind === "buffer") {
+      const n = docs.length;
+      const j = judgeBufferReply(expect.prev, n, confirmed, expect.reset);
+      if (j.ok) return { ok: true, status: res.status, confirmed: j.added, total: confirmed, message: null, ms, body };
+      return { ok: false, status: res.status, confirmed: j.added, total: confirmed, message: `1C a întors ${confirmed} în buffer (înainte: ${expect.prev}, trimise acum: ${n}): așteptam cel puțin ${expect.prev + n}. Verifică în 1C ce a primit înainte de a retrimite (pot fi dubluri).`, ms, body };
+    }
     if (confirmed !== docs.length) return { ok: false, status: res.status, confirmed, message: `1C a confirmat ${confirmed} din ${docs.length} documente trimise. Verifică în 1C ce a primit înainte de a retrimite (pot fi dubluri).`, ms, body };
     return { ok: true, status: res.status, confirmed, message: null, ms, body };
   } catch (e) {
@@ -226,7 +250,9 @@ async function postList(docs: OneCDocument[]): Promise<PostOut> {
 /** Testul de conexiune: trimite o listă GOALĂ (nu creează nimic în 1C); serviciul ar trebui să răspundă 0. Arată starea HTTP, durata și răspunsul brut. */
 export async function pingOneC(): Promise<PingResult> {
   if (!oneCReadingsConfigured()) return { ok: false, status: null, ms: 0, confirmed: null, body: null, message: "Lipsește ONEC_READINGS_TOKEN în setările serverului.", host: hostOf() };
-  const r = await postList([]);
+  const bufferMode = env.onecReadings.confirm === "buffer";
+  const r = await postList([], bufferMode ? { kind: "probe" } : { kind: "batch" });
+  if (bufferMode && r.ok) return { ok: true, status: r.status, ms: r.ms, confirmed: r.total ?? r.confirmed, body: r.body, message: `Buffer-ul 1C conține acum ${r.total ?? r.confirmed} documente (lista goală nu adaugă nimic).`, host: hostOf() };
   console.log(`[onec-readings] test conexiune: status=${r.status ?? "-"} confirmat=${r.confirmed ?? "-"} ${r.ms}ms răspuns=${JSON.stringify(r.body ?? "")}`);
   return { ok: r.ok, status: r.status, ms: r.ms, confirmed: r.confirmed, body: r.body, message: r.message, host: hostOf() };
 }
@@ -264,10 +290,10 @@ const trim = (s: string | null, n = 160) => (s ? s.replace(/\s+/g, " ").slice(0,
  * anterioare (nu se reîncearcă în buclă). `first` = prima cerere a seriei (doar atunci se listează citirile care nu pot fi trimise deloc).
  * Întoarce rezultatul rulării; `remaining` > 0 = mai sunt documente de trimis (se repetă cererea), `aborted` = 1C nu răspunde / refuză codul: nu se repetă.
  */
-export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]; budgetMs?: number; first?: boolean; resend?: boolean; since?: string | null } = {}): Promise<SendResult> {
+export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]; budgetMs?: number; first?: boolean; resend?: boolean; since?: string | null; session?: string | null } = {}): Promise<SendResult> {
   const runId = Math.random().toString(36).slice(2, 8);
   const t0 = Date.now();
-  const out: SendResult = { ok: true, sent: 0, failed: 0, confirmed: 0, readingsSent: 0, remaining: 0, aborted: false, unmatched: 0, markErrors: 0, ms: 0, runId, batches: [], failedItems: [], failedReadingIds: [], bySource: [], message: null, since: null };
+  const out: SendResult = { ok: true, sent: 0, failed: 0, confirmed: 0, readingsSent: 0, remaining: 0, aborted: false, unmatched: 0, markErrors: 0, ms: 0, runId, batches: [], failedItems: [], failedReadingIds: [], bySource: [], message: null, since: null, session: null };
   if (!oneCReadingsConfigured()) {
     out.ok = false;
     out.aborted = true;
@@ -286,6 +312,9 @@ export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]
     const sinceMs = opts.since ? Date.parse(opts.since) : NaN;
     const since = opts.resend ? (Number.isFinite(sinceMs) ? new Date(sinceMs) : new Date(t0)) : null;
     out.since = since ? since.toISOString() : null;
+    // identificatorul trimiterii (`lot`): fixat la prima cerere, primit înapoi de la browser la rundele următoare
+    const session = opts.session && /^[A-Za-z0-9_-]{6,48}$/.test(opts.session) ? opts.session : `${new Date(t0).toISOString().replace(/[-:T]/g, "").slice(0, 14)}-${runId}`;
+    out.session = session;
     const prep = await prepare(new Set(opts.exclude ?? []), { resend: !!opts.resend, since });
     out.unmatched = prep.unmatched.length;
     if (opts.first !== false) for (const u of prep.unmatched.slice(0, MAX_FAILED_LISTED)) out.failedItems.push(u);
@@ -303,22 +332,48 @@ export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]
 
     const chunks: Prepared["docs"][] = [];
     for (let i = 0; i < prep.docs.length; i += batchSize) chunks.push(prep.docs.slice(i, i + batchSize));
+    // Modul buffer: loturile pleacă PE RÂND (1C întoarce totalul cumulat din buffer: în paralel nu s-ar putea atribui fiecărui lot), iar înainte de primul lot citim mărimea buffer-ului.
+    const bufferMode = env.onecReadings.confirm === "buffer";
+    const lanes = bufferMode ? 1 : conc;
+    let bufferTotal = 0;
+    if (bufferMode) {
+      const base = await postList([], { kind: "probe" });
+      if (!base.ok || base.total == null) {
+        out.ok = false;
+        out.aborted = true;
+        out.message = base.message ?? "Nu am putut citi mărimea buffer-ului 1C (cerere cu lista goală).";
+      } else {
+        bufferTotal = base.total;
+        console.log(`[onec-readings] run=${runId} lot=${session} buffer 1C înainte: ${bufferTotal} documente`);
+      }
+    }
     const sentBySource = new Map<OneCSource, SourceCount>();
     let batchNo = 0;
     let idx = 0;
     let deadGroups = 0;
-    while (idx < chunks.length) {
+    while (idx < chunks.length && !out.aborted) {
       if (Date.now() - t0 > budget) break;
-      const group = chunks.slice(idx, idx + conc);
+      const group = chunks.slice(idx, idx + lanes);
       idx += group.length;
-      const results = await Promise.all(group.map((chunk, k) => postList(chunk.map((c) => c.doc)).then((r) => ({ chunk, r, n: batchNo + k + 1 }))));
+      const results = await Promise.all(
+        group.map((chunk, k) => {
+          // fiecare document poartă identificatorul trimiterii (`lot`); 1C păstrează doar lotul cel mai nou
+          const docsToSend: OneCDocument[] = chunk.map((c) => ({ ...c.doc, lot: session }));
+          // semnalul explicit „șterge buffer-ul vechi”: doar primul document al primului lot din prima cerere a seriei
+          const reset = bufferMode && env.onecReadings.resetBuffer && opts.first !== false && batchNo + k === 0;
+          if (reset) docsToSend[0] = { ...docsToSend[0], sterge_buffer: true };
+          const expect: Expect = bufferMode ? { kind: "buffer", prev: bufferTotal, reset } : { kind: "batch" };
+          return postList(docsToSend, expect).then((r) => ({ chunk, r, n: batchNo + k + 1, reset }));
+        }),
+      );
       batchNo += group.length;
       let authFail = false;
-      for (const { chunk, r, n } of results) {
+      for (const { chunk, r, n, reset } of results) {
         const docsN = chunk.length;
-        out.batches.push({ batch: n, documents: docsN, confirmed: r.confirmed, ok: r.ok, status: r.status, message: r.message, ms: r.ms, body: r.body });
+        if (bufferMode && r.total != null) bufferTotal = r.total;
+        out.batches.push({ batch: n, documents: docsN, total: r.total ?? null, ...(reset ? { reset: true } : {}), confirmed: r.confirmed, ok: r.ok, status: r.status, message: r.message, ms: r.ms, body: r.body });
         console.log(
-          `[onec-readings] run=${runId} lot ${n}: ${docsN} documente, status=${r.status ?? "-"}, confirmat=${r.confirmed ?? "-"}, ${r.ms}ms, ${r.ok ? "OK" : `EȘUAT: ${trim(r.message)} răspuns=${JSON.stringify(trim(r.body, 120))}`}`,
+          `[onec-readings] run=${runId} lot ${n}: ${docsN} documente${reset ? " (cu semnal sterge_buffer)" : ""}, status=${r.status ?? "-"}, confirmat=${r.confirmed ?? "-"}${bufferMode ? ` total_buffer=${r.total ?? "-"}` : ""}, ${r.ms}ms, ${r.ok ? "OK" : `EȘUAT: ${trim(r.message)} răspuns=${JSON.stringify(trim(r.body, 120))}`}`,
         );
         if (r.confirmed != null) out.confirmed += r.confirmed;
         const readings = chunk.flatMap((c) => c.readings);
@@ -389,7 +444,7 @@ export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]
           sent: out.sent,
           failed: out.failed,
           confirmed: out.confirmed,
-          details: JSON.stringify({ runId, resend: !!opts.resend, ms: out.ms, batches: out.batches.slice(0, 200), bySource: out.bySource, failed: out.failedItems.slice(0, 100), unmatched: out.unmatched, remaining: out.remaining, aborted: out.aborted, markErrors: out.markErrors }).slice(0, 200_000),
+          details: JSON.stringify({ runId, lot: session, resend: !!opts.resend, ms: out.ms, batches: out.batches.slice(0, 200), bySource: out.bySource, failed: out.failedItems.slice(0, 100), unmatched: out.unmatched, remaining: out.remaining, aborted: out.aborted, markErrors: out.markErrors }).slice(0, 200_000),
         },
       })
       .catch((e) => console.error("[onec-readings] jurnal:", String(e?.message ?? e).slice(0, 160)));
