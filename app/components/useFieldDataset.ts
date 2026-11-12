@@ -185,3 +185,49 @@ export function useFieldDataset() {
 
   return { data, routes, loading, error, loadedAt, refresh: fetchFresh, patchRow, clearReadings };
 }
+
+/**
+ * Citirile unei luni ANTERIOARE (istoric): lista se cere de la server cu `?period=`, fără cache local și fără reîmprospătare automată; e doar pentru vizualizare
+ * (citirile se fac mereu pe luna curentă). `period` = null → nu se încarcă nimic.
+ */
+export function usePastField(period: string | null) {
+  const [state, setState] = useState<{ period: string; rows: FieldRow[]; routes: RouteDto[] } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loadedAt, setLoadedAt] = useState<number | null>(null);
+  const seq = useRef(0);
+
+  const load = useCallback(async () => {
+    if (!period) return;
+    const mine = ++seq.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/contoare/teren?period=${encodeURIComponent(period)}`, { cache: "no-store" });
+      const j = (await res.json()) as { period?: string; rows?: FieldTuple[]; routes?: RouteDto[]; error?: string };
+      if (!res.ok || !j.rows || !j.period) throw new Error(j.error ?? "Eroare la încărcare.");
+      if (mine !== seq.current) return;
+      setState({ period: j.period, rows: decodeField(j.rows), routes: j.routes ?? [] });
+      setLoadedAt(Date.now());
+    } catch (e) {
+      if (mine === seq.current) setError(e instanceof Error ? e.message : "Eroare la încărcare.");
+    } finally {
+      if (mine === seq.current) setLoading(false);
+    }
+  }, [period]);
+
+  useEffect(() => {
+    if (!period) {
+      seq.current++;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resetare la întoarcerea pe luna curentă
+      setState(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    setState(null); // altă lună: nu arăta lista lunii dinainte cât se încarcă
+    void load();
+  }, [period, load]);
+
+  return { data: state ? { period: state.period, rows: state.rows } : null, routes: state?.routes ?? [], loading, error, loadedAt, refresh: load };
+}

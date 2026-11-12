@@ -15,7 +15,8 @@ export async function GET(req: Request) {
   if (!user) return Response.json({ error: "Autentificare necesară." }, { status: 401 });
   if (!can(user, "meters.read")) return Response.json({ error: "Fără permisiune." }, { status: 403 });
   try {
-    const list = await getFieldList();
+    const period = new URL(req.url).searchParams.get("period");
+    const list = await getFieldList(period);
     const body = JSON.stringify(list);
     // ETag după conținut: dacă nimeni n-a citit nimic de la ultima cerere, răspunsul e „304” (fără corp) — reîmprospătarea din fundal costă aproape nimic.
     const etag = `W/"${createHash("sha1").update(body).digest("base64url").slice(0, 22)}"`;

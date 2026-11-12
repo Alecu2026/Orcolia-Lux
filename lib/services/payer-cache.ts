@@ -258,7 +258,12 @@ export async function listPayersFromSnap(filters: NotifyFilters, page: number, p
   const monthMap = filters.month ? (await getMonthSlice(filters.month)).map : null;
   const crit = notifyCriterion(filters);
   const notifySet = crit ? new Set(await notifiedClientIds(crit)) : null;
-  const list = filterSnapshot(snap.rows, filters, monthMap, notifySet);
+  let agingSet: Set<string> | null = null;
+  if (filters.aging) {
+    const { agingIds } = await import("./debt-aging");
+    agingSet = new Set(await agingIds(filters.aging));
+  }
+  const list = filterSnapshot(snap.rows, filters, monthMap, notifySet, agingSet);
   const pages = Math.max(1, Math.ceil(list.length / perPage));
   const p = Math.min(Math.max(1, page), pages);
   return { items: list.slice((p - 1) * perPage, p * perPage).map(toPayerRow), total: list.length, page: p, months: snap.months, nameFixCount: snap.nameFixCount, version: snap.version };

@@ -22,6 +22,7 @@ import {
   smsInfo,
   stripLatinDiacritics,
   type NotifyVars,
+  DISCONNECT_MODEL,
 } from "@/lib/payer-notify";
 import Link from "next/link";
 import { useToast } from "./toast";
@@ -38,7 +39,7 @@ type Phase = "compose" | "confirm" | "sending" | "done";
 type Channel = { sent: number; failed: number; skipped: number };
 type Failure = { id: string; name: string; channel: "Email" | "SMS" | "Apel"; detail: string };
 type Field = "subject" | "email" | "sms" | "call" | "pdftitle" | "pdf";
-type Draft = { subject: string; email: string; sms: string; ascii: boolean; call?: string; voice?: string; pdfTitle?: string; pdf?: string };
+type Draft = { subject: string; email: string; sms: string; ascii: boolean; call?: string; voice?: string; pdfTitle?: string; pdf?: string; pdfLayout?: "letter" | "plain"; signTitle?: string; signName?: string };
 /** Un fișier PDF de tipărit (o parte din campanie): câte o foaie pe plătitor. */
 type PdfPart = { n: number; from: number; to: number; count: number; url: string };
 
@@ -131,6 +132,10 @@ export default function PayerNotifyDialog({
   const [voice, setVoice] = useState(saved?.voice || DEFAULT_VOICE);
   const [pdfTitle, setPdfTitle] = useState(saved?.pdfTitle ?? "");
   const [pdfBody, setPdfBody] = useState(saved?.pdf ?? "");
+  // format: „document oficial” (implicit) sau foaie simplă; semnatarul documentului (se păstrează între sesiuni)
+  const [pdfLayout, setPdfLayout] = useState<"letter" | "plain">(saved?.pdfLayout === "plain" ? "plain" : "letter");
+  const [signTitle, setSignTitle] = useState(saved?.signTitle ?? "Director Financiar");
+  const [signName, setSignName] = useState(saved?.signName ?? "");
   const [pdfParts, setPdfParts] = useState<PdfPart[]>([]);
   const [pdfPreviewing, setPdfPreviewing] = useState(false);
 
@@ -165,15 +170,15 @@ export default function PayerNotifyDialog({
   const emailRef = useRef<HTMLTextAreaElement>(null);
   const smsRef = useRef<HTMLTextAreaElement>(null);
   const callRef = useRef<HTMLTextAreaElement>(null);
-  const pdfTitleRef = useRef<HTMLInputElement>(null);
+  const pdfTitleRef = useRef<HTMLTextAreaElement>(null);
   const pdfRef = useRef<HTMLTextAreaElement>(null);
 
   // Ciorna (subiect/mesaje) și numărul de test se păstrează între sesiuni — operatorul retrimite des același text.
   useEffect(() => {
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ subject, email: emailBody, sms: smsBody, ascii, call: callBody, voice, pdfTitle, pdf: pdfBody }));
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ subject, email: emailBody, sms: smsBody, ascii, call: callBody, voice, pdfTitle, pdf: pdfBody, pdfLayout, signTitle, signName }));
     } catch {}
-  }, [subject, emailBody, smsBody, ascii, callBody, voice, pdfTitle, pdfBody]);
+  }, [subject, emailBody, smsBody, ascii, callBody, voice, pdfTitle, pdfBody, pdfLayout, signTitle, signName]);
 
   // adresele blob ale PDF-urilor generate se eliberează la închiderea ferestrei
   useEffect(() => () => { for (const u of pdfUrls.current) URL.revokeObjectURL(u); }, []);
@@ -343,7 +348,7 @@ export default function PayerNotifyDialog({
     const res = await fetch("/api/platitori/notificari/pdf", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ campaignId: campaignRef.current || "preview-0000", part, totalPlanned: recipients.length, ids, title: pdfTitle, body: pdfBody, preview }),
+      body: JSON.stringify({ campaignId: campaignRef.current || "preview-0000", part, totalPlanned: recipients.length, ids, title: pdfTitle, body: pdfBody, preview, layout: pdfLayout, signTitle, signName }),
     });
     if (!res.ok) {
       let msg = "";
@@ -351,6 +356,14 @@ export default function PayerNotifyDialog({
       throw new Error(msg || tr("Nu am putut genera PDF-ul. Încearcă din nou."));
     }
     return { blob: await res.blob(), count: Number(res.headers.get("X-Notice-Count")) || ids.length };
+  }
+
+  /** Modelul „Aviz de deconectare” (document oficial cu datoria totală și cea expirată): umple titlul și textul foii. */
+  function applyDisconnectModel() {
+    if ((pdfTitle.trim() || pdfBody.trim()) && !window.confirm(tr("Înlocuiești titlul și textul foii cu modelul „Aviz de deconectare”?"))) return;
+    setPdfLayout("letter");
+    setPdfTitle(DISCONNECT_MODEL.title);
+    setPdfBody(DISCONNECT_MODEL.body);
   }
 
   async function previewPdf() {
@@ -641,15 +654,26 @@ export default function PayerNotifyDialog({
 
             {usePdf && (
               <div className="flex flex-col gap-2" data-pdf-section>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs font-semibold text-ink-soft" htmlFor="pdf-layout">{tr("Format foaie")}</label>
+                  <select id="pdf-layout" value={pdfLayout} onChange={(e) => setPdfLayout(e.target.value as "letter" | "plain")} className={`${inputCls} h-9 w-auto`}>
+                    <option value="letter">{tr("Document oficial (antet, destinatar, semnătură)")}</option>
+                    <option value="plain">{tr("Notificare simplă")}</option>
+                  </select>
+                  <button type="button" onClick={applyDisconnectModel} className="tap ml-auto h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-xs font-medium text-ink hover:bg-brand-soft">
+                    {tr("Folosește modelul „Aviz de deconectare”")}
+                  </button>
+                </div>
                 <label className="text-xs font-semibold text-ink-soft">{tr("PDF tipărit — titlul foii")}</label>
-                <input
+                <textarea
                   ref={pdfTitleRef}
                   value={pdfTitle}
                   maxLength={NOTIFY_MAX_SUBJECT}
+                  rows={2}
                   onFocus={() => (lastField.current = "pdftitle")}
                   onChange={(e) => setPdfTitle(e.target.value)}
-                  placeholder={tr("Titlul foii (opțional)")}
-                  className={`${inputCls} h-11`}
+                  placeholder={tr("Titlul foii (opțional); fiecare rând e centrat în document")}
+                  className={`${inputCls} py-2`}
                 />
                 <label className="text-xs font-semibold text-ink-soft">{tr("PDF tipărit — textul foii")}</label>
                 <textarea
@@ -662,6 +686,13 @@ export default function PayerNotifyDialog({
                   placeholder={tr("Scrie mesajul… folosește {nume}, {suma} etc.", { nume: "{nume}", suma: "{suma}" })}
                   className={`${inputCls} py-2.5`}
                 />
+                {pdfLayout === "letter" && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input value={signTitle} onChange={(e) => setSignTitle(e.target.value.slice(0, 120))} placeholder={tr("Funcția semnatarului (ex. Director Financiar)")} className={`${inputCls} h-10`} />
+                    <input value={signName} onChange={(e) => setSignName(e.target.value.slice(0, 120))} placeholder={tr("Numele semnatarului")} className={`${inputCls} h-10`} />
+                  </div>
+                )}
+                {pdfLayout === "letter" && <p className="text-xs text-ink-soft">{tr("Formatare în text: **îngroșat**, __îngroșat și subliniat__, ~~cursiv~~. Fiecare rând nou e un paragraf. Antetul (firma, adresa, logo) vine din setările firmei; „Nr.” rămâne liber, de completat la tipărire.")}</p>}
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-soft">
                   <span>{tr("Fiecare plătitor primește o foaie A4 separată, cu numele, contul și adresa lui; fișierele au câte cel mult {n} foi.", { n: nf(NOTIFY_PDF_PART_SIZE) })}</span>
                   <button type="button" onClick={previewPdf} disabled={pdfPreviewing} data-pdf-preview className="tap h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 font-medium text-ink hover:bg-brand-soft disabled:opacity-50">

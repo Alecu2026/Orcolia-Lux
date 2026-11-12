@@ -35,6 +35,7 @@ import { resolveNotifyFilterAction, type RecipientResult } from "@/app/actions/p
 import { INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatusKey } from "./invoice-meta";
 import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useToast } from "./toast";
+import { AGING_BUCKETS } from "@/lib/debt-aging";
 import { useLocale, useT } from "@/lib/i18n/context";
 import FiltersToggle from "./FiltersToggle";
 import { useFiltersOpen } from "./useFiltersOpen";
@@ -82,6 +83,7 @@ function rowVars(r: PayerRow): NotifyVars {
     name: r.name,
     account: r.meterSeries ?? r.contract,
     amount: r.latestInvoice?.grandTotal ?? null,
+    expired: r.latestInvoice?.debt ?? null,
     currency: r.latestInvoice?.currency ?? null,
     invoiceNumber: r.latestInvoice?.number ?? null,
     dueDate: r.latestInvoice?.dueDate ?? null,
@@ -93,7 +95,7 @@ function rowVars(r: PayerRow): NotifyVars {
 
 const SAMPLE_VARS = buildVars({
   invoiceLink: "https://exemplu.md/invoice/public/…",
-  name: "Ion Popescu", account: "123456", amount: 250, currency: "MDL", invoiceNumber: "AC-0001",
+  name: "Ion Popescu", account: "123456", amount: 250, expired: 180, currency: "MDL", invoiceNumber: "AC-0001",
   dueDate: new Date(Date.now() + 10 * 86_400_000), address: "str. Exemplu 1",
   issues: "Sigiliu rupt sau lipsă (contor 123456)", issueDue: new Date(Date.now() + 10 * 86_400_000),
 });
@@ -281,6 +283,23 @@ export default function PayerNotifyManager({
   const [notifySets, setNotifySets] = useState<Map<string, Set<string>>>(new Map());
   const notifySet = critKey ? (notifySets.get(critKey) ?? null) : null;
   const haveNotifySet = !!notifySet;
+  // „Datorie pe vechime”: serverul dă id-urile plătitorilor din intervalul ales (raportul de datorii), iar filtrarea rămâne locală, direct în tabel.
+  // Până sosesc, lista vine de pe server (care aplică același criteriu).
+  const agingKey = listFilters.aging;
+  const [agingSets, setAgingSets] = useState<Map<string, Set<string>>>(new Map());
+  const agingSet = agingKey ? (agingSets.get(agingKey) ?? null) : null;
+  const haveAgingSet = !!agingSet;
+  useEffect(() => {
+    if (!ready || !agingKey || haveAgingSet) return;
+    const ctl = new AbortController();
+    fetch(`/api/platitori/aging-ids?bucket=${encodeURIComponent(agingKey)}`, { signal: ctl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { ids?: string[] } | null) => {
+        if (j?.ids) setAgingSets((m) => new Map(m).set(agingKey, new Set(j.ids)));
+      })
+      .catch(() => {});
+    return () => ctl.abort();
+  }, [ready, agingKey, haveAgingSet]);
   useEffect(() => {
     if (!ready || !critKey || haveNotifySet) return;
     const ctl = new AbortController();
@@ -294,14 +313,14 @@ export default function PayerNotifyManager({
     return () => ctl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, critKey, haveNotifySet]);
-  const useLocal = !!ds.rows && (!listFilters.month || !!monthMap) && (!critKey || haveNotifySet);
+  const useLocal = !!ds.rows && (!listFilters.month || !!monthMap) && (!critKey || haveNotifySet) && (!agingKey || haveAgingSet);
   // Cu lista completă în browser, orice dimensiune de pagină (inclusiv „Toate") e instant; până atunci serverul dă cel mult 200 de rânduri.
   const perPage = useLocal ? wantPerPage : Math.min(wantPerPage, SERVER_MAX_ROWS);
   const key = queryKey(filters, page, perPage);
   const localList = useMemo(
-    () => (useLocal && ds.rows ? filterSnapshot(ds.rows, sanitizeFilters(listFilters), monthMap, notifySet) : null),
+    () => (useLocal && ds.rows ? filterSnapshot(ds.rows, sanitizeFilters(listFilters), monthMap, notifySet, agingSet) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [useLocal, ds.rows, ds.version, listFilters, monthMap, notifySet],
+    [useLocal, ds.rows, ds.version, listFilters, monthMap, notifySet, agingSet],
   );
   const view: Page = useMemo(
     () => (localList ? { items: localList.slice((page - 1) * perPage, page * perPage), total: localList.length } : data),
@@ -755,6 +774,10 @@ export default function PayerNotifyManager({
         >
           <option value="">{t("Factură în lună: cu factură")}</option>
           <option value="1">{t("Fără factură în luna aleasă")}</option>
+        </select>
+        <select value={filters.aging} onChange={(e) => setFilter({ aging: e.target.value as NotifyFilters["aging"] })} className={fld(filters.aging)} aria-label={t("Datorie pe vechime")} title={t("Plătitorii cu datorie, după de cât timp sunt datornici (de la prima factură rămasă neachitată)")}>
+          <option value="">{t("Datorie pe vechime: toate")}</option>
+          {AGING_BUCKETS.map((b) => <option key={b.key} value={b.key}>{t(b.label)}</option>)}
         </select>
         <select value={filters.service} onChange={(e) => setFilter({ service: e.target.value as NotifyFilters["service"] })} className={fld(filters.service)} aria-label={t("Serviciu")}>
           <option value="">{t("Serviciu: toate")}</option>

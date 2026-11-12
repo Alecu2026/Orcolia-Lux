@@ -120,6 +120,11 @@ export async function filtersToListOptsAsync(f: NotifyFilters): Promise<ListPaye
     sectorIds = await restrict(sectorIds, Promise.resolve(ids));
     if (f.noInvoice) opts.month = undefined; // luna a servit doar la excludere: nu se mai cer plătitorii CU factură în ea
   }
+  // datorie pe vechime: id-urile din raportul de datorii (aceeași regulă ca în browser), intersectate cu restul
+  if (f.aging) {
+    const { agingIds } = await import("../services/debt-aging");
+    sectorIds = await restrict(sectorIds, agingIds(f.aging));
+  }
   if (!crit) return sectorIds ? { ...opts, idsIn: sectorIds } : opts;
   const ids = await notifiedClientIds(crit);
   if (!sectorIds) return crit.negate ? { ...opts, idsNotIn: ids } : { ...opts, idsIn: ids };

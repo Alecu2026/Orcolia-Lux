@@ -12,6 +12,9 @@ export const AGING_BUCKETS = [
 
 export type AgingKey = (typeof AGING_BUCKETS)[number]["key"];
 
+/** Valorile filtrului „Datorie pe vechime” din Plătitori / Notificări. */
+export const AGING_FILTER_VALUES = AGING_BUCKETS.map((b) => b.key) as unknown as readonly AgingKey[];
+
 export const bucketOf = (months: number): AgingKey => AGING_BUCKETS.find((b) => months >= b.min && months <= b.max)?.key ?? "y3p";
 
 export type AgingRow = {
@@ -30,6 +33,8 @@ export type AgingRow = {
   /** luni de datorie (≥ 1) */
   months: number;
   bucket: AgingKey;
+  /** vechimea e estimată: n-a fost găsită o factură neachitată (datoria vine din 1C), se folosește scadența ultimei facturi */
+  approx?: boolean;
 };
 
 export type AgingReport = {

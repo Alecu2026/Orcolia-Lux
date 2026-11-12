@@ -13,7 +13,6 @@ import { IconX } from "./icons";
 
 const money = (n: number) => n.toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const csvCell = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
-const SHOW = 300;
 
 export default function DebtAgingButton() {
   const t = useT();
@@ -82,7 +81,7 @@ export default function DebtAgingButton() {
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={() => setOpen(false)}>
-          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded-t-2xl bg-[var(--color-surface)] p-5 shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="flex h-[94vh] w-full max-w-[min(97vw,1800px)] flex-col rounded-t-2xl bg-[var(--color-surface)] p-5 shadow-2xl sm:h-[92vh] sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold">{t("Datorii pe vechime")}</h2>
@@ -123,6 +122,12 @@ export default function DebtAgingButton() {
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
                   <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("Caută nume, cont, adresă, telefon…")} className="h-8 min-w-40 flex-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm" />
                   <input value={minDebt} onChange={(e) => setMinDebt(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder={t("Datorie minimă (MDL)")} className="h-8 w-40 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2 text-sm" />
+                  {bucket && (
+                    <>
+                      <Link href={`/platitori?aging=${bucket}`} className="tap inline-flex h-8 items-center rounded-lg border border-brand/50 px-2 text-[12px] font-medium text-brand hover:bg-brand/10">{t("Vezi în Plătitori →")}</Link>
+                      <Link href={`/notificari-platitori?aging=${bucket}`} className="tap inline-flex h-8 items-center rounded-lg border border-brand/50 px-2 text-[12px] font-medium text-brand hover:bg-brand/10">{t("Trimite notificare →")}</Link>
+                    </>
+                  )}
                   <button type="button" onClick={exportCsv} disabled={rows.length === 0} className="tap h-8 rounded-lg border border-[var(--color-line)] px-2 text-[12px] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40">
                     ⬇ {t("Export CSV")}
                   </button>
@@ -145,20 +150,19 @@ export default function DebtAgingButton() {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.slice(0, SHOW).map((r) => (
+                      {rows.map((r) => (
                         <tr key={r.id} className="border-t border-[var(--color-line)]">
                           <td className="px-2 py-1"><Link href={`/platitori/${r.id}`} className="text-brand hover:underline">{r.name}</Link></td>
                           <td className="whitespace-nowrap px-2 py-1 font-mono">{r.account ?? "—"}</td>
                           <td className="px-2 py-1 text-ink-soft">{r.address ?? "—"}</td>
                           <td className="whitespace-nowrap px-2 py-1 text-ink-soft">{r.phone ?? "—"}</td>
                           <td className="whitespace-nowrap px-2 py-1 text-right tabular-nums">{money(r.debt)}</td>
-                          <td className="whitespace-nowrap px-2 py-1">{r.since}</td>
+                          <td className="whitespace-nowrap px-2 py-1" title={r.approx ? t("Estimat: nu s-a găsit o factură neachitată (datoria vine din 1C); se folosește scadența ultimei facturi") : undefined}>{r.approx ? "≈ " : ""}{r.since}</td>
                           <td className="px-2 py-1 text-right tabular-nums">{r.months}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {rows.length > SHOW && <p className="px-2 py-1.5 text-[11px] text-ink-soft">{t("Se afișează primele {n}; restul în exportul CSV.", { n: SHOW })}</p>}
                   {rows.length === 0 && <p className="px-2 py-3 text-center text-ink-soft">{t("Niciun plătitor pentru filtrele alese.")}</p>}
                 </div>
               </>

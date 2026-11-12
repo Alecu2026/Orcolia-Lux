@@ -54,12 +54,12 @@ export async function meterAverageAction(meterId: string): Promise<ConsumAvg | n
   return getMeterAverage(meterId).catch(() => null);
 }
 
-/** Șterge citirile lunii curente ale contoarelor alese (citiri de test / greșite). Doar pentru „Rute de citire, planificat vs citit…” (meters.manage). */
-export async function deleteMeterReadingsAction(meterIds: string[]): Promise<DeleteReadingsResult> {
+/** Șterge citirile lunii alese (implicit cea curentă) ale contoarelor alese (citiri de test / greșite). Doar pentru „Rute de citire, planificat vs citit…” (meters.manage). */
+export async function deleteMeterReadingsAction(meterIds: string[], period?: string | null): Promise<DeleteReadingsResult> {
   const user = await requireUser();
   if (!can(user, "meters.manage")) return { ok: false, error: "Fără permisiune." };
   if (!Array.isArray(meterIds)) return { ok: false, error: "Date invalide." };
-  return deleteReadings(user, meterIds.map(String));
+  return deleteReadings(user, meterIds.map(String), typeof period === "string" ? period : null);
 }
 
 /** Doar neregula, fără index (contor inaccesibil, defect găsit fără citire). */

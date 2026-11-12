@@ -108,15 +108,17 @@ export async function listMeterReadings(meterId: string, limit = 36): Promise<Re
  * Lista pentru persoana care face citirile: contoarele ACTIVE, în ordinea adreselor (ca să se poată merge pe stradă), cu ultimul index cunoscut și
  * cu citirea de luna aceasta (dacă există). Din lista din memorie + citirile din teren (puține), fără interogări grele.
  */
-export async function getFieldList(): Promise<FieldList> {
-  const period = currentPeriod();
+export async function getFieldList(periodArg?: string | null): Promise<FieldList> {
+  // o lună anterioară se poate doar vedea (istoric): citirile ei apar ca „citirea lunii”; fără parametru = luna curentă
+  const nowPeriod = currentPeriod();
+  const period = periodArg && /^\d{4}-(0[1-9]|1[0-2])$/.test(periodArg) && periodArg <= nowPeriod ? periodArg : nowPeriod;
   if (DEMO) return { period, rows: [], routes: [] };
   const [snap, lw, recent, locs, routes, openIssues] = await Promise.all([
     getMeterSnap(),
     getLorawanMap(),
     // luna aceasta + cele două dinainte: citirile din teren mai noi decât indexul din 1C
     prisma.meterReading.findMany({
-      where: { period: { gte: shiftPeriod(period, 2) } },
+      where: { period: { gte: shiftPeriod(period, 2), lte: period } },
       select: { meterId: true, period: true, value: true, readAt: true, photoUrl: true, userName: true, source: true, distanceM: true, lat: true, lng: true, accuracy: true, avgConsum: true },
     }),
     // adresa / locația contoarelor completate din teren (o înregistrare mică pe contor)
@@ -420,16 +422,17 @@ export const MAX_DELETE_READINGS = 3000;
 export type DeleteReadingsResult = { ok: true; deleted: number; skipped: number; sent1c: number } | { ok: false; error: string };
 
 /**
- * Șterge citirile LUNII CURENTE ale contoarelor date (citiri de test, trimise greșit din portal sau de cititor). Ștergerea elimină citirea din CRM și poza ei de pe disc; contorul redevine „necitit”.
+ * Șterge citirile unei luni (implicit cea curentă; sau o lună anterioară, din istoric) ale contoarelor date (citiri de test, trimise greșit din portal sau de cititor). Ștergerea elimină citirea din CRM și poza ei de pe disc; contorul redevine „necitit”.
  * Citirile automate LoRaWAN nu se șterg (ar fi aduse la loc la următoarea extragere). Ce a fost deja trimis către 1C rămâne în 1C: numărul lor se întoarce, ca să fie corectat acolo.
  * Fiecare ștergere intră în Audit Logs.
  */
-export async function deleteReadings(user: AuditUser, meterIds: string[]): Promise<DeleteReadingsResult> {
+export async function deleteReadings(user: AuditUser, meterIds: string[], periodArg?: string | null): Promise<DeleteReadingsResult> {
   if (DEMO) return { ok: false, error: "Mod demo." };
   const ids = [...new Set(meterIds.filter((s) => typeof s === "string" && s.length > 0 && s.length <= 300))];
   if (ids.length === 0) return { ok: false, error: "Nicio citire aleasă." };
   if (ids.length > MAX_DELETE_READINGS) return { ok: false, error: "Prea multe citiri odată. Restrânge filtrele și repetă." };
-  const period = currentPeriod();
+  const nowPeriod = currentPeriod();
+  const period = periodArg && /^\d{4}-(0[1-9]|1[0-2])$/.test(periodArg) && periodArg <= nowPeriod ? periodArg : nowPeriod;
   const found = await prisma.meterReading.findMany({ where: { period, meterId: { in: ids } } });
   const rows = found.filter((r) => r.source !== LORAWAN_SOURCE);
   const skipped = ids.length - rows.length;

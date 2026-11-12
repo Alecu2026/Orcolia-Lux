@@ -34,7 +34,10 @@ type Totals = {
 
 const nf = (n: number) => n.toLocaleString("ro-RO");
 
-export default function SendTo1cButton() {
+/** Ce arată pagina Citiri teren acum: contoarele din lista filtrată care au citire (ca la export), luna afișată și dacă s-au pus filtre. */
+export type SendScope = { ids: string[]; period: string; meters: number; filtered: boolean };
+
+export default function SendTo1cButton({ scope = null }: { scope?: SendScope | null }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<SendPreview | null>(null);
@@ -42,6 +45,11 @@ export default function SendTo1cButton() {
   const [pullFirst, setPullFirst] = useState(true);
   /** Retrimitere completă (implicit): la fiecare apăsare pleacă din nou TOATE citirile lunii, nu doar cele noi. */
   const [resendAll, setResendAll] = useState(true);
+  /** Doar contoarele din lista filtrată (ca la export); debifat = toate citirile (luna curentă și cea dinainte). Se alege la deschidere după filtrele din pagină. */
+  const [useScope, setUseScope] = useState(false);
+  const scoped = !!scope && useScope;
+  /** Corpul care limitează trimiterea (preview + send): ids + luna din pagină. */
+  const scopeBody = scoped && scope ? { meterIds: scope.ids, periods: [scope.period] } : {};
   const [running, setRunning] = useState(false);
   const [steps, setSteps] = useState<Step[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
@@ -56,7 +64,7 @@ export default function SendTo1cButton() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/contoare/send-1c", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "preview", resend: resendAll }) });
+      const r = await fetch("/api/contoare/send-1c", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "preview", resend: resendAll, ...scopeBody }) });
       const j = (await r.json().catch(() => null)) as (SendPreview & { error?: string }) | null;
       if (!r.ok || !j || j.error) throw new Error(j?.error ?? String(r.status));
       setPreview(j);
@@ -65,7 +73,15 @@ export default function SendTo1cButton() {
     } finally {
       setLoading(false);
     }
-  }, [resendAll]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resendAll, scoped, scope?.ids.length, scope?.period]);
+
+  // la deschidere: dacă în pagină sunt filtre (sau o altă lună), implicit se trimit doar contoarele din listă; altfel toate citirile
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (open) setUseScope(!!scope?.filtered);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,7 +120,7 @@ export default function SendTo1cButton() {
       let session: string | null = null;
       push({ kind: "info", text: t("Trimit citirile către 1C…") });
       for (let round = 0; round < 60 && !stop.current; round++) {
-        const r = await fetch("/api/contoare/send-1c", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "send", exclude, first: round === 0, resend: resendAll, since, session }) });
+        const r = await fetch("/api/contoare/send-1c", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "send", exclude, first: round === 0, resend: resendAll, since, session, ...scopeBody }) });
         const j = (await r.json().catch(() => null)) as (SendResult & { error?: string }) | null;
         if (!r.ok || !j || j.error) throw new Error(j?.error ?? String(r.status));
         if (j.since) since = j.since;
@@ -243,6 +259,7 @@ export default function SendTo1cButton() {
                     {preview.unmatched > 0 && <li className="text-amber-700 dark:text-amber-300">{t("Care nu pot fi trimise (lipsește contul / contractul sau contorul): {n}", { n: nf(preview.unmatched) })}</li>}
                     <li>{t("Estimate (Расчетный): 0 — aplicația nu generează citiri estimate, ele rămân calculate de 1C.")}</li>
                     <li>{t("Luni verificate: {a}", { a: preview.periods.join(", ") })}</li>
+                    {preview.scopeMeters != null && <li className="font-medium text-brand">{t("Limitat la lista filtrată: {n} contoare.", { n: nf(preview.scopeMeters) })}</li>}
                     {Object.keys(preview.byPeriod).length > 0 && <li>{t("Citiri de trimis, pe luna citirii: {a}", { a: Object.entries(preview.byPeriod).sort(([x], [y]) => x.localeCompare(y)).map(([p, n]) => `${p}: ${nf(n)}`).join(" · ") })}</li>}
                   </ul>
                 </div>
@@ -252,6 +269,16 @@ export default function SendTo1cButton() {
                     <summary className="cursor-pointer font-medium">{t("Vezi exact ce se trimite (primele documente)")}</summary>
                     <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[var(--color-surface-2)] p-2 text-[11px] leading-snug">{JSON.stringify(preview.sample, null, 2)}</pre>
                   </details>
+                )}
+
+                {scope && (
+                  <label className="flex cursor-pointer items-start gap-2 rounded-xl border border-brand/40 bg-brand/5 p-3 text-sm">
+                    <input type="checkbox" checked={useScope} onChange={(e) => setUseScope(e.target.checked)} disabled={running} className="mt-0.5 size-4 accent-[var(--color-brand)]" />
+                    <span>
+                      {t("Doar contoarele din lista filtrată ({n} cu citiri, luna {luna})", { n: nf(scope.ids.length), luna: scope.period })}
+                      <span className="block text-xs text-ink-soft">{t("Ca la export: se trimit doar citirile contoarelor pe care le vezi acum în listă, după filtre. Debifează ca să plece toate citirile (luna curentă și cea dinainte).")}</span>
+                    </span>
+                  </label>
                 )}
 
                 <label className="flex cursor-pointer items-start gap-2 text-sm">

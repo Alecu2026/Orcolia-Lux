@@ -40,8 +40,13 @@ async function build(): Promise<AgingReport> {
     const inv = r.latestInvoice;
     const debt = inv?.debt ?? 0;
     if (!inv || !(debt > EPS)) continue;
-    const since = sinceBy.get(r.id);
-    if (!since) continue;
+    // Fără factură neachitată găsită (datoria vine din 1C, iar lanțul de facturi o arată achitată), plătitorul NU dispare din raport: vechimea se estimează după scadența ultimei facturi
+    let since = sinceBy.get(r.id);
+    let approx = false;
+    if (!since) {
+      approx = true;
+      since = inv.dueDate && /^\d{4}-\d{2}/.test(inv.dueDate) ? inv.dueDate.slice(0, 7) : now;
+    }
     const months = Math.max(1, nowIdx - (Number(since.slice(0, 4)) * 12 + Number(since.slice(5, 7))));
     rows.push({
       id: r.id,
@@ -54,6 +59,7 @@ async function build(): Promise<AgingReport> {
       since,
       months,
       bucket: bucketOf(months),
+      ...(approx ? { approx: true } : {}),
     });
   }
   rows.sort((a, b) => b.months - a.months || b.debt - a.debt);
@@ -63,6 +69,12 @@ async function build(): Promise<AgingReport> {
   });
   console.log(`[debt-aging] ${rows.length} plătitori cu datorie`);
   return { builtAt: Date.now(), rows, buckets };
+}
+
+/** Id-urile plătitorilor dintr-un interval de vechime (pentru filtrul din Plătitori / Notificări). */
+export async function agingIds(bucket: string): Promise<string[]> {
+  if (!AGING_BUCKETS.some((b) => b.key === bucket)) return [];
+  return (await debtAgingReport()).rows.filter((r) => r.bucket === bucket).map((r) => r.id);
 }
 
 export function debtAgingReport(): Promise<AgingReport> {

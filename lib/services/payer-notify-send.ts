@@ -134,7 +134,7 @@ export async function deliverNotificationChunk(user: Sender, input: SendChunkInp
       ? prisma.invoice.findMany({
           where: { clientId: { in: ids } },
           orderBy: { issueDate: "desc" },
-          select: { clientId: true, number: true, grandTotal: true, currency: true, dueDate: true, publicToken: true },
+          select: { clientId: true, number: true, grandTotal: true, currency: true, dueDate: true, publicToken: true, datoriiAvans: true },
         })
       : Promise.resolve([]),
     prisma.payerNotificationLog.findMany({
@@ -178,6 +178,7 @@ export async function deliverNotificationChunk(user: Sender, input: SendChunkInp
       name: c.name,
       account: c.meterSeries ?? c.apaCanalContract,
       amount: inv?.grandTotal ?? null,
+      expired: inv ? inv.datoriiAvans : null,
       currency: inv?.currency ?? null,
       invoiceNumber: inv?.number ?? null,
       dueDate: inv?.dueDate ?? null,

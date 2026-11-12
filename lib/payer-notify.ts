@@ -58,6 +58,8 @@ export type NotifyFilters = {
   invoices: "" | "none";
   /** "1" = doar plătitorii FĂRĂ factură în luna aleasă (`month`; fără lună aleasă = cea mai recentă). */
   noInvoice: "" | "1";
+  /** Datorie pe vechime: 1–3 luni / 3 luni–1 an / 1–3 ani / peste 3 ani (după prima factură rămasă neachitată; vezi lib/debt-aging.ts). */
+  aging: "" | "m1_3" | "m3_12" | "y1_3" | "y3p";
   /** Serviciul plătitorului (după ultimul document 1C): doar apă / doar canalizare / apă + canalizare. */
   service: "" | "water" | "sewer" | "both";
   /** "yes" = plătitori la care ultima citire a contorului e calculată (estimată), nu citită; "no" = cu citire reală. */
@@ -74,7 +76,7 @@ export type NotifyFilters = {
 
 export const EMPTY_FILTERS: NotifyFilters = {
   q: "", street: "", month: "", account: "", sector: "", usector: "", uloc: "", invoiceStatus: "", debt: "", bal: "",
-  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", newFrom: "", placeFrom: "", sort: "", nameFix: "", invoices: "", noInvoice: "", service: "", estimated: "", lorawan: "", contractExp: "", metrologyExp: "", meterIssues: "",
+  minDebt: "", maxDebt: "", contact: "", kind: "", notified: "", via: "", notifiedFrom: "", notifiedTo: "", installedFrom: "", newFrom: "", placeFrom: "", sort: "", nameFix: "", invoices: "", noInvoice: "", aging: "", service: "", estimated: "", lorawan: "", contractExp: "", metrologyExp: "", meterIssues: "",
 };
 
 /** „Toate" = o pagină cât toată lista (plafon de siguranță; sunt ~19.000 de plătitori). */
@@ -186,6 +188,7 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     nameFix: ONE_OF(get(src, "nameFix"), ["1"] as const),
     invoices: ONE_OF(get(src, "invoices"), ["none"] as const),
     noInvoice: ONE_OF(get(src, "noInvoice"), ["1"] as const),
+    aging: ONE_OF(get(src, "aging"), ["m1_3", "m3_12", "y1_3", "y3p"] as const),
     service: ONE_OF(get(src, "service"), ["water", "sewer", "both"] as const),
     estimated: ONE_OF(get(src, "estimated"), ["yes", "no"] as const),
     lorawan: ONE_OF(get(src, "lorawan"), ["yes", "no"] as const),
@@ -220,6 +223,8 @@ export const NOTIFY_TOKENS = [
   { key: "nume", label: "Nume" },
   { key: "cont", label: "Cont / contract" },
   { key: "suma", label: "Suma de achitat" },
+  { key: "datorie_expirata", label: "Datorie cu termenul expirat (restanța)" },
+  { key: "data", label: "Data de azi" },
   { key: "factura", label: "Nr. factură" },
   { key: "scadenta", label: "Scadență" },
   { key: "adresa", label: "Adresă" },
@@ -255,6 +260,8 @@ export function buildVars(p: {
   address: string | null;
   /** Linkul public al facturii (se deschide fără autentificare). */
   invoiceLink?: string | null;
+  /** Datoria cu termenul expirat: restanța reportată pe factură („Datorii +”, fără suma curentă încă neajunsă la scadență); null = necunoscută. */
+  expired?: number | null;
   /** Neregulile deschise de contor, ca text („Sigiliu rupt sau lipsă (contor 123)”). */
   issues?: string | null;
   /** Cel mai apropiat termen de remediere. */
@@ -264,6 +271,9 @@ export function buildVars(p: {
     nume: p.name,
     cont: p.account ?? "—",
     suma: p.amount == null ? "—" : fmtMoney(p.amount, p.currency ?? "MDL"),
+    // restanța nu depășește totalul de achitat; fără sumă totală se arată cum e
+    datorie_expirata: p.expired == null ? "—" : fmtMoney(Math.max(0, p.amount == null ? p.expired : Math.min(p.expired, p.amount)), p.currency ?? "MDL"),
+    data: fmtDay(new Date()),
     factura: p.invoiceNumber ?? "—",
     scadenta: p.dueDate ? fmtDay(p.dueDate) : "—",
     adresa: p.address ?? "—",
@@ -607,9 +617,10 @@ function orderFor(rows: SnapRow[], sort: "debtDesc" | "debtAsc" | "installDesc" 
  * Cu `month`, suma/statusul sunt ale facturii acelei luni (`monthMap`); fără, ale ultimei facturi.
  * O singură trecere cu comparații pe câmpuri pre-calculate (vezi SnapRow) și ordine de sortare pre-calculate: milisecunde la 19.000 de rânduri.
  */
-export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: Map<string, SnapInvoice> | null, notifySet: Set<string> | null = null): SnapRow[] {
+export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: Map<string, SnapInvoice> | null, notifySet: Set<string> | null = null, agingSet: Set<string> | null = null): SnapRow[] {
   const crit = notifyCriterion(f);
   if (crit && !notifySet) return []; // mulțimea „notificați în perioada…" încă nu e încărcată: apelantul o cere și reface lista
+  if (f.aging && !agingSet) return []; // mulțimea „datorie pe vechime" încă nu e încărcată: apelantul o cere și reface lista
   const rows = f.month ? (monthMap ? (f.noInvoice ? rowsWithoutMonth(allRows, monthMap) : rowsForMonth(allRows, monthMap)) : []) : allRows;
   const q = f.q.trim().toLowerCase();
   const street = f.street.trim().toLowerCase();
@@ -663,6 +674,7 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
     if (f.invoices === "none" && r.latestInvoice) continue;
     if (f.estimated === "yes" ? !r.estimated : f.estimated === "no" ? r.estimated : false) continue;
     if (f.lorawan === "yes" ? !r.lorawan : f.lorawan === "no" ? r.lorawan : false) continue;
+    if (f.aging && !agingSet!.has(r.id)) continue;
     if (f.service && r.service !== (f.service === "water" ? 1 : f.service === "sewer" ? 2 : 3)) continue;
     if (f.newFrom && !(r.addedOn && r.addedOn >= f.newFrom)) continue;
     if (f.placeFrom && !(r.placeStart && r.placeStart >= f.placeFrom)) continue;
@@ -684,3 +696,20 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
   }
   return out;
 }
+
+/**
+ * Modelul „Aviz de deconectare” pentru foaia PDF (document oficial): datoria totală ({suma}) și cea cu termenul expirat ({datorie_expirata}), cu avertizarea de deconectare.
+ * Textul poate fi modificat în fereastra de trimitere; ** = îngroșat, __ = îngroșat și subliniat, ~~ = cursiv.
+ */
+export const DISCONNECT_MODEL = {
+  title: "Aviz de deconectare.\nStimate consumator!",
+  body: [
+    "S.A. Apa-Canal Cahul Vă atenționează, că datoria DVS pentru consumul de apă la data de {data} constituie **{suma}**, inclusiv cu termenul expirat **{datorie_expirata}**.",
+    "Potrivit art.776 Cod Civil RM, obligațiile se nasc din contract, fapt ilicit (delict) și din orice alt act sau fapt susceptibil de a le produce în condițiile legii.",
+    "În conformitatea cu prevederile art.774 alin.(1)Cod Civil RM, în virtutea raportului obligațional, creditorul este în drept să pretindă de la debitor executarea unei prestații, iar debitorul este ținut să o execute.",
+    "Prin urmare, solicităm achitarea sumei debitoare în termen de 5 zile calendaristice de la data recepționării prezentei reclamații, în caz contrar vom fi nevoiți __să Vă deconectăm de la rețeaua publică de alimentare cu apă și să ne adresăm în instanța de judecată pentru recuperarea forțată a datoriei.__",
+    "Menționăm, că în cazul adresării în instanța de judecată, DVS veți suporta cheltuieli ce țin de achitarea taxei de stat, ceea ce constituie 3% din valoarea acțiunii, precum și taxele aferente procedurii de executare, a onorariului executorului judecătoresc în mărime de 10% din suma debitoare.",
+    "Pentru reconectare, va trebui să înlăturați motivele care au condus la deconectare, să achitați datoria formată și tariful pentru reconectare la rețeaua de alimentare cu apă și/sau canalizare a instalațiilor interne care vă aparțin.",
+    "~~Informații suplimentare puteți afla la oficiul S.A. Apa-Canal Cahul din mun. Cahul, str. 31 August nr. 1. Republica Moldova, sau la numărul de telefon: 0 689-99-026~~",
+  ].join("\n"),
+} as const;

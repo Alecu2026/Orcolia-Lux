@@ -78,9 +78,16 @@ const same = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** Citirile din luna curentă și din cea de dinainte, împărțite în „de trimis” / „deja trimise”, și documentele formate din cele de trimis. */
-async function prepare(exclude: ReadonlySet<string> = new Set(), opts: { resend?: boolean; since?: Date | null } = {}): Promise<Prepared> {
+/** Ce citiri se iau în calcul: implicit luna curentă + cea dinainte, toate contoarele; cu `scope`, doar lunile și contoarele din lista filtrată (ca la export). */
+export type SendScope = { meterIds?: readonly string[] | null; periods?: readonly string[] | null };
+
+const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+async function prepare(exclude: ReadonlySet<string> = new Set(), opts: { resend?: boolean; since?: Date | null; scope?: SendScope | null } = {}): Promise<Prepared> {
   const cur = currentPeriod();
-  const periods = [shiftPeriod(cur, 1), cur];
+  const scoped = opts.scope?.periods?.filter((p) => PERIOD_RE.test(p) && p <= cur) ?? [];
+  const periods = scoped.length ? [...new Set(scoped)].sort() : [shiftPeriod(cur, 1), cur];
+  const only = opts.scope?.meterIds ? new Set(opts.scope.meterIds) : null;
   const [rows, snap] = await Promise.all([
     prisma.meterReading.findMany({
       where: { period: { in: periods } },
@@ -94,6 +101,7 @@ async function prepare(exclude: ReadonlySet<string> = new Set(), opts: { resend?
   const pending: Pending[] = [];
   let alreadySent = 0;
   for (const r of rows) {
+    if (only && !only.has(r.meterId)) continue; // doar contoarele din lista filtrată
     const unchanged = r.sent1cAt != null && r.sent1cValue != null && same(r.sent1cValue, r.value);
     // Retrimitere completă: și citirile deja trimise (neschimbate) pleacă din nou, cu excepția celor trimise chiar în rularea curentă (rundele următoare ale aceleiași apăsări).
     const sentThisRun = !!opts.since && r.sent1cAt != null && r.sent1cAt.getTime() >= opts.since.getTime();
@@ -166,8 +174,8 @@ function countBySource(docs: Prepared["docs"]): SourceCount[] {
 }
 
 /** Ce s-ar trimite acum (nimic nu pleacă): numere pe surse, câte sunt deja trimise, ce nu se poate trimite și câteva documente ca exemplu. */
-export async function previewSend(resend = false): Promise<SendPreview> {
-  const p = await prepare(new Set(), { resend });
+export async function previewSend(resend = false, scope: SendScope | null = null): Promise<SendPreview> {
+  const p = await prepare(new Set(), { resend, scope });
   return {
     configured: oneCReadingsConfigured(),
     periods: p.periods,
@@ -177,6 +185,7 @@ export async function previewSend(resend = false): Promise<SendPreview> {
     unmatched: p.unmatched.length,
     documents: p.docs.length,
     byPeriod: p.byPeriod,
+    scopeMeters: scope?.meterIds ? scope.meterIds.length : null,
     resend,
     bySource: countBySource(p.docs),
     sample: p.docs.slice(0, SAMPLE_DOCS).map((d) => d.doc),
@@ -290,7 +299,7 @@ const trim = (s: string | null, n = 160) => (s ? s.replace(/\s+/g, " ").slice(0,
  * anterioare (nu se reîncearcă în buclă). `first` = prima cerere a seriei (doar atunci se listează citirile care nu pot fi trimise deloc).
  * Întoarce rezultatul rulării; `remaining` > 0 = mai sunt documente de trimis (se repetă cererea), `aborted` = 1C nu răspunde / refuză codul: nu se repetă.
  */
-export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]; budgetMs?: number; first?: boolean; resend?: boolean; since?: string | null; session?: string | null } = {}): Promise<SendResult> {
+export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]; budgetMs?: number; first?: boolean; resend?: boolean; since?: string | null; session?: string | null; scope?: SendScope | null } = {}): Promise<SendResult> {
   const runId = Math.random().toString(36).slice(2, 8);
   const t0 = Date.now();
   const out: SendResult = { ok: true, sent: 0, failed: 0, confirmed: 0, readingsSent: 0, remaining: 0, aborted: false, unmatched: 0, markErrors: 0, ms: 0, runId, batches: [], failedItems: [], failedReadingIds: [], bySource: [], message: null, since: null, session: null };
@@ -315,7 +324,7 @@ export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]
     // identificatorul trimiterii (`lot`): fixat la prima cerere, primit înapoi de la browser la rundele următoare
     const session = opts.session && /^[A-Za-z0-9_-]{6,48}$/.test(opts.session) ? opts.session : `${new Date(t0).toISOString().replace(/[-:T]/g, "").slice(0, 14)}-${runId}`;
     out.session = session;
-    const prep = await prepare(new Set(opts.exclude ?? []), { resend: !!opts.resend, since });
+    const prep = await prepare(new Set(opts.exclude ?? []), { resend: !!opts.resend, since, scope: opts.scope ?? null });
     out.unmatched = prep.unmatched.length;
     if (opts.first !== false) for (const u of prep.unmatched.slice(0, MAX_FAILED_LISTED)) out.failedItems.push(u);
     const batchSize = env.onecReadings.batch;
@@ -444,7 +453,7 @@ export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]
           sent: out.sent,
           failed: out.failed,
           confirmed: out.confirmed,
-          details: JSON.stringify({ runId, lot: session, resend: !!opts.resend, ms: out.ms, batches: out.batches.slice(0, 200), bySource: out.bySource, failed: out.failedItems.slice(0, 100), unmatched: out.unmatched, remaining: out.remaining, aborted: out.aborted, markErrors: out.markErrors }).slice(0, 200_000),
+          details: JSON.stringify({ runId, lot: session, resend: !!opts.resend, scope: opts.scope ? { contoare: opts.scope.meterIds?.length ?? null, luni: opts.scope.periods ?? null } : null, ms: out.ms, batches: out.batches.slice(0, 200), bySource: out.bySource, failed: out.failedItems.slice(0, 100), unmatched: out.unmatched, remaining: out.remaining, aborted: out.aborted, markErrors: out.markErrors }).slice(0, 200_000),
         },
       })
       .catch((e) => console.error("[onec-readings] jurnal:", String(e?.message ?? e).slice(0, 160)));

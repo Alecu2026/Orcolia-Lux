@@ -40,6 +40,8 @@ const nextConfig = {
   outputFileTracingIncludes: {
     // Decontarea PDF (pdfkit): fonturile din assets/fonts și datele pdfkit se citesc din disc la rulare
     "/api/portal/decontare/pdf": ["node_modules/pdfkit/**", "assets/fonts/**"],
+    // Notificările tipărite (PDF cu foaie / document oficial pe plătitor): pdfkit și fonturile (DejaVu, Tinos) citite din disc la rulare
+    "/api/platitori/notificari/pdf": ["node_modules/pdfkit/**", "assets/fonts/**"],
     // Factura publică PDF (pdfkit, fără Chromium): aceleași fonturi și date pdfkit citite la rulare.
     // Cheia e un glob (picomatch) potrivit cu ruta — parantezele pătrate din "[token]" trebuie escapate, altfel picomatch le tratează ca o clasă de caractere, nu ca literalul rutei.
     "/api/invoice/public/\\[token\\]/pdf": ["node_modules/pdfkit/**", "node_modules/sharp/**", "assets/fonts/**"],

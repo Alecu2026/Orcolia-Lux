@@ -113,13 +113,17 @@ export default function ClientPayerPicker({
       </div>
       {creating &&
         createPortal(
-          <ClientDialog
-            client={null}
-            onClose={() => setCreating(false)}
-            onCreated={(c) => {
-              choose("client", { id: c.id, name: c.name, hint: null });
-            }}
-          />,
+          // Evenimentele din portal se propagă prin arborele React, deci „submit” din formularul clientului ajungea și la formularul sarcinii (care face preventDefault și blochează salvarea):
+          // aici se oprește, ca formularul clientului să se trimită singur.
+          <div onSubmit={(e) => e.stopPropagation()}>
+            <ClientDialog
+              client={null}
+              onClose={() => setCreating(false)}
+              onCreated={(c) => {
+                choose("client", { id: c.id, name: c.name, hint: null });
+              }}
+            />
+          </div>,
           document.body,
         )}
     </div>

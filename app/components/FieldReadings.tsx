@@ -6,6 +6,8 @@ import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useSta
 import {
   EMPTY_FIELD_FILTERS,
   FAR_METERS,
+  currentPeriod,
+  shiftPeriod,
   countActiveFieldFilters,
   deviationPct,
   fieldConsum,
@@ -29,7 +31,7 @@ import ReadingForm from "./ReadingForm";
 import SendTo1cButton from "./SendTo1cButton";
 import EstimatedReportButton from "./EstimatedReportButton";
 import VirtualList from "./VirtualList";
-import { useFieldDataset } from "./useFieldDataset";
+import { useFieldDataset, usePastField } from "./useFieldDataset";
 import { deleteMeterReadingsAction } from "@/app/actions/meter-readings";
 import { onQueueSynced, removeQueued, retryQueued, syncNow, useFieldQueue } from "./field-queue";
 import { MAX_LOC_ACCURACY, mapsUrl, type MeterLocationDto } from "@/lib/meter-readings";
@@ -170,10 +172,17 @@ export default function FieldReadings({
   const [fOpen, toggleF] = useFiltersOpen("field-readings");
   const tag = dateTag(useLocale());
   const nf = (n: number) => n.toLocaleString(tag);
-  const ds = useFieldDataset();
+  const curPeriod = currentPeriod();
+  /** Luna afișată: gol = luna curentă (se pot face citiri); altfel o lună anterioară (doar vizualizare / ștergere / trimitere către 1C). */
+  const [month, setMonth] = useState<string>(() => (/^\d{4}-(0[1-9]|1[0-2])$/.test(initialQuery.month ?? "") && (initialQuery.month as string) < curPeriod ? (initialQuery.month as string) : ""));
+  const viewing = month && month < curPeriod ? month : null;
+  const cur = useFieldDataset();
+  const past = usePastField(viewing);
+  // „ds” = sursa listei afișate: luna curentă (cache local, actualizări) sau luna anterioară aleasă
+  const ds = viewing ? { ...cur, data: past.data, routes: past.routes, loading: past.loading, error: past.error, loadedAt: past.loadedAt, refresh: past.refresh } : cur;
   const data = ds.data;
   const q = useFieldQueue();
-  const patchRow = ds.patchRow;
+  const patchRow = cur.patchRow;
   // citirile trimise cu succes din coadă: rândul se actualizează cu ce a salvat serverul
   useEffect(
     () =>
@@ -212,7 +221,7 @@ export default function FieldReadings({
     return data.rows.map((r): FieldRow => ({ ...r, route: routeOf({ sector: r.sector, address: r.address }, prepared) }));
   }, [data, routes]);
   const rowsAll = useMemo(() => {
-    if (q.items.length === 0) return routed;
+    if (viewing || q.items.length === 0) return routed; // coada de pe telefon ține doar de luna curentă
     const by = new Map(q.items.map((i) => [i.meterId, i]));
     return routed.map((r): FieldRow => {
       const it = by.get(r.id);
@@ -221,7 +230,7 @@ export default function FieldReadings({
       if (it.value == null) return { ...r, issue };
       return { ...r, issue, value: it.value, readAt: it.readAt, photo: !!it.photo, by: t("Tu"), portal: false, distanceM: null, consum: fieldConsum(it.value, r.lastIndex), geo: it.lat != null, pending: it.state === "error" ? "error" : "wait" };
     });
-  }, [routed, q.items, t]);
+  }, [routed, q.items, t, viewing]);
 
   const initialFilters = useMemo(() => sanitizeFieldFilters(initialQuery), [initialQuery]);
   const [filters, setFilters] = useState<FieldFilters>(initialFilters);
@@ -286,9 +295,10 @@ export default function FieldReadings({
     if (perPage !== DEFAULT_PER_PAGE) usp.set("perPage", String(perPage));
     // Contorul din adresa de deschidere (?meter=) rămâne în adresă: la o reîncărcare (ex. prima vizită, când se activează service worker-ul și pagina se reia) pop-up-ul lui se redeschide.
     if (openId) usp.set("meter", openId);
+    if (viewing) usp.set("month", viewing);
     const qs = usp.toString();
     window.history.replaceState(null, "", `/contoare/citiri${qs ? `?${qs}` : ""}`);
-  }, [filters, page, perPage, ready, openId]);
+  }, [filters, page, perPage, ready, openId, viewing]);
 
   // Controalele se actualizează imediat; lista de ~25.000 de rânduri se recalculează în randarea următoare (amânată), deci un select nu „se agață".
   const listFilters = useDeferredValue(filters);
@@ -409,6 +419,33 @@ export default function FieldReadings({
     toast.success(t("{n} contoare exportate.", { n: nf(list.length) }));
   }
 
+  /** Ultimele 18 luni, pentru selectorul din antet. */
+  const monthOptions = Array.from({ length: 18 }, (_, i) => {
+    const p = shiftPeriod(curPeriod, i);
+    const s = new Date(Number(p.slice(0, 4)), Number(p.slice(5, 7)) - 1, 1).toLocaleDateString(tag, { month: "long", year: "numeric" });
+    return { value: p, label: s.charAt(0).toUpperCase() + s.slice(1) };
+  });
+
+  /** Trece la o altă lună. Pe o lună anterioară se arată citirile (filtrul „Citite”); la luna curentă filtrul rămâne cum era. */
+  function pickMonth(p: string) {
+    if (p >= curPeriod) {
+      setMonth("");
+    } else {
+      setMonth(p);
+      setFilters((f) => ({ ...f, status: f.status === "unread" ? "read" : f.status, from: "", to: "" }));
+    }
+    setPage(1);
+  }
+
+  /** Ce trimite butonul „Trimite către 1C”: ca la export, doar contoarele din lista filtrată (cu citiri) și luna afișată. */
+  const sendScope = {
+    ids: list.filter((r) => r.value != null && !r.pending).map((r) => r.id),
+    period: data?.period ?? curPeriod,
+    meters: list.length,
+    // implicit doar lista filtrată când s-au pus filtre, s-a ales „Citite / Toate” sau altă lună; pe lista implicită (necitite) — toate citirile
+    filtered: active > 0 || filters.status !== "unread" || !!viewing,
+  };
+
   const [deleting, setDeleting] = useState(false);
   /** Citirile care se pot șterge din lista filtrată: cele salvate pe server (nu din coada de pe telefon) și nu automate LoRaWAN. */
   const deletable = useMemo(() => (canDelete ? list.filter((r) => r.value != null && !r.pending && !r.autoRead) : []), [canDelete, list]);
@@ -422,11 +459,11 @@ export default function FieldReadings({
     try {
       for (let i = 0; i < ids.length; i += 1000) {
         const chunk = ids.slice(i, i + 1000);
-        const res = await deleteMeterReadingsAction(chunk);
+        const res = await deleteMeterReadingsAction(chunk, viewing);
         if (!res.ok) { failed = res.error; break; }
         deleted += res.deleted;
         sent1c += res.sent1c;
-        ds.clearReadings(chunk);
+        if (!viewing) cur.clearReadings(chunk);
       }
     } catch {
       failed = "Nu am putut șterge citirile. Încearcă din nou.";
@@ -435,7 +472,7 @@ export default function FieldReadings({
     }
     if (deleted > 0) {
       toast.success(sent1c > 0 ? t("{n} citiri șterse. {m} fuseseră deja trimise către 1C: corectează-le și acolo.", { n: nf(deleted), m: nf(sent1c) }) : t("{n} citiri șterse.", { n: nf(deleted) }));
-      void ds.refresh();
+      void ds.refresh(); // luna anterioară: lista se reia de pe server; luna curentă: se verifică lista
     }
     if (failed) toast.error(t(failed));
     return deleted > 0;
@@ -481,7 +518,18 @@ export default function FieldReadings({
       {/* ── Progres ───────────────────────────────────────────────────────── */}
       <div className="card mb-3 p-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-sm font-semibold">{monthLabel || "…"}</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button type="button" onClick={() => pickMonth(shiftPeriod(data?.period ?? curPeriod, 1))} className="tap grid size-8 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)]" aria-label={t("Luna anterioară")} title={t("Luna anterioară")}>
+              <IconChevronLeft className="size-4" />
+            </button>
+            <select value={viewing ?? curPeriod} onChange={(e) => pickMonth(e.target.value)} className="h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-sm font-semibold outline-none focus:border-brand" aria-label={t("Luna citirilor")}>
+              {monthOptions.map((o) => <option key={o.value} value={o.value}>{o.label}{o.value === curPeriod ? ` · ${t("luna curentă")}` : ""}</option>)}
+            </select>
+            <button type="button" onClick={() => pickMonth(shiftPeriod(data?.period ?? curPeriod, -1))} disabled={!viewing} className="tap grid size-8 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-30" aria-label={t("Luna următoare")} title={t("Luna următoare")}>
+              <IconChevronRight className="size-4" />
+            </button>
+            {viewing && <button type="button" onClick={() => pickMonth(curPeriod)} className="tap h-8 rounded-lg bg-brand px-3 text-[12px] font-semibold text-white hover:bg-brand-strong">{t("Înapoi la luna curentă")}</button>}
+          </div>
           <p className="text-sm">
             <b className="tabular-nums">{nf(stats.done)}</b> {t("din")} <span className="tabular-nums">{nf(stats.total)}</span> {t("contoare citite")} · <b className="tabular-nums">{pct}%</b>
           </p>
@@ -495,6 +543,12 @@ export default function FieldReadings({
           </p>
         )}
       </div>
+
+      {viewing && (
+        <p className="mb-2 rounded-lg border border-st-progress/40 bg-st-progress/10 px-3 py-2 text-xs">
+          {t("Vezi citirile din {luna}. Pentru luna aceasta nu se mai pot face citiri; poți exporta, trimite către 1C sau (cu drept) șterge citirile ei.", { luna: monthLabel })}
+        </p>
+      )}
 
       {/* ── Filtre ────────────────────────────────────────────────────────── */}
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
@@ -677,7 +731,7 @@ export default function FieldReadings({
         ) : null}
         <span className="ml-auto inline-flex items-center gap-1.5">
           <EstimatedReportButton />
-          {canExport && <SendTo1cButton />}
+          {canExport && <SendTo1cButton scope={sendScope} />}
           {canDelete && deletable.length > 0 && (filters.status === "read" || active > 0) && (
             <button
               type="button"
@@ -779,6 +833,8 @@ export default function FieldReadings({
         <ReadingDialog
           key={selected.id}
           row={selected}
+          readOnly={!!viewing}
+          periodLabel={monthLabel}
           canViewMeter={canViewMeter}
           onClose={() => setSelId(null)}
           onSaved={onSaved}
@@ -1038,8 +1094,13 @@ function ReadingDialog({
   onIssue,
   onDelete,
   deleting,
+  readOnly,
+  periodLabel,
 }: {
   row: FieldRow;
+  /** Luna afișată e una anterioară: fără formular de citire (citirile se fac doar pe luna curentă). */
+  readOnly: boolean;
+  periodLabel: string;
   /** Șterge citirea lunii (doar cine are dreptul și doar dacă există o citire salvată). */
   onDelete?: () => void;
   deleting: boolean;
@@ -1079,6 +1140,24 @@ function ReadingDialog({
             <IconX className="size-4" />
           </button>
         </div>
+        {readOnly ? (
+          <div className="rounded-xl border border-[var(--color-line)] p-3 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">{periodLabel}</p>
+            {row.value != null ? (
+              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                <dt className="text-ink-soft">{t("Index")}</dt>
+                <dd className="font-mono font-semibold">{row.value.toLocaleString(dateTag(locale), { maximumFractionDigits: 3 })} m³</dd>
+                {row.readAt != null && (<><dt className="text-ink-soft">{t("Citit la")}</dt><dd>{new Date(row.readAt).toLocaleString(dateTag(locale))}</dd></>)}
+                {row.by && (<><dt className="text-ink-soft">{t("Citit de")}</dt><dd>{row.by}{row.portal ? ` · ${t("Trimisă de plătitor din portal")}` : ""}</dd></>)}
+                {row.consum != null && (<><dt className="text-ink-soft">{t("Consum")}</dt><dd>{row.consum.toLocaleString(dateTag(locale), { maximumFractionDigits: 3 })} m³</dd></>)}
+                <dt className="text-ink-soft">{t("Poză")}</dt>
+                <dd>{row.photo ? t("da") : "—"}</dd>
+              </dl>
+            ) : (
+              <p className="mt-2 text-ink-soft">{t("Nicio citire în această lună.")}</p>
+            )}
+          </div>
+        ) : (
         <ReadingForm
           meterId={row.id}
           contor={row.contor}
@@ -1099,6 +1178,7 @@ function ReadingDialog({
           onIssue={onIssue}
           auto={row.auto}
         />
+        )}
         {onDelete && (
           <button type="button" onClick={onDelete} disabled={deleting} className="tap mt-3 h-9 w-full cursor-pointer rounded-xl border border-st-cancelled/50 text-sm font-medium text-st-cancelled hover:bg-st-cancelled/10 disabled:opacity-50">
             🗑 {deleting ? "…" : t("Șterge citirea")}

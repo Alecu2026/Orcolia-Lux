@@ -20,13 +20,20 @@ export async function POST(req: Request) {
   if (!user) return Response.json({ error: "Autentificare necesară." }, { status: 401 });
   if (!can(user, "meters.export")) return Response.json({ error: "Fără permisiune." }, { status: 403 });
 
-  let body: { mode?: string; exclude?: unknown; first?: unknown; resend?: unknown; since?: unknown; session?: unknown } = {};
+  let body: { mode?: string; exclude?: unknown; first?: unknown; resend?: unknown; since?: unknown; session?: unknown; meterIds?: unknown; periods?: unknown } = {};
   try {
     body = await req.json();
   } catch {
     /* corp lipsă */
   }
   const actor = { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin };
+  // ca la export: doar contoarele (și luna) din lista filtrată din pagină; fără ele = toate citirile
+  const scope = Array.isArray(body.meterIds)
+    ? {
+        meterIds: body.meterIds.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 300).slice(0, 60_000),
+        periods: Array.isArray(body.periods) ? body.periods.filter((x): x is string => typeof x === "string" && /^\d{4}-\d{2}$/.test(x)).slice(0, 3) : [],
+      }
+    : null;
 
   try {
     if (body.mode === "pull") return Response.json(await pullFromOneC(actor));
@@ -35,9 +42,9 @@ export async function POST(req: Request) {
     if (body.mode === "send") {
       const exclude = Array.isArray(body.exclude) ? body.exclude.filter((x): x is string => typeof x === "string" && /^[0-9a-f]{24}$/i.test(x)).slice(0, 50_000) : [];
       const since = typeof body.since === "string" && Number.isFinite(Date.parse(body.since)) ? body.since : null;
-      return Response.json(await sendReadings(actor, { exclude, first: body.first !== false, resend: body.resend === true, since, session: typeof body.session === "string" ? body.session : null }));
+      return Response.json(await sendReadings(actor, { exclude, first: body.first !== false, resend: body.resend === true, since, session: typeof body.session === "string" ? body.session : null, scope }));
     }
-    return Response.json(await previewSend(body.resend === true));
+    return Response.json(await previewSend(body.resend === true, scope));
   } catch (e) {
     console.error("[send-1c] eșuat:", e);
     return Response.json({ error: e instanceof Error ? e.message : "Eroare necunoscută." }, { status: 500 });

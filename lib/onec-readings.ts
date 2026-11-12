@@ -105,6 +105,8 @@ export type SendPreview = {
   /** citiri care nu pot fi trimise: contorul / abonatul nu mai e în lista din 1C */
   unmatched: number;
   documents: number;
+  /** trimiterea e limitată la lista filtrată din pagină: câte contoare (null = toate) */
+  scopeMeters: number | null;
   /** citirile de trimis (inclusiv cele care nu pot fi trimise), pe luna citirii: arată de unde vin și citirile rămase după o ștergere (se verifică două luni) */
   byPeriod: Record<string, number>;
   /** retrimitere completă: se trimit și citirile deja trimise */
