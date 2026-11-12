@@ -40,6 +40,8 @@ export default function SendTo1cButton() {
   const [preview, setPreview] = useState<SendPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [pullFirst, setPullFirst] = useState(true);
+  /** Retrimitere completă (implicit): la fiecare apăsare pleacă din nou TOATE citirile lunii, nu doar cele noi. */
+  const [resendAll, setResendAll] = useState(true);
   const [running, setRunning] = useState(false);
   const [steps, setSteps] = useState<Step[]>([]);
   const [totals, setTotals] = useState<Totals | null>(null);
@@ -54,7 +56,7 @@ export default function SendTo1cButton() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/contoare/send-1c", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "preview" }) });
+      const r = await fetch("/api/contoare/send-1c", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "preview", resend: resendAll }) });
       const j = (await r.json().catch(() => null)) as (SendPreview & { error?: string }) | null;
       if (!r.ok || !j || j.error) throw new Error(j?.error ?? String(r.status));
       setPreview(j);
@@ -63,7 +65,7 @@ export default function SendTo1cButton() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resendAll]);
 
   useEffect(() => {
     if (!open) return;
@@ -98,11 +100,13 @@ export default function SendTo1cButton() {
 
       const tot: Totals = { sent: 0, failed: 0, confirmed: 0, readings: 0, unmatched: 0, markErrors: 0, ms: 0, bySource: new Map(), failedItems: [], batches: [] };
       let exclude: string[] = [];
+      let since: string | null = null;
       push({ kind: "info", text: t("Trimit citirile către 1C…") });
       for (let round = 0; round < 60 && !stop.current; round++) {
-        const r = await fetch("/api/contoare/send-1c", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "send", exclude, first: round === 0 }) });
+        const r = await fetch("/api/contoare/send-1c", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode: "send", exclude, first: round === 0, resend: resendAll, since }) });
         const j = (await r.json().catch(() => null)) as (SendResult & { error?: string }) | null;
         if (!r.ok || !j || j.error) throw new Error(j?.error ?? String(r.status));
+        if (j.since) since = j.since;
         tot.sent += j.sent;
         tot.failed += j.failed;
         tot.confirmed += j.confirmed;
@@ -232,7 +236,7 @@ export default function SendTo1cButton() {
                     </table>
                   )}
                   <ul className="mt-2 space-y-0.5 text-xs text-ink-soft">
-                    <li>{t("Citiri deja trimise (nu se mai trimit): {n}", { n: nf(preview.alreadySent) })}</li>
+                    {preview.resend ? <li>{t("Retrimitere completă: se trimit și citirile deja trimise.")}</li> : <li>{t("Citiri deja trimise (nu se mai trimit): {n}", { n: nf(preview.alreadySent) })}</li>}
                     {preview.correctedReadings > 0 && <li>{t("Corectate după trimitere (se retrimit): {n}", { n: nf(preview.correctedReadings) })}</li>}
                     {preview.unmatched > 0 && <li className="text-amber-700 dark:text-amber-300">{t("Care nu pot fi trimise (lipsește contul / contractul sau contorul): {n}", { n: nf(preview.unmatched) })}</li>}
                     <li>{t("Estimate (Расчетный): 0 — aplicația nu generează citiri estimate, ele rămân calculate de 1C.")}</li>
@@ -246,6 +250,14 @@ export default function SendTo1cButton() {
                     <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[var(--color-surface-2)] p-2 text-[11px] leading-snug">{JSON.stringify(preview.sample, null, 2)}</pre>
                   </details>
                 )}
+
+                <label className="flex cursor-pointer items-start gap-2 text-sm">
+                  <input type="checkbox" checked={resendAll} onChange={(e) => setResendAll(e.target.checked)} disabled={running} className="mt-0.5 size-4 accent-[var(--color-brand)]" />
+                  <span>
+                    {t("Trimite din nou toate citirile lunii (și cele deja trimise)")}
+                    <span className="block text-xs text-ink-soft">{t("La fiecare apăsare pleacă toate citirile, nu doar cele noi. Debifează ca să plece doar cele noi sau corectate. Documentele au același identificator la fiecare trimitere; dacă 1C nu le deduplică, apar dubluri.")}</span>
+                  </span>
+                </label>
 
                 <label className="flex cursor-pointer items-start gap-2 text-sm">
                   <input type="checkbox" checked={pullFirst} onChange={(e) => setPullFirst(e.target.checked)} disabled={running} className="mt-0.5 size-4 accent-[var(--color-brand)]" />

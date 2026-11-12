@@ -90,6 +90,8 @@ export type SendPreview = {
   /** citiri care nu pot fi trimise: contorul / abonatul nu mai e în lista din 1C */
   unmatched: number;
   documents: number;
+  /** retrimitere completă: se trimit și citirile deja trimise */
+  resend: boolean;
   bySource: SourceCount[];
   /** primele documente, ca exemplu exact al ce pleacă (pentru verificare) */
   sample: OneCDocument[];
@@ -144,4 +146,6 @@ export type SendResult = {
   failedReadingIds: string[];
   bySource: SourceCount[];
   message: string | null;
+  /** retrimitere completă: momentul de la care citirile marcate „trimis” sunt din rularea curentă (rundele următoare nu le mai trimit); altfel null */
+  since: string | null;
 };

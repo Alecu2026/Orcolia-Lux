@@ -13,14 +13,14 @@ export const maxDuration = 300;
  *  - `{ mode: "ping" }`    → test de conexiune (listă goală: nu creează nimic în 1C);
  *  - `{ mode: "log" }`     → ultimele rulări din jurnal (pentru depanare);
  *  - `{ mode: "pull" }`    → extrage întâi din 1C (contoare, abonați, facturi) și pune datele la zi;
- *  - `{ mode: "send", exclude?: string[], first?: boolean }` → trimite citirile în loturi; `remaining` > 0 = repetă cererea (cu `exclude` = `failedReadingIds` primite până acum), `aborted` = oprește.
+ *  - `{ mode: "send", exclude?: string[], first?: boolean, resend?: boolean, since?: string }` → trimite citirile în loturi (`resend` = și cele deja trimise; `since` = `since` primit în prima rundă); `remaining` > 0 = repetă cererea (cu `exclude` = `failedReadingIds` primite până acum), `aborted` = oprește.
  */
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Autentificare necesară." }, { status: 401 });
   if (!can(user, "meters.export")) return Response.json({ error: "Fără permisiune." }, { status: 403 });
 
-  let body: { mode?: string; exclude?: unknown; first?: unknown } = {};
+  let body: { mode?: string; exclude?: unknown; first?: unknown; resend?: unknown; since?: unknown } = {};
   try {
     body = await req.json();
   } catch {
@@ -34,9 +34,10 @@ export async function POST(req: Request) {
     if (body.mode === "log") return Response.json({ logs: await listSendLogs(15) });
     if (body.mode === "send") {
       const exclude = Array.isArray(body.exclude) ? body.exclude.filter((x): x is string => typeof x === "string" && /^[0-9a-f]{24}$/i.test(x)).slice(0, 50_000) : [];
-      return Response.json(await sendReadings(actor, { exclude, first: body.first !== false }));
+      const since = typeof body.since === "string" && Number.isFinite(Date.parse(body.since)) ? body.since : null;
+      return Response.json(await sendReadings(actor, { exclude, first: body.first !== false, resend: body.resend === true, since }));
     }
-    return Response.json(await previewSend());
+    return Response.json(await previewSend(body.resend === true));
   } catch (e) {
     console.error("[send-1c] eșuat:", e);
     return Response.json({ error: e instanceof Error ? e.message : "Eroare necunoscută." }, { status: 500 });
