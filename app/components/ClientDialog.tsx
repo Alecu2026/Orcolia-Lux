@@ -18,6 +18,7 @@ export type ClientEdit = {
   email: string | null;
   telegramChatId: string | null;
   notes: string | null;
+  address?: string | null;
 };
 
 /** Clientul nou pornit dintr-un apel PBX: telefonul apelantului și ce se știe deja despre el (din CRM sau din lista de abonați 1C). */
@@ -112,7 +113,7 @@ export default function ClientDialog({
           )}
           <input name="name" defaultValue={client?.name ?? prefill?.name ?? ""} placeholder={m.clients.namePlaceholder} required className={input} />
           <input name="phone" defaultValue={client?.phone ?? prefill?.phone ?? ""} placeholder={m.clients.phonePlaceholder} inputMode="tel" className={input} />
-          {!client && <input name="address" defaultValue={prefill?.address ?? ""} placeholder={t("Adresă (opțional)")} autoComplete="street-address" maxLength={300} className={input} />}
+          <input name="address" defaultValue={client?.address ?? prefill?.address ?? ""} placeholder={t("Adresă (opțional)")} autoComplete="street-address" maxLength={300} className={input} />
           <input name="email" type="email" defaultValue={client?.email ?? prefill?.email ?? ""} placeholder={m.clients.emailPlaceholder} className={input} />
           <textarea name="notes" defaultValue={client?.notes ?? ""} placeholder={m.clients.notesPlaceholder} rows={3} className="w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 py-3 text-[15px] outline-none focus:border-brand" />
 

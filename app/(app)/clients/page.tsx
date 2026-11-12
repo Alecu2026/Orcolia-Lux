@@ -42,6 +42,7 @@ export default async function ClientsPage({
     rows = items.map((c) => ({
       id: c.id, name: c.name, phone: c.phone, email: c.email, telegramChatId: c.telegramChatId, notes: c.notes, noShowCount: c.noShowCount,
       lastAppointmentAt: c.lastAppointmentAt ? c.lastAppointmentAt.toISOString() : null,
+      address: c.consumAddress ?? null,
     }));
     total = rows.length;
   }

@@ -15,6 +15,7 @@ export type ClientListItem = {
   notes: string | null;
   noShowCount: number;
   lastAppointmentAt: Date | null;
+  consumAddress?: string | null;
 };
 
 const LIST_SELECT = {
@@ -26,6 +27,7 @@ const LIST_SELECT = {
   notes: true,
   noShowCount: true,
   lastAppointmentAt: true,
+  consumAddress: true,
 } as const;
 
 export const CLIENT_LIST_SELECT = LIST_SELECT;

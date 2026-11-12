@@ -3225,6 +3225,7 @@ export const EN: Record<string, string> = {
   "Numărul de facturi și suma pe apă, canalizare și ambele (pentru perioada aleasă)": "Number of invoices and amount for water, sewerage and both (for the chosen period)",
   "Serviciu": "Service",
   "Doar apă": "Water only",
+  "Caută nume, telefon, email, adresă, notițe…": "Search name, phone, email, address, notes…",
   "Alege când se trimite (dată și oră sau repetare).": "Choose when it is sent (date and time, or repetition).",
   "Caută client (nume, telefon, email)…": "Search client (name, phone, email)…",
   "Clienții obișnuiți din CRM (fără plătitorii din 1C). Bifează destinatarii sau ia-i pe toți din filtru și trimite-le email, SMS sau apel — acum sau programat (o dată, zilnic, săptămânal, lunar). Totul apare în Jurnalul de notificări.": "The regular clients from the CRM (without the 1C payers). Tick the recipients or take all from the filter and send them an email, SMS or call — now or scheduled (once, daily, weekly, monthly). Everything appears in the Notification log.",

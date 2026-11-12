@@ -19,7 +19,7 @@ export type { ClientRow };
 
 const DAY = 86_400_000;
 const toEdit = (c: ClientRow): ClientEdit => ({
-  id: c.id, name: c.name, phone: c.phone, email: c.email, telegramChatId: c.telegramChatId, notes: c.notes,
+  id: c.id, name: c.name, phone: c.phone, email: c.email, telegramChatId: c.telegramChatId, notes: c.notes, address: c.address,
 });
 const fmtDay = (iso: string) =>
   new Date(iso).toLocaleDateString("ro-RO", { timeZone: "Europe/Bucharest", day: "2-digit", month: "2-digit", year: "numeric" });
@@ -76,6 +76,10 @@ export default function ClientsTable({ items, total = items.length, version = nu
       key: "email", label: "Email", minW: 170, maxW: 220, sort: (c) => c.email,
       render: (c) => <EditableText value={c.email ?? ""} type="email" allowEmpty disabled={!canEdit} onSave={(v) => patchClient(c, { email: v || null }, { email: v || null })} />,
     },
+    {
+      key: "address", label: "Adresă", minW: 180, maxW: 260, sort: (c) => c.address,
+      render: (c) => <EditableText value={c.address ?? ""} allowEmpty disabled={!canEdit} onSave={(v) => patchClient(c, { address: v || null }, { address: v || null })} display={c.address ? <span title={c.address}>{c.address}</span> : undefined} />,
+    },
     { key: "tgid", label: "ID Telegram", minW: 100, defaultHidden: true, sort: (c) => c.telegramChatId, render: (c) => c.telegramChatId ?? <span className="text-ink-soft/60">—</span> },
     { key: "tg", label: "Telegram", minW: 70, render: (c) => (c.telegramChatId ? <span className="text-st-done">{t("✓ conectat")}</span> : <span className="text-ink-soft/60">—</span>) },
     { key: "abs", label: m.clients.absences, minW: 60, right: true, sort: (c) => c.noShowCount, render: (c) => (c.noShowCount > 0 ? <span className="font-semibold text-st-noshow">{c.noShowCount}</span> : <span className="text-ink-soft/60">0</span>) },
@@ -102,8 +106,8 @@ export default function ClientsTable({ items, total = items.length, version = nu
   const filters = useMemo<Filter<ClientRow>[]>(
     () => [
       {
-        kind: "text", key: "q", label: "Caută", grow: true, placeholder: "Caută nume, telefon, email, notițe…",
-        test: (c, v) => [c.name, c.phone, c.email, c.notes].some((x) => (x ?? "").toLowerCase().includes(v)),
+        kind: "text", key: "q", label: "Caută", grow: true, placeholder: "Caută nume, telefon, email, adresă, notițe…",
+        test: (c, v) => [c.name, c.phone, c.email, c.address, c.notes].some((x) => (x ?? "").toLowerCase().includes(v)),
       },
       {
         kind: "select", key: "contact", label: "Contact: toți",
@@ -113,6 +117,11 @@ export default function ClientsTable({ items, total = items.length, version = nu
           const e = !!c.email;
           return v === "phone" ? p : v === "email" ? e : v === "both" ? p && e : !p && !e;
         },
+      },
+      {
+        kind: "select", key: "addr", label: "Adresă: toate",
+        options: [{ value: "has", label: "Cu adresă" }, { value: "none", label: "Fără adresă" }],
+        test: (c, v) => (v === "has" ? !!c.address : !c.address),
       },
       {
         kind: "select", key: "abs", label: "Absențe: toate",

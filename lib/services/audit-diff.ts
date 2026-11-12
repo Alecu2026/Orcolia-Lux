@@ -51,6 +51,7 @@ export const CLIENT_SPEC: DiffSpec[] = [
   { key: "email", label: "Email" },
   { key: "telegramChatId", label: "Telegram (chat ID)" },
   { key: "notes", label: "Notițe" },
+  { key: "consumAddress", label: "Adresă" },
   { key: "contractExpiresAt", label: "Contract expiră la" },
 ];
 

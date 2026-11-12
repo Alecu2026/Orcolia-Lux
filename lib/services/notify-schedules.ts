@@ -5,7 +5,7 @@ import { computeNextRun, parseReminderSchedule, type ReminderSchedule } from "..
 import { NOTIFY_CHUNK_SIZE, NOTIFY_MAX_RECIPIENTS, isEmail, normalizePhone, sanitizeFilters, type NotifyFilters } from "../payer-notify";
 import { listMatchingPayerContacts } from "../queries/payers";
 import { filtersToListOptsAsync } from "../queries/payer-notify";
-import { CRM_CLIENT_WHERE } from "../queries/clients";
+import { getClientSnap } from "./client-cache";
 import { logAudit } from "./audit";
 import { deliverNotificationChunk, validateMessage, type SendChunkInput } from "./payer-notify-send";
 
@@ -43,8 +43,6 @@ export type ScheduleDto = {
 
 type Row = Awaited<ReturnType<typeof prisma.notifySchedule.findFirst>> & object;
 
-// Exact aceiași clienți ca în pagina Clienți (/clients). În Mongo un câmp lipsă ≠ null, deci `not: null` ar fi eliminat TOȚI clienții.
-const NOT_PAYER = CRM_CLIENT_WHERE;
 
 export function sanitizeClientCriteria(raw: unknown): ClientCriteria {
   const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -55,16 +53,14 @@ export function sanitizeClientCriteria(raw: unknown): ClientCriteria {
 
 /** Clienții obișnuiți (fără plătitori) care respectă căutarea și contactul cerut, cu steagurile de contact (1 = email valid, 2 = telefon valid). */
 export async function listClientTargets(c: ClientCriteria, limit = NOTIFY_MAX_RECIPIENTS): Promise<{ id: string; name: string; email: string | null; phone: string | null; flags: number }[]> {
-  const q = c.q.trim();
-  const rows = await prisma.client.findMany({
-    where: {
-      ...NOT_PAYER,
-      ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" as const } }, { phone: { contains: q } }, { email: { contains: q, mode: "insensitive" as const } }] } : {}),
-    },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, email: true, phone: true },
-    take: limit + 1,
-  });
+  const q = c.q.trim().toLowerCase();
+  const qDigits = q.replace(/\D/g, "");
+  // exact lista paginii /clients (aceeași listă din memoria serverului), nu o interogare separată
+  const snap = await getClientSnap();
+  const rows = snap.rows
+    .filter((r) => !q || r.name.toLowerCase().includes(q) || (r.email ?? "").toLowerCase().includes(q) || (qDigits.length >= 3 && (r.phone ?? "").replace(/\D/g, "").includes(qDigits)))
+    .sort((a, b) => a.name.localeCompare(b.name, "ro"))
+    .map((r) => ({ id: r.id, name: r.name, email: r.email, phone: r.phone }));
   const out = rows.map((r) => ({ ...r, flags: (isEmail(r.email) ? 1 : 0) | (normalizePhone(r.phone) ? 2 : 0) }));
   const want = c.contact;
   return out.filter((r) => (want === "any" ? r.flags !== 0 : want === "email" ? (r.flags & 1) !== 0 : want === "phone" ? (r.flags & 2) !== 0 : want === "both" ? r.flags === 3 : true)).slice(0, limit);

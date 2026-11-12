@@ -143,6 +143,8 @@ export async function updateClient(
     select: { id: true, name: true, phone: true, email: true, telegramChatId: true, notes: true },
   });
   if (!owned) return { error: "Client inexistent." };
+  const addrGiven = formData.has("address");
+  const address = clean(formData.get("address"))?.slice(0, 300) ?? null;
 
   const parsed = clientSchema.safeParse({
     name: formData.get("name"),
@@ -164,6 +166,7 @@ export async function updateClient(
       phone: d.phone || null,
       email: d.email || null,
       ...(tgGiven ? { telegramChatId: d.telegramChatId || null } : {}),
+      ...(addrGiven ? { consumAddress: address } : {}),
       notes: d.notes || null,
     },
   });
@@ -200,7 +203,7 @@ export async function deleteClient(id: string): Promise<void> {
 }
 
 
-export type ClientFieldPatch = { name?: string; phone?: string | null; email?: string | null; notes?: string | null };
+export type ClientFieldPatch = { name?: string; phone?: string | null; email?: string | null; notes?: string | null; address?: string | null };
 
 /** Editare rapidă dintr-un singur câmp (celulele editabile din tabelul de clienți). Validează cu aceeași schemă ca formularul. */
 export async function updateClientFieldAction(id: string, patch: ClientFieldPatch): Promise<ClientState> {
@@ -230,6 +233,7 @@ export async function updateClientFieldAction(id: string, patch: ClientFieldPatc
   if ("phone" in patch) data.phone = d.phone || null;
   if ("email" in patch) data.email = d.email || null;
   if ("notes" in patch) data.notes = d.notes || null;
+  if ("address" in patch) data.consumAddress = String(patch.address ?? "").trim().slice(0, 300) || null;
   if (Object.keys(data).length === 0) return { ok: true, id };
 
   await prisma.client.update({ where: { id }, data });

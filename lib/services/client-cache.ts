@@ -28,7 +28,7 @@ async function build(): Promise<ClientSnap> {
   const epoch = clientEpoch();
   let tuples: ClientTuple[];
   if (DEMO) {
-    tuples = demoClients.map((c) => [c.id, c.name, c.phone ?? null, c.email ?? null, c.telegramChatId ?? null, c.notes ?? null, c.noShowCount ?? 0, c.lastAppointmentAt ? new Date(c.lastAppointmentAt).getTime() : null]);
+    tuples = demoClients.map((c) => [c.id, c.name, c.phone ?? null, c.email ?? null, c.telegramChatId ?? null, c.notes ?? null, c.noShowCount ?? 0, c.lastAppointmentAt ? new Date(c.lastAppointmentAt).getTime() : null, null]);
   } else {
     const rows = await prisma.client.findMany({ where: CRM_CLIENT_WHERE, select: CLIENT_LIST_SELECT });
     // aceeași ordine ca până acum: ultima programare (cele fără, la sfârșit), apoi numele
@@ -37,7 +37,7 @@ async function build(): Promise<ClientSnap> {
       if (x !== y) return x == null ? 1 : y == null ? -1 : y - x;
       return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
     });
-    tuples = rows.map((r) => [r.id, r.name, r.phone, r.email, r.telegramChatId, r.notes, r.noShowCount, r.lastAppointmentAt ? r.lastAppointmentAt.getTime() : null]);
+    tuples = rows.map((r) => [r.id, r.name, r.phone, r.email, r.telegramChatId, r.notes, r.noShowCount, r.lastAppointmentAt ? r.lastAppointmentAt.getTime() : null, r.consumAddress ?? null]);
   }
   const gz = gzipSync(Buffer.from(JSON.stringify({ v: 1, rows: tuples }), "utf8"), { level: 6 });
   const version = createHash("sha1").update(gz).digest("hex").slice(0, 16);
