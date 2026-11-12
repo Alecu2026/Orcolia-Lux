@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/dal";
 import { can } from "@/lib/permissions";
 import { DEMO } from "@/lib/demo";
 import { parseIndex, type ConsumAvg, type PhotoResult, type SaveReadingResult } from "@/lib/meter-readings";
-import { getMeterAverage, getReading, saveReadingLogged } from "@/lib/services/meter-readings";
+import { deleteReadings, getMeterAverage, getReading, saveReadingLogged, type DeleteReadingsResult } from "@/lib/services/meter-readings";
 import { uploadReadingPhoto } from "@/lib/services/meter-photo";
 import { reportIssue } from "@/lib/services/meter-issues";
 import type { IssueDto } from "@/lib/meter-issues";
@@ -52,6 +52,14 @@ export async function meterAverageAction(meterId: string): Promise<ConsumAvg | n
   if (!can(user, "meters.read")) return null;
   if (!meterId || meterId.length > 300) return null;
   return getMeterAverage(meterId).catch(() => null);
+}
+
+/** Șterge citirile lunii curente ale contoarelor alese (citiri de test / greșite). Doar pentru „Rute de citire, planificat vs citit…” (meters.manage). */
+export async function deleteMeterReadingsAction(meterIds: string[]): Promise<DeleteReadingsResult> {
+  const user = await requireUser();
+  if (!can(user, "meters.manage")) return { ok: false, error: "Fără permisiune." };
+  if (!Array.isArray(meterIds)) return { ok: false, error: "Date invalide." };
+  return deleteReadings(user, meterIds.map(String));
 }
 
 /** Doar neregula, fără index (contor inaccesibil, defect găsit fără citire). */

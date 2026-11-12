@@ -11,6 +11,7 @@ import { isEstimatedSource } from "../meters";
 import { queueReadingVerification } from "./reading-verify";
 import { getLorawanMap } from "./lorawan-map";
 import { LORAWAN_SOURCE } from "../lorawan";
+import { deleteStored } from "../storage";
 import type { FieldList } from "../meter-routes";
 import {
   AVG_MIN_READINGS,
@@ -411,6 +412,55 @@ export async function saveReadingLogged(user: AuditUser, input: SaveInput): Prom
     );
   }
   return res;
+}
+
+/** Câte citiri se pot șterge dintr-o singură acțiune. */
+export const MAX_DELETE_READINGS = 3000;
+
+export type DeleteReadingsResult = { ok: true; deleted: number; skipped: number; sent1c: number } | { ok: false; error: string };
+
+/**
+ * Șterge citirile LUNII CURENTE ale contoarelor date (citiri de test, trimise greșit din portal sau de cititor). Ștergerea elimină citirea din CRM și poza ei de pe disc; contorul redevine „necitit”.
+ * Citirile automate LoRaWAN nu se șterg (ar fi aduse la loc la următoarea extragere). Ce a fost deja trimis către 1C rămâne în 1C: numărul lor se întoarce, ca să fie corectat acolo.
+ * Fiecare ștergere intră în Audit Logs.
+ */
+export async function deleteReadings(user: AuditUser, meterIds: string[]): Promise<DeleteReadingsResult> {
+  if (DEMO) return { ok: false, error: "Mod demo." };
+  const ids = [...new Set(meterIds.filter((s) => typeof s === "string" && s.length > 0 && s.length <= 300))];
+  if (ids.length === 0) return { ok: false, error: "Nicio citire aleasă." };
+  if (ids.length > MAX_DELETE_READINGS) return { ok: false, error: "Prea multe citiri odată. Restrânge filtrele și repetă." };
+  const period = currentPeriod();
+  const found = await prisma.meterReading.findMany({ where: { period, meterId: { in: ids } } });
+  const rows = found.filter((r) => r.source !== LORAWAN_SOURCE);
+  const skipped = ids.length - rows.length;
+  if (rows.length === 0) return { ok: false, error: "Nu există citiri de șters pentru contoarele alese (au fost șterse deja sau sunt automate LoRaWAN)." };
+  await prisma.meterReading.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+  // pozele de pe disc și plătitorii care văd citirea în portal
+  await Promise.all(rows.map((r) => (r.photoUrl ? deleteStored(r.photoUrl).catch(() => {}) : Promise.resolve())));
+  for (const c of new Set(rows.map((r) => r.clientId))) invalidatePortalClient(c);
+  const sent1c = rows.filter((r) => r.sent1cAt != null).length;
+  const one = rows.length === 1 ? rows[0] : null;
+  await logAudit(
+    { id: user.id, name: user.name, role: user.role, isSuperAdmin: user.isSuperAdmin },
+    {
+      action: "meter.reading_delete",
+      module: "Meters",
+      objectId: one ? one.meterId : null,
+      objectName: one ? one.contor : `${rows.length} citiri`,
+      oldValue: one ? `${one.value} m³` : null,
+      newValue: null,
+      details: {
+        extra: [
+          { label: "Perioada", value: period },
+          { label: "Citiri șterse", value: String(rows.length) },
+          ...(sent1c ? [{ label: "Deja trimise către 1C", value: String(sent1c) }] : []),
+          ...rows.slice(0, 40).map((r) => ({ label: r.contor, value: `${r.value} m³ · ${r.source === "PORTAL" ? "portal" : "cititor"} · ${r.userName}` })),
+          ...(rows.length > 40 ? [{ label: "…", value: `încă ${rows.length - 40}` }] : []),
+        ],
+      },
+    },
+  );
+  return { ok: true, deleted: rows.length, skipped, sent1c };
 }
 
 const takenAtLabel = (iso: string) => new Date(iso).toLocaleString("ro-RO", { timeZone: "Europe/Bucharest" });

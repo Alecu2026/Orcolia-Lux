@@ -232,7 +232,7 @@ export default function SendTo1cButton() {
                     </table>
                   )}
                   <ul className="mt-2 space-y-0.5 text-xs text-ink-soft">
-                    <li>{t("Deja trimise (nu se mai trimit): {n}", { n: nf(preview.alreadySent) })}</li>
+                    <li>{t("Citiri deja trimise (nu se mai trimit): {n}", { n: nf(preview.alreadySent) })}</li>
                     {preview.correctedReadings > 0 && <li>{t("Corectate după trimitere (se retrimit): {n}", { n: nf(preview.correctedReadings) })}</li>}
                     {preview.unmatched > 0 && <li className="text-amber-700 dark:text-amber-300">{t("Care nu pot fi trimise (lipsește contul / contractul sau contorul): {n}", { n: nf(preview.unmatched) })}</li>}
                     <li>{t("Estimate (Расчетный): 0 — aplicația nu generează citiri estimate, ele rămân calculate de 1C.")}</li>
@@ -373,8 +373,8 @@ export default function SendTo1cButton() {
                     {logs.map((l) => (
                       <details key={l.id} className="border-b border-[var(--color-line)] py-1 last:border-0">
                         <summary className="cursor-pointer">
-                          {new Date(l.at).toLocaleString("ro-RO")} · {l.userName} · {t("trimise")} {l.sent} · {t("confirmat")} {l.confirmed}
-                          {l.failed > 0 && <span className="text-red-700 dark:text-red-300"> · {t("eșuate")} {l.failed}</span>}
+                          {new Date(l.at).toLocaleString("ro-RO")} · {l.userName} · {t("trimise")} {l.sent} {t("documente")} ({l.readings} {t("citiri")}) · {t("confirmat")} {l.confirmed}
+                          {l.failed > 0 && <span className="text-red-700 dark:text-red-300"> · {t("eșuate")} {l.failed} {t("documente")}</span>}
                           {l.details?.aborted && <span className="text-red-700 dark:text-red-300"> · {t("oprit")}</span>}
                         </summary>
                         <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[var(--color-surface-2)] p-2 text-[11px] leading-snug">{JSON.stringify(l.details, null, 2)}</pre>

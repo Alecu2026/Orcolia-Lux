@@ -15,6 +15,7 @@ import EmailTicketAutoCloseForm from "@/app/components/EmailTicketAutoCloseForm"
 import MeterIssueRulesForm from "@/app/components/MeterIssueRulesForm";
 import AutoNotifyForm from "@/app/components/AutoNotifyForm";
 import PushToggle from "@/app/components/PushToggle";
+import InstallAppCard from "@/app/components/InstallAppCard";
 import BottomNavSettings from "@/app/components/BottomNavSettings";
 import TicketStatusConfigEditor from "@/app/components/TicketStatusConfigEditor";
 import { IconChevronRight } from "@/app/components/icons";
@@ -69,6 +70,7 @@ async function MyTab({ user }: { user: CurrentUser }) {
     <>
       <MyProfileForm name={user.name} email={user.email} telegramChatId={me?.telegramChatId ?? null} />
       <SettingsForm settings={settings} />
+      <InstallAppCard />
       <PushToggle />
       <BottomNavSettings
         // paginile la care utilizatorul are acces (aceleași reguli ca meniul)

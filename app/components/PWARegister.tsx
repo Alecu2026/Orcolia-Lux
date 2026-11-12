@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useMessages } from "@/lib/i18n/context";
+import { captureInstallPrompt } from "@/lib/pwa-install";
 
 export default function PWARegister({ unread = 0 }: { unread?: number }) {
   const m = useMessages();
@@ -17,6 +18,9 @@ export default function PWARegister({ unread = 0 }: { unread?: number }) {
     // Also tell SW so it can update badge from push events
     navigator.serviceWorker?.controller?.postMessage({ type: "SET_BADGE", count: unread });
   }, [unread]);
+
+  // butonul „Instalează aplicația” din Setări: evenimentul de instalare se prinde aici, de la prima pagină
+  useEffect(() => captureInstallPrompt(), []);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;

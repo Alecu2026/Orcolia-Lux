@@ -30,6 +30,7 @@ import SendTo1cButton from "./SendTo1cButton";
 import EstimatedReportButton from "./EstimatedReportButton";
 import VirtualList from "./VirtualList";
 import { useFieldDataset } from "./useFieldDataset";
+import { deleteMeterReadingsAction } from "@/app/actions/meter-readings";
 import { onQueueSynced, removeQueued, retryQueued, syncNow, useFieldQueue } from "./field-queue";
 import { MAX_LOC_ACCURACY, mapsUrl, type MeterLocationDto } from "@/lib/meter-readings";
 
@@ -150,12 +151,15 @@ export default function FieldReadings({
   openId,
   canViewMeter,
   canExport = true,
+  canDelete = false,
   initialQuery,
   meId,
 }: {
   openId: string | null;
   canViewMeter: boolean;
   canExport?: boolean;
+  /** Poate șterge citiri (citiri de test / greșite): „Rute de citire, planificat vs citit…” (meters.manage). */
+  canDelete?: boolean;
   /** Utilizatorul curent: „Rutele mele” = rutele atribuite lui. */
   meId: string;
   /** Parametrii din adresă (?q=…&status=…): link de partajat. */
@@ -405,6 +409,56 @@ export default function FieldReadings({
     toast.success(t("{n} contoare exportate.", { n: nf(list.length) }));
   }
 
+  const [deleting, setDeleting] = useState(false);
+  /** Citirile care se pot șterge din lista filtrată: cele salvate pe server (nu din coada de pe telefon) și nu automate LoRaWAN. */
+  const deletable = useMemo(() => (canDelete ? list.filter((r) => r.value != null && !r.pending && !r.autoRead) : []), [canDelete, list]);
+
+  /** Șterge citirile lunii pentru contoarele date (pe bucăți), apoi golește rândurile din listă. Întoarce true dacă s-a șters ceva. */
+  async function deleteFor(ids: string[]): Promise<boolean> {
+    setDeleting(true);
+    let deleted = 0;
+    let sent1c = 0;
+    let failed: string | null = null;
+    try {
+      for (let i = 0; i < ids.length; i += 1000) {
+        const chunk = ids.slice(i, i + 1000);
+        const res = await deleteMeterReadingsAction(chunk);
+        if (!res.ok) { failed = res.error; break; }
+        deleted += res.deleted;
+        sent1c += res.sent1c;
+        ds.clearReadings(chunk);
+      }
+    } catch {
+      failed = "Nu am putut șterge citirile. Încearcă din nou.";
+    } finally {
+      setDeleting(false);
+    }
+    if (deleted > 0) {
+      toast.success(sent1c > 0 ? t("{n} citiri șterse. {m} fuseseră deja trimise către 1C: corectează-le și acolo.", { n: nf(deleted), m: nf(sent1c) }) : t("{n} citiri șterse.", { n: nf(deleted) }));
+      void ds.refresh();
+    }
+    if (failed) toast.error(t(failed));
+    return deleted > 0;
+  }
+
+  async function deleteOne(r: FieldRow) {
+    if (r.value == null) return;
+    if (!window.confirm(t("Ștergi citirea {value} m³ a contorului {contor}? Contorul va redeveni necitit. Dacă a fost deja trimisă către 1C, trebuie corectată și acolo.", { value: nf(r.value), contor: r.contor }))) return;
+    if (await deleteFor([r.id])) setSelId(null);
+  }
+
+  async function deleteShown() {
+    const n = deletable.length;
+    if (n === 0) return;
+    if (!window.confirm(t("Ștergi {n} citiri (toate cele afișate cu filtrele curente, din toate paginile)? Contoarele vor redeveni necitite. Acțiunea nu se poate anula.", { n: nf(n) }))) return;
+    const typed = window.prompt(t("Pentru confirmare scrie numărul de citiri ({n}):", { n: nf(n) }));
+    if (typed == null || typed.replace(/\D/g, "") !== String(n)) {
+      if (typed != null) toast.error(t("Numărul nu corespunde: nu s-a șters nimic."));
+      return;
+    }
+    await deleteFor(deletable.map((r) => r.id));
+  }
+
   const onSaved = useCallback(
     (id: string, patch: { value?: number; readAt?: number; photo?: boolean }, by?: string | null, distanceM?: number | null, geo?: boolean, loc?: MeterLocationDto, avg?: number | null) => {
       ds.patchRow(id, { ...patch, by, distanceM, geo, ...(avg !== undefined ? { avg } : {}), ...(loc ? { address: loc.address, lat: loc.lat, lng: loc.lng, addrField: loc.addrField, locAcc: loc.accuracy } : {}) });
@@ -624,6 +678,17 @@ export default function FieldReadings({
         <span className="ml-auto inline-flex items-center gap-1.5">
           <EstimatedReportButton />
           {canExport && <SendTo1cButton />}
+          {canDelete && deletable.length > 0 && (filters.status === "read" || active > 0) && (
+            <button
+              type="button"
+              onClick={() => void deleteShown()}
+              disabled={deleting}
+              title={t("Șterge toate citirile afișate cu filtrele curente (citiri de test sau greșite)")}
+              className="tap inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-st-cancelled/50 bg-[var(--color-surface)] px-2 text-[12px] font-medium text-st-cancelled hover:bg-st-cancelled/10 disabled:cursor-default disabled:opacity-50"
+            >
+              🗑 {deleting ? "…" : t("Șterge citirile afișate ({n})", { n: nf(deletable.length) })}
+            </button>
+          )}
         </span>
         {canExport && <button
           type="button"
@@ -718,6 +783,8 @@ export default function FieldReadings({
           onClose={() => setSelId(null)}
           onSaved={onSaved}
           onIssue={(kind) => patchRow(selected.id, { issue: kind })}
+          onDelete={canDelete && selected.value != null && !selected.pending && !selected.autoRead ? () => void deleteOne(selected) : undefined}
+          deleting={deleting}
           onNext={() => {
             const n = nextUnread(selected.id);
             jumpTo.current = n;
@@ -969,8 +1036,13 @@ function ReadingDialog({
   onSaved,
   onNext,
   onIssue,
+  onDelete,
+  deleting,
 }: {
   row: FieldRow;
+  /** Șterge citirea lunii (doar cine are dreptul și doar dacă există o citire salvată). */
+  onDelete?: () => void;
+  deleting: boolean;
   onIssue: (kind: string) => void;
   canViewMeter: boolean;
   onClose: () => void;
@@ -1027,6 +1099,11 @@ function ReadingDialog({
           onIssue={onIssue}
           auto={row.auto}
         />
+        {onDelete && (
+          <button type="button" onClick={onDelete} disabled={deleting} className="tap mt-3 h-9 w-full cursor-pointer rounded-xl border border-st-cancelled/50 text-sm font-medium text-st-cancelled hover:bg-st-cancelled/10 disabled:opacity-50">
+            🗑 {deleting ? "…" : t("Șterge citirea")}
+          </button>
+        )}
         {canViewMeter && (
           <Link href={`/contoare/${encodeURIComponent(row.id)}`} className="mt-3 block text-center text-xs text-brand underline">
             {t("Pagina contorului →")}

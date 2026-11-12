@@ -157,5 +157,31 @@ export function useFieldDataset() {
     }, 600);
   }, []);
 
-  return { data, routes, loading, error, loadedAt, refresh: fetchFresh, patchRow };
+  /** După ștergerea citirilor lunii: contoarele redevin „necitite” (în memorie și în IndexedDB). */
+  const clearReadings = useCallback((ids: string[]) => {
+    if (!memo || ids.length === 0) return;
+    const drop = new Set(ids);
+    const tuples = memo.tuples.map((tu) => {
+      if (!drop.has(tu[0])) return tu;
+      const n = tu.slice() as FieldTuple;
+      n[6] = null; // index
+      n[7] = null; // citit la
+      n[8] = 0; // poză
+      n[9] = null; // citit de
+      n[10] = null; // distanță
+      n[11] = 0; // locația citirii
+      n[18] = 0; // din portal
+      n[19] = null; // media
+      if ((n[21] ?? 0) === 2) n[21] = 1; // LoRaWAN: rămâne automat
+      return n;
+    });
+    memo = { ...memo, rows: decodeField(tuples), tuples, etag: null };
+    setData({ period: memo.period, rows: memo.rows });
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      if (memo) void idbSet(IDB_KEY, { at: memo.at, etag: null, period: memo.period, rows: memo.tuples, routes: memo.routes } satisfies Stored);
+    }, 600);
+  }, []);
+
+  return { data, routes, loading, error, loadedAt, refresh: fetchFresh, patchRow, clearReadings };
 }
