@@ -15,6 +15,7 @@ import { IconPencil, IconTrash, IconX, IconCheck } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
 import { useOnActionResult } from "@/lib/use-action-result";
 import { useT } from "@/lib/i18n/context";
+import { BRAND } from "@/lib/brand";
 
 const inp =
   "h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
@@ -37,7 +38,7 @@ export default function CategoriesManager({
     createCategory,
     undefined,
   );
-  const [newColor, setNewColor] = useState("#0d9488");
+  const [newColor, setNewColor] = useState<string>(BRAND.brand);
   // o singură dată pe rezultat (vezi lib/use-action-result.ts): fără ciclu de notificări „Categorie adăugată”
   useOnActionResult(createState, (s) => {
     if (s.ok) { toast.success(m.categories.added); router.refresh(); }
@@ -46,7 +47,7 @@ export default function CategoriesManager({
 
   // edit
   const [editId, setEditId] = useState<string | null>(null);
-  const [editColor, setEditColor] = useState("#0d9488");
+  const [editColor, setEditColor] = useState<string>(BRAND.brand);
   const [editState, editAction, editPending] = useActionState<SettingsState, FormData>(
     updateCategory,
     undefined,

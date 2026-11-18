@@ -3,6 +3,7 @@ import path from "node:path";
 import PDFDocument from "pdfkit";
 import { specItemId, SPEC_GROUPS as ALL_GROUPS, SPEC_PARTS as ALL_PARTS, STATUS_LABEL_RO, type SpecPart, type SpecItem, type SpecStatus } from "../tender-spec";
 import { PART_NOTE_EN, STATUS_LABEL_EN, WHERE_EN } from "../tender-spec-en";
+import { BRAND } from "../brand";
 
 /**
  * „Caiet de sarcini” în PDF (pagina Contract): toate punctele cu bifa lor (cine a bifat și când), statusul de acoperire în CRM și, opțional, textul din „i”
@@ -11,7 +12,7 @@ import { PART_NOTE_EN, STATUS_LABEL_EN, WHERE_EN } from "../tender-spec-en";
 
 const FONT = path.join(process.cwd(), "assets", "fonts", "DejaVuSans.ttf");
 const FONT_BOLD = path.join(process.cwd(), "assets", "fonts", "DejaVuSans-Bold.ttf");
-const C = { brand: "#0d9488", brandDark: "#0f766e", brandSoft: "#f0fdfa", ink: "#0f172a", soft: "#64748b", line: "#cbd5e1", head: "#f1f5f9", ok: "#15803d" };
+const C = { brand: BRAND.brand, brandDark: BRAND.strong, brandSoft: BRAND.tint, ink: "#0f172a", soft: "#64748b", line: "#cbd5e1", head: "#f1f5f9", ok: "#15803d" };
 const STATUS_COLOR: Record<SpecStatus, string> = { done: "#15803d", partial: "#b45309", external: "#1d4ed8", na: "#64748b", todo: "#b91c1c" };
 
 export type TenderPdfLang = "both" | "ro" | "en";
@@ -305,7 +306,7 @@ export async function buildTenderPdf(o: {
     ensure(bh + 220);
     doc.rect(L, y, W, bh).fillColor(C.brand).fill();
     doc.font("B").fontSize(13).fillColor("#ffffff").text(partTitle, L + 12, y + 8, { width: W - 24, lineBreak: false, ellipsis: true });
-    doc.font("R").fontSize(8.5).fillColor("#ccfbf1").text(note, L + 12, y + 26, { width: W - 24, lineGap: GAP });
+    doc.font("R").fontSize(8.5).fillColor(BRAND.soft).text(note, L + 12, y + 26, { width: W - 24, lineGap: GAP });
     y += bh + 10;
 
     for (const { g, items } of groups) {

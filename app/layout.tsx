@@ -6,6 +6,7 @@ import { getT } from "@/lib/i18n/server-t";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { ThemeScript } from "@/app/components/ThemeScript";
 import "./globals.css";
+import { BRAND } from "@/lib/brand";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -36,7 +37,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#0d9488" },
+    { media: "(prefers-color-scheme: light)", color: BRAND.brand },
     { media: "(prefers-color-scheme: dark)", color: "#0a0c10" },
   ],
   width: "device-width",

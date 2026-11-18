@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { isValidLocale, type Locale } from "@/lib/i18n";
 import { makeT } from "@/lib/i18n/t";
+import { BRAND } from "@/lib/brand";
 
 // Fără I18nProvider aici: global-error stă deasupra layout-ului rădăcină, deci limba se citește direct din cookie.
 function readLocale(): Locale {
@@ -111,7 +112,7 @@ export default function GlobalError({
             type="button"
             onClick={() => (stale ? window.location.reload() : unstable_retry())}
             style={{
-              background: "#0d9488",
+              background: BRAND.brand,
               color: "#fff",
               border: "none",
               borderRadius: ".875rem",

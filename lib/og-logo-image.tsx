@@ -1,10 +1,11 @@
 import { ImageResponse } from "next/og";
 import sharp from "sharp";
 import { getCompanySettings } from "@/lib/queries/company";
+import { BRAND } from "./brand";
 
 export const OG_IMAGE_SIZE = { width: 1200, height: 630 };
 
-const BG = "#0d9488";
+const BG = BRAND.brand;
 
 /**
  * Satori (motorul din spatele `next/og`) nu poate decoda WEBP în `<img>` — aruncă o eroare

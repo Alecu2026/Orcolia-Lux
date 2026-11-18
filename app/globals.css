@@ -11,9 +11,10 @@
   --color-ink-soft: #475569;
   --color-line: #e2e8f0;
 
-  --color-brand: #0d9488;
-  --color-brand-strong: #0f766e;
-  --color-brand-soft: #ccfbf1;
+  /* culorile brandului AquaCRM: aceleași valori ca în lib/brand.ts (acolo pentru emailuri, PDF-uri, manifest) */
+  --color-brand: #0b5bd3;
+  --color-brand-strong: #063f9a;
+  --color-brand-soft: #dbeafe;
 
   --color-st-new: #64748b;
   --color-st-confirmed: #2563eb;
@@ -36,7 +37,15 @@
   --color-ink: #e6e9ef;
   --color-ink-soft: #94a3b8;
   --color-line: #232b36;
-  --color-brand-soft: #134e4a;
+  --color-brand: #3b82f6;
+  --color-brand-strong: #2563eb;
+  --color-brand-soft: #0b2a5e;
+}
+/* text „brand-strong” pe fundal închis: varianta deschisă (altfel nu se citește) */
+.dark .text-brand-strong,
+.dark .mp-tag,
+.dark .mp-pill:hover {
+  color: #93c5fd;
 }
 
 /* Controalele native (liste <select>, date, scrollbar) își iau culorile din temă — altfel în dark lista de opțiuni

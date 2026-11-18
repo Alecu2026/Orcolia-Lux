@@ -12,6 +12,7 @@ import {
 } from "../apa-canal-layout";
 import { buildApaCanalVars, continuationPages, factorOrDash, isApa, niceStep, num2, pageLimits, splitForPages, type ApaCanalInvoiceData, type ConsumPoint, type ContPage, type InvoiceMeter } from "../apa-canal-invoice-vars";
 import { fmtDate, money, INVOICE_STATUS, type InvoiceStatusKey } from "../../app/components/invoice-meta";
+import { BRAND as BRAND_COLORS } from "../brand";
 
 /**
  * Factura publică ca PDF, desenată DIRECT pe server (pdfkit), fără Chromium: fără browser pornit, fără sute de MB de memorie, în câteva zeci de milisecunde.
@@ -37,7 +38,7 @@ const TEXT = "#202C2A";
 const BORDER = "#AEB0B0";
 const BORDER_LIGHT = "#D9DDDD";
 const RED = "#E53935";
-const BRAND = "#0d9488";
+const BRAND = BRAND_COLORS.brand;
 
 // Ascent / descent ale fontului (Arimo = metricile Arial) — pentru a aşeza linia de text ca în CSS (jumătate din interlinie deasupra, jumătate dedesubt).
 const ASC = 0.905;

@@ -290,7 +290,7 @@ function LayoutField({
       }}
       scale={scale}
       style={{
-        outline: selected ? "2px solid #0d9488" : `1px dashed ${COLOR_BAR}`,
+        outline: selected ? "2px solid var(--color-brand)" : `1px dashed ${COLOR_BAR}`,
         background: selected ? "rgba(13,148,136,0.14)" : "rgba(134,211,234,0.10)",
         zIndex: selected ? 45 : undefined,
       }}

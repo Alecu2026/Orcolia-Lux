@@ -7,6 +7,7 @@ import nodemailer from "nodemailer";
 import { htmlToText } from "../email-body";
 import { wrapMailTransport, type DeliveryMeta } from "../delivery-log";
 import { AUTOCLOSE_DEFAULT_HOURS, cleanAutoCloseHours, roLast, roSpan } from "../ticket-autoclose";
+import { BRAND } from "../brand";
 
 // ── Email transport (shared with lib/email.ts logic) ────────────────────────
 function getTransport(meta?: DeliveryMeta) {
@@ -336,7 +337,7 @@ async function sendAutoAck(opts: {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
-        <tr><td style="background:#0d9488;padding:20px 28px;color:#fff;font-size:18px;font-weight:700">${escHtml(opts.companyName)}</td></tr>
+        <tr><td style="background:${BRAND.brand};padding:20px 28px;color:#fff;font-size:18px;font-weight:700">${escHtml(opts.companyName)}</td></tr>
         <tr><td style="padding:28px">
           <p style="margin:0 0 14px;font-size:15px">Bună, <b>${escHtml(clientName)}</b>.</p>
           <p style="margin:0 0 18px;font-size:15px;line-height:1.6">Am primit mesajul tău${seqLabel ? ` <b>${escHtml(seqLabel.trim())}</b>` : ""}. Un coleg te va contacta în cel mai scurt timp.</p>

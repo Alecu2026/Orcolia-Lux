@@ -3,6 +3,7 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "./env";
 import { prisma } from "./prisma";
 import { logDelivery, withDeliveryMeta, wrapMailTransport, type DeliveryMeta } from "./delivery-log";
+import { BRAND } from "./brand";
 
 let cached: Transporter | null = null;
 
@@ -40,7 +41,7 @@ function template(raw: ReminderEmailData): string {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
-        <tr><td style="background:#0d9488;padding:20px 24px;color:#fff;font-size:18px;font-weight:700">
+        <tr><td style="background:${BRAND.brand};padding:20px 24px;color:#fff;font-size:18px;font-weight:700">
           Reminder programare
         </td></tr>
         <tr><td style="padding:24px">
@@ -48,8 +49,8 @@ function template(raw: ReminderEmailData): string {
           <p style="margin:0 0 18px;font-size:15px;line-height:1.5">
             Ai programare la <b>${d.service}</b> pe <b>${d.date}</b> la <b>${d.time}</b>.
           </p>
-          <div style="background:#ccfbf1;border-radius:12px;padding:14px 16px;margin-bottom:18px">
-            <div style="font-size:13px;color:#0f766e">📅 ${d.date} &nbsp; 🕐 ${d.time}</div>
+          <div style="background:${BRAND.soft};border-radius:12px;padding:14px 16px;margin-bottom:18px">
+            <div style="font-size:13px;color:${BRAND.strong}">📅 ${d.date} &nbsp; 🕐 ${d.time}</div>
           </div>
           <p style="margin:0;font-size:14px;color:#475569">
             Te rugăm să confirmi dacă poți ajunge.
@@ -221,14 +222,14 @@ function verificationCodeTemplate(d: VerificationCodeEmailData): string {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
-        <tr><td style="background:#0d9488;padding:20px 24px;color:#fff;font-size:18px;font-weight:700">
+        <tr><td style="background:${BRAND.brand};padding:20px 24px;color:#fff;font-size:18px;font-weight:700">
           🔐 ${title}
         </td></tr>
         <tr><td style="padding:28px">
           <p style="margin:0 0 16px;font-size:16px">Bună, <b>${d.name}</b>.</p>
           <p style="margin:0 0 20px;font-size:15px;line-height:1.6">${desc}</p>
           <div style="background:#f1f5f9;border-radius:12px;padding:20px;margin-bottom:20px;text-align:center">
-            <span style="font-size:32px;font-weight:700;letter-spacing:8px;color:#0f766e">${d.code}</span>
+            <span style="font-size:32px;font-weight:700;letter-spacing:8px;color:${BRAND.strong}">${d.code}</span>
           </div>
           <p style="margin:0;font-size:13px;color:#64748b">Codul expiră în 15 minute. Dacă nu ai cerut tu această acțiune, ignoră acest email.</p>
         </td></tr>
@@ -274,7 +275,7 @@ async function sendNewDeviceEmailImpl(d: NewDeviceEmailData): Promise<void> {
 <html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0"><tr><td align="center">
     <table role="presentation" width="100%" style="max-width:480px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
-      <tr><td style="background:#0d9488;padding:20px 24px;color:#fff;font-size:18px;font-weight:700">🔐 Autentificare nouă în contul tău</td></tr>
+      <tr><td style="background:${BRAND.brand};padding:20px 24px;color:#fff;font-size:18px;font-weight:700">🔐 Autentificare nouă în contul tău</td></tr>
       <tr><td style="padding:28px">
         <p style="margin:0 0 16px;font-size:16px">Bună, <b>${esc(d.name)}</b>.</p>
         <p style="margin:0 0 16px;font-size:15px;line-height:1.6">Contul tău a fost folosit de pe un dispozitiv pe care nu îl mai folosise până acum:</p>
@@ -284,7 +285,7 @@ async function sendNewDeviceEmailImpl(d: NewDeviceEmailData): Promise<void> {
           <tr><td style="color:#64748b;padding-right:14px">Moment</td><td><b>${esc(d.when)}</b></td></tr>
         </table>
         <p style="margin:0 0 14px;font-size:14px;line-height:1.6">Dacă ai fost tu, nu trebuie să faci nimic. Dacă <b>nu ai fost tu</b>, schimbă parola imediat și deconectează celelalte sesiuni din Setări → Securitate.</p>
-        <p style="margin:0"><a href="${esc(d.securityUrl)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600">Deschide Securitate</a></p>
+        <p style="margin:0"><a href="${esc(d.securityUrl)}" style="display:inline-block;background:${BRAND.brand};color:#fff;text-decoration:none;padding:10px 18px;border-radius:10px;font-weight:600">Deschide Securitate</a></p>
       </td></tr>
       <tr><td style="padding:14px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">Mesaj automat — te rugăm să nu răspunzi.</td></tr>
     </table>
@@ -337,7 +338,7 @@ function readingVerifyTemplate(d: ReadingVerifyEmailData): string {
 <html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0"><tr><td align="center">
     <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
-      <tr><td style="background:#0d9488;padding:18px 24px;color:#fff;font-size:17px;font-weight:700">${d.pending ? "💧 Confirmați citirea / Подтвердите показания" : edited ? "✏️ Citire modificată / Показания изменены" : "💧 Verificați citirea / Проверьте показания"}</td></tr>
+      <tr><td style="background:${BRAND.brand};padding:18px 24px;color:#fff;font-size:17px;font-weight:700">${d.pending ? "💧 Confirmați citirea / Подтвердите показания" : edited ? "✏️ Citire modificată / Показания изменены" : "💧 Verificați citirea / Проверьте показания"}</td></tr>
       <tr><td style="padding:24px">
         <p style="margin:0 0 12px;font-size:15px">Stimate(ă) <b>${esc(d.name)}</b>,</p>
         <p style="margin:0 0 14px;font-size:14px;line-height:1.6">${introRo}</p>
@@ -351,7 +352,7 @@ function readingVerifyTemplate(d: ReadingVerifyEmailData): string {
           ${d.consum != null ? row("Consum față de citirea anterioară", "Расход", `${m3(d.consum)} m³`) : ""}
           ${row("Data și ora", "Дата и время", esc(d.when))}
         </table>
-        <p style="margin:0 0 16px"><a href="${esc(d.url)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">${d.pending ? "Confirm citirea / Подтверждаю показания" : "Verifică citirea / Проверить показания"}</a></p>
+        <p style="margin:0 0 16px"><a href="${esc(d.url)}" style="display:inline-block;background:${BRAND.brand};color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">${d.pending ? "Confirm citirea / Подтверждаю показания" : "Verifică citirea / Проверить показания"}</a></p>
         ${d.pending ? `<p style="margin:0;font-size:12px;line-height:1.6;color:#64748b">Dacă nu ați trimis dumneavoastră această citire, ignorați emailul — nu se înregistrează nimic. Linkul este valabil 7 zile.<br>Если вы не передавали эти показания, просто проигнорируйте письмо — ничего не будет зарегистрировано. Ссылка действительна 7 дней.</p>` : `<p style="margin:0;font-size:12px;line-height:1.6;color:#64748b">Pe pagina deschisă puteți <b>confirma</b> valoarea sau o puteți <b>contesta</b> dacă nu este corectă ori nu dumneavoastră ați transmis-o. Linkul este valabil 14 zile.<br>На открывшейся странице вы можете <b>подтвердить</b> значение или <b>оспорить</b> его, если оно неверно или вы его не передавали. Ссылка действительна 14 дней.</p>`}
       </td></tr>
       <tr><td style="padding:12px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">${esc(d.company)} · Mesaj automat — vă rugăm să nu răspundeți.</td></tr>
@@ -412,7 +413,7 @@ function payerNotificationTemplate(d: PayerNotificationEmailData): string {
   const body = escapeHtml(d.body)
     .replace(/https?:\/\/[^\s<]+/g, (m) => {
       const url = m.replace(/(?:&quot;|&#39;|[.,;:!?)\]}])+$/, "");
-      return `<a href="${url}" style="color:#0d9488;font-weight:600;word-break:break-all">${url}</a>${m.slice(url.length)}`;
+      return `<a href="${url}" style="color:${BRAND.brand};font-weight:600;word-break:break-all">${url}</a>${m.slice(url.length)}`;
     })
     .replace(/\r?\n/g, "<br>");
   return `<!doctype html>
@@ -420,7 +421,7 @@ function payerNotificationTemplate(d: PayerNotificationEmailData): string {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
-        <tr><td style="background:#0d9488;padding:20px 28px;color:#fff;font-size:19px;font-weight:700">
+        <tr><td style="background:${BRAND.brand};padding:20px 28px;color:#fff;font-size:19px;font-weight:700">
           ${company}
         </td></tr>
         <tr><td style="padding:28px;font-size:15px;line-height:1.6">
@@ -486,7 +487,7 @@ async function sendTicketMessageEmailImpl(d: TicketMessageEmailData): Promise<vo
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
-        <tr><td style="background:#0d9488;padding:20px 28px;color:#fff;font-size:19px;font-weight:700">${company}</td></tr>
+        <tr><td style="background:${BRAND.brand};padding:20px 28px;color:#fff;font-size:19px;font-weight:700">${company}</td></tr>
         <tr><td style="padding:28px;font-size:15px;line-height:1.6">
           <p style="margin:0 0 6px">Bună ziua, <b>${escapeHtml(d.clientName)}</b>,</p>
           <p style="margin:0 0 16px;color:#475569">Ai primit un mesaj nou la cererea <b>${escapeHtml(ref)} ${escapeHtml(d.ticketTitle)}</b>:</p>
@@ -494,7 +495,7 @@ async function sendTicketMessageEmailImpl(d: TicketMessageEmailData): Promise<vo
             <div style="font-size:12px;color:#64748b;margin-bottom:4px">${escapeHtml(d.authorName)}</div>
             <div>${escapeHtml(excerpt).replace(/\r?\n/g, "<br>")}</div>
           </div>
-          <a href="${escapeHtml(d.url)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:12px">Deschide conversația și răspunde</a>
+          <a href="${escapeHtml(d.url)}" style="display:inline-block;background:${BRAND.brand};color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:12px">Deschide conversația și răspunde</a>
         </td></tr>
         <tr><td style="padding:14px 28px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">
           Mesaj automat de la ${company}. Răspunde din conversația din portal, nu la acest email.
@@ -568,7 +569,7 @@ async function sendTicketResolvedEmailImpl(d: TicketResolvedEmailData): Promise<
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:520px;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
-        <tr><td style="background:#0d9488;padding:20px 28px;color:#fff;font-size:19px;font-weight:700">${escapeHtml(company)}</td></tr>
+        <tr><td style="background:${BRAND.brand};padding:20px 28px;color:#fff;font-size:19px;font-weight:700">${escapeHtml(company)}</td></tr>
         <tr><td style="padding:28px;font-size:15px;line-height:1.6">
           <p style="margin:0 0 12px">Bună ziua, <b>${escapeHtml(d.clientName)}</b>,</p>
           <p style="margin:0 0 6px;font-size:16px"><b>${done ? "✓ " : ""}${escapeHtml(roLine)}</b></p>
@@ -579,7 +580,7 @@ async function sendTicketResolvedEmailImpl(d: TicketResolvedEmailData): Promise<
           ${measuresRu ? `<p style="margin:0 0 6px;background:#f1f5f9;border-radius:10px;padding:10px 12px">${escapeHtml(measuresRu).replace(/\r?\n/g, "<br>")}</p>` : ""}
           <p style="margin:0 0 ${done ? 6 : 20}px;color:#475569">Если что-то не так, напишите нам в переписке по заявке.</p>
           ${done ? `<p style="margin:0 0 20px;color:#0f172a">⭐ Нам важно ваше мнение: оцените решение (1–5) на странице заявки в портале.</p>` : ""}
-          <a href="${escapeHtml(d.url)}" style="display:inline-block;background:#0d9488;color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:12px">Deschide cererea / Открыть заявку</a>
+          <a href="${escapeHtml(d.url)}" style="display:inline-block;background:${BRAND.brand};color:#fff;text-decoration:none;font-weight:600;padding:12px 22px;border-radius:12px">Deschide cererea / Открыть заявку</a>
         </td></tr>
         <tr><td style="padding:14px 28px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">
           Mesaj automat de la ${escapeHtml(company)}. / Автоматическое сообщение.

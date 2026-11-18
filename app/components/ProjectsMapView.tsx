@@ -10,6 +10,7 @@ import { EMPTY_METER_FILTERS, PIN_COLOR, PIN_FUZZY_M, filterPins, type MeterMapF
 import MeterMapPanel from "./MeterMapPanel";
 import { ISSUE_LABELS, isIssueKind } from "@/lib/meter-issues";
 import { useMeterPins } from "./useMeterPins";
+import { BRAND } from "@/lib/brand";
 
 type ProjectPin = {
   id: string;
@@ -312,7 +313,7 @@ export default function ProjectsMapView({ pins, meters = false }: { pins: Projec
             type: "circle",
             source: "meters",
             filter: ["has", "point_count"],
-            paint: { "circle-color": "#0f766e", "circle-radius": ["step", ["get", "point_count"], 16, 10, 22, 50, 28], "circle-stroke-width": 2, "circle-stroke-color": "#fff", "circle-opacity": 0.92 },
+            paint: { "circle-color": BRAND.strong, "circle-radius": ["step", ["get", "point_count"], 16, 10, 22, 50, 28], "circle-stroke-width": 2, "circle-stroke-color": "#fff", "circle-opacity": 0.92 },
           });
           mp0.addLayer({
             id: "m-cluster-count",
@@ -449,7 +450,7 @@ export default function ProjectsMapView({ pins, meters = false }: { pins: Projec
               <div className="flex items-center gap-2"><span className="size-3 rounded-full" style={{ background: PIN_COLOR.read }} /><span className="text-xs">{t("Contor citit luna aceasta")}</span></div>
               <div className="flex items-center gap-2"><span className="size-3 rounded-full" style={{ background: PIN_COLOR.unread }} /><span className="text-xs">{t("Contor necitit")}</span></div>
               <div className="flex items-center gap-2"><span className="size-3 rounded-full" style={{ background: PIN_COLOR.issue }} /><span className="text-xs">{t("Contor cu neregulă")}</span></div>
-              <div className="flex items-center gap-2"><span className="flex size-5 items-center justify-center rounded-full bg-[#0f766e] text-[9px] font-bold text-white">N</span><span className="text-xs text-ink-soft">{t("Grup de contoare")}</span></div>
+              <div className="flex items-center gap-2"><span className="flex size-5 items-center justify-center rounded-full bg-brand-strong text-[9px] font-bold text-white">N</span><span className="text-xs text-ink-soft">{t("Grup de contoare")}</span></div>
             </div>
           )}
         </div>
