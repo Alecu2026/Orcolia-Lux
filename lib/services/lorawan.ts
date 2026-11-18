@@ -412,6 +412,7 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
     return { ok: false, error };
   } finally {
     clearTimeout(watchdog);
+    diagCache = null; // citirile s-au schimbat: lista de diagnostic se refă la următoarea deschidere
   }
 }
 
@@ -428,16 +429,22 @@ export async function checkLorawanSchedule(now: Date = new Date()): Promise<void
  * Diagnostic: toate numerele din feedul LoRaWAN (descărcat acum) cu rezultatul potrivirii cu CRM-ul — găsit (cu contorul și plătitorul), ignorat (altă lună), fără transmisii, negăsit, scos din uz.
  * Doar citire: nu scrie nimic. Se folosește în pagina LoRaWAN ca să se vadă de ce un contor a fost sau nu potrivit.
  */
-export async function getLorawanDiagnostics(): Promise<LorawanDiag> {
+let diagCache: { builtAt: number; diag: LorawanDiag } | null = null;
+/** Lista de diagnostic gata calculată se păstrează 2 minute (a doua deschidere e instantanee); „Reîncarcă lista” o refă de la zero, iar o extragere o golește. */
+const DIAG_TTL_MS = 2 * 60_000;
+const nameCollator = new Intl.Collator("ro");
+
+export async function getLorawanDiagnostics(opts: { fresh?: boolean } = {}): Promise<LorawanDiag> {
   if (DEMO) return { at: Date.now(), period: currentPeriod(), rows: [] };
   if (!lorawanConfigured()) throw new Error("Lipsește LORAWAN_TOKEN în configurația serverului.");
   const period = currentPeriod();
-  const [parsed, snap, readings] = await Promise.all([fetchRows(), getMeterSnap(), prisma.meterReading.findMany({ where: { period }, select: { meterId: true, value: true, source: true } })]);
+  if (!opts.fresh && diagCache && diagCache.diag.period === period && Date.now() - diagCache.builtAt < DIAG_TTL_MS) return diagCache.diag;
+  const [parsed, snap, readings] = await Promise.all([fetchRows({ fresh: opts.fresh }), getMeterSnap(), prisma.meterReading.findMany({ where: { period }, select: { meterId: true, value: true, source: true } })]);
   const readBy = new Map(readings.map((r) => [r.meterId, r]));
   const classify = buildMatcher(snap.rows, period);
   const fmt = (n: number) => n.toLocaleString("ro-RO", { maximumFractionDigits: 3 });
   const rows: DiagTuple[] = [];
-  for (const lw of [...parsed.rows].sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const lw of [...parsed.rows].sort((a, b) => nameCollator.compare(a.name, b.name))) {
     const ts = lw.ts.getTime();
     const c = classify(lw);
     if (c.kind !== "found") {
@@ -451,7 +458,9 @@ export async function getLorawanDiagnostics(): Promise<LorawanDiag> {
       rows.push([lw.name, lw.volume, ts, kind, r.contor, r.id, r.clientId ?? "", r.name ?? "", r.address ?? "", read, c.viaSuffix ? "cu text" : "exact"]);
     }
   }
-  return { at: parsed.at, period, rows };
+  const diag: LorawanDiag = { at: parsed.at, period, rows };
+  diagCache = { builtAt: Date.now(), diag };
+  return diag;
 }
 
 export async function getLorawanStatus(): Promise<LorawanStatus> {

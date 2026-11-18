@@ -44,12 +44,15 @@ export async function runLorawanAction(): Promise<{ ok: boolean; error?: string 
   return { ok: true };
 }
 
-/** Toate contoarele din feed cu rezultatul potrivirii (găsite / negăsite / ignorate …), pentru depanare. Doar citire. */
-export async function lorawanDiagAction(): Promise<{ ok: true; diag: LorawanDiag } | { ok: false; error: string }> {
+/**
+ * Toate contoarele din feed cu rezultatul potrivirii (găsite / negăsite / ignorate …), pentru depanare. Doar citire. Lista (mii de rânduri) pleacă ca text JSON, nu ca structură: serializarea
+ * unei liste atât de mari ca structură de acțiune de server e de câteva ori mai lentă. `fresh` = „Reîncarcă lista”: descarcă feedul din nou și refă calculul.
+ */
+export async function lorawanDiagAction(fresh = false): Promise<{ ok: true; json: string } | { ok: false; error: string }> {
   const user = await requireUser();
   if (!can(user, "meters.manage")) return { ok: false, error: "Fără permisiune." };
   try {
-    return { ok: true, diag: await getLorawanDiagnostics() };
+    return { ok: true, json: JSON.stringify(await getLorawanDiagnostics({ fresh: fresh === true })) };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Nu am putut citi feedul LoRaWAN." };
   }

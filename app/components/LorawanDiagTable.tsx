@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { lorawanDiagAction } from "@/app/actions/lorawan";
 import type { DiagKind, LorawanDiag } from "@/lib/lorawan";
 import { useLocale, useT } from "@/lib/i18n/context";
@@ -34,14 +34,14 @@ export default function LorawanDiagTable() {
   const label = (k: DiagKind) =>
     k === "ok" ? t("Găsit în CRM") : k === "stale" ? t("Ignorat (altă lună)") : k === "unmatched" ? t("Negăsit în CRM") : k === "placeholder" ? t("Fără nicio transmisie") : t("Scos din uz în CRM");
 
-  const load = async () => {
+  const load = async (fresh = false) => {
     setBusy(true);
     setErr(null);
     // dacă cererea e întreruptă (proxy / rețea), serverul continuă descărcarea și o păstrează în memorie: încă 2 încercări, la câteva secunde, o găsesc gata
     let r: Awaited<ReturnType<typeof lorawanDiagAction>> = { ok: false, error: "Nu am putut citi feedul LoRaWAN." };
     for (let i = 0; i < 3; i++) {
       let cut = false;
-      r = await lorawanDiagAction().catch(() => {
+      r = await lorawanDiagAction(fresh).catch(() => {
         cut = true;
         return { ok: false as const, error: "Nu am putut citi feedul LoRaWAN." };
       });
@@ -49,8 +49,12 @@ export default function LorawanDiagTable() {
       await new Promise((res) => setTimeout(res, 6000));
     }
     if (r.ok) {
-      setDiag(r.diag);
-      setPage(1);
+      try {
+        setDiag(JSON.parse(r.json) as LorawanDiag);
+        setPage(1);
+      } catch {
+        setErr(t("Nu am putut citi feedul LoRaWAN."));
+      }
     } else setErr(t(r.error));
     setBusy(false);
   };
@@ -65,17 +69,21 @@ export default function LorawanDiagTable() {
     return { per, noPay: noPay.size, total: new Set((diag?.rows ?? []).map((r) => r[0])).size };
   }, [diag]);
 
-  const nq = norm(q.trim());
-  const rows = useMemo(
-    () =>
-      (diag?.rows ?? []).filter((r) => {
-        if (kind && r[3] !== kind) return false;
-        if (noPayer && !((r[3] === "ok" || r[3] === "stale") && !r[6])) return false;
-        if (nq && !norm(`${r[0]} ${r[4]} ${r[7]} ${r[8]}`).includes(nq)) return false;
-        return true;
-      }),
-    [diag, kind, noPayer, nq],
-  );
+  // textul de căutare, normalizat o singură dată pe listă (nu la fiecare tastă, pentru fiecare rând); căutarea rulează ușor în urma tastării
+  const index = useMemo(() => (diag?.rows ?? []).map((r) => norm(`${r[0]} ${r[4]} ${r[7]} ${r[8]}`)), [diag]);
+  const nq = norm(useDeferredValue(q).trim());
+  const rows = useMemo(() => {
+    const all = diag?.rows ?? [];
+    const out: typeof all = [];
+    for (let i = 0; i < all.length; i++) {
+      const r = all[i];
+      if (kind && r[3] !== kind) continue;
+      if (noPayer && !((r[3] === "ok" || r[3] === "stale") && !r[6])) continue;
+      if (nq && !index[i].includes(nq)) continue;
+      out.push(r);
+    }
+    return out;
+  }, [diag, index, kind, noPayer, nq]);
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const cur = Math.min(page, pages);
   const shown = rows.slice((cur - 1) * PER_PAGE, cur * PER_PAGE);
@@ -109,7 +117,7 @@ export default function LorawanDiagTable() {
           <h2 className="text-sm font-semibold">{t("Toate contoarele din feed (depanare)")}</h2>
           <p className="text-xs text-ink-soft">{t("Descarcă feedul acum și arată fiecare număr: găsit în CRM (cu contorul și plătitorul), ignorat, fără transmisii, negăsit sau scos din uz. Nu scrie nimic.")}</p>
         </div>
-        <button type="button" onClick={() => void load()} disabled={busy} data-lorawan-diag-load="" className="tap h-10 cursor-pointer rounded-xl border border-brand/50 px-4 text-sm font-semibold text-brand hover:bg-brand-soft disabled:opacity-50">
+        <button type="button" onClick={() => void load(!!diag)} disabled={busy} data-lorawan-diag-load="" className="tap h-10 cursor-pointer rounded-xl border border-brand/50 px-4 text-sm font-semibold text-brand hover:bg-brand-soft disabled:opacity-50">
           {busy ? t("Se încarcă…") : diag ? t("Reîncarcă lista") : t("Încarcă lista")}
         </button>
       </div>
