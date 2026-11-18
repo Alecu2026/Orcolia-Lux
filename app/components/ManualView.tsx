@@ -299,7 +299,7 @@ export default function ManualView({
           <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold"><MIcon name="book" className="size-4 text-brand" />{t("Cuprins")}</summary>
           <div className="mt-2">{toc}</div>
         </details>
-        <nav className="card hidden max-h-[calc(100vh-6rem)] overflow-auto p-3 lg:sticky lg:top-4 lg:block" aria-label={t("Cuprins")}>
+        <nav className="card hidden max-h-[calc(100dvh_-_var(--imp-h,0px)_-_6.5rem)] overflow-auto p-3 lg:sticky lg:top-[calc(var(--imp-h,0px)_+_5rem)] lg:block" aria-label={t("Cuprins")}>
           <p className="mb-2 flex items-center gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft"><MIcon name="book" className="size-4 text-brand" />{t("Cuprins")}</p>
           {toc}
         </nav>
@@ -397,7 +397,7 @@ export default function ManualView({
         {shown.map((s) => {
           const si = sections.findIndex((x) => x.id === s.id);
           return (
-            <section key={s.id} id={`s-${s.id}`} className="mb-4 scroll-mt-4">
+            <section key={s.id} id={`s-${s.id}`} className="mb-4 scroll-mt-[calc(var(--imp-h,0px)_+_5.5rem)]">
               {(() => {
                 const sk = s.pages.flatMap((pg) => shotKeysOf(pg.blocks));
                 const sgot = sk.filter((k) => shots[k]).length;
@@ -423,7 +423,7 @@ export default function ManualView({
               {s.pages.map((pg) => {
                 const pi = sections[si].pages.findIndex((x) => x.id === pg.id);
                 return (
-                  <article key={pg.id} id={`p-${pg.id}`} className="card mb-4 scroll-mt-4 p-4 sm:p-5">
+                  <article key={pg.id} id={`p-${pg.id}`} className="card mb-4 scroll-mt-[calc(var(--imp-h,0px)_+_5.5rem)] p-4 sm:p-5">
                     <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
                         <h3 className="text-lg font-bold"><span className="mr-2 text-sm font-semibold tabular-nums text-brand">{si + 1}.{pi + 1}</span>{pg.title}</h3>

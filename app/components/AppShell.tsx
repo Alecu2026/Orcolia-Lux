@@ -320,7 +320,7 @@ function AppShellInner({
         {/* Sidebar desktop */}
         <aside className="sticky top-0 hidden h-dvh flex-col overflow-hidden border-r border-[var(--color-line)] bg-[var(--color-surface)] p-4 lg:flex">
           <div className="shrink-0">
-            <Brand label={appointmentsLabel} />
+            <Brand />
           </div>
           {/* Meniul derulează singur când nu încap toate elementele (ecran mic / multe pagini); brandul și contul rămân fixate */}
           <div className="sidebar-scroll -mr-2 mt-6 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
@@ -337,7 +337,7 @@ function AppShellInner({
             <div className="absolute inset-0 bg-black/40" onClick={() => setDrawer(false)} />
             <aside className="absolute left-0 top-0 flex h-full w-72 flex-col overflow-hidden bg-[var(--color-surface)] p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
               <div className="shrink-0">
-                <Brand label={appointmentsLabel} />
+                <Brand />
               </div>
               <div className="sidebar-scroll -mr-2 mt-6 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
                 <NavList onNavigate={() => setDrawer(false)} perms={perms} items={NAV} appointmentsLabel={appointmentsLabel} />
@@ -474,12 +474,14 @@ function BottomNav({ perms, appointmentsLabel, chosen }: { perms?: Record<string
   );
 }
 
-function Brand({ label = "Programări" }: { label?: string }) {
-  const t = useT();
+/** Sigla + numele aplicației: „Aqua” fix, „CRM” cu culoarea care curge lin între albastru închis și deschis. */
+function Brand() {
   return (
     <div className="flex items-center gap-2.5 px-1">
       <BrandLogo size={36} />
-      <span className="text-base font-bold">{t(label)}</span>
+      <span className="text-lg font-bold leading-none">
+        Aqua<span className="aqua-wave">CRM</span>
+      </span>
     </div>
   );
 }

@@ -12,7 +12,7 @@ export default async function LoginVerifyPage() {
   if (!(await readMfaPending())) redirect("/login");
   return (
     <main className="flex min-h-dvh items-center justify-center p-5">
-      <div className="card w-full max-w-sm p-7 shadow-sm">
+      <div className="card aqua-border w-full max-w-sm p-7 shadow-sm">
         <div className="mb-6 flex items-center gap-3">
           <BrandLogo size={48} />
           <div>

@@ -15,6 +15,8 @@
   --color-brand: #0b5bd3;
   --color-brand-strong: #063f9a;
   --color-brand-soft: #dbeafe;
+  /* albastrul deschis din siglă („CRM”): doar accent, ex. animația titlului; aceeași valoare ca BRAND.cyan din lib/brand.ts */
+  --color-aqua: #33ccff;
 
   --color-st-new: #64748b;
   --color-st-confirmed: #2563eb;
@@ -465,4 +467,63 @@ body {
 .mp-hover span {
   opacity: 0.75;
   font-size: 11px;
+}
+
+/* „CRM” din titlul AquaCRM: culoarea curge lin între albastru închis și albastru deschis, ca apa */
+.aqua-wave {
+  display: inline-block;
+  background-image: linear-gradient(100deg, var(--color-brand-strong) 0%, var(--color-brand) 22%, var(--color-aqua) 50%, var(--color-brand) 78%, var(--color-brand-strong) 100%);
+  background-size: 260% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: aqua-wave 6s ease-in-out infinite;
+}
+@keyframes aqua-wave {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aqua-wave { animation: none; background-position: 50% 50%; }
+}
+
+/* Chenarul cardurilor de autentificare: se „încarcă” lin cu albastru în jurul cardului (de sus, în sensul acelor de ceasornic), apoi se golește la fel. Capetele arcului se estompează
+   (nu au muchii tăiate), iar culoarea curge de la albastru închis la cyan. Unghiurile ies puțin din 0–360° ca estomparea să nu lase un gol la îmbinare. */
+@property --aqua-s {
+  syntax: "<angle>";
+  initial-value: -40deg;
+  inherits: false;
+}
+@property --aqua-e {
+  syntax: "<angle>";
+  initial-value: -40deg;
+  inherits: false;
+}
+.aqua-border {
+  --aqua-fade: 36deg;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--color-surface), var(--color-surface)) padding-box,
+    conic-gradient(
+      from 0deg,
+      var(--color-line) var(--aqua-s),
+      color-mix(in srgb, var(--color-brand-strong) 70%, var(--color-line)) calc(var(--aqua-s) + var(--aqua-fade) * 0.35),
+      var(--color-brand-strong) calc(var(--aqua-s) + var(--aqua-fade)),
+      var(--color-brand) calc(var(--aqua-s) + (var(--aqua-e) - var(--aqua-s)) * 0.5),
+      var(--color-aqua) calc(var(--aqua-e) - var(--aqua-fade)),
+      color-mix(in srgb, var(--color-aqua) 55%, var(--color-line)) calc(var(--aqua-e) - var(--aqua-fade) * 0.4),
+      var(--color-line) var(--aqua-e)
+    ) border-box;
+  box-shadow: 0 0 34px -12px color-mix(in srgb, var(--color-brand) 45%, transparent);
+  animation: aqua-load 10s infinite;
+}
+@keyframes aqua-load {
+  0% { --aqua-s: -40deg; --aqua-e: -40deg; animation-timing-function: cubic-bezier(0.37, 0, 0.25, 1); }
+  45% { --aqua-s: -40deg; --aqua-e: 400deg; animation-timing-function: linear; }
+  55% { --aqua-s: -40deg; --aqua-e: 400deg; animation-timing-function: cubic-bezier(0.37, 0, 0.25, 1); }
+  100% { --aqua-s: 400deg; --aqua-e: 400deg; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aqua-border { animation: none; --aqua-s: -40deg; --aqua-e: 400deg; }
 }
