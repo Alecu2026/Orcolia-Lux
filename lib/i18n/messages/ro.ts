@@ -23,6 +23,7 @@
     deliveryLogs: "Jurnal notificări",
     readingRoutes: "Rute de citire",
     tender: "Caiet de sarcini",
+    manual: "Manual de utilizare",
     telegram: "Telegram",
     settings: "Setări",
     impersonate: "Simulare login",

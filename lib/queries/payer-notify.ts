@@ -3,7 +3,7 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import type { PayerTemplate } from "../payer-notify";
 import type { InvoiceStatus } from "@prisma/client";
-import { notifyCriterion, type NotifyCriterion, type NotifyFilters } from "../payer-notify";
+import { noInvoiceRun, notifyCriterion, runMonths, withCurrentMonth, type NotifyCriterion, type NotifyFilters } from "../payer-notify";
 import type { ListPayersOpts } from "./payers";
 import { dayBoundsUtc } from "../date";
 import { addressLocality, parseSectorFilter } from "../sector-filter";
@@ -109,12 +109,13 @@ export async function filtersToListOptsAsync(f: NotifyFilters): Promise<ListPaye
     const { getPayerSnap, getMonthSlice } = await import("../services/payer-cache");
     const snap = await getPayerSnap();
     const want = f.service === "water" ? 1 : f.service === "sewer" ? 2 : f.service === "both" ? 3 : 0;
-    const month = f.noInvoice ? f.month || snap.months[0]?.month || "" : "";
-    const withInvoice = month ? (await getMonthSlice(month)).map : null;
+    const month = f.noInvoice ? f.month || withCurrentMonth(snap.months)[0]?.month || "" : "";
+    // seria „fără factură N luni la rând”: plătitorii care lipsesc din feliile TUTUROR lunilor ei
+    const withInvoice = month ? await Promise.all(runMonths(month, Math.max(1, noInvoiceRun(f))).map(async (m) => (await getMonthSlice(m)).map)) : null;
     const ids: string[] = [];
     for (const r of snap.rows) {
       if (want && r.service !== want) continue;
-      if (withInvoice && withInvoice.has(r.id)) continue;
+      if (withInvoice && withInvoice.some((m) => m.has(r.id))) continue;
       ids.push(r.id);
     }
     sectorIds = await restrict(sectorIds, Promise.resolve(ids));
@@ -138,9 +139,9 @@ export async function listPayerTemplates(): Promise<PayerTemplate[]> {
   const rows = await prisma.payerNotifyTemplate.findMany({
     orderBy: { createdAt: "desc" },
     take: 200,
-    select: { id: true, name: true, subject: true, email: true, sms: true, call: true, voice: true },
+    select: { id: true, name: true, subject: true, email: true, sms: true, call: true, voice: true, pdfTitle: true, pdf: true },
   });
-  return rows.map((r) => ({ ...r, call: r.call ?? "", voice: r.voice ?? "" }));
+  return rows.map((r) => ({ ...r, call: r.call ?? "", voice: r.voice ?? "", pdfTitle: r.pdfTitle ?? "", pdf: r.pdf ?? "" }));
 }
 
 import type { PayerNoteItem } from "../payer-notify";

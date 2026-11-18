@@ -56,8 +56,11 @@ export type NotifyFilters = {
   nameFix: "" | "1";
   /** "none" = plătitori fără nicio factură (de ex. conturi de test de curățat). */
   invoices: "" | "none";
-  /** "1" = doar plătitorii FĂRĂ factură în luna aleasă (`month`; fără lună aleasă = cea mai recentă). */
-  noInvoice: "" | "1";
+  /**
+   * Plătitorii FĂRĂ factură: "1" = în luna aleasă (`month`; fără lună aleasă = cea mai recentă); "2" / "3" / "4" / "6" / "12" = fără factură în fiecare dintre ultimele N luni la rând,
+   * seria terminându-se la luna aleasă (sau la cea mai recentă).
+   */
+  noInvoice: "" | "1" | "2" | "3" | "4" | "6" | "12";
   /** Datorie pe vechime: 1–3 luni / 3 luni–1 an / 1–3 ani / peste 3 ani (după prima factură rămasă neachitată; vezi lib/debt-aging.ts). */
   aging: "" | "m1_3" | "m3_12" | "y1_3" | "y3p";
   /** Serviciul plătitorului (după ultimul document 1C): doar apă / doar canalizare / apă + canalizare. */
@@ -137,6 +140,31 @@ export function notifyCriterion(f: Pick<NotifyFilters, "via" | "notifiedFrom" | 
 /** Cheie stabilă pentru memorarea mulțimii de plătitori (nu depinde de „!"): aceeași mulțime pentru „notificați" și „nenotificați". */
 export const notifyCriterionKey = (c: NotifyCriterion) => `${c.channel ?? "ANY"}|${c.from}|${c.to}`;
 
+/**
+ * Lista „Luna facturii” cu LUNA CURENTĂ mereu prezentă (cea mai nouă): lunile vin din facturile existente, deci luna curentă lipsește cât timp nu s-a emis nicio factură în ea,
+ * tocmai atunci când „cine n-a primit încă factura” e întrebarea. Fără facturi, are numărul 0.
+ */
+export function withCurrentMonth(months: { month: string; count: number }[], now: string = todayKey().slice(0, 7)): { month: string; count: number }[] {
+  if (months.some((m) => m.month === now)) return months;
+  if (months[0] && months[0].month > now) return months;
+  return [{ month: now, count: 0 }, ...months];
+}
+
+/** Câte luni la rând fără factură se pot cere (1 = doar luna aleasă). */
+export const NO_INVOICE_VALUES = ["1", "2", "3", "4", "6", "12"] as const;
+
+/** Lunile seriei „fără factură N luni la rând”: N luni calendaristice, de la `ref` („YYYY-MM”) înapoi (ref, ref−1, …). */
+export function runMonths(ref: string, n: number): string[] {
+  const [y, m] = ref.split("-").map(Number);
+  return Array.from({ length: Math.max(1, n) }, (_, i) => {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  });
+}
+
+/** Câte luni la rând din filtrul „fără factură” (0 = filtru inactiv). */
+export const noInvoiceRun = (f: Pick<NotifyFilters, "noInvoice">): number => (f.noInvoice ? Number(f.noInvoice) : 0);
+
 const ONE_OF = <T extends string>(v: unknown, allowed: readonly T[]): T | "" =>
   typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : "";
 
@@ -187,7 +215,7 @@ export function sanitizeFilters(src: Source): NotifyFilters {
     sort: ONE_OF(get(src, "sort"), ["debtDesc", "debtAsc", "installDesc", "installAsc"] as const),
     nameFix: ONE_OF(get(src, "nameFix"), ["1"] as const),
     invoices: ONE_OF(get(src, "invoices"), ["none"] as const),
-    noInvoice: ONE_OF(get(src, "noInvoice"), ["1"] as const),
+    noInvoice: ONE_OF(get(src, "noInvoice"), NO_INVOICE_VALUES),
     aging: ONE_OF(get(src, "aging"), ["m1_3", "m3_12", "y1_3", "y3p"] as const),
     service: ONE_OF(get(src, "service"), ["water", "sewer", "both"] as const),
     estimated: ONE_OF(get(src, "estimated"), ["yes", "no"] as const),
@@ -425,7 +453,7 @@ export function notifiedRecently(d: string | Date | null): boolean {
 
 // ── Șabloane salvate ───────────────────────────────────────────────────────────────────────────
 
-export type PayerTemplate = { id: string; name: string; subject: string; email: string; sms: string; call: string; voice: string };
+export type PayerTemplate = { id: string; name: string; subject: string; email: string; sms: string; call: string; voice: string; /** foaia PDF: titlul și textul (gol = pornește din subiect / email) */ pdfTitle?: string; pdf?: string };
 export type PayerTemplateDraft = Omit<PayerTemplate, "id">;
 export const NOTIFY_MAX_TEMPLATE_NAME = 60;
 export const NOTIFY_MAX_TEMPLATES = 100;
@@ -617,11 +645,24 @@ function orderFor(rows: SnapRow[], sort: "debtDesc" | "debtAsc" | "installDesc" 
  * Cu `month`, suma/statusul sunt ale facturii acelei luni (`monthMap`); fără, ale ultimei facturi.
  * O singură trecere cu comparații pe câmpuri pre-calculate (vezi SnapRow) și ordine de sortare pre-calculate: milisecunde la 19.000 de rânduri.
  */
-export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: Map<string, SnapInvoice> | null, notifySet: Set<string> | null = null, agingSet: Set<string> | null = null): SnapRow[] {
+export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: Map<string, SnapInvoice> | null, notifySet: Set<string> | null = null, agingSet: Set<string> | null = null, runMaps: Map<string, SnapInvoice>[] | null = null): SnapRow[] {
   const crit = notifyCriterion(f);
   if (crit && !notifySet) return []; // mulțimea „notificați în perioada…" încă nu e încărcată: apelantul o cere și reface lista
   if (f.aging && !agingSet) return []; // mulțimea „datorie pe vechime" încă nu e încărcată: apelantul o cere și reface lista
-  const rows = f.month ? (monthMap ? (f.noInvoice ? rowsWithoutMonth(allRows, monthMap) : rowsForMonth(allRows, monthMap)) : []) : allRows;
+  // „fără factură N luni la rând” (N > 1): plătitorii care nu apar în NICIUNA dintre feliile lunilor seriei; feliile lipsă = lista încă nu e completă (apelantul le cere)
+  const run = noInvoiceRun(f);
+  const rows =
+    run > 1
+      ? runMaps && runMaps.length >= run
+        ? allRows.filter((r) => !runMaps.some((m) => m.has(r.id)))
+        : []
+      : f.month
+        ? monthMap
+          ? f.noInvoice
+            ? rowsWithoutMonth(allRows, monthMap)
+            : rowsForMonth(allRows, monthMap)
+          : []
+        : allRows;
   const q = f.q.trim().toLowerCase();
   const street = f.street.trim().toLowerCase();
   const min = f.minDebt === "" ? NaN : Number(f.minDebt);
@@ -696,20 +737,3 @@ export function filterSnapshot(allRows: SnapRow[], f: NotifyFilters, monthMap: M
   }
   return out;
 }
-
-/**
- * Modelul „Aviz de deconectare” pentru foaia PDF (document oficial): datoria totală ({suma}) și cea cu termenul expirat ({datorie_expirata}), cu avertizarea de deconectare.
- * Textul poate fi modificat în fereastra de trimitere; ** = îngroșat, __ = îngroșat și subliniat, ~~ = cursiv.
- */
-export const DISCONNECT_MODEL = {
-  title: "Aviz de deconectare.\nStimate consumator!",
-  body: [
-    "S.A. Apa-Canal Cahul Vă atenționează, că datoria DVS pentru consumul de apă la data de {data} constituie **{suma}**, inclusiv cu termenul expirat **{datorie_expirata}**.",
-    "Potrivit art.776 Cod Civil RM, obligațiile se nasc din contract, fapt ilicit (delict) și din orice alt act sau fapt susceptibil de a le produce în condițiile legii.",
-    "În conformitatea cu prevederile art.774 alin.(1)Cod Civil RM, în virtutea raportului obligațional, creditorul este în drept să pretindă de la debitor executarea unei prestații, iar debitorul este ținut să o execute.",
-    "Prin urmare, solicităm achitarea sumei debitoare în termen de 5 zile calendaristice de la data recepționării prezentei reclamații, în caz contrar vom fi nevoiți __să Vă deconectăm de la rețeaua publică de alimentare cu apă și să ne adresăm în instanța de judecată pentru recuperarea forțată a datoriei.__",
-    "Menționăm, că în cazul adresării în instanța de judecată, DVS veți suporta cheltuieli ce țin de achitarea taxei de stat, ceea ce constituie 3% din valoarea acțiunii, precum și taxele aferente procedurii de executare, a onorariului executorului judecătoresc în mărime de 10% din suma debitoare.",
-    "Pentru reconectare, va trebui să înlăturați motivele care au condus la deconectare, să achitați datoria formată și tariful pentru reconectare la rețeaua de alimentare cu apă și/sau canalizare a instalațiilor interne care vă aparțin.",
-    "~~Informații suplimentare puteți afla la oficiul S.A. Apa-Canal Cahul din mun. Cahul, str. 31 August nr. 1. Republica Moldova, sau la numărul de telefon: 0 689-99-026~~",
-  ].join("\n"),
-} as const;

@@ -26,6 +26,7 @@ import { IconTrash, IconX, IconChevronLeft, IconChevronRight, IconPencil } from 
 import CardActionsMenu from "./CardActionsMenu";
 import ProjectPicker from "./ProjectPicker";
 import ClientPayerPicker from "./ClientPayerPicker";
+import { NO_OPTS, useOptionList } from "./useOptionList";
 import MultiAssignPicker from "./MultiAssignPicker";
 import AssignmentLocked from "./AssignmentLocked";
 import AddressInput from "./AddressInput";
@@ -225,8 +226,8 @@ export default function TasksManager({
   scope,
   users,
   teams,
-  projects,
-  clients = [],
+  projects: projectsProp,
+  clients: clientsProp = NO_OPTS,
   categories = [],
   filters,
   canCreate,
@@ -269,6 +270,8 @@ export default function TasksManager({
   basePath?: string;
   createButtons?: { label: string; type: "TASK" | "TICKET" | "WORK_ORDER" }[];
 }) {
+  const [projects, addProject] = useOptionList(projectsProp);
+  const [clients, addClient] = useOptionList(clientsProp);
   const tr = useT();
   const router = useRouter();
   const toast = useToast();
@@ -890,6 +893,8 @@ export default function TasksManager({
           uploadsEnabled={uploadsEnabled}
           initialProjectId={initialProjectId}
           onClose={() => setCreateType(null)}
+          onProjectCreated={addProject}
+          onClientCreated={addClient}
           onCreated={(id) => {
             // Comută pe "Creat de mine" și deschide task-ul proaspăt creat — altfel, dacă a
             // fost auto-asignat altcuiva (proiect cu asignat implicit), dispare din "Ale mele"
@@ -909,6 +914,7 @@ export default function TasksManager({
           categories={categories}
           quietHoursEnabled={quietHoursEnabled}
           onClose={() => setEditTask(null)}
+          onClientCreated={addClient}
           onSaved={(updated) => {
             setTasks((cur) => cur.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
             setEditTask(null);
@@ -1154,7 +1160,7 @@ function CategoryChips({
 }
 
 export function EditDialog({
-  task, users, teams, sections, projects, clients, categories, quietHoursEnabled, canAssign = true, onClose, onSaved,
+  task, users, teams, sections, projects, clients, categories, quietHoursEnabled, canAssign = true, onClose, onSaved, onClientCreated,
 }: {
   canAssign?: boolean;
   /** Secțiile: dacă sunt date, apare câmpul „Secție” (completat din echipa / persoana aleasă). */
@@ -1168,6 +1174,8 @@ export function EditDialog({
   quietHoursEnabled?: boolean;
   onClose: () => void;
   onSaved: (updated: Partial<Task> & { id: string }) => void;
+  /** Un client nou creat din formular: pagina îl adaugă imediat în listele ei. */
+  onClientCreated?: (c: Opt) => void;
 }) {
   const t = useT();
   const toast = useToast();
@@ -1227,7 +1235,7 @@ export function EditDialog({
             <option value="URGENT">{m.priority.URGENT}</option>
           </select>
           <ProjectPicker projects={projects} defaultId={task.projectId ?? ""} />
-          <ClientPayerPicker defaultId={task.clientId ?? ""} />
+          <ClientPayerPicker defaultId={task.clientId ?? ""} onCreated={onClientCreated} />
           <AddressInput defaultValue={task.address ?? ""} className={dlgInput} onChange={(v) => { addressRef.current = v; }} />
           <div className="grid gap-2 sm:grid-cols-2">
             <ServiceTypeSelect defaultValue={task.serviceType ?? ""} />
@@ -1292,7 +1300,7 @@ function fmtFileSize(bytes: number): string {
 }
 
 export function CreateDialog({
-  initialType, users, teams, sections, projects, clients, categories, canCreateProject, quietHoursEnabled, uploadsEnabled, initialProjectId, initialClientId, initialTitle, initialAddress, initialDescription, canAssign = true, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated,
+  initialType, users, teams, sections, projects, clients, categories, canCreateProject, quietHoursEnabled, uploadsEnabled, initialProjectId, initialClientId, initialTitle, initialAddress, initialDescription, canAssign = true, prefill, templates, onPickTemplate, onClearTemplate, onClose, onCreated, onProjectCreated, onClientCreated,
 }: {
   initialType: "TASK" | "TICKET" | "WORK_ORDER";
   users: Opt[];
@@ -1322,6 +1330,9 @@ export function CreateDialog({
   onClearTemplate?: () => void;
   onClose: () => void;
   onCreated: (id: string) => void;
+  /** Un proiect / client nou creat din formular: pagina îl adaugă imediat în listele ei (filtre, editare în tabel). */
+  onProjectCreated?: (p: Opt) => void;
+  onClientCreated?: (c: Opt) => void;
 }) {
   const t = useT();
   const toast = useToast();
@@ -1431,9 +1442,10 @@ export function CreateDialog({
             projects={projects}
             canCreate={canCreateProject}
             onQuickCreate={quickCreateProject}
+            onCreated={onProjectCreated}
             defaultId={prefill?.projectId || (initialProjectId ?? "")}
           />
-          <ClientPayerPicker defaultId={prefill?.clientId || (initialClientId ?? "")} onPick={(id) => void fillPayerVariables(id)} />
+          <ClientPayerPicker defaultId={prefill?.clientId || (initialClientId ?? "")} onPick={(id) => void fillPayerVariables(id)} onCreated={onClientCreated} />
           <AddressInput defaultValue={prefill?.address ?? initialAddress ?? ""} className={dlgInput} />
           <div className="grid gap-2 sm:grid-cols-2">
             <ServiceTypeSelect defaultValue="" />

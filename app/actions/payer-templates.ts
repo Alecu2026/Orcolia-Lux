@@ -37,6 +37,9 @@ function clean(input: PayerTemplateDraft): { data: PayerTemplateDraft } | { erro
     sms: str(input?.sms),
     call: str(input?.call),
     voice: NOTIFY_VOICES.some((v) => v.id === input?.voice) ? str(input?.voice) : "",
+    // titlul foii poate avea 2 rânduri (fiecare e centrat în document)
+    pdfTitle: str(input?.pdfTitle).replace(/\r/g, "").replace(/\n{2,}/g, "\n").trim(),
+    pdf: str(input?.pdf),
   };
   if (!data.name) return { error: "Dă un nume șablonului." };
   if (data.name.length > NOTIFY_MAX_TEMPLATE_NAME) return { error: `Numele depășește ${NOTIFY_MAX_TEMPLATE_NAME} de caractere.` };
@@ -44,13 +47,15 @@ function clean(input: PayerTemplateDraft): { data: PayerTemplateDraft } | { erro
   if (data.email.length > NOTIFY_MAX_EMAIL_BODY) return { error: "Mesajul emailului e prea lung." };
   if (data.sms.length > NOTIFY_MAX_SMS_BODY) return { error: "Mesajul SMS e prea lung." };
   if (data.call.length > NOTIFY_MAX_CALL_BODY) return { error: `Mesajul apelului depășește ${NOTIFY_MAX_CALL_BODY} de caractere.` };
-  if (!data.email.trim() && !data.sms.trim() && !data.call.trim()) return { error: "Scrie măcar un mesaj: email, SMS sau apel." };
+  if (data.pdfTitle.length > NOTIFY_MAX_SUBJECT) return { error: "Titlul foii e prea lung." };
+  if (data.pdf.length > NOTIFY_MAX_EMAIL_BODY) return { error: "Textul foii e prea lung." };
+  if (!data.email.trim() && !data.sms.trim() && !data.call.trim() && !data.pdf.trim()) return { error: "Scrie măcar un mesaj: email, SMS, apel sau foaie PDF." };
   return { data };
 }
 
-const SELECT = { id: true, name: true, subject: true, email: true, sms: true, call: true, voice: true } as const;
-type Row = { id: string; name: string; subject: string; email: string; sms: string; call: string | null; voice: string | null };
-const toTemplate = (r: Row): PayerTemplate => ({ ...r, call: r.call ?? "", voice: r.voice ?? "" });
+const SELECT = { id: true, name: true, subject: true, email: true, sms: true, call: true, voice: true, pdfTitle: true, pdf: true } as const;
+type Row = { id: string; name: string; subject: string; email: string; sms: string; call: string | null; voice: string | null; pdfTitle: string | null; pdf: string | null };
+const toTemplate = (r: Row): PayerTemplate => ({ ...r, call: r.call ?? "", voice: r.voice ?? "", pdfTitle: r.pdfTitle ?? "", pdf: r.pdf ?? "" });
 
 export async function createPayerTemplateAction(input: PayerTemplateDraft): Promise<TemplateResult> {
   const g = await guard();

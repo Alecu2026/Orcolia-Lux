@@ -44,6 +44,8 @@ export type PermissionKey =
   | "kanban.view"
   | "calendar.view"
   | "map.view"
+  // Manual de utilizare: vede explicațiile DOAR pentru paginile la care are acces (plus secțiunile generale)
+  | "manual.view"
   // Plătitori (pagina Plătitori, fișa, decontarea, Notificări plătitori, Contoare)
   | "payers.view"
   | "payers.edit"
@@ -181,6 +183,7 @@ export const PERMISSION_GROUPS: {
       { key: "kanban.view", label: "Kanban" },
       { key: "calendar.view", label: "Calendar" },
       { key: "map.view", label: "Hartă" },
+      { key: "manual.view", label: "Manual de utilizare (vede explicațiile doar pentru paginile la care are acces, plus secțiunile generale)" },
     ],
   },
   {
@@ -339,7 +342,7 @@ export const USER_TYPES: { key: UserTypeKey; label: string; description: string;
     key: "reader",
     label: "Cititor",
     description: "Doar pagina Citiri teren: introduce indexuri, poze, locația și neregulile contoarelor din rutele atribuite lui.",
-    permissions: ["meters.read", "meters.export"],
+    permissions: ["meters.read", "meters.export", "manual.view"],
   },
   {
     key: "operator",
@@ -350,7 +353,7 @@ export const USER_TYPES: { key: UserTypeKey; label: string; description: string;
       "dashboard.view", "tickets.view", "kanban.view", "calendar.view",
       "projects.view", "clients.view", "clients.create", "clients.edit",
       "payers.view", "payers.notify", "invoices.view", "appointments.view", "appointments.manage", "teams.view",
-      "pbx.view",
+      "pbx.view", "manual.view",
       "tasks.export", "tasks.import", "tickets.export", "tickets.import", "projects.export", "clients.export", "clients.import", "appointments.export", "appointments.import", "payers.export", "meters.export",
     ],
   },
@@ -358,7 +361,7 @@ export const USER_TYPES: { key: UserTypeKey; label: string; description: string;
     key: "supervisor",
     label: "Responsabil citiri",
     description: "Cititor + administrarea rutelor de citire, planificat vs citit și neregulile contoarelor; vede plătitorii și contoarele.",
-    permissions: ["meters.read", "meters.manage", "payers.view", "payers.export", "meters.export"],
+    permissions: ["meters.read", "meters.manage", "payers.view", "payers.export", "meters.export", "manual.view"],
   },
   {
     key: "viewer",
@@ -372,9 +375,12 @@ export const USER_TYPES: { key: UserTypeKey; label: string; description: string;
 /** Tipul de utilizator recunoscut după permisiuni (null = personalizat sau administrator). */
 export function userTypeOf(role: string, permissions: string[]): UserTypeKey | null {
   if (role === "ADMIN" || permissions.includes("admin")) return null;
-  const have = new Set(effectivePermissionKeys(permissions));
+  // „Manual de utilizare” nu schimbă tipul: conturile create înainte să existe acest drept rămân de tipul lor (Cititor, Operator…), cu sau fără el
+  const core = (arr: readonly string[]) => arr.filter((k) => k !== "manual.view");
+  const have = new Set(core(effectivePermissionKeys(permissions)));
   for (const t of USER_TYPES) {
-    if (t.permissions.length === have.size && t.permissions.every((p) => have.has(p))) return t.key;
+    const want = core(t.permissions);
+    if (want.length === have.size && want.every((p) => have.has(p))) return t.key;
   }
   return null;
 }

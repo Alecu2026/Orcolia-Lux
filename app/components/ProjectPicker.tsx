@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useT } from "@/lib/i18n/context";
 import SuggestInput, { type SuggestItem } from "./SuggestInput";
 import { useToast } from "./toast";
@@ -23,6 +24,7 @@ export default function ProjectPicker({
   placeholder,
   canCreate = false,
   onQuickCreate,
+  onCreated,
 }: {
   name?: string;
   projects: Opt[];
@@ -30,10 +32,18 @@ export default function ProjectPicker({
   placeholder?: string;
   canCreate?: boolean;
   onQuickCreate?: (name: string) => Promise<QuickResult>;
+  /** Apelat după ce proiectul nou s-a creat (pagina îl adaugă în listele ei: filtre, editare în tabel). */
+  onCreated?: (p: Opt) => void;
 }) {
+  const router = useRouter();
   const t = useT();
   const toast = useToast();
-  const [list, setList] = useState<Opt[]>(projects);
+  // proiectele create aici + cele primite de la pagină (se actualizează când pagina se reîmprospătează)
+  const [created, setCreated] = useState<Opt[]>([]);
+  const list = useMemo(() => {
+    const have = new Set(projects.map((p) => p.id));
+    return [...created.filter((p) => !have.has(p.id)), ...projects];
+  }, [projects, created]);
   const [value, setValue] = useState<SuggestItem | null>(() => {
     const p = defaultId ? projects.find((x) => x.id === defaultId) : null;
     return p ? { id: p.id, name: p.name } : null;
@@ -55,8 +65,11 @@ export default function ProjectPicker({
     const res = await onQuickCreate(n);
     setBusy(false);
     if (res.ok) {
-      setList((l) => [{ id: res.id, name: res.name }, ...l]);
-      setValue({ id: res.id, name: res.name });
+      const p = { id: res.id, name: res.name };
+      setCreated((l) => [p, ...l]);
+      onCreated?.(p);
+      router.refresh(); // listele paginii (filtre, editare în tabel) se aduc proaspete de pe server
+      setValue(p);
       setNewName("");
       setAdding(false);
       toast.success(t("Creat"));

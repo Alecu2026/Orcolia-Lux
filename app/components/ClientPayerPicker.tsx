@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { useT } from "@/lib/i18n/context";
 import ClientDialog from "./ClientDialog";
 import SuggestInput, { type SuggestItem } from "./SuggestInput";
@@ -30,6 +31,7 @@ export default function ClientPayerPicker({
   name = "clientId",
   canCreate = true,
   onPick,
+  onCreated,
 }: {
   /** clientul / plătitorul ales la început (la editare sau din apel) */
   defaultId?: string;
@@ -37,7 +39,10 @@ export default function ClientPayerPicker({
   canCreate?: boolean;
   /** apelat când se alege un plătitor / client (id-ul) */
   onPick?: (id: string) => void;
+  /** Apelat după ce clientul nou s-a creat (pagina îl adaugă în listele ei: filtre, editare în tabel). */
+  onCreated?: (c: { id: string; name: string }) => void;
 }) {
+  const router = useRouter();
   const t = useT();
   const [sel, setSel] = useState<Sel>(null);
   const [loading, setLoading] = useState(!!defaultId);
@@ -121,6 +126,8 @@ export default function ClientPayerPicker({
               onClose={() => setCreating(false)}
               onCreated={(c) => {
                 choose("client", { id: c.id, name: c.name, hint: null });
+                onCreated?.({ id: c.id, name: c.name });
+                router.refresh(); // listele paginii (filtre, editare în tabel) se aduc proaspete de pe server
               }}
             />
           </div>,

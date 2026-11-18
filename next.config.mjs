@@ -12,6 +12,14 @@ const nextConfig = {
     serverActions: { bodySizeLimit: "25mb" },
     proxyClientMaxBodySize: "25mb",
   },
+  // `npm run dev` folosește Turbopack: pachetul de voce (vits-web) cere „fs” / „path” în codul pentru browser (ramură doar pentru Node) și compilarea cădea cu „Module not found: Can't resolve 'fs'”.
+  // În browser le înlocuim cu un modul gol. Build-ul de producție (`next build --webpack`) nu e afectat.
+  turbopack: {
+    resolveAlias: {
+      fs: { browser: "./lib/empty-module.cjs" },
+      path: { browser: "./lib/empty-module.cjs" },
+    },
+  },
   // Antete de securitate pe toate răspunsurile. Content-Security-Policy (cu nonce per cerere) se pune în proxy.ts, nu aici.
   async headers() {
     return [
@@ -42,6 +50,8 @@ const nextConfig = {
     "/api/portal/decontare/pdf": ["node_modules/pdfkit/**", "assets/fonts/**"],
     // Notificările tipărite (PDF cu foaie / document oficial pe plătitor): pdfkit și fonturile (DejaVu, Tinos) citite din disc la rulare
     "/api/platitori/notificari/pdf": ["node_modules/pdfkit/**", "assets/fonts/**"],
+    // Manualul de utilizare în PDF: pdfkit, fonturile și sharp (pozele se pregătesc ca JPEG), citite din disc la rulare
+    "/api/manual/pdf": ["node_modules/pdfkit/**", "node_modules/sharp/**", "assets/fonts/**"],
     // Factura publică PDF (pdfkit, fără Chromium): aceleași fonturi și date pdfkit citite la rulare.
     // Cheia e un glob (picomatch) potrivit cu ruta — parantezele pătrate din "[token]" trebuie escapate, altfel picomatch le tratează ca o clasă de caractere, nu ca literalul rutei.
     "/api/invoice/public/\\[token\\]/pdf": ["node_modules/pdfkit/**", "node_modules/sharp/**", "assets/fonts/**"],

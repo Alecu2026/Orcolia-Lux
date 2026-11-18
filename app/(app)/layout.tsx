@@ -1,5 +1,7 @@
 import { requireUser, isSuper } from "@/lib/dal";
 import { can } from "@/lib/permissions";
+import { canEditManual } from "@/lib/manual-editor";
+import { isManualPublished } from "@/lib/services/manual-state";
 import { DEMO } from "@/lib/demo";
 import { unreadCount } from "@/lib/queries/notifications";
 import { getCompanySettings } from "@/lib/queries/company";
@@ -28,6 +30,7 @@ export default async function AppLayout({
   ]);
   const messages = getMessages(locale);
 
+  const manualPublished = await isManualPublished();
   const perms: Record<string, boolean> = {
     "tasks.view": can(user, "tasks.view"),
     "projects.view": can(user, "projects.view"),
@@ -53,6 +56,7 @@ export default async function AppLayout({
     "pbx.manage": can(user, "pbx.manage"),
     "appointments.view": can(user, "appointments.view"),
     "users.manage": can(user, "users.manage"),
+    "manual.view": canEditManual(user.email) || (manualPublished && can(user, "manual.view")),
     "users.impersonate": can(user, "users.impersonate") && !user.impersonation,
     "audit.view": isSuper(user),
   };

@@ -25,6 +25,7 @@ const ru: Messages = {
     deliveryLogs: "Журнал уведомлений",
     readingRoutes: "Маршруты обходов",
     tender: "Техническое задание",
+    manual: "Руководство пользователя",
     telegram: "Telegram",
     settings: "Настройки",
     impersonate: "Вход от имени",

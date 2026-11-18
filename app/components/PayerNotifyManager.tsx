@@ -8,6 +8,11 @@ import {
   CONTACT_OPTIONS,
   DEFAULT_PER_PAGE,
   EMPTY_FILTERS,
+  NO_INVOICE_VALUES,
+  withCurrentMonth,
+  noInvoiceRun,
+  runMonths,
+  type SnapInvoice,
   NOTIFIED_OPTIONS,
   viaChannel,
   viaMode,
@@ -313,14 +318,24 @@ export default function PayerNotifyManager({
     return () => ctl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, critKey, haveNotifySet]);
-  const useLocal = !!ds.rows && (!listFilters.month || !!monthMap) && (!critKey || haveNotifySet) && (!agingKey || haveAgingSet);
+  // „Fără factură N luni la rând”: feliile lunilor seriei (se aduc în avans); până sosesc toate, lista vine de pe server (care aplică aceeași regulă).
+  const run = noInvoiceRun(listFilters);
+  const monthChoices = useMemo(() => withCurrentMonth(months), [months]);
+  const refMonth = listFilters.month || monthChoices[0]?.month || "";
+  const runList = useMemo(() => (run > 1 && refMonth ? runMonths(refMonth, run) : []), [run, refMonth]);
+  const runMaps = useMemo(() => {
+    if (runList.length === 0) return null;
+    const ms = runList.map((m) => ds.monthMaps.get(m));
+    return ms.every((x): x is Map<string, SnapInvoice> => !!x) ? ms : null;
+  }, [runList, ds.monthMaps]);
+  const useLocal = !!ds.rows && (!listFilters.month || !!monthMap) && (!critKey || haveNotifySet) && (!agingKey || haveAgingSet) && (runList.length === 0 || !!runMaps);
   // Cu lista completă în browser, orice dimensiune de pagină (inclusiv „Toate") e instant; până atunci serverul dă cel mult 200 de rânduri.
   const perPage = useLocal ? wantPerPage : Math.min(wantPerPage, SERVER_MAX_ROWS);
   const key = queryKey(filters, page, perPage);
   const localList = useMemo(
-    () => (useLocal && ds.rows ? filterSnapshot(ds.rows, sanitizeFilters(listFilters), monthMap, notifySet, agingSet) : null),
+    () => (useLocal && ds.rows ? filterSnapshot(ds.rows, sanitizeFilters(listFilters), monthMap, notifySet, agingSet, runMaps) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [useLocal, ds.rows, ds.version, listFilters, monthMap, notifySet, agingSet],
+    [useLocal, ds.rows, ds.version, listFilters, monthMap, notifySet, agingSet, runMaps],
   );
   const view: Page = useMemo(
     () => (localList ? { items: localList.slice((page - 1) * perPage, page * perPage), total: localList.length } : data),
@@ -335,6 +350,9 @@ export default function PayerNotifyManager({
   useEffect(() => {
     if (filters.month && ds.rows) ensureMonth(filters.month);
   }, [filters.month, ds.rows, ensureMonth]);
+  useEffect(() => {
+    if (ds.rows) for (const m of runList) ensureMonth(m);
+  }, [runList, ds.rows, ensureMonth]);
   // Pagina cerută a dispărut (ex. filtrul a redus rezultatele) → ultima pagină validă.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -761,20 +779,22 @@ export default function PayerNotifyManager({
         />
         <select value={filters.month} onChange={(e) => setFilter({ month: e.target.value })} className={fld(filters.month)} aria-label={t("Luna facturii")}>
           <option value="">{t("Luna facturii: ultima")}</option>
-          {months.map((m) => (
+          {monthChoices.map((m) => (
             <option key={m.month} value={m.month}>{t("Factura pe {month}", { month: monthLabel(m.month) })} ({nf(m.count)})</option>
           ))}
         </select>
         <select
           value={filters.noInvoice}
-          onChange={(e) => setFilter({ noInvoice: e.target.value as NotifyFilters["noInvoice"], ...(e.target.value && !filters.month && months[0] ? { month: months[0].month } : {}) })}
+          onChange={(e) => setFilter({ noInvoice: e.target.value as NotifyFilters["noInvoice"], ...(e.target.value && !filters.month && monthChoices[0] ? { month: monthChoices[0].month } : {}) })}
           className={fld(filters.noInvoice)}
           aria-label={t("Factură în luna aleasă")}
-          title={t("Alege luna din „Luna facturii”: arată plătitorii care NU au primit factură în luna aceea")}
+          title={t("Alege luna din „Luna facturii” (la „luni la rând”: ultima lună a seriei): arată plătitorii care NU au primit factură")}
         >
           <option value="">{t("Factură în lună: cu factură")}</option>
           <option value="1">{t("Fără factură în luna aleasă")}</option>
+          {NO_INVOICE_VALUES.filter((v) => v !== "1").map((v) => <option key={v} value={v}>{t("Fără factură {n} luni la rând", { n: v })}</option>)}
         </select>
+        {runList.length > 0 && <span className="text-[11px] text-ink-soft">{t("Luni verificate: {a}", { a: runList.slice().reverse().join(", ") })}</span>}
         <select value={filters.aging} onChange={(e) => setFilter({ aging: e.target.value as NotifyFilters["aging"] })} className={fld(filters.aging)} aria-label={t("Datorie pe vechime")} title={t("Plătitorii cu datorie, după de cât timp sunt datornici (de la prima factură rămasă neachitată)")}>
           <option value="">{t("Datorie pe vechime: toate")}</option>
           {AGING_BUCKETS.map((b) => <option key={b.key} value={b.key}>{t(b.label)}</option>)}

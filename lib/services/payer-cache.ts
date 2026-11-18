@@ -14,7 +14,10 @@ import {
   decodeMonth,
   decodeSnapshot,
   filterSnapshot,
+  noInvoiceRun,
   notifyCriterion,
+  runMonths,
+  withCurrentMonth,
   sortTuplesByName,
   type MonthTuple,
   type NotifyFilters,
@@ -255,7 +258,12 @@ function toPayerRow(r: SnapRow): PayerRow {
 /** Filtrare + sortare + paginare pe server, tot din memorie (aceeași funcție ca motorul local din browser): fără interogări în baza de date. */
 export async function listPayersFromSnap(filters: NotifyFilters, page: number, perPage: number): Promise<{ items: PayerRow[]; total: number; page: number; months: PayerSnap["months"]; nameFixCount: number; version: string | null }> {
   const snap = await getPayerSnap();
-  const monthMap = filters.month ? (await getMonthSlice(filters.month)).map : null;
+  // „fără factură”: fără lună aleasă, se folosește cea mai recentă (la fel ca în browser și la trimitere)
+  const refMonth = filters.noInvoice && !filters.month ? withCurrentMonth(snap.months)[0]?.month ?? "" : filters.month;
+  const eff = refMonth === filters.month ? filters : { ...filters, month: refMonth };
+  const monthMap = eff.month ? (await getMonthSlice(eff.month)).map : null;
+  const run = noInvoiceRun(eff);
+  const runMaps = run > 1 && eff.month ? await Promise.all(runMonths(eff.month, run).map(async (m) => (await getMonthSlice(m)).map)) : null;
   const crit = notifyCriterion(filters);
   const notifySet = crit ? new Set(await notifiedClientIds(crit)) : null;
   let agingSet: Set<string> | null = null;
@@ -263,7 +271,7 @@ export async function listPayersFromSnap(filters: NotifyFilters, page: number, p
     const { agingIds } = await import("./debt-aging");
     agingSet = new Set(await agingIds(filters.aging));
   }
-  const list = filterSnapshot(snap.rows, filters, monthMap, notifySet, agingSet);
+  const list = filterSnapshot(snap.rows, eff, monthMap, notifySet, agingSet, runMaps);
   const pages = Math.max(1, Math.ceil(list.length / perPage));
   const p = Math.min(Math.max(1, page), pages);
   return { items: list.slice((p - 1) * perPage, p * perPage).map(toPayerRow), total: list.length, page: p, months: snap.months, nameFixCount: snap.nameFixCount, version: snap.version };

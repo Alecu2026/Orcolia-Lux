@@ -25,6 +25,7 @@ const en: Messages = {
     deliveryLogs: "Notification log",
     readingRoutes: "Reading routes",
     tender: "Tender specification",
+    manual: "User manual",
     telegram: "Telegram",
     settings: "Settings",
     impersonate: "Login simulation",

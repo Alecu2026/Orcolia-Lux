@@ -17,8 +17,8 @@ import { IconX } from "./icons";
 import VoicePicker from "./VoicePicker";
 import { useT } from "@/lib/i18n/context";
 
-type Field = "subject" | "email" | "sms" | "call";
-const EMPTY_DRAFT: PayerTemplateDraft = { name: "", subject: "", email: "", sms: "", call: "", voice: DEFAULT_VOICE };
+type Field = "subject" | "email" | "sms" | "call" | "pdfTitle" | "pdf";
+const EMPTY_DRAFT: PayerTemplateDraft = { name: "", subject: "", email: "", sms: "", call: "", voice: DEFAULT_VOICE, pdfTitle: "", pdf: "" };
 const inputCls =
   "w-full rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-sm outline-none focus:border-brand";
 
@@ -51,7 +51,7 @@ export default function PayerTemplatesDialog({
     setEditing("new");
   }
   function openEdit(t: PayerTemplate) {
-    setSeed({ name: t.name, subject: t.subject, email: t.email, sms: t.sms, call: t.call, voice: t.voice || DEFAULT_VOICE });
+    setSeed({ name: t.name, subject: t.subject, email: t.email, sms: t.sms, call: t.call, voice: t.voice || DEFAULT_VOICE, pdfTitle: t.pdfTitle ?? "", pdf: t.pdf ?? "" });
     setEditing(t);
   }
 
@@ -171,15 +171,17 @@ function TemplateForm({
   const emailRef = useRef<HTMLTextAreaElement>(null);
   const smsRef = useRef<HTMLTextAreaElement>(null);
   const callRef = useRef<HTMLTextAreaElement>(null);
+  const pdfTitleRef = useRef<HTMLTextAreaElement>(null);
+  const pdfRef = useRef<HTMLTextAreaElement>(null);
 
   function insert(token: string) {
     const f = last.current;
-    const el = f === "subject" ? subjectRef.current : f === "email" ? emailRef.current : f === "call" ? callRef.current : smsRef.current;
+    const el = f === "subject" ? subjectRef.current : f === "email" ? emailRef.current : f === "call" ? callRef.current : f === "pdfTitle" ? pdfTitleRef.current : f === "pdf" ? pdfRef.current : smsRef.current;
     if (!el) return;
     const text = `{${token}}`;
     const s = el.selectionStart ?? el.value.length;
     const e = el.selectionEnd ?? s;
-    setD((cur) => ({ ...cur, [f]: cur[f].slice(0, s) + text + cur[f].slice(e) }));
+    setD((cur) => ({ ...cur, [f]: (cur[f] ?? "").slice(0, s) + text + (cur[f] ?? "").slice(e) }));
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(s + text.length, s + text.length);
@@ -189,7 +191,7 @@ function TemplateForm({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!d.name.trim()) return setErr(tr("Dă un nume șablonului."));
-    if (!d.email.trim() && !d.sms.trim() && !d.call.trim()) return setErr(tr("Scrie măcar un mesaj: email, SMS sau apel."));
+    if (!d.email.trim() && !d.sms.trim() && !d.call.trim() && !(d.pdf ?? "").trim()) return setErr(tr("Scrie măcar un mesaj: email, SMS, apel sau foaie PDF."));
     onSave({ ...d, name: d.name.trim(), subject: d.subject.trim() });
   }
 
@@ -253,6 +255,29 @@ function TemplateForm({
           className={`${inputCls} mb-2 py-2`}
         />
         <VoicePicker voice={d.voice} text={d.call} onChange={(voice) => setD({ ...d, voice })} compact />
+      </div>
+      <div className="rounded-lg border border-[var(--color-line)] p-2.5">
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">📄 {tr("Foaie PDF tipărită (document oficial)")}</p>
+        <textarea
+          ref={pdfTitleRef}
+          value={d.pdfTitle ?? ""}
+          maxLength={NOTIFY_MAX_SUBJECT}
+          rows={2}
+          onFocus={() => (last.current = "pdfTitle")}
+          onChange={(e) => setD({ ...d, pdfTitle: e.target.value })}
+          placeholder={tr("Titlul foii (opțional); fiecare rând e centrat în document")}
+          className={`${inputCls} mb-2 py-2`}
+        />
+        <textarea
+          ref={pdfRef}
+          value={d.pdf ?? ""}
+          maxLength={NOTIFY_MAX_EMAIL_BODY}
+          rows={6}
+          onFocus={() => (last.current = "pdf")}
+          onChange={(e) => setD({ ...d, pdf: e.target.value })}
+          placeholder={tr("Textul foii… Antetul, destinatarul, data și semnătura se completează singure.")}
+          className={`${inputCls} py-2`}
+        />
       </div>
       {err && <p className="text-sm text-st-cancelled">{tr(err)}</p>}
       <div className="flex justify-end gap-2">

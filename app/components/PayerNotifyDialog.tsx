@@ -22,7 +22,6 @@ import {
   smsInfo,
   stripLatinDiacritics,
   type NotifyVars,
-  DISCONNECT_MODEL,
 } from "@/lib/payer-notify";
 import Link from "next/link";
 import { useToast } from "./toast";
@@ -199,14 +198,16 @@ export default function PayerNotifyDialog({
   // Textul apelului cu datele plătitorului de exemplu — acesta se ascultă la „Ascultă".
   const renderedCall = useMemo(() => renderTemplate(callBody, previewVars), [callBody, previewVars]);
 
-  function applyPreset(p: { subject: string; email: string; sms: string; call: string; voice?: string }) {
+  function applyPreset(p: { subject: string; email: string; sms: string; call: string; voice?: string; pdfTitle?: string; pdf?: string }) {
     setSubject(p.subject);
     setEmailBody(p.email);
     setSmsBody(p.sms);
     setCallBody(p.call);
-    // foaia tipărită pornește de la textul de email (același ton, variabile la fel)
-    setPdfTitle(p.subject);
-    setPdfBody(p.email);
+    // foaia tipărită: titlul și textul șablonului (dacă le are); altfel pornește de la subiectul și textul de email (același ton, variabile la fel)
+    const hasPdf = !!p.pdf?.trim();
+    setPdfTitle(hasPdf ? (p.pdfTitle ?? "") : p.subject);
+    setPdfBody(hasPdf ? (p.pdf ?? "") : p.email);
+    if (hasPdf && total > 0) setUsePdf(true);
     if (p.voice) setVoice(p.voice);
     // șablonul are mesaj de apel → pornește canalul (dacă e disponibil), ca operatorul să-l vadă imediat
     if (p.call.trim() && canCall) setUseCall(true);
@@ -216,7 +217,7 @@ export default function PayerNotifyDialog({
     const name = tplName.trim();
     if (!name) return;
     if (!emailBody.trim() && !smsBody.trim() && !callBody.trim() && !pdfBody.trim()) { setFormError(tr("Scrie întâi un mesaj pe care să-l salvezi.")); return; }
-    onSaveTemplate({ name, subject, email: emailBody, sms: smsBody, call: callBody, voice });
+    onSaveTemplate({ name, subject, email: emailBody, sms: smsBody, call: callBody, voice, pdfTitle, pdf: pdfBody });
     setSavingTpl(false);
     setTplName("");
     setFormError(null);
@@ -356,14 +357,6 @@ export default function PayerNotifyDialog({
       throw new Error(msg || tr("Nu am putut genera PDF-ul. Încearcă din nou."));
     }
     return { blob: await res.blob(), count: Number(res.headers.get("X-Notice-Count")) || ids.length };
-  }
-
-  /** Modelul „Aviz de deconectare” (document oficial cu datoria totală și cea expirată): umple titlul și textul foii. */
-  function applyDisconnectModel() {
-    if ((pdfTitle.trim() || pdfBody.trim()) && !window.confirm(tr("Înlocuiești titlul și textul foii cu modelul „Aviz de deconectare”?"))) return;
-    setPdfLayout("letter");
-    setPdfTitle(DISCONNECT_MODEL.title);
-    setPdfBody(DISCONNECT_MODEL.body);
   }
 
   async function previewPdf() {
@@ -660,9 +653,6 @@ export default function PayerNotifyDialog({
                     <option value="letter">{tr("Document oficial (antet, destinatar, semnătură)")}</option>
                     <option value="plain">{tr("Notificare simplă")}</option>
                   </select>
-                  <button type="button" onClick={applyDisconnectModel} className="tap ml-auto h-9 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-xs font-medium text-ink hover:bg-brand-soft">
-                    {tr("Folosește modelul „Aviz de deconectare”")}
-                  </button>
                 </div>
                 <label className="text-xs font-semibold text-ink-soft">{tr("PDF tipărit — titlul foii")}</label>
                 <textarea
@@ -692,7 +682,7 @@ export default function PayerNotifyDialog({
                     <input value={signName} onChange={(e) => setSignName(e.target.value.slice(0, 120))} placeholder={tr("Numele semnatarului")} className={`${inputCls} h-10`} />
                   </div>
                 )}
-                {pdfLayout === "letter" && <p className="text-xs text-ink-soft">{tr("Formatare în text: **îngroșat**, __îngroșat și subliniat__, ~~cursiv~~. Fiecare rând nou e un paragraf. Antetul (firma, adresa, logo) vine din setările firmei; „Nr.” rămâne liber, de completat la tipărire.")}</p>}
+                {pdfLayout === "letter" && <p className="text-xs text-ink-soft">{tr("Scrii doar titlul și textul, sau alegi un șablon salvat. Se completează singure: antetul firmei, destinatarul (nume și adresă), data și semnătura; „Nr.” rămâne liber, de completat la tipărire. Formatare în text: **îngroșat**, __îngroșat și subliniat__, ~~cursiv~~; fiecare rând nou e un paragraf.")}</p>}
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-ink-soft">
                   <span>{tr("Fiecare plătitor primește o foaie A4 separată, cu numele, contul și adresa lui; fișierele au câte cel mult {n} foi.", { n: nf(NOTIFY_PDF_PART_SIZE) })}</span>
                   <button type="button" onClick={previewPdf} disabled={pdfPreviewing} data-pdf-preview className="tap h-8 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-3 font-medium text-ink hover:bg-brand-soft disabled:opacity-50">

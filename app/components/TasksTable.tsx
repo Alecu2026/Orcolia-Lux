@@ -5,6 +5,7 @@ import { addressCounts, REPEAT_OPTIONS, repeatsAtLeast } from "@/lib/address-rep
 import { describeSchedule, parseReminderSchedule } from "@/lib/reminder-schedule";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { NO_OPTS, useOptionList } from "./useOptionList";
 import RowColorPicker from "./RowColorPicker";
 import { deriveSectionId } from "@/lib/sections";
 import { setTaskColorAction } from "@/app/actions/row-color";
@@ -134,8 +135,8 @@ export default function TasksTable({
   teams,
   sections = [],
   teamMembers = {},
-  projects,
-  clients = [],
+  projects: projectsProp,
+  clients: clientsProp = NO_OPTS,
   categories = [],
   canCreate,
   canDelete,
@@ -237,6 +238,9 @@ export default function TasksTable({
   const [seenItems, setSeenItems] = useState(items);
   // Lista completă (când pagina a primit doar primele rânduri): înlocuiește rândurile din HTML imediat ce e gata.
   const router = useRouter();
+  // proiectele / clienții paginii: cei creați chiar acum din formular apar imediat (filtre, editare în tabel, formulare)
+  const [projects, addProject] = useOptionList(projectsProp);
+  const [clients, addClient] = useOptionList(clientsProp);
   const ds = useTaskDataset({ enabled: !!dataset, kind: ticketMode ? "TICKET" : "TASK", scope, userId });
   const [seenDs, setSeenDs] = useState<typeof ds.rows>(null);
   if (ds.rows && ds.rows !== seenDs) {
@@ -919,6 +923,8 @@ export default function TasksTable({
           templates={tpls}
           onPickTemplate={(id, clientId) => void startFromTemplate(id, clientId)}
           onClearTemplate={() => void clearTemplate()}
+          onProjectCreated={addProject}
+          onClientCreated={addClient}
           initialType={createType}
           users={users}
           teams={teams}
@@ -954,6 +960,7 @@ export default function TasksTable({
           quietHoursEnabled={quietHoursEnabled}
           canAssign={canAssign}
           onClose={() => setEditTask(null)}
+          onClientCreated={addClient}
           onSaved={(updated) => {
             touch(updated.id);
             setRows((cur) => cur.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)));
