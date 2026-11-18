@@ -39,11 +39,17 @@ export async function saveMeterReadingAction(formData: FormData): Promise<SaveRe
   });
   // neregula găsită la contor (defect, fraudă, curgere inversă…) se salvează odată cu citirea; dacă ea eșuează, citirea rămâne salvată
   const issueKind = String(formData.get("issueKind") ?? "");
-  if (res.ok && issueKind) {
-    const r = await reportIssue(user, { meterId, kind: issueKind, note: String(formData.get("issueNote") ?? ""), readingId: res.reading.id });
-    return r.ok ? { ...res, issue: r.issue } : { ...res, issueError: r.error };
-  }
-  return res;
+  // neregula și poza (deja micșorată în telefon) se salvează în paralel, în aceeași cerere: o singură așteptare în loc de trei, una după alta
+  const file = formData.get("file");
+  if (!res.ok) return res;
+  const [issueRes, photoRes] = await Promise.all([
+    issueKind ? reportIssue(user, { meterId, kind: issueKind, note: String(formData.get("issueNote") ?? ""), readingId: res.reading.id }) : Promise.resolve(null),
+    file instanceof File && file.size > 0 && !DEMO ? uploadReadingPhoto(res.reading.id, file).catch(() => ({ ok: false as const, error: "Poza nu a putut fi salvată pe server." })) : Promise.resolve(null),
+  ]);
+  let out: SaveReadingResult = res;
+  if (issueRes) out = issueRes.ok ? { ...out, issue: issueRes.issue } : { ...out, issueError: issueRes.error };
+  if (photoRes) out = photoRes.ok ? { ...out, reading: { ...res.reading, photoUrl: photoRes.photoUrl } } : { ...out, photoError: photoRes.error };
+  return out;
 }
 
 /** Consumul mediu lunar al contorului (din ultimele luni), arătat în formular și folosit la avertismentele „peste / sub medie”; null = istoric insuficient. */

@@ -28,7 +28,7 @@ const LOCK_MIN = 6;
 const BUDGET_MS = 230_000;
 const BULK_SIZE = 500;
 const RETRY_MIN = 30;
-const FETCH_TIMEOUT_MS = 60_000;
+const FETCH_TIMEOUT_MS = 75_000;
 /** Dacă extragerea nu s-a terminat până aici, scrie în stare unde a rămas (platforma oprește funcția la 300 s fără să lase vreo urmă). */
 const WATCHDOG_MS = 265_000;
 const UNMATCHED_KEEP = 200;
@@ -67,10 +67,56 @@ const minuteOfDay = (d: Date) => {
 
 export const lorawanConfigured = () => !!env.lorawan.token;
 
-async function fetchRows(): Promise<ReturnType<typeof parseLorawan>> {
-  const res = await fetch(env.lorawan.url, { headers: { token: env.lorawan.token, accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`Serverul LoRaWAN a răspuns ${res.status}.`);
-  return parseLorawan(await res.json());
+type Feed = ReturnType<typeof parseLorawan>;
+let feedCache: { at: number; parsed: Feed } | null = null;
+/** Descărcarea în curs: dacă browserul sau proxy-ul închide cererea (timeout), descărcarea continuă pe server și umple memoria, iar a doua apăsare primește rezultatul pe loc. */
+let feedInflight: Promise<Feed> | null = null;
+/** Cât timp rămâne valabilă lista descărcată pentru diagnostic (extragerea propriu-zisă descarcă mereu una nouă). */
+const FEED_FRESH_MS = 5 * 60_000;
+/** Dacă serverul de noduri nu răspunde, diagnosticul folosește ultima listă bună, dacă nu e mai veche de atât. */
+const FEED_STALE_OK_MS = 6 * 3_600_000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function downloadFeed(): Promise<Feed> {
+  let lastErr: unknown;
+  // serverul de noduri e uneori lent sau întrerupe conexiunea: două încercări, fiecare cu limita ei
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(env.lorawan.url, { headers: { token: env.lorawan.token, accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      if (!res.ok) {
+        const err = new Error(`Serverul LoRaWAN a răspuns ${res.status}.`);
+        if (res.status < 500 && res.status !== 408 && res.status !== 429) throw Object.assign(err, { noRetry: true });
+        throw err;
+      }
+      const parsed = parseLorawan(await res.json());
+      feedCache = { at: Date.now(), parsed };
+      return parsed;
+    } catch (e) {
+      lastErr = e;
+      if ((e as { noRetry?: boolean })?.noRetry) break;
+      if (attempt < 2) await sleep(1500);
+    }
+  }
+  const name = (lastErr as { name?: string })?.name;
+  if (name === "TimeoutError" || name === "AbortError") throw new Error(`Serverul LoRaWAN nu a răspuns în ${Math.round(FETCH_TIMEOUT_MS / 1000)} s (două încercări). Încearcă din nou peste un minut.`);
+  throw lastErr instanceof Error ? lastErr : new Error("Nu am putut descărca lista LoRaWAN.");
+}
+
+/** `fresh`: extragerea (automată sau „Rulează acum”) descarcă mereu lista; diagnosticul o reutilizează 5 minute și, dacă serverul nu răspunde, folosește ultima listă bună. */
+async function fetchRows(opts: { fresh?: boolean } = {}): Promise<Feed & { at: number }> {
+  const now = Date.now();
+  if (!opts.fresh && feedCache && now - feedCache.at < FEED_FRESH_MS) return { ...feedCache.parsed, at: feedCache.at };
+  feedInflight ??= downloadFeed().finally(() => {
+    feedInflight = null;
+  });
+  try {
+    const parsed = await feedInflight;
+    return { ...parsed, at: feedCache?.at ?? Date.now() };
+  } catch (e) {
+    if (!opts.fresh && feedCache && now - feedCache.at < FEED_STALE_OK_MS) return { ...feedCache.parsed, at: feedCache.at };
+    throw e;
+  }
 }
 
 /**
@@ -203,7 +249,7 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
   }, WATCHDOG_MS);
   try {
     await mark("descărcarea listei LoRaWAN");
-    const parsed = await fetchRows();
+    const parsed = await fetchRows({ fresh: true });
     await mark("lista de contoare din CRM");
     const snap = await getMeterSnap();
     await mark("potrivirea cu contoarele din CRM");
@@ -405,7 +451,7 @@ export async function getLorawanDiagnostics(): Promise<LorawanDiag> {
       rows.push([lw.name, lw.volume, ts, kind, r.contor, r.id, r.clientId ?? "", r.name ?? "", r.address ?? "", read, c.viaSuffix ? "cu text" : "exact"]);
     }
   }
-  return { at: Date.now(), period, rows };
+  return { at: parsed.at, period, rows };
 }
 
 export async function getLorawanStatus(): Promise<LorawanStatus> {

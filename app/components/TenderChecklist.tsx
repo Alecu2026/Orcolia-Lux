@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { setTenderCheckAction, tenderChecksAction, type TenderChecks } from "@/app/actions/tender";
-import { SPEC_GROUPS, SPEC_PARTS, STATUS_LABEL_RO, type SpecPart, type SpecStatus } from "@/lib/tender-spec";
+import { specItemId, SPEC_GROUPS, SPEC_PARTS, STATUS_LABEL_RO, type SpecPart, type SpecStatus } from "@/lib/tender-spec";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
 
@@ -120,7 +120,7 @@ export default function TenderChecklist({ initial, canEdit, editorEmail }: { ini
       SPEC_GROUPS.filter((g) => g.part === part).map((g) => ({
         g,
         items: g.items
-          .map((it, i) => ({ ...it, id: `${g.id}-${i + 1}` }))
+          .map((it, i) => ({ ...it, id: specItemId(g, i) }))
           .filter((it) => {
             if (statusF && it.status !== statusF) return false;
             if (show === "done" && !checks[it.id]) return false;
@@ -138,7 +138,7 @@ export default function TenderChecklist({ initial, canEdit, editorEmail }: { ini
       const cur = per.get(g.part) ?? { done: 0, total: 0 };
       g.items.forEach((_, i) => {
         cur.total++;
-        if (checks[`${g.id}-${i + 1}`]) cur.done++;
+        if (checks[specItemId(g, i)]) cur.done++;
       });
       per.set(g.part, cur);
     }
@@ -209,7 +209,7 @@ export default function TenderChecklist({ initial, canEdit, editorEmail }: { ini
 
       {groups.map(({ g, items }) => {
         if (items.length === 0 && active > 0) return null;
-        const gdone = g.items.filter((_, i) => checks[`${g.id}-${i + 1}`]).length;
+        const gdone = g.items.filter((_, i) => checks[specItemId(g, i)]).length;
         const isFolded = folded.has(g.id);
         return (
           <section key={g.id} className="card overflow-hidden" data-tender-group={g.id}>

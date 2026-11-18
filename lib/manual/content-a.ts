@@ -111,27 +111,6 @@ export const SECTION_A: ManualSection[] = [
           ),
         ],
       },
-      {
-        id: "screenshot-cum",
-        title: "Cum faci un screenshot și îl pui în manual",
-        perm: "editor",
-        who: "Pentru persoana care completează pozele manualului",
-        blocks: [
-          p("Un screenshot este o poză a ecranului. Peste tot în acest manual vezi cadre galbene cu textul „Aici pui poza”. Fiecare spune de unde să faci poza. Când pui poza, cadrul galben dispare și rămâne doar poza."),
-          steps(
-            [
-              "Deschide în aplicație pagina pe care o cere cadrul (scrie în cadru: „De unde faci poza”).",
-              "Pe calculator apasă Windows + Shift + S. Ecranul se întunecă puțin. Trage cu mouse-ul un dreptunghi peste ce trebuie să se vadă. Poza se copiază singură.",
-              "Revino la manual și apasă o dată pe cadrul galben, apoi apasă Ctrl + V. Poza se pune singură.",
-              "Dacă preferi, apasă „Încarcă poza” și alege un fișier salvat, sau trage fișierul peste cadru.",
-            ],
-          ),
-          shot("start-screenshot", "Pe calculator, apasă Windows + Shift + S în orice pagină. Fă screenshot la ecranul cu dreptunghiul de selecție (se vede ecranul întunecat și bara mică de sus).", "Instrumentul de screenshot din Windows (Windows + Shift + S)."),
-          warn("Înainte de poză, ascunde datele personale reale (nume, telefon, adresă, cont). Poți alege un client de test sau poți acoperi datele cu un dreptunghi negru în programul Paint. Pozele din manual sunt văzute de toți administratorii."),
-          tip("Poza se micșorează singură ca să încapă bine în pagină și se salvează ca WebP. Dacă greșești, apasă „Înlocuiește poza” sau „Șterge poza”. Butonul „Următoarea poză lipsă” din partea de sus te duce direct la următorul cadru gol."),
-          p("Doar un cont anume poate pune, schimba sau șterge poze (adresa lui apare sus, în pagina manualului, la „Pozele le modifică doar …”). Ceilalți administratori doar citesc manualul."),
-        ],
-      },
     ],
   },
 
@@ -214,16 +193,16 @@ export const SECTION_A: ManualSection[] = [
         id: "notif-ore",
         title: "Ore liniștite: noaptea nu te deranjează nimeni",
         perm: "admin",
-        path: "/settings?tab=workflow",
+        path: "/settings?tab=company",
         who: "Doar administratorii",
         blocks: [
           p("Dacă nu vrei mesaje noaptea, setezi ore liniștite. În acest interval botul nu răspunde, iar reamintirile sunt oprite."),
           steps([
-            "Meniul din stânga → Setări → fila „Cereri și notificări”.",
-            "Caută secțiunea „Ore liniștite”.",
+            "Meniul din stânga → Setări → fila „Companie”.",
+            "Derulează până la secțiunea „Ore liniștite”.",
             "Bifează opțiunea, alege ora de început (de exemplu 22:00) și ora de sfârșit (de exemplu 07:00) și salvează.",
           ]),
-          shot("notif-ore", "Meniul din stânga → Setări → fila „Cereri și notificări”. Fă screenshot la secțiunea „Ore liniștite”.", "Secțiunea „Ore liniștite” din Setări."),
+          shot("notif-ore", "Meniul din stânga → Setări → fila „Companie”. Derulează până la secțiunea „Ore liniștite” și fă screenshot la ea.", "Secțiunea „Ore liniștite” din Setări."),
         ],
       },
       {

@@ -2,6 +2,8 @@ import "server-only";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import type { Block, ManualSection, Shot } from "../manual/types";
+import { AUTHOR } from "../credits";
+import { BRAND_LOGO_JPEG_BASE64 } from "./brand-logo";
 import { ICONS } from "../manual/icon-data";
 
 /**
@@ -36,7 +38,7 @@ export async function buildManualPdf(o: {
     size: "A4",
     margins: { top: 64, bottom: 64, left: 56, right: 56 },
     bufferPages: true,
-    info: { Title: `Manual de utilizare pentru ${o.audience ?? "administrator"}`, Author: o.companyName || "Apă-Canal" },
+    info: { Title: `AquaCRM · Manual de utilizare pentru ${o.audience ?? "administrator"}`, Author: AUTHOR.name, Creator: `${AUTHOR.name} · ${AUTHOR.siteLabel}` },
   });
   doc.registerFont("R", FONT);
   doc.registerFont("B", FONT_BOLD);
@@ -103,14 +105,29 @@ export async function buildManualPdf(o: {
   }
 
   // ── coperta ──
-  doc.rect(0, 0, pageW, 250).fill(C.brand);
-  doc.roundedRect(L, 60, 44, 44, 10).fill("#ffffff");
-  icon("book", L + 9, 69, 26, C.brand, 1.7);
-  text(company, 13, "B", C.brandSoft, L + 58, 76, W - 58);
-  text("Manual de utilizare", 34, "B", "#ffffff", L, 138, W);
-  text(`pentru ${o.audience ?? "administrator"}`, 20, "R", "#ffffff", L, 184, W);
+  const band = doc.linearGradient(0, 0, pageW, 250);
+  band.stop(0, "#0a3fb5").stop(1, "#02154f");
+  doc.rect(0, 0, pageW, 250).fill(band);
+  // sigla AquaCRM (pătrat rotunjit) + numele mare, pe două culori ca în siglă
+  doc.save();
+  doc.roundedRect(L, 44, 112, 112, 24).clip();
+  doc.image(Buffer.from(BRAND_LOGO_JPEG_BASE64, "base64"), L, 44, { width: 112, height: 112 });
+  doc.restore();
+  const nameX = L + 134;
+  text("Aqua", 58, "B", "#ffffff", nameX, 62, W, { lineBreak: false });
+  const aquaW = (doc.font("B").fontSize(58), doc.widthOfString("Aqua"));
+  text("CRM", 58, "B", "#33ccff", nameX + aquaW, 62, W, { lineBreak: false });
+  text(company, 12, "B", "#bfe3ff", nameX + 2, 130, W - 134, { lineBreak: false, ellipsis: true });
+  text("Manual de utilizare", 30, "B", "#ffffff", L, 176, W);
+  text(`pentru ${o.audience ?? "administrator"}`, 17, "R", "#d6ecff", L, 214, W);
   text("Cum folosești fiecare pagină a aplicației, pas cu pas, pe înțelesul tuturor.", 12, "R", C.ink, L, 290, W, { lineGap: 3 });
   text(`Versiunea din ${o.today}`, 10, "R", C.soft, L, 340, W);
+  // semnătura autorului, jos pe copertă
+  doc.moveTo(L, pageH - 150).lineTo(R, pageH - 150).lineWidth(0.5).strokeColor(C.line).stroke();
+  text("Elaborat de", 9, "R", C.soft, L, pageH - 138, W);
+  text(AUTHOR.name, 15, "B", C.ink, L, pageH - 124, W);
+  text(`${AUTHOR.siteLabel}  ·  tel. ${AUTHOR.phone}`, 11, "R", C.brand, L, pageH - 102, W);
+  doc.link(L, pageH - 104, 190, 16, AUTHOR.site);
   const have = images.size;
   if (o.placeholders && have < o.shotsTotal) {
     text(`Notă: ${o.shotsTotal - have} din ${o.shotsTotal} locuri pentru poze sunt încă goale (cadrele galbene).`, 10, "R", C.warnInk, L, 362, W);
@@ -343,7 +360,7 @@ export async function buildManualPdf(o: {
     withBottomZero(() => {
       const y = pageH - 40;
       doc.moveTo(L, y - 8).lineTo(R, y - 8).lineWidth(0.5).strokeColor(C.line).stroke();
-      text(`Manual de utilizare · ${company}`, 8, "R", C.soft, L, y, W * 0.7, { lineBreak: false, ellipsis: true });
+      text(`AquaCRM · Manual de utilizare · ${company} · ${AUTHOR.name}, ${AUTHOR.phone}`, 8, "R", C.soft, L, y, W * 0.7, { lineBreak: false, ellipsis: true });
       text(`Pagina ${i + 1} / ${total}`, 8, "R", C.soft, L + W * 0.7, y, W * 0.3, { align: "right", lineBreak: false });
     });
   }

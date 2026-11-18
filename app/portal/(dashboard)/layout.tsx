@@ -2,7 +2,8 @@ import { requireClient } from "@/lib/client-dal";
 import { getCompanySettings } from "@/lib/queries/company";
 import { clientLogout } from "@/app/actions/client-auth";
 import PortalNav from "@/app/components/PortalNav";
-import { IconDroplet, IconLogout } from "@/app/components/icons";
+import { IconLogout } from "@/app/components/icons";
+import BrandLogo from "@/app/components/BrandLogo";
 import { getT } from "@/lib/i18n/server-t";
 import { getLocaleFromCookie } from "@/lib/i18n/locale-cookie";
 import { getMessages } from "@/lib/i18n";
@@ -33,9 +34,7 @@ export default async function PortalDashboardLayout({
       <header className="border-b border-[var(--color-line)] bg-[var(--color-surface)] print:hidden">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand text-white">
-              <IconDroplet className="size-5" />
-            </div>
+            <BrandLogo size={40} />
             <div className="min-w-0">
               <p className="truncate text-sm font-bold leading-4">{company.companyName || "Portal client"}</p>
               <p className="truncate text-xs text-ink-soft">{client.name}</p>

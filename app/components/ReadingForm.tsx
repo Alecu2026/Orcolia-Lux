@@ -107,6 +107,12 @@ export default function ReadingForm({
   const [issueDone, setIssueDone] = useState<string | null>(null);
   const { online } = useFieldQueue();
   const [photo, setPhoto] = useState<File | null>(null);
+  /** Poza micșorată (WebP ≤1920 px): se pregătește imediat ce e aleasă, în timp ce scrii indexul, ca la „Salvează” să fie gata și să nu mai aștepți. */
+  const optRef = useRef<{ file: File; p: Promise<File> } | null>(null);
+  const optimized = (f: File): Promise<File> => {
+    if (optRef.current?.file !== f) optRef.current = { file: f, p: optimizeImage(f).catch(() => f) };
+    return optRef.current.p;
+  };
   const [preview, setPreview] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
   const [busy, setBusy] = useState(false);
@@ -201,7 +207,7 @@ export default function ReadingForm({
   }
 
   async function uploadPhoto(readingId: string, file: File, reading: ReadingDto) {
-    const small = await optimizeImage(file);
+    const small = await optimized(file);
     const fd = new FormData();
     fd.set("readingId", readingId);
     fd.set("file", small);
@@ -238,7 +244,7 @@ export default function ReadingForm({
     }
     setBusy(true);
     try {
-      const small = photo ? await optimizeImage(photo) : null;
+      const small = photo ? await optimized(photo) : null;
       const item = await enqueueReading({
         meterId,
         contor: contor ?? meterId,
@@ -333,6 +339,8 @@ export default function ReadingForm({
         fd.set("issueKind", issueKind);
         fd.set("issueNote", issueNote.trim());
       }
+      // poza (deja micșorată) pleacă odată cu citirea: o singură cerere, nu două una după alta
+      if (photo) fd.set("file", await optimized(photo));
       const res = await saveMeterReadingAction(fd);
       if (!res.ok) {
         if (res.confirm) {
@@ -357,7 +365,12 @@ export default function ReadingForm({
         setIssueDone(res.issue.kind);
         onIssue?.(res.issue.kind);
       } else if (res.issueError) toast.error(t(res.issueError));
-      if (photo) await uploadPhoto(res.reading.id, photo, res.reading);
+      if (photo) {
+        if (res.reading.photoUrl && !res.photoError) {
+          setPhoto(null);
+          toast.success(t("Poza a fost salvată."));
+        } else await uploadPhoto(res.reading.id, photo, res.reading); // n-a ajuns odată cu citirea: încă o încercare, separat
+      }
     } catch (e) {
       // conexiunea a căzut chiar la salvare: citirea nu se pierde, se salvează pe telefon
       if (!navigator.onLine || e instanceof TypeError) {
@@ -382,6 +395,7 @@ export default function ReadingForm({
       setBusy(false);
     } else {
       setPhoto(f);
+      void optimized(f);
     }
   }
 

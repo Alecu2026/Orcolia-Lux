@@ -13,6 +13,7 @@ import { I18nProvider, useMessages, useT } from "@/lib/i18n/context";
 import ImpersonationBanner from "./ImpersonationBanner";
 import type { Messages, Locale } from "@/lib/i18n";
 import { BOTTOM_NAV_MAX, NAV_META, sanitizeBottomNav } from "@/lib/nav-meta";
+import BrandLogo from "@/app/components/BrandLogo";
 
 /**
  * Navigare „optimistă": la click, elementul apăsat devine activ și titlul se schimbă pe loc (nu după ce vine răspunsul serverului), iar sus apare
@@ -477,12 +478,7 @@ function Brand({ label = "Programări" }: { label?: string }) {
   const t = useT();
   return (
     <div className="flex items-center gap-2.5 px-1">
-      <div className="grid size-9 place-items-center rounded-xl bg-brand text-white">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-          <rect x="3" y="4.5" width="18" height="16" rx="2.5" />
-          <path d="M3 9h18M8 2.5v4M16 2.5v4" />
-        </svg>
-      </div>
+      <BrandLogo size={36} />
       <span className="text-base font-bold">{t(label)}</span>
     </div>
   );

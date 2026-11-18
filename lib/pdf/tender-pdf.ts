@@ -1,7 +1,7 @@
 import "server-only";
 import path from "node:path";
 import PDFDocument from "pdfkit";
-import { SPEC_GROUPS as ALL_GROUPS, SPEC_PARTS as ALL_PARTS, STATUS_LABEL_RO, type SpecPart, type SpecItem, type SpecStatus } from "../tender-spec";
+import { specItemId, SPEC_GROUPS as ALL_GROUPS, SPEC_PARTS as ALL_PARTS, STATUS_LABEL_RO, type SpecPart, type SpecItem, type SpecStatus } from "../tender-spec";
 import { PART_NOTE_EN, STATUS_LABEL_EN, WHERE_EN } from "../tender-spec-en";
 
 /**
@@ -47,7 +47,7 @@ export async function buildTenderPdf(o: {
   const SPEC_PARTS = o.part && o.part !== "all" ? ALL_PARTS.filter((p) => p.id === o.part) : ALL_PARTS;
   const SPEC_GROUPS = ALL_GROUPS.filter((g) => SPEC_PARTS.some((p) => p.id === g.part));
   const checks: TenderPdfChecks = {};
-  for (const g of SPEC_GROUPS) g.items.forEach((_, i) => { const c = o.checks[`${g.id}-${i + 1}`]; if (c) checks[`${g.id}-${i + 1}`] = c; });
+  for (const g of SPEC_GROUPS) g.items.forEach((_, i) => { const c = o.checks[specItemId(g, i)]; if (c) checks[specItemId(g, i)] = c; });
   const ro = lang !== "en";
   const en = lang !== "ro";
   /** Eticheta în limba/limbile PDF-ului: „română / engleză”, doar româna sau doar engleza. */
@@ -103,7 +103,7 @@ export async function buildTenderPdf(o: {
 
   // ── titlu + sumar ──
   const total = SPEC_GROUPS.reduce((n, g) => n + g.items.length, 0);
-  const checkedTotal = SPEC_GROUPS.reduce((n, g) => n + g.items.filter((_, i) => checks[`${g.id}-${i + 1}`]).length, 0);
+  const checkedTotal = SPEC_GROUPS.reduce((n, g) => n + g.items.filter((_, i) => checks[specItemId(g, i)]).length, 0);
 
   put(docTitle, L, W, "B", 16, C.brandDark);
   y = doc.y + 2;
@@ -134,7 +134,7 @@ export async function buildTenderPdf(o: {
   for (const p of SPEC_PARTS) {
     const gs = SPEC_GROUPS.filter((g) => g.part === p.id);
     const t = gs.reduce((n, g) => n + g.items.length, 0);
-    const d = gs.reduce((n, g) => n + g.items.filter((_, i) => checks[`${g.id}-${i + 1}`]).length, 0);
+    const d = gs.reduce((n, g) => n + g.items.filter((_, i) => checks[specItemId(g, i)]).length, 0);
     barRow(tx(p.titleRo, p.titleEn), d, t, false);
   }
 
@@ -290,7 +290,7 @@ export async function buildTenderPdf(o: {
       .map((g) => ({
         g,
         items: g.items
-          .map((it, i) => ({ ...it, id: `${g.id}-${i + 1}` }))
+          .map((it, i) => ({ ...it, id: specItemId(g, i) }))
           .filter((it) => (show === "done" ? !!checks[it.id] : show === "todo" ? !checks[it.id] : true)),
       }))
       .filter((x) => x.items.length > 0);
@@ -310,7 +310,7 @@ export async function buildTenderPdf(o: {
 
     for (const { g, items } of groups) {
       const gTitle = lang === "both" ? `${g.titleRo}\n${g.titleEn}` : lang === "ro" ? g.titleRo : g.titleEn;
-      const gDone = g.items.filter((_, i) => checks[`${g.id}-${i + 1}`]).length;
+      const gDone = g.items.filter((_, i) => checks[specItemId(g, i)]).length;
       const introParts = [ro ? g.introRo : undefined, en ? g.introEn : undefined].filter((s): s is string => !!s);
       const intro = introParts.join("\n");
       const CODE_W = 62;

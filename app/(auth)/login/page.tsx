@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import AuthForm from "@/app/components/AuthForm";
 import { getT } from "@/lib/i18n/server-t";
+import BrandLogo from "@/app/components/BrandLogo";
 
 export const dynamic = "force-dynamic";
 
@@ -26,12 +27,7 @@ export default async function LoginPage({
     <main className="flex min-h-dvh items-center justify-center p-5">
       <div className="card w-full max-w-sm p-7 shadow-sm">
         <div className="mb-6 flex items-center gap-3">
-          <div className="grid size-11 place-items-center rounded-xl bg-brand text-white">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-              <rect x="3" y="4.5" width="18" height="16" rx="2.5" />
-              <path d="M3 9h18M8 2.5v4M16 2.5v4" />
-            </svg>
-          </div>
+          <BrandLogo size={48} />
           <div>
             <h1 className="text-lg font-bold leading-5">{t("Programări")}</h1>
             <p className="text-xs text-ink-soft">

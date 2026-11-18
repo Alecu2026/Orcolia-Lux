@@ -1,7 +1,7 @@
 /* Service Worker — caching + push notifications + badge */
 
 // Cache version tied to deploy — update this string to bust old caches
-const CACHE_VER = "v6";
+const CACHE_VER = "v7";
 const CACHE = `app-${CACHE_VER}`;
 const OFFLINE_URL = "/offline.html";
 

@@ -86,7 +86,7 @@ export default function GlobalError({
             alt=""
             width={72}
             height={72}
-            style={{ margin: "0 auto 1.25rem", borderRadius: "1rem", display: "block" }}
+            style={{ margin: "0 auto 1.25rem", display: "block" }}
           />
           {stale ? (
             <>

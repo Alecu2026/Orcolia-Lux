@@ -36,7 +36,7 @@ export default function PortalError({
 
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-6 text-center">
-      <img src="/icons/icon-192.png" alt="" className="size-16 rounded-2xl" />
+      <img src="/icons/icon-192.png" alt="" className="size-16" />
       {stale ? (
         <>
           <h1 className="text-lg font-bold">{t("A apărut o actualizare a aplicației")}</h1>

@@ -234,12 +234,18 @@ async function saveReadingImpl(actor: Actor, input: SaveInput): Promise<SaveRead
     takenAt = input.readAt;
   }
   const period = currentPeriod(takenAt);
+  // Interogările independente pleacă toate odată (baza de date e la distanță: fiecare așteptare în șir costă o călătorie): indexul anterior, citirea lunii, media, ultima locație.
   // Indexul anterior: cel mai recent între 1C și o citire din teren dintr-o lună anterioară.
-  const lastField = await prisma.meterReading.findFirst({
-    where: { meterId: input.meterId, period: { not: period } },
-    orderBy: { readAt: "desc" },
-    select: { value: true, readAt: true },
-  });
+  const wantGeo = input.lat != null && input.lng != null && Math.abs(input.lat) <= 90 && Math.abs(input.lng) <= 180;
+  const [lastField, cur0, avgEager, lastLoc] = await Promise.all([
+    prisma.meterReading.findFirst({ where: { meterId: input.meterId, period: { not: period } }, orderBy: { readAt: "desc" }, select: { value: true, readAt: true } }),
+    prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { source: true, value: true, avgConsum: true } }),
+    // media se calculează acum, în paralel (doar dacă se va folosi: nu la actualizarea zilnică LoRaWAN, care o păstrează pe cea de pe citire)
+    input.source === LORAWAN_SOURCE ? Promise.resolve(null) : getMeterAverage(input.meterId, period).catch(() => null),
+    wantGeo
+      ? prisma.meterReading.findFirst({ where: { meterId: input.meterId, period: { not: period }, lat: { not: null }, lng: { not: null } }, orderBy: { readAt: "desc" }, select: { lat: true, lng: true } })
+      : Promise.resolve(null),
+  ]);
   let prev: number | null = row.curr;
   let prevDate = row.currDate;
   if (lastField) {
@@ -251,9 +257,9 @@ async function saveReadingImpl(actor: Actor, input: SaveInput): Promise<SaveRead
   }
   const v = round3(value);
   // citirea existentă a lunii (dacă e): regula portalului / LoRaWAN de mai jos și emailul de verificare către titular, la o modificare
-  const cur = await prisma.meterReading.findUnique({ where: { meterId_period: { meterId: input.meterId, period } }, select: { source: true, value: true, avgConsum: true } });
+  const cur = cur0;
   // media lunară a contorului: baza verificării „peste / sub medie” și se păstrează pe citire (pentru semnalarea ei în liste); la actualizarea zilnică LoRaWAN se păstrează media deja calculată
-  const avg = prev == null ? null : input.source === LORAWAN_SOURCE && cur?.avgConsum != null ? { avg: cur.avgConsum, count: 0 } : await getMeterAverage(input.meterId, period).catch(() => null);
+  const avg = prev == null ? null : input.source === LORAWAN_SOURCE && cur?.avgConsum != null ? { avg: cur.avgConsum, count: 0 } : input.source === LORAWAN_SOURCE ? await getMeterAverage(input.meterId, period).catch(() => null) : avgEager;
   if (!input.confirmed && prev != null) {
     if (v < prev) return { ok: false, error: "Indexul este mai mic decât cel anterior.", confirm: "lower" };
     const chk = checkConsum(round3(v - prev), avg?.avg);
@@ -267,14 +273,7 @@ async function saveReadingImpl(actor: Actor, input: SaveInput): Promise<SaveRead
   const lng = okGeo ? input.lng : null;
   const accuracy = okGeo && input.accuracy != null && input.accuracy >= 0 ? Math.round(input.accuracy) : null;
   let distanceM: number | null = null;
-  if (lat != null && lng != null) {
-    const lastLoc = await prisma.meterReading.findFirst({
-      where: { meterId: input.meterId, period: { not: period }, lat: { not: null }, lng: { not: null } },
-      orderBy: { readAt: "desc" },
-      select: { lat: true, lng: true },
-    });
-    if (lastLoc?.lat != null && lastLoc.lng != null) distanceM = Math.round(distanceMeters(lat, lng, lastLoc.lat, lastLoc.lng));
-  }
+  if (lat != null && lng != null && lastLoc?.lat != null && lastLoc.lng != null) distanceM = Math.round(distanceMeters(lat, lng, lastLoc.lat, lastLoc.lng));
 
   // plătitorul își poate corecta propria citire din portal, dar nu o citire făcută de cititor / operator
   if (input.source === "PORTAL" && cur && cur.source !== "PORTAL") return { ok: false, error: "Pentru luna aceasta citirea a fost deja înregistrată de cititor." };
@@ -306,12 +305,15 @@ async function saveReadingImpl(actor: Actor, input: SaveInput): Promise<SaveRead
       return { ok: false, error: `Pentru acest contor există deja o citire mai recentă: ${existing.value} m³, de ${existing.userName}. Citirea de pe telefon (${v} m³) nu a fost aplicată.` };
     }
   }
-  const saved = await prisma.meterReading.upsert({
-    where: { meterId_period: { meterId: input.meterId, period } },
-    create: { meterId: input.meterId, period, ...data },
-    update: data,
-  });
-  const location = await updateMeterLocation(actor, row, { address: input.address ?? null, lat, lng, accuracy, fillOnly: input.source === "PORTAL" });
+  // citirea și locația contorului se scriu în paralel (sunt independente)
+  const [saved, location] = await Promise.all([
+    prisma.meterReading.upsert({
+      where: { meterId_period: { meterId: input.meterId, period } },
+      create: { meterId: input.meterId, period, ...data },
+      update: data,
+    }),
+    updateMeterLocation(actor, row, { address: input.address ?? null, lat, lng, accuracy, fillOnly: input.source === "PORTAL" }),
+  ]);
   invalidatePortalClient(row.clientId); // plătitorul vede imediat citirea în portal
   // email de verificare către titular: citire nouă din portal, sau index schimbat (de plătitor în portal / de un angajat peste citirea trimisă de plătitor)
   const ownerNotice = !!row.clientId && !input.verified && input.source !== LORAWAN_SOURCE && (cur ? changed && (input.source === "PORTAL" || cur.source === "PORTAL") : input.source === "PORTAL");

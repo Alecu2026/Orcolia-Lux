@@ -4,6 +4,7 @@ import { env } from "@/lib/env";
 import PortalRegisterRequestForm from "@/app/components/PortalRegisterRequestForm";
 import PortalRegisterConfirmForm from "@/app/components/PortalRegisterConfirmForm";
 import { getT } from "@/lib/i18n/server-t";
+import BrandLogo from "@/app/components/BrandLogo";
 
 export const dynamic = "force-dynamic";
 
@@ -20,13 +21,16 @@ export default async function PortalRegisterPage({
   return (
     <main className="flex min-h-dvh items-center justify-center p-5">
       <div className="card w-full max-w-sm p-7 shadow-sm">
-        <div className="mb-6">
+        <div className="mb-6 flex items-center gap-3">
+          <BrandLogo size={48} />
+          <div className="min-w-0">
           <h1 className="text-lg font-bold leading-5">{t("Activare cont")}</h1>
           <p className="mt-1 text-xs text-ink-soft">
             {step2
               ? t("Am trimis un cod de 6 cifre pe email. Introdu-l mai jos împreună cu parola pe care vrei s-o folosești.")
               : t("Introdu contul personal și emailul înregistrat la companie — îți trimitem un cod de confirmare.")}
           </p>
+          </div>
         </div>
 
         {step2 ? (

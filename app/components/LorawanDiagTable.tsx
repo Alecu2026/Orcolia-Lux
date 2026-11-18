@@ -37,7 +37,17 @@ export default function LorawanDiagTable() {
   const load = async () => {
     setBusy(true);
     setErr(null);
-    const r = await lorawanDiagAction().catch(() => ({ ok: false as const, error: "Nu am putut citi feedul LoRaWAN." }));
+    // dacă cererea e întreruptă (proxy / rețea), serverul continuă descărcarea și o păstrează în memorie: încă 2 încercări, la câteva secunde, o găsesc gata
+    let r: Awaited<ReturnType<typeof lorawanDiagAction>> = { ok: false, error: "Nu am putut citi feedul LoRaWAN." };
+    for (let i = 0; i < 3; i++) {
+      let cut = false;
+      r = await lorawanDiagAction().catch(() => {
+        cut = true;
+        return { ok: false as const, error: "Nu am putut citi feedul LoRaWAN." };
+      });
+      if (r.ok || !cut) break;
+      await new Promise((res) => setTimeout(res, 6000));
+    }
     if (r.ok) {
       setDiag(r.diag);
       setPage(1);
