@@ -7,6 +7,7 @@ import { useT } from "@/lib/i18n/context";
 import { HEAD, IDX_DIFF, IDX_PWA_TOTAL, IDX_TOKEN, TOLERANCE, filterOneC, type OneCTuple } from "@/lib/onec-table";
 import { PER_PAGE_ALL, perPageLabel } from "@/lib/payer-notify";
 import { useOneCDataset } from "./useOneCDataset";
+import { useFitViewport } from "./useFitViewport";
 
 type Row = Record<string, string | number | null> & {
   id: string;
@@ -160,8 +161,9 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
   }, [serverMode, srv, local, ds.rows, curPage, pageSize]);
 
   const virt = pageRows.length > VIRT_MIN;
+  const fitMax = useFitViewport(() => box.current, [pageRows.length, serverMode]);
   const start = virt ? Math.max(0, Math.floor(Math.max(0, scrollTop - HEAD_H) / ROW_H) - OVER) : 0;
-  const end = virt ? Math.min(pageRows.length, Math.ceil((scrollTop + VIEW_H) / ROW_H) + OVER) : pageRows.length;
+  const end = virt ? Math.min(pageRows.length, Math.ceil((scrollTop + Math.max(VIEW_H, fitMax ?? 0)) / ROW_H) + OVER) : pageRows.length;
   useEffect(() => {
     if (box.current) box.current.scrollTop = 0;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
@@ -254,7 +256,7 @@ export default function OneCTable({ canExport = true }: { canExport?: boolean } 
         </p>
       )}
 
-      <div ref={box} className="card overflow-auto" style={{ maxHeight: "68vh" }} onScroll={virt ? (e) => setScrollTop(e.currentTarget.scrollTop) : undefined} data-onec-scroll="">
+      <div ref={box} className="card overflow-auto" style={{ maxHeight: fitMax ?? "68vh" }} onScroll={virt ? (e) => setScrollTop(e.currentTarget.scrollTop) : undefined} data-onec-scroll="">
         <table className="w-max min-w-full border-separate border-spacing-0 text-xs">
           <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
             <tr>

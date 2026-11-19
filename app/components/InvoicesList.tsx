@@ -3,7 +3,7 @@
 import DebtAgingButton from "./DebtAgingButton";
 import FiltersToggle from "./FiltersToggle";
 import { useFiltersOpen } from "./useFiltersOpen";
-import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { setInvoiceStatus, deleteInvoice } from "@/app/actions/invoices";
 import {
@@ -18,8 +18,6 @@ import { IconTrash, IconChevronLeft, IconChevronRight } from "./icons";
 import { useMessages } from "@/lib/i18n/context";
 import ApaCanalJsonImport from "./ApaCanalJsonImport";
 import InvoiceViewButton from "./InvoiceViewButton";
-import CompactCard, { CompactField } from "./CompactCard";
-import VirtualList from "./VirtualList";
 import { useInvoiceDataset, useInvoiceMonths } from "./useInvoiceDataset";
 import { buildPageButtons } from "@/lib/page-buttons";
 import { perPageLabel } from "@/lib/payer-notify";
@@ -45,16 +43,11 @@ import {
   type MonthCount,
 } from "@/lib/invoice-list";
 import { useT } from "@/lib/i18n/context";
-import { matchesPayBal } from "@/lib/payment-chain";
+import DataTable, { type Col } from "./DataTable";
 
-/** Peste atâtea rânduri se desenează doar cele vizibile (virtualizare), ca la plătitori. */
-const VIRTUAL_MIN = 80;
-const ROW_H = 28;
 /** Cât timp lista locală nu e încărcată (sau perioada e prea mare), serverul dă pagini de cel mult atâtea rânduri. */
 const SERVER_MAX_PENDING = 200;
 const SERVER_MAX_SERVER_MODE = 1000;
-/** Lățimile coloanelor tabelului (px): număr, client, emisă, scadență, achitată, sumă, datorie / avans, achitat din factură, status, acțiuni. */
-const COL_W = [250, 230, 92, 92, 92, 105, 100, 100, 105, 270];
 
 type Page = { items: InvRow[]; total: number; totalPages: number; sums: InvSums | null };
 
@@ -75,9 +68,6 @@ const monthLabel = (m: string) => {
   return new Date(y, mo - 1, 1).toLocaleDateString("ro-RO", { month: "long", year: "numeric" });
 };
 
-/** Sortările pe care le face și serverul (cu index); restul doar în browser, pe perioada încărcată. */
-const SERVER_SORTS = new Set(["issue", "number"]);
-const TEXT_SORTS = new Set(["number", "client", "status"]);
 
 const SERVICE_FILTERS = [["WATER", "Doar apă"], ["SEWER", "Doar canalizare"], ["BOTH", "Apă + canalizare"], ["NONE", "Fără servicii (consum și sumă zero)"]] as const;
 
@@ -130,23 +120,6 @@ export default function InvoicesList({
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   const statusMenu = useRef<HTMLDetailsElement>(null);
 
-  // Mod telefon: fiecare factură devine un card. `cardsPref` = alegerea utilizatorului; null = automat (carduri pe ecrane înguste).
-  const [cardsPref, setCardsPref] = useState<boolean | null>(null);
-  const [narrow, setNarrow] = useState(false);
-  const cards = cardsPref ?? narrow;
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setNarrow(window.matchMedia("(max-width: 639px)").matches);
-    try {
-      const v = localStorage.getItem("invoices-view");
-      if (v === "cards" || v === "table") setCardsPref(v === "cards");
-    } catch {}
-  }, []);
-  function toggleCards() {
-    const next = !cards;
-    setCardsPref(next);
-    try { localStorage.setItem("invoices-view", next ? "cards" : "table"); } catch {}
-  }
   useEffect(() => {
     // meniul de statusuri se închide la click în afara lui
     const close = (e: MouseEvent) => {
@@ -271,11 +244,6 @@ export default function InvoicesList({
   function toggleStatus(s: string) {
     patchQuery({ statuses: query.statuses.includes(s) ? query.statuses.filter((x) => x !== s) : [...query.statuses, s] });
   }
-  function toggleSort(col: InvSort) {
-    if (serverMode && !SERVER_SORTS.has(col)) return;
-    setQuery((q) => (q.sort === col ? { ...q, dir: q.dir === "asc" ? "desc" : "asc" } : { ...q, sort: col, dir: TEXT_SORTS.has(col) ? "asc" : "desc" }));
-    setPage(1);
-  }
   const nFilters = activeFilterCount(query) + (search.trim() && !query.q ? 1 : 0);
   function resetFilters() {
     if (debounce.current) clearTimeout(debounce.current);
@@ -369,65 +337,167 @@ export default function InvoicesList({
     [reportRows, query.currency],
   );
 
-  // Contoarele chipurilor „Plăți” (pe perioada aleasă, din facturile deja încărcate): o singură trecere
-  const payCounts = useMemo(() => {
-    const c = { paidInv: 0, settled: 0, debt: 0, partial: 0, advance: 0, paidprev: 0, overdue: 0 };
-    if (!ds.rows) return null;
-    for (const r of ds.rows) {
-      if (r.status === "PAID") c.paidInv++;
-      if (r.status === "OVERDUE") c.overdue++;
-      if (r.kind === "APA_CANAL") {
-        // plățile se citesc din soldul de PE factura lunii (plata facturii anterioare)
-        if (matchesPayBal("settled", r)) c.settled++;
-        if (matchesPayBal("owes", r)) c.debt++;
-        if (matchesPayBal("partial", r)) c.partial++;
-        if (matchesPayBal("advance", r)) c.advance++;
-      }
-      if (matchesPayBal("paidprev", r)) c.paidprev++;
-    }
-    return c;
-  }, [ds.rows]);
-
   const pageTotal = useMemo(() => rows.reduce((sum, r) => sum + (r.status === "CANCELLED" ? 0 : r.grandTotal), 0), [rows]);
 
-  // ── Virtualizare (tabel: înălțime fixă de rând; carduri: înălțime variabilă) ──
-  const virtualTable = !cards && rows.length > VIRTUAL_MIN;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollRaf = useRef(0);
-  const [vScroll, setVScroll] = useState({ top: 0, h: 800 });
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !virtualTable) return;
-    const upd = () => setVScroll((s) => (s.h === el.clientHeight ? s : { ...s, h: el.clientHeight }));
-    upd();
-    const obs = new ResizeObserver(upd);
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [virtualTable]);
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [query, period, page, perPage, cards]);
-  function onTableScroll(e: React.UIEvent<HTMLDivElement>) {
-    const top = e.currentTarget.scrollTop;
-    if (scrollRaf.current) return;
-    scrollRaf.current = requestAnimationFrame(() => {
-      scrollRaf.current = 0;
-      setVScroll((s) => (s.top === top ? s : { ...s, top }));
-    });
-  }
-  const winStart = virtualTable ? Math.max(0, Math.floor(vScroll.top / ROW_H) - 12) : 0;
-  const winEnd = virtualTable ? Math.min(rows.length, Math.ceil((vScroll.top + vScroll.h) / ROW_H) + 12) : rows.length;
-  const winRows = virtualTable ? rows.slice(winStart, winEnd) : rows;
-  const renderRows = (list: InvRow[], fn: (r: InvRow) => React.ReactNode) =>
-    list.length <= VIRTUAL_MIN ? list.map(fn) : <VirtualList count={list.length} itemKey={(i) => list[i].id} render={(i) => fn(list[i])} estimate={46} />;
 
-  const from = view.total === 0 ? 0 : (page - 1) * perPage + 1;
-  const to = Math.min(page * perPage, view.total);
+
+  // Lista întreagă pentru tabel (paginarea o face DataTable): din memorie pe perioade care încap local, altfel pagina primită de la server.
+  const tableRows = useMemo(() => {
+    if (local && ds.rows) {
+      const out: InvRow[] = new Array(local.total);
+      for (let k = 0; k < local.total; k++) out[k] = ds.rows[local.idx[k]];
+      return out;
+    }
+    return rows;
+  }, [local, ds.rows, rows]);
+
+  // ── Coloane (ca la Sarcini): se mută, se ascund, se redimensionează și se colorează din „⚙ Coloane”; alegerea rămâne salvată în browser („Resetează” revine la cele de la început). ──
+  const dash = <span className="text-ink-soft/60">—</span>;
+  const columns: Col<InvRow>[] = [
+    {
+      key: "number", label: "Număr", minW: 150, maxW: 250, sticky: true, sort: (r) => r.number,
+      render: (r) => (
+        <span className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap font-semibold">
+          <span className="truncate" title={r.number}>{r.number}</span>
+          {r.kind === "APA_CANAL" && <span className="shrink-0 rounded bg-sky-100 px-1 text-[9px] font-semibold text-sky-700">{t("Apă-Canal")}</span>}
+        </span>
+      ),
+    },
+    { key: "client", label: "Client", minW: 180, maxW: 260, sort: (r) => r.clientName ?? "", render: (r) => r.clientName ?? <span className="text-ink-soft/60">{m.invoices.noClient}</span> },
+    { key: "issue", label: "Emisă", minW: 90, sort: (r) => r.issueMs, render: (r) => fmtMs(r.issueMs) },
+    {
+      key: "due", label: "Scadență", minW: 90, sort: (r) => r.dueMs,
+      render: (r) => {
+        const late = r.status !== "PAID" && r.status !== "CANCELLED" && isPast(r.dueMs);
+        return <span className={late ? "font-semibold text-st-cancelled" : ""} title={late ? t("Scadența a trecut") : undefined}>{fmtMs(r.dueMs)}{late ? " ⚠" : ""}</span>;
+      },
+    },
+    {
+      key: "paid", label: "Achitată", minW: 90, sort: (r) => r.paidMs,
+      render: (r) => (r.status === "PAID"
+        ? (r.paidMs ? <span className="text-st-done">{fmtMs(r.paidMs)}</span> : <span className="text-ink-soft/70" title={t("Marcată plătită, dar data nu s-a înregistrat")}>?</span>)
+        : dash),
+    },
+    { key: "total", label: "Sumă", minW: 100, right: true, sort: (r) => r.grandTotal, render: (r) => <span className="font-semibold">{money(r.grandTotal, r.currency)}</span> },
+    {
+      key: "debt", label: "Datorie / avans", minW: 100, right: true, sort: (r) => (r.kind === "APA_CANAL" ? r.debt : null),
+      render: (r) => (r.kind === "APA_CANAL" && Math.abs(r.debt) > 0.005
+        ? <span className={r.debt > 0 ? "text-st-cancelled" : "text-st-done"} title={r.debt > 0 ? t("Datorie din facturile trecute") : t("Avans plătit în plus")}>{r.debt > 0 ? "+" : "−"}{money(Math.abs(r.debt), r.currency)}</span>
+        : dash),
+    },
+    {
+      key: "paidAmt", label: "Achitat din factură", minW: 105, right: true, sort: (r) => (r.kind === "APA_CANAL" ? r.paid : null),
+      render: (r) => (r.kind === "APA_CANAL" && r.paid != null
+        ? <span className={r.paid > 0.005 ? "text-st-done" : "text-ink-soft/70"} title={t("Cât din această factură s-a achitat (dedus din datoria de pe factura următoare)")}>{money(r.paid, r.currency)}</span>
+        : <span className="text-ink-soft/60" title={t("Încă nu se știe: apare când se emite factura următoare")}>—</span>),
+    },
+    {
+      key: "status", label: "Status", minW: 105, sort: (r) => r.status,
+      render: (r) => (
+        <select
+          value={r.status}
+          disabled={!canEdit}
+          onChange={(e) => changeStatus(r.id, e.target.value as InvoiceStatusKey)}
+          className={`h-[18px] cursor-pointer disabled:cursor-not-allowed rounded-full border-0 px-1.5 text-[10px] font-medium outline-none ${INVOICE_STATUS[r.status].cls}`}
+          aria-label={`Status ${r.number}`}
+        >
+          {INVOICE_STATUS_LIST.map((s) => (
+            <option key={s} value={s}>{t(INVOICE_STATUS[s].label)}</option>
+          ))}
+        </select>
+      ),
+    },
+    {
+      key: "actions", label: "", minW: 270,
+      render: (r) => (
+        <div className="flex items-center gap-1">
+          <InvoiceViewButton token={r.publicToken} title={`${r.number}${r.clientName ? ` · ${r.clientName}` : ""}`} className={btn} />
+          {canEdit && <Link href={`/invoices/${r.id}/edit`} className={btn}>{m.common.edit}</Link>}
+          <button type="button" onClick={() => copyLink(r.publicToken)} className={btn}>
+            {copied === r.publicToken ? m.invoices.copied : m.invoices.copyLink}
+          </button>
+          <a href={`/invoice/public/${r.publicToken}`} target="_blank" rel="noopener noreferrer" className={btn}>
+            {m.invoices.publicPdf} ↗
+          </a>
+          {canDelete && (
+            <button type="button" onClick={() => remove(r.id)} className={`${btn} text-st-cancelled`} title={m.common.delete} aria-label={m.common.delete}>
+              <IconTrash className="size-3" />
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
 
   return (
     <>
-      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+      {/* ── Bară compactă: filtre, totaluri, acțiuni — un singur rând (mai mult loc pentru listă) ── */}
+      <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" data-inv-summary="">
         <FiltersToggle open={fOpen} onToggle={toggleF} activeCount={nFilters} />
+        {view.sums ? (
+          <>
+            <span className="text-ink-soft">{t("Σ total:")} <b className="tabular-nums text-ink">{fmtMoney(view.sums.total, view.sums.currency)}</b></span>
+            <span className="text-ink-soft" title={t("Cât au plătit între facturi (la fel ca „Încasat” din raport)")}>{t("achitat:")} <b className="tabular-nums text-st-done">{fmtMoney(view.sums.paid, view.sums.currency)}</b></span>
+            <span className="text-ink-soft" title={t("Datoria reportată pe facturi (la fel ca „Datorie” din raport)")}>{t("neachitat:")} <b className="tabular-nums text-ink">{fmtMoney(view.sums.open, view.sums.currency)}</b></span>
+            {view.sums.overdueCount > 0 && <span className="text-ink-soft" title={t("Facturile lunii cu statusul Restantă: totalul lor de plată")}>{t("facturi restante:")} <b className="tabular-nums text-st-cancelled">{fmtMoney(view.sums.overdue, view.sums.currency)}</b> ({view.sums.overdueCount.toLocaleString("ro-RO")})</span>}
+            {view.sums.mixedCurrency && <span className="text-ink-soft" title={t("Sumele sunt doar în valuta principală; filtrează după valută pentru celelalte.")}>{t("(mai multe valute)")}</span>}
+          </>
+        ) : (
+          <span className="text-ink-soft">{t("Σ pagină:")} <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
+        )}
+        {serverMode && <span className="text-ink-soft"><b className="text-ink">{view.total.toLocaleString("ro-RO")}</b> {t("facturi")} · {page}/{totalPages}</span>}
+        {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}
+        {useLocal && <span className="text-ink-soft" title={t("Lista e ținută în memorie și filtrată instant în browser.")}>{t("⚡ local")}</span>}
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {serverMode && (
+            <select
+              value={`${query.sort}|${query.dir}`}
+              onChange={(e) => { const [s, d] = e.target.value.split("|"); setQuery((q) => ({ ...q, sort: s as InvSort, dir: d as InvQuery["dir"] })); setPage(1); }}
+              className={filterCls(false)}
+              aria-label={t("Sortare")}
+            >
+              <option value="issue|desc">{t("Emisă")} ▼</option>
+              <option value="issue|asc">{t("Emisă")} ▲</option>
+              <option value="number|asc">{t("Număr")} ▲</option>
+              <option value="number|desc">{t("Număr")} ▼</option>
+            </select>
+          )}
+          {serverMode && (
+            <select
+              value={wantPerPage}
+              onChange={(e) => { setWantPerPage(Number(e.target.value)); setPage(1); }}
+              className={filterCls(wantPerPage !== INVOICE_DEFAULT_PER_PAGE)}
+              aria-label={t("Câte pe pagină")}
+            >
+              {INVOICE_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n === INVOICE_ALL ? 25_000 : n, t)}</option>)}
+            </select>
+          )}
+          {canImportApaCanal && (
+            <ApaCanalJsonImport className="tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium text-ink-soft hover:bg-[var(--color-surface-2)]" />
+          )}
+          {canCreate && (
+            <Link
+              href="/invoices/new"
+              className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong"
+            >
+              {m.invoices.new}
+            </Link>
+          )}
+          <DebtAgingButton />
+          <button
+            type="button"
+            onClick={() => setShowReport((v) => !v)}
+            aria-expanded={showReport}
+            data-inv-report-toggle=""
+            title={t("Numărul de facturi și suma pe apă, canalizare și ambele (pentru perioada aleasă)")}
+            className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${showReport ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
+          >
+            {showReport ? t("Raport servicii ▴") : t("Raport servicii ▾")}
+          </button>
+        </div>
+      </div>
+      <div className={`flex-wrap items-center gap-1.5 ${fOpen ? "mb-1.5 flex" : "hidden"}`}>
         <div className={fOpen ? "contents" : "hidden"}>
         <input
           value={search}
@@ -504,21 +574,7 @@ export default function InvoicesList({
             {t("Resetează filtrele ({activeFilters})", { activeFilters: nFilters })}
           </button>
         )}
-        <div className="ml-auto flex items-center gap-1.5">
-          {canImportApaCanal && (
-            <ApaCanalJsonImport className="tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2.5 text-[11px] font-medium text-ink-soft hover:bg-[var(--color-surface-2)]" />
-          )}
-          {canCreate && (
-            <Link
-              href="/invoices/new"
-              className="tap inline-flex h-7 cursor-pointer items-center rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong"
-            >
-              {m.invoices.new}
-            </Link>
-          )}
-        </div>
       </div>
-
       {showMore && fOpen && (
         <div className="mb-1.5 flex flex-wrap items-end gap-x-3 gap-y-1.5 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)]/50 px-2 py-1.5 text-[11px]" data-inv-advanced="">
           <label className="flex flex-col gap-0.5">
@@ -555,94 +611,6 @@ export default function InvoicesList({
         </div>
       )}
 
-      {/* Plăți pe perioada aleasă: un click arată CARE facturi sunt achitate / neachitate / restante / cu datorie / cu avans / cu plată primită / parțial achitate */}
-      <div className="mb-1.5 flex flex-wrap items-center gap-1.5" data-inv-pay-chips="">
-        <span className="text-[11px] font-semibold text-ink-soft">{t("Plăți")}</span>
-        {(
-          [
-            { key: "all", label: "Toate", tip: "", statuses: [] as string[], quick: "" as InvQuery["quick"], n: null as number | null, group: "" },
-            { key: "settled", label: "Achitate", tip: "Au achitat factura anterioară: datoria de pe această factură e 0 (sau au avans)", statuses: [], quick: "settled" as InvQuery["quick"], n: payCounts?.settled ?? null, group: "Factura anterioară:" },
-            { key: "debt", label: "Neachitate", tip: "Nu au achitat integral factura anterioară: datoria s-a reportat pe această factură", statuses: [], quick: "debt" as InvQuery["quick"], n: payCounts?.debt ?? null, group: "Factura anterioară:" },
-            { key: "partial", label: "Parțial achitate", tip: "Au achitat doar o parte din factura anterioară", statuses: [], quick: "partial" as InvQuery["quick"], n: payCounts?.partial ?? null, group: "Factura anterioară:" },
-            { key: "advance", label: "Cu avans", tip: "Au plătit în plus: avans pe această factură", statuses: [], quick: "advance" as InvQuery["quick"], n: payCounts?.advance ?? null, group: "Factura anterioară:" },
-            { key: "paidprev", label: "Cu plată primită", tip: "Au plătit ceva între factura anterioară și aceasta", statuses: [], quick: "paidprev" as InvQuery["quick"], n: payCounts?.paidprev ?? null, group: "Factura anterioară:" },
-            { key: "paidinv", label: "Facturi achitate", tip: "Facturile cu statusul Achitată (se știe după ce factura următoare arată datorie 0, sau când avansul acoperă factura)", statuses: ["PAID"], quick: "" as InvQuery["quick"], n: payCounts?.paidInv ?? null, group: "Factura lunii:" },
-            { key: "overdue", label: "Restante", tip: "Facturi la care factura următoare a arătat datorie (restante confirmate)", statuses: ["OVERDUE"], quick: "" as InvQuery["quick"], n: payCounts?.overdue ?? null, group: "Factura lunii:" },
-          ]
-        ).map((c, ci, arr) => {
-          const startGroup = c.group !== "" && c.group !== arr[ci - 1]?.group;
-          const on = c.key === "all" ? query.statuses.length === 0 && !query.quick : query.quick === c.quick && query.statuses.length === c.statuses.length && c.statuses.every((s) => query.statuses.includes(s));
-          return (
-            <Fragment key={c.key}>
-            {startGroup && <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-ink-soft/80" title={t(c.group === "Factura lunii:" ? "Statusul facturii din luna aleasă (se știe din factura următoare)" : "Cum a achitat factura de luna trecută (se vede din soldul de pe factura lunii alese)")}>{t(c.group)}</span>}
-            <button
-              type="button"
-              aria-pressed={on}
-              onClick={() => patchQuery(on || c.key === "all" ? { statuses: [], quick: "" } : { statuses: c.statuses, quick: c.quick })}
-              title={c.tip ? t(c.tip) : t("Arată în listă care sunt")}
-              className={`tap h-7 cursor-pointer rounded-lg border px-2.5 text-[11px] ${on ? "border-brand bg-brand font-semibold text-white" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-            >
-              {t(c.label)}{c.n != null && <span className="ml-1 tabular-nums opacity-80">{c.n.toLocaleString("ro-RO")}</span>}
-            </button>
-            </Fragment>
-          );
-        })}
-      </div>
-
-      <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs" data-inv-summary="">
-        <span>
-          <b>{view.total.toLocaleString("ro-RO")}</b> {t("facturi")}
-          {view.total > 0 && <span className="text-ink-soft"> {t("· afișate {v1}–{v2} · pagina {page}/{totalPages}", { v1: from.toLocaleString("ro-RO"), v2: to.toLocaleString("ro-RO"), page, totalPages })}</span>}
-        </span>
-        {view.sums ? (
-          <>
-            <span className="text-ink-soft">{t("Σ total:")} <b className="tabular-nums text-ink">{fmtMoney(view.sums.total, view.sums.currency)}</b></span>
-            <span className="text-ink-soft" title={t("Cât au plătit între facturi (la fel ca „Încasat” din raport)")}>{t("achitat:")} <b className="tabular-nums text-st-done">{fmtMoney(view.sums.paid, view.sums.currency)}</b></span>
-            <span className="text-ink-soft" title={t("Datoria reportată pe facturi (la fel ca „Datorie” din raport)")}>{t("neachitat:")} <b className="tabular-nums text-ink">{fmtMoney(view.sums.open, view.sums.currency)}</b></span>
-            {view.sums.overdueCount > 0 && <span className="text-ink-soft" title={t("Facturile lunii cu statusul Restantă: totalul lor de plată")}>{t("facturi restante:")} <b className="tabular-nums text-st-cancelled">{fmtMoney(view.sums.overdue, view.sums.currency)}</b> ({view.sums.overdueCount.toLocaleString("ro-RO")})</span>}
-            {view.sums.mixedCurrency && <span className="text-ink-soft" title={t("Sumele sunt doar în valuta principală; filtrează după valută pentru celelalte.")}>{t("(mai multe valute)")}</span>}
-          </>
-        ) : (
-          <span className="text-ink-soft">{t("Σ pagină:")} <b className="tabular-nums text-ink">{money(pageTotal, rows[0]?.currency ?? "MDL")}</b></span>
-        )}
-        {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}
-        {useLocal && <span className="text-ink-soft" title={t("Lista e ținută în memorie și filtrată instant în browser.")}>{t("⚡ local")}</span>}
-        <span className="ml-auto inline-flex items-center gap-1.5">
-          <DebtAgingButton />
-        </span>
-        <button
-          type="button"
-          onClick={() => setShowReport((v) => !v)}
-          aria-expanded={showReport}
-          data-inv-report-toggle=""
-          title={t("Numărul de facturi și suma pe apă, canalizare și ambele (pentru perioada aleasă)")}
-          className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${showReport ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-        >
-          {showReport ? t("Raport servicii ▴") : t("Raport servicii ▾")}
-        </button>
-        <button
-          type="button"
-          onClick={toggleCards}
-          aria-pressed={cards}
-          title={cards ? t("Înapoi la tabel") : t("Afișează facturile într-o coloană mică; apeși pe una ca să vezi detaliile (potrivit pentru telefon)")}
-          className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-        >
-          {cards ? "▦ Tabel" : "📱 Mod telefon"}
-        </button>
-        <label className="flex items-center gap-1.5 text-xs text-ink-soft">
-          {t("Afișează")}
-          <select
-            value={wantPerPage}
-            onChange={(e) => { setWantPerPage(Number(e.target.value)); setPage(1); }}
-            className={`h-7 appearance-none sel-arrow rounded-lg border pl-1.5 pr-6 text-[11px] outline-none focus:border-brand ${
-              wantPerPage === INVOICE_DEFAULT_PER_PAGE ? "border-[var(--color-line)] bg-[var(--color-surface)] text-ink" : "border-brand bg-brand/10 font-semibold text-brand"
-            }`}
-            aria-label={t("Câte pe pagină")}
-          >
-            {INVOICE_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n === INVOICE_ALL ? 25_000 : n, t)}</option>)}
-          </select>
-        </label>
-      </div>
       {showReport && (
         <div className="mb-1.5 max-w-3xl rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)]/50 px-2 py-1.5 text-[11px]" data-inv-report="">
           {reportErr ? (
@@ -713,179 +681,20 @@ export default function InvoicesList({
         </p>
       )}
 
-      {cards ? (
-        <div className={`flex flex-col gap-1.5 transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
-          {renderRows(rows, (r) => {
-            const st = INVOICE_STATUS[r.status];
-            const late = r.status !== "PAID" && r.status !== "CANCELLED" && isPast(r.dueMs);
-            return (
-              <CompactCard
-                key={r.id}
-                avatar={(r.clientName ?? r.number).trim().charAt(0).toUpperCase()}
-                title={r.number}
-                subtitle={
-                  <>
-                    <span className="min-w-0 truncate">{r.clientName ?? m.invoices.noClient}</span>
-                    <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{t(st.label)}</span>
-                  </>
-                }
-                trailing={<span className="font-semibold tabular-nums">{money(r.grandTotal, r.currency)}</span>}
-              >
-                <dl>
-                  {r.kind === "APA_CANAL" && <CompactField label={t("Tip")}><span className="rounded bg-sky-100 px-1 text-[10px] font-semibold text-sky-700">{t("Apă-Canal")}</span></CompactField>}
-                  <CompactField label={t("Emisă")}>{fmtMs(r.issueMs)}</CompactField>
-                  {r.kind === "APA_CANAL" && Math.abs(r.debt) > 0.005 && <CompactField label={t("Datorie / avans")}><span className={r.debt > 0 ? "font-semibold text-st-cancelled" : "font-semibold text-st-done"}>{r.debt > 0 ? "+" : "−"}{money(Math.abs(r.debt), r.currency)}</span></CompactField>}
-                  {r.kind === "APA_CANAL" && r.paid != null && <CompactField label={t("Achitat din factură")}>{money(r.paid, r.currency)}</CompactField>}
-                  <CompactField label={t("Scadență")}>
-                    <span className={late ? "font-semibold text-st-cancelled" : ""}>{fmtMs(r.dueMs)}{late ? t("· depășită") : ""}</span>
-                  </CompactField>
-                  <CompactField label={t("Achitată")}>
-                    {r.status === "PAID" ? (
-                      r.paidMs ? <span className="text-st-done">{fmtMs(r.paidMs)}</span> : <span className="text-ink-soft/70">{t("? (data nu s-a înregistrat)")}</span>
-                    ) : <span className="text-ink-soft/60">—</span>}
-                  </CompactField>
-                  <CompactField label={t("Status")}>
-                    <select
-                      value={r.status}
-                      disabled={!canEdit}
-                      onChange={(e) => changeStatus(r.id, e.target.value as InvoiceStatusKey)}
-                      className={`h-6 cursor-pointer disabled:cursor-not-allowed rounded-full border-0 px-2 text-[12px] font-medium outline-none ${st.cls}`}
-                      aria-label={`Status ${r.number}`}
-                    >
-                      {INVOICE_STATUS_LIST.map((x) => (
-                        <option key={x} value={x}>{t(INVOICE_STATUS[x].label)}</option>
-                      ))}
-                    </select>
-                  </CompactField>
-                </dl>
-                <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--color-line)]/60 px-2.5 py-1.5">
-                  <InvoiceViewButton token={r.publicToken} title={`${r.number}${r.clientName ? ` · ${r.clientName}` : ""}`} className={cardBtn} />
-                  {canEdit && <Link href={`/invoices/${r.id}/edit`} className={cardBtn}>{m.common.edit}</Link>}
-                  <button type="button" onClick={() => copyLink(r.publicToken)} className={cardBtn}>
-                    {copied === r.publicToken ? m.invoices.copied : m.invoices.copyLink}
-                  </button>
-                  <a href={`/invoice/public/${r.publicToken}`} target="_blank" rel="noopener noreferrer" className={cardBtn}>
-                    {m.invoices.publicPdf} ↗
-                  </a>
-                  {canDelete && (
-                    <button type="button" onClick={() => remove(r.id)} className={`${cardBtn} text-st-cancelled`} title={m.common.delete} aria-label={m.common.delete}>
-                      <IconTrash className="size-3.5" />
-                    </button>
-                  )}
-                </div>
-              </CompactCard>
-            );
-          })}
-          {rows.length === 0 && !loading && <div className="card p-8 text-center text-ink-soft">{m.invoices.noInvoices}</div>}
-        </div>
-      ) : (
-      <div
-        ref={scrollRef}
-        onScroll={virtualTable ? onTableScroll : undefined}
-        className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}
-        style={{ maxHeight: rows.length > 50 ? "max(78vh, 890px)" : undefined }}
-      >
-        <table className="min-w-full table-fixed border-separate border-spacing-0 text-[11px] leading-[14px]" style={{ width: COL_W.reduce((a, b) => a + b, 0) }}>
-          <colgroup>{COL_W.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
-          <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
-            <tr>
-              <Th sortKey="number" q={query} onSort={toggleSort} disabled={false}>{t("Număr")}</Th>
-              <Th sortKey="client" q={query} onSort={toggleSort} disabled={serverMode}>{t("Client")}</Th>
-              <Th sortKey="issue" q={query} onSort={toggleSort} disabled={false}>{t("Emisă")}</Th>
-              <Th sortKey="due" q={query} onSort={toggleSort} disabled={serverMode}>{t("Scadență")}</Th>
-              <Th sortKey="paid" q={query} onSort={toggleSort} disabled={serverMode}>{t("Achitată")}</Th>
-              <Th sortKey="total" q={query} onSort={toggleSort} disabled={serverMode} right>{t("Sumă")}</Th>
-              <Th right>{t("Datorie / avans")}</Th>
-              <Th right>{t("Achitat din factură")}</Th>
-              <Th sortKey="status" q={query} onSort={toggleSort} disabled={serverMode}>{t("Status")}</Th>
-              <Th>{t("Acțiuni")}</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {winStart > 0 && (
-              <tr aria-hidden>
-                <td colSpan={10} style={{ height: winStart * ROW_H, padding: 0, border: 0 }} />
-              </tr>
-            )}
-            {winRows.map((r) => {
-              const st = INVOICE_STATUS[r.status];
-              const late = r.status !== "PAID" && r.status !== "CANCELLED" && isPast(r.dueMs);
-              const cell = "border-b border-[var(--color-line)] px-1.5 py-[2px]";
-              return (
-                <tr key={r.id} style={{ height: ROW_H }} className="hover:bg-brand-soft/30">
-                  <td className={`${cell} font-semibold`}>
-                    {/* numărul + insigna într-un rând care nu iese din celulă (numerele lungi, ex. AC-2500317-202610, nu mai acoperă coloana „Client”) */}
-                    <div className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap">
-                      <span className="truncate" title={r.number}>{r.number}</span>
-                      {r.kind === "APA_CANAL" && (
-                        <span className="shrink-0 rounded bg-sky-100 px-1 text-[9px] font-semibold text-sky-700">{t("Apă-Canal")}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className={cell}>
-                    <div className="truncate" title={r.clientName ?? ""}>{r.clientName ?? <span className="text-ink-soft/60">{m.invoices.noClient}</span>}</div>
-                  </td>
-                  <td className={`${cell} whitespace-nowrap`}>{fmtMs(r.issueMs)}</td>
-                  <td className={`${cell} whitespace-nowrap ${late ? "font-semibold text-st-cancelled" : ""}`} title={late ? t("Scadența a trecut") : undefined}>{fmtMs(r.dueMs)}</td>
-                  <td className={`${cell} whitespace-nowrap`}>
-                    {r.status === "PAID" ? (
-                      r.paidMs ? <span className="text-st-done">{fmtMs(r.paidMs)}</span> : <span className="text-ink-soft/70" title={t("Marcată plătită, dar data nu s-a înregistrat")}>?</span>
-                    ) : <span className="text-ink-soft/60">—</span>}
-                  </td>
-                  <td className={`${cell} whitespace-nowrap text-right font-semibold tabular-nums`}>{money(r.grandTotal, r.currency)}</td>
-                  <td className={`${cell} whitespace-nowrap text-right tabular-nums ${r.debt > 0.005 ? "text-st-cancelled" : r.debt < -0.005 ? "text-st-done" : "text-ink-soft/60"}`} title={r.debt > 0.005 ? t("Datorie din facturile trecute") : r.debt < -0.005 ? t("Avans plătit în plus") : undefined}>
-                    {r.kind === "APA_CANAL" && Math.abs(r.debt) > 0.005 ? `${r.debt > 0 ? "+" : "−"}${money(Math.abs(r.debt), r.currency)}` : "—"}
-                  </td>
-                  <td className={`${cell} whitespace-nowrap text-right tabular-nums`} title={r.paid != null ? t("Cât din această factură s-a achitat (dedus din datoria de pe factura următoare)") : t("Încă nu se știe: apare când se emite factura următoare")}>
-                    {r.kind === "APA_CANAL" && r.paid != null ? <span className={r.paid > 0.005 ? "text-st-done" : "text-ink-soft/70"}>{money(r.paid, r.currency)}</span> : <span className="text-ink-soft/60">—</span>}
-                  </td>
-                  <td className={cell}>
-                    <select
-                      value={r.status}
-                      disabled={!canEdit}
-                      onChange={(e) => changeStatus(r.id, e.target.value as InvoiceStatusKey)}
-                      className={`h-[18px] cursor-pointer disabled:cursor-not-allowed rounded-full border-0 px-1.5 text-[10px] font-medium outline-none ${st.cls}`}
-                      aria-label={`Status ${r.number}`}
-                    >
-                      {INVOICE_STATUS_LIST.map((s) => (
-                        <option key={s} value={s}>{t(INVOICE_STATUS[s].label)}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className={cell}>
-                    <div className="flex items-center gap-1">
-                      <InvoiceViewButton token={r.publicToken} title={`${r.number}${r.clientName ? ` · ${r.clientName}` : ""}`} className={btn} />
-                      {canEdit && <Link href={`/invoices/${r.id}/edit`} className={btn}>{m.common.edit}</Link>}
-                      <button type="button" onClick={() => copyLink(r.publicToken)} className={btn}>
-                        {copied === r.publicToken ? m.invoices.copied : m.invoices.copyLink}
-                      </button>
-                      <a href={`/invoice/public/${r.publicToken}`} target="_blank" rel="noopener noreferrer" className={btn}>
-                        {m.invoices.publicPdf} ↗
-                      </a>
-                      {canDelete && (
-                        <button type="button" onClick={() => remove(r.id)} className={`${btn} text-st-cancelled`} title={m.common.delete} aria-label={m.common.delete}>
-                          <IconTrash className="size-3" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-            {winEnd < rows.length && (
-              <tr aria-hidden>
-                <td colSpan={10} style={{ height: (rows.length - winEnd) * ROW_H, padding: 0, border: 0 }} />
-              </tr>
-            )}
-            {rows.length === 0 && !loading && (
-              <tr><td colSpan={10} className="p-8 text-center text-ink-soft">{m.invoices.noInvoices}</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      )}
+      <DataTable<InvRow>
+        storageKey="invoices"
+        rows={tableRows}
+        columns={serverMode ? columns.map((c) => ({ ...c, sort: undefined })) : columns}
+        showAllRows={serverMode}
+        filters={[]}
+        noun={t("facturi")}
+        emptyText={m.invoices.noInvoices}
+        pending={!useLocal && !serverMode ? { total: view.total } : undefined}
+        cardKeys={["number", "client", "total"]}
+      />
 
-      {totalPages > 1 && (
+
+      {serverMode && totalPages > 1 && (
         <div className="mt-3 flex flex-wrap items-center justify-center gap-1">
           <button
             disabled={page <= 1}
@@ -949,27 +758,9 @@ export default function InvoicesList({
 const btn =
   "tap inline-flex h-5 cursor-pointer items-center rounded border border-[var(--color-line)] px-1.5 text-[10px] leading-none hover:bg-brand-soft";
 
-const cardBtn =
-  "tap inline-flex h-7 cursor-pointer items-center rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] leading-none hover:bg-brand-soft";
 
 /** Scadența a trecut? (în afara componentei, ca randarea să rămână pură). */
 function isPast(ms: number | null): boolean {
   return ms != null && ms < Date.now();
 }
 
-function Th({ children, right, sortKey, q, onSort, disabled }: { children: React.ReactNode; right?: boolean; sortKey?: InvSort; q?: InvQuery; onSort?: (k: InvSort) => void; disabled?: boolean }) {
-  const active = !!sortKey && q?.sort === sortKey;
-  return (
-    <th
-      className={`border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1 font-semibold ${right ? "text-right" : "text-left"}`}
-      aria-sort={active ? (q?.dir === "asc" ? "ascending" : "descending") : undefined}
-    >
-      {sortKey && onSort && !disabled ? (
-        <button type="button" onClick={() => onSort(sortKey)} data-inv-sort={sortKey} className={`cursor-pointer font-semibold hover:text-brand ${active ? "text-brand" : ""}`}>
-          {children}
-          {active ? (q?.dir === "asc" ? " ▲" : " ▼") : ""}
-        </button>
-      ) : children}
-    </th>
-  );
-}

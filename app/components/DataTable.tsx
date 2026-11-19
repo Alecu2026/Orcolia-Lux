@@ -5,6 +5,7 @@ import TableColorsDialog from "./TableColorsDialog";
 import { useTableLook } from "./TableLookContext";
 import { colorVars, hasColors, headStyle, sanitizeColors, type TableColors } from "@/lib/table-look";
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useFitViewport } from "./useFitViewport";
 import {
   DEFAULT_PER_PAGE,
   NOTIFY_PER_PAGE,
@@ -181,6 +182,9 @@ export default function DataTable<T extends { id: string }>({
   rowColor,
   presetValues,
   pending,
+  onVisibleKeys,
+  cardRender,
+  showAllRows = false,
 }: {
   storageKey: string;
   rows: T[];
@@ -214,6 +218,12 @@ export default function DataTable<T extends { id: string }>({
    * (ar părea greșite), ci un mesaj; numărătoarea afișează totalul real.
    */
   pending?: { total: number };
+  /** Primește cheile coloanelor afișate acum (la fiecare schimbare): pagina poate încărca date doar pentru coloanele de care e nevoie. */
+  onVisibleKeys?: (keys: string[]) => void;
+  /** Aspect propriu al cardului din modul telefon (în loc de rezumatul implicit); trebuie să poarte `key` = id-ul rândului. */
+  cardRender?: (r: T) => ReactNode;
+  /** Lista primită e deja o pagină de pe server (paginarea o face pagina): tabelul arată toate rândurile ei, fără selectorul „Afișează” și fără paginare proprie. */
+  showAllRows?: boolean;
 }) {
   const t = useT();
   const [values, setValues] = useState<Record<string, string>>({});
@@ -250,6 +260,7 @@ export default function DataTable<T extends { id: string }>({
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const colsBox = useRef<HTMLDivElement>(null);
   const scrollBox = useRef<HTMLDivElement>(null);
+  const cardsBox = useRef<HTMLDivElement>(null);
   const scrollRaf = useRef(0);
   // Fereastra de randare a tabelului: poziția de derulare (rotunjită la câteva rânduri, ca să nu randăm la fiecare pixel), înălțimea vizibilă și înălțimea măsurată a unui rând.
   const [vwin, setVwin] = useState({ top: 0, h: 720 });
@@ -341,6 +352,11 @@ export default function DataTable<T extends { id: string }>({
   }, [columns, order]);
   const isVisible = (c: Col<T>) => vis[c.key] ?? !c.defaultHidden;
   const visibleCols = [...fixedStart, ...orderedLabeled.filter(isVisible), ...fixedEnd];
+  const visibleKeysStr = visibleCols.map((c) => c.key).join("|");
+  useEffect(() => {
+    onVisibleKeys?.(visibleKeysStr ? visibleKeysStr.split("|") : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleKeysStr]);
   const cardFields = (() => {
     const vis = orderedLabeled.filter(isVisible);
     if (!cardKeys?.length) return vis;
@@ -503,15 +519,17 @@ export default function DataTable<T extends { id: string }>({
   }, [sortedRows, filters, dvalues]);
 
   const total = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  // `showAllRows`: lista primită e deja o pagină (de pe server): fără paginare proprie, toate rândurile ei într-un singur ecran derulabil
+  const pp = showAllRows ? Math.max(rows.length, 1) : perPage;
+  const totalPages = Math.max(1, Math.ceil(total / pp));
   const curPage = Math.min(page, totalPages);
-  const pageRows = filtered.slice((curPage - 1) * perPage, curPage * perPage);
+  const pageRows = filtered.slice((curPage - 1) * pp, curPage * pp);
   const virt = !cards && pageRows.length > VIRT_MIN;
   const winStart = virt ? Math.min(Math.max(0, Math.floor(vwin.top / rowH) - VIRT_OVER), Math.max(0, pageRows.length - 1)) : 0;
   const winEnd = virt ? Math.min(pageRows.length, Math.ceil((vwin.top + vwin.h) / rowH) + VIRT_OVER) : pageRows.length;
   const shownRows = virt ? pageRows.slice(winStart, winEnd) : pageRows;
-  const from = total === 0 ? 0 : (curPage - 1) * perPage + 1;
-  const to = Math.min(curPage * perPage, total);
+  const from = total === 0 ? 0 : (curPage - 1) * pp + 1;
+  const to = Math.min(curPage * pp, total);
   const activeCount = Object.keys(draft).filter((k) => draft[k]).length;
   const hideRows = !!pending && activeCount > 0;
   const sortedByUser = sortKey !== (defaultSort?.key ?? "") || sortDir !== (defaultSort?.dir ?? "asc");
@@ -573,6 +591,10 @@ export default function DataTable<T extends { id: string }>({
   useEffect(() => {
     if (scrollBox.current) scrollBox.current.scrollTop = 0; // declanșează onScroll → fereastra revine sus
   }, [resetKey]);
+
+  // lista încape într-un ecran: zona cu rânduri primește înălțimea rămasă până la marginea de jos a ecranului (vezi useFitViewport)
+  const fitMax = useFitViewport(() => scrollBox.current ?? cardsBox.current, [cards, hideRows, pageRows.length, perPage, fOpen]);
+
 
 
   return (
@@ -708,7 +730,7 @@ export default function DataTable<T extends { id: string }>({
         </div>
         )}
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-ink-soft">
+        {!showAllRows && <label className="flex items-center gap-1.5 text-xs text-ink-soft">
           {t("Afișează")}
           <select
             value={perPage}
@@ -718,15 +740,16 @@ export default function DataTable<T extends { id: string }>({
           >
             {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
           </select>
-        </label>
+        </label>}
       </div>
 
       {hideRows ? (
         <div className="card animate-pulse p-8 text-center text-ink-soft">{t("Se încarcă lista completă… filtrele se aplică imediat ce e gata.")}</div>
       ) : cards ? (
-        <div className={`flex flex-col gap-1.5 ${TEXT_CLS[look.text]}`}>
+        <div ref={cardsBox} className={`flex flex-col gap-1.5 ${fitMax && pageRows.length <= 60 ? "overflow-y-auto overscroll-contain" : ""} ${TEXT_CLS[look.text]}`} style={fitMax && pageRows.length <= 60 ? { maxHeight: fitMax } : undefined}>
           {(() => {
             const renderCard = (r: T) => {
+            if (cardRender) return cardRender(r);
             // Rezumat: primele trei coloane vizibile (titlu + două valori scurte); restul se vede la desfacere.
             const [c0, c1, c2, ...rest] = cardFields;
             const initial = cardAvatar ? cardAvatar(r) : String(c0?.sort?.(r) ?? "").trim().charAt(0).toUpperCase();
@@ -765,7 +788,7 @@ export default function DataTable<T extends { id: string }>({
             };
             // Multe carduri (de ex. „Toate”): doar cele din zona vizibilă există în DOM.
             return pageRows.length > 60
-              ? <VirtualList count={pageRows.length} itemKey={(i) => pageRows[i].id} render={(i) => renderCard(pageRows[i])} estimate={52} />
+              ? <VirtualList count={pageRows.length} itemKey={(i) => pageRows[i].id} render={(i) => renderCard(pageRows[i])} estimate={cardRender ? 68 : 52} height={fitMax ? `${fitMax}px` : undefined} />
               : pageRows.map(renderCard);
           })()}
           {pageRows.length === 0 && (
@@ -779,7 +802,7 @@ export default function DataTable<T extends { id: string }>({
       <div
         ref={scrollBox}
         className="card dt-root overflow-auto"
-        style={{ maxHeight: perPage > 50 ? "max(78vh, 890px)" : undefined, ...colorVars(colors) }}
+        style={{ maxHeight: fitMax ?? (pp > 50 ? "max(78vh, 890px)" : undefined), ...colorVars(colors) }}
         onScroll={virt ? (e) => {
           const top = e.currentTarget.scrollTop;
           if (scrollRaf.current) return;

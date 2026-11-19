@@ -20,9 +20,7 @@ import {
   notifyCriterion,
   notifyCriterionKey,
   NOTIFY_MAX_RECIPIENTS,
-  NOTIFY_PER_PAGE,
   PER_PAGE_ALL,
-  perPageLabel,
   agoLabel,
   buildVars,
   countActiveFilters,
@@ -38,7 +36,6 @@ import {
 } from "@/lib/payer-notify";
 import { resolveNotifyFilterAction, type RecipientResult } from "@/app/actions/payer-notifications";
 import { INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatusKey } from "./invoice-meta";
-import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useToast } from "./toast";
 import { AGING_BUCKETS } from "@/lib/debt-aging";
 import { useLocale, useT } from "@/lib/i18n/context";
@@ -47,14 +44,12 @@ import { useFiltersOpen } from "./useFiltersOpen";
 import { dateTag } from "@/lib/i18n/t";
 import PayerNotifyDialog, { type Recipient } from "./PayerNotifyDialog";
 import PayerTemplatesDialog from "./PayerTemplatesDialog";
-import CompactCard, { CompactField } from "./CompactCard";
 import PayerDetailDialog, { type PayerPatch } from "./PayerDetailDialog";
 import ContractExpiry from "./ContractExpiry";
 import { CONTRACT_EXP_OPTIONS } from "@/lib/contract-expiry";
 import { METROLOGY_FILTER_OPTIONS } from "@/lib/metrology";
 import { PAYER_ISSUE_OPTIONS } from "@/lib/meter-issue-register";
 import PayerBulkDeleteDialog from "./PayerBulkDeleteDialog";
-import VirtualList from "./VirtualList";
 import { PAYERS_PP_COOKIE } from "@/lib/payer-prefs";
 import { usePayerDataset } from "./usePayerDataset";
 import SectorFilter from "./SectorFilter";
@@ -66,6 +61,11 @@ import {
   updatePayerTemplateAction,
 } from "@/app/actions/payer-templates";
 import type { PayerTemplate, PayerTemplateDraft } from "@/lib/payer-notify";
+import DataTable, { type Col } from "./DataTable";
+import { BRAND } from "@/lib/brand";
+import { ONEC_COLUMNS, type OneCColumn } from "@/lib/apa-canal-1c";
+import { HEAD, type OneCTuple } from "@/lib/onec-table";
+import { useOneCDataset } from "./useOneCDataset";
 
 type Page = { items: PayerRow[]; total: number };
 
@@ -105,6 +105,14 @@ const SAMPLE_VARS = buildVars({
   issues: "Sigiliu rupt sau lipsă (contor 123456)", issueDue: new Date(Date.now() + 10 * 86_400_000),
 });
 
+/** Valoarea unei coloane din tabelul 1C, ca text (sumele cu 2 zecimale, ca în „Tabel 1C”). */
+const MONEY_1C = new Set(["calculat", "datorieAvans", "deAchitat", "apaSuma", "canalSuma", "apaTarif", "canalTarif"]);
+function fmt1c(c: OneCColumn, v: string | number | null | undefined): string {
+  if (v == null || v === "") return "";
+  if (c.type === "num") return MONEY_1C.has(c.key) ? Number(v).toLocaleString("ro-RO", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(v);
+  return String(v);
+}
+
 function queryKey(f: NotifyFilters, page: number, perPage: number): string {
   return filtersToParams(sanitizeFilters(f), { page, perPage }).toString();
 }
@@ -115,11 +123,7 @@ type TextKey = "q" | "street" | "minDebt" | "maxDebt";
  * „Toate" înseamnă 19.000 de rânduri în memorie, dar în DOM stau doar cele vizibile (virtualizare): fără ea, desenarea tuturor era
  * sute de mii de noduri (măsurat: 343.000 de noduri și 220 MB pe telefon → fila pica, iar alegerea salvată se reaplica la fiecare deschidere).
  */
-/** Lățimile coloanelor tabelului (px): adresă (fixă la derulare orizontală), plătitor, cont, contract expiră, email, telefon, factură, scadență, de achitat, status, portal, facturi, ultima notificare. */
-const COL_W = [220, 200, 108, 92, 96, 96, 190, 108, 120, 80, 90, 72, 58, 52, 110];
 const SERVER_MAX_ROWS = 200; // doar cât timp lista completă nu e încă în browser (răspunsul vine de pe server)
-const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
-const ROW_H = 24; // înălțimea fixă a unui rând de tabel (necesară virtualizării)
 const BOOT_GUARD_MS = 120_000;
 
 export default function PayerNotifyManager({
@@ -139,6 +143,7 @@ export default function PayerNotifyManager({
   canEditInvoices = false,
   basePath = "/notificari-platitori",
   browseOnly = false,
+  topActions,
   canExport = true,
   nameFixCount = 0,
 }: {
@@ -166,6 +171,8 @@ export default function PayerNotifyManager({
   basePath?: string;
   /** Mod „răsfoire" (/platitori): același tabel, fără bife/trimitere/șabloane, cu export. */
   browseOnly?: boolean;
+  /** Butoane ale paginii (Tabel 1C, sincronizare, import…), puse în același rând compact cu filtrele și numărătoarea. */
+  topActions?: React.ReactNode;
   /** Permisiunea „Export plătitori”. */
   canExport?: boolean;
   /** Câte nume au „?" — arată bannerul de corectare (doar în modul răsfoire). */
@@ -213,28 +220,9 @@ export default function PayerNotifyManager({
   const [selected, setSelected] = useState<Map<string, number>>(new Map());
   const [resolving, setResolving] = useState(false);
   const resolveToken = useRef(0);
-  const lastClicked = useRef<number | null>(null);
   // ── Șabloane (optimist: UI-ul se schimbă pe loc, serverul confirmă din urmă; la eșec revenim + mesaj) ──
   const [templates, setTemplates] = useState<PayerTemplate[]>(initialTemplates);
   const [tplOpen, setTplOpen] = useState(false);
-  // Mod telefon: fiecare plătitor devine un card, cu câmpurile unul sub altul. `cardsPref` = alegerea utilizatorului; null = automat
-  // (carduri pe ecrane înguste, tabel pe restul). Se păstrează în localStorage.
-  const [cardsPref, setCardsPref] = useState<boolean | null>(null);
-  const [narrow, setNarrow] = useState(false);
-  const cards = cardsPref ?? narrow;
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setNarrow(window.matchMedia("(max-width: 639px)").matches);
-    try {
-      const v = localStorage.getItem("payer-notify-view");
-      if (v === "cards" || v === "table") setCardsPref(v === "cards");
-    } catch {}
-  }, []);
-  function toggleCards() {
-    const next = !cards;
-    setCardsPref(next);
-    try { localStorage.setItem("payer-notify-view", next ? "cards" : "table"); } catch {}
-  }
   const [detailRow, setDetailRow] = useState<PayerRow | null>(null);
 
   function createTemplate(d: PayerTemplateDraft) {
@@ -511,85 +499,6 @@ export default function PayerNotifyManager({
   // ── Selecție ──
   const pageRows = view.items;
 
-  // ── Virtualizare: din cele (până la 19.000) de rânduri ale paginii se desenează doar cele din zona vizibilă ──
-  const rowCount = showAll ? view.total : pageRows.length;
-  const virtualTable = !cards && rowCount > VIRTUAL_MIN;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollRaf = useRef(0);
-  const [vScroll, setVScroll] = useState({ top: 0, h: 800 });
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !virtualTable) return;
-    const upd = () => setVScroll((s) => (s.h === el.clientHeight ? s : { ...s, h: el.clientHeight }));
-    upd();
-    const obs = new ResizeObserver(upd);
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [virtualTable]);
-  // Alt filtru / altă pagină / altă sortare → tabelul revine sus (evenimentul de scroll actualizează poziția).
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [filters, page, perPage, cards]);
-  function onTableScroll(e: React.UIEvent<HTMLDivElement>) {
-    const top = e.currentTarget.scrollTop;
-    if (scrollRaf.current) return;
-    scrollRaf.current = requestAnimationFrame(() => {
-      scrollRaf.current = 0;
-      setVScroll((s) => (s.top === top ? s : { ...s, top }));
-    });
-  }
-  const winStart = virtualTable ? Math.max(0, Math.floor(vScroll.top / ROW_H) - 12) : 0;
-  const winEnd = virtualTable ? Math.min(rowCount, Math.ceil((vScroll.top + vScroll.h) / ROW_H) + 12) : pageRows.length;
-  const winRows = virtualTable ? pageRows.slice(winStart, Math.min(winEnd, pageRows.length)) : pageRows;
-  /** Carduri (mod telefon): listă virtualizată cu înălțimi variabile (cardurile se desfac la atingere). */
-  function renderRows(rows: PayerRow[], fn: (r: PayerRow, i: number) => React.ReactNode) {
-    const n = showAll ? view.total : rows.length;
-    if (n <= VIRTUAL_MIN) return rows.map(fn);
-    return (
-      <VirtualList
-        count={n}
-        itemKey={(i) => (rows[i] ? rows[i].id : `sk-${i}`)}
-        render={(i) => (rows[i] ? fn(rows[i], i) : <div className="h-11 animate-pulse rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)]" />)}
-      />
-    );
-  }
-  const allOnPage = pageRows.length > 0 && pageRows.every((r) => selected.has(r.id));
-  const someOnPage = pageRows.some((r) => selected.has(r.id));
-  const headerCheck = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (headerCheck.current) headerCheck.current.indeterminate = someOnPage && !allOnPage;
-  }, [someOnPage, allOnPage]);
-
-  function toggleRow(i: number, shift: boolean) {
-    const row = pageRows[i];
-    if (!row) return;
-    // Ultimul rând bifat se citește ACUM: funcția de mai jos rulează mai târziu, când `lastClicked` a fost deja mutat pe rândul curent
-    // (din cauza asta, Shift+click bifa doar rândul apăsat, nu și intervalul).
-    const last = lastClicked.current;
-    setSelected((prev) => {
-      const next = new Map(prev);
-      const on = !prev.has(row.id);
-      const from = shift && last !== null ? Math.min(last, i) : i;
-      const to = shift && last !== null ? Math.max(last, i) : i;
-      for (let j = from; j <= to; j++) {
-        const r = pageRows[j];
-        if (on) next.set(r.id, flagsOf(r));
-        else next.delete(r.id);
-      }
-      return next;
-    });
-    lastClicked.current = i;
-  }
-
-  function togglePage() {
-    setSelected((prev) => {
-      const next = new Map(prev);
-      if (allOnPage) pageRows.forEach((r) => next.delete(r.id));
-      else pageRows.forEach((r) => next.set(r.id, flagsOf(r)));
-      return next;
-    });
-  }
-
   async function selectAllMatching() {
     if (localList) {
       const capped = localList.slice(0, NOTIFY_MAX_RECIPIENTS);
@@ -664,15 +573,7 @@ export default function PayerNotifyManager({
     }
   }
 
-  const sortToggle = (up: NotifyFilters["sort"], down: NotifyFilters["sort"]) =>
-    setFilter({ sort: filters.sort === up ? down : filters.sort === down ? "" : up });
-  const arrow = (up: NotifyFilters["sort"], down: NotifyFilters["sort"]) =>
-    filters.sort === up ? "▲" : filters.sort === down ? "▼" : "↕";
 
-  const pageButtons = buildPageButtons(page, totalPages);
-  const from = view.total === 0 ? 0 : (page - 1) * uiPerPage + 1;
-  const to = Math.min(page * uiPerPage, view.total);
-  const colCount = 15 + (canSelect ? 1 : 0) + (canSend ? 1 : 0) + (canTask ? 1 : 0);
   /** Sarcină nouă pentru plătitor: pagina de sarcini deschide fereastra de creare cu clientul ales și adresa lui completată. */
   const taskHref = (r: PayerRow) => {
     const sp = new URLSearchParams({ create: "task", client: r.id, desc: [r.name, r.meterSeries ?? r.contract, r.phone].filter(Boolean).join(" · ") });
@@ -684,6 +585,143 @@ export default function PayerNotifyManager({
     if (r.phone) sp.set("phone", r.phone.replace(/[^\d+]/g, ""));
     return `/tickets?${sp.toString()}`;
   };
+
+  // ── Coloane (ca la Sarcini): se mută, se ascund, se redimensionează și se colorează din „⚙ Coloane”; alegerea rămâne salvată în browser, iar „Resetează” revine la cele de la început.
+  //    Din tabelul 1C se pot adăuga câte coloane vrei (ascunse implicit): datele se leagă de plătitor prin clientul din 1C (luna cea mai recentă) și se încarcă doar când alegi o astfel de coloană. ──
+  const [need1c, setNeed1c] = useState(false);
+  const oc = useOneCDataset(need1c ? "latest" : null);
+  const ocByClient = useMemo(() => {
+    const m = new Map<string, OneCTuple>();
+    for (const row of oc.rows ?? []) {
+      const cid = row[1];
+      if (typeof cid === "string" && cid) m.set(cid, row);
+    }
+    return m;
+  }, [oc.rows]);
+  function toggleOne(r: PayerRow) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (prev.has(r.id)) next.delete(r.id);
+      else next.set(r.id, flagsOf(r));
+      return next;
+    });
+  }
+  const dash = <Dash />;
+  const selCols: Col<PayerRow>[] = canSelect
+    ? [{
+        key: "sel", label: "", minW: 30,
+        render: (r) => <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleOne(r)} aria-label={`${t("Selectează")} ${r.name}`} className="block size-3.5 cursor-pointer accent-[var(--color-brand)]" />,
+      }]
+    : [];
+  const mainCols: Col<PayerRow>[] = [
+    { key: "address", label: "Adresă", minW: 220, maxW: 300, sticky: true, sort: (r) => r.consumAddress ?? "", render: (r) => r.consumAddress ?? dash },
+    { key: "name", label: "Plătitor", minW: 200, maxW: 280, sort: (r) => r.name, render: (r) => <span className="font-medium">{r.name}</span> },
+    { key: "account", label: "Cont / contract", minW: 108, sort: (r) => r.meterSeries ?? r.contract ?? "", render: (r) => r.meterSeries ?? r.contract ?? "—" },
+    { key: "contractExp", label: "Contract expiră", minW: 92, sort: (r) => r.contractExpiresAt ?? "", render: (r) => (r.contractExpiresAt ? <ContractExpiry date={r.contractExpiresAt} compact /> : dash) },
+    { key: "metro", label: "Verificare metrologică", minW: 96, sort: (r) => r.metrologyDueAt ?? "", render: (r) => (r.metrologyDueAt ? <ContractExpiry date={r.metrologyDueAt} compact /> : dash) },
+    {
+      key: "issues", label: "Nereguli contoare", minW: 96, sort: (r) => r.issuesOpen,
+      render: (r) => (r.issuesOpen > 0
+        ? <a href={`/contoare/nereguli?q=${encodeURIComponent(r.meterSeries ?? r.contract ?? r.name)}`} className="hover:underline" title={t("Vezi neregulile în „Nereguli contoare”")}><b>{r.issuesOpen}</b>{r.issueDueAt ? <> · <ContractExpiry date={r.issueDueAt} compact /></> : null}</a>
+        : dash),
+    },
+    {
+      key: "email", label: "Email", minW: 160, maxW: 240, sort: (r) => r.email ?? "",
+      render: (r) => (r.email ? <span className={flagsOf(r) & 1 ? "" : "text-st-progress"} title={flagsOf(r) & 1 ? r.email : `${t("Adresă invalidă")}: ${r.email}`}>{r.email}</span> : dash),
+    },
+    {
+      key: "phone", label: "Telefon", minW: 108, sort: (r) => r.phone ?? "",
+      render: (r) => (r.phone ? <span className={`tabular-nums ${flagsOf(r) & 2 ? "" : "text-st-progress"}`} title={flagsOf(r) & 2 ? undefined : t("Număr invalid pentru SMS")}>{r.phone}</span> : dash),
+    },
+    { key: "invoice", label: "Factură", minW: 120, sort: (r) => r.latestInvoice?.number ?? "", render: (r) => r.latestInvoice?.number ?? dash },
+    { key: "due", label: "Scadență", minW: 80, sort: (r) => r.latestInvoice?.dueDate ?? "", render: (r) => (r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : dash) },
+    {
+      key: "amount", label: "De achitat", minW: 90, right: true, sort: (r) => r.latestInvoice?.grandTotal ?? null,
+      render: (r) => (r.latestInvoice ? <span className={r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}>{money(r.latestInvoice.grandTotal)}</span> : dash),
+    },
+    {
+      key: "status", label: "Status", minW: 75, sort: (r) => r.latestInvoice?.status ?? "",
+      render: (r) => {
+        const st = r.latestInvoice ? INVOICE_STATUS[r.latestInvoice.status as InvoiceStatusKey] : null;
+        return st ? <span className={`inline-block rounded-full px-1.5 text-[10px] leading-[14px] font-medium ${st.cls}`}>{t(st.label)}</span> : dash;
+      },
+    },
+    {
+      key: "portal", label: "Portal", minW: 60, sort: (r) => (r.activated ? 1 : 0),
+      render: (r) => (r.activated ? <span className="text-st-done" title={t("Cont portal activat")}>✓ {t("activ")}</span> : <span className="text-ink-soft/60" title={t("Cont portal neactivat")}>—</span>),
+    },
+    { key: "invoices", label: "Facturi", minW: 55, right: true, sort: (r) => r.invoiceCount, render: (r) => <span className="text-ink-soft">{r.invoiceCount}</span> },
+    {
+      key: "notified", label: "Ultima notificare", minW: 110, sort: (r) => r.lastNotifiedAt ?? "",
+      render: (r) => (r.lastNotifiedAt
+        ? <span className={notifiedRecently(r.lastNotifiedAt) ? "font-medium text-st-done" : "text-ink-soft"} title={new Date(r.lastNotifiedAt).toLocaleString(tag)}>● {agoLabel(r.lastNotifiedAt, t)}</span>
+        : dash),
+    },
+  ];
+  // coloane din tabelul 1C (ascunse implicit; dacă eticheta există și printre cele de mai sus, se adaugă „(1C)” ca să se deosebească)
+  const mainLabels = new Set(mainCols.map((c) => c.label));
+  const oneCCols: Col<PayerRow>[] = ONEC_COLUMNS.map((c, i) => ({
+    key: `onec:${c.key}`,
+    label: mainLabels.has(c.label) ? `${c.label} (1C)` : c.label,
+    minW: Math.min(Math.max(c.w, 80), 180),
+    maxW: Math.max(c.w, 160),
+    right: c.type === "num",
+    defaultHidden: true,
+    sort: (r: PayerRow) => {
+      const v = ocByClient.get(r.id)?.[HEAD + i];
+      if (v == null || v === "") return null;
+      return c.type === "num" ? Number(v) : String(v);
+    },
+    render: (r: PayerRow) => (oc.rows ? fmt1c(c, ocByClient.get(r.id)?.[HEAD + i]) : oc.error ? "!" : "…"),
+  }));
+  const endCols: Col<PayerRow>[] = [
+    ...(canSend
+      ? [{
+          key: "send", label: "", minW: 36,
+          render: (r: PayerRow) => (
+            <button
+              type="button"
+              disabled={flagsOf(r) === 0}
+              onClick={() => openForRow(r)}
+              title={flagsOf(r) === 0 ? t("Fără email/telefon valid") : t("Trimite doar acestui plătitor")}
+              className="tap grid size-4 place-items-center rounded border border-[var(--color-line)] text-[9px] leading-none hover:bg-brand-soft disabled:opacity-30"
+            >
+              ✉
+            </button>
+          ),
+        }]
+      : []),
+    ...(canTask
+      ? [{
+          key: "task", label: "", minW: 56,
+          render: (r: PayerRow) => (
+            <span className="flex items-center gap-1">
+              <Link
+                href={taskHref(r)}
+                prefetch={false}
+                title={t("Creează sarcină pentru acest plătitor (adresa se completează singură)")}
+                aria-label={t("Creează sarcină pentru acest plătitor (adresa se completează singură)")}
+                className="grid size-4 place-items-center rounded bg-brand text-[11px] font-bold leading-none text-white hover:bg-brand-strong"
+              >
+                +
+              </Link>
+              <Link
+                href={ticketHref(r)}
+                prefetch={false}
+                data-new-ticket=""
+                title={t("Creează cerere pentru acest plătitor (datele lui se completează singure, și în șabloane)")}
+                aria-label={t("Creează cerere pentru acest plătitor (datele lui se completează singure, și în șabloane)")}
+                className="grid size-4 place-items-center rounded bg-st-progress text-[10px] font-bold leading-none text-white hover:opacity-80"
+              >
+                C
+              </Link>
+            </span>
+          ),
+        }]
+      : []),
+  ];
+  const columns: Col<PayerRow>[] = [...selCols, ...mainCols, ...oneCCols, ...endCols];
+
 
   return (
     <div>
@@ -711,57 +749,81 @@ export default function PayerNotifyManager({
         </button>
       )}
 
-      {/* ── Plăți pe luna aleasă: un click pe factura lunii (achitate / neachitate / restante / cu datorie / cu avans / cu plată primită / parțial) ── */}
-      {months.length > 0 && (() => {
-        const pm = filters.month || months[0].month;
-        // pe factura lunii X, plata facturii anterioare se vede din datoria de pe ea (factura X însăși nu poate fi încă „achitată”)
-        const TIPS: Record<string, string> = {
-          settled: "Au achitat factura anterioară: datoria de pe factura lunii alese e 0 (sau au avans)",
-          owes: "Nu au achitat integral factura anterioară: datoria s-a reportat pe factura lunii alese",
-          partial: "Au achitat doar o parte din factura anterioară",
-          advance: "Au plătit în plus: avans pe factura lunii alese",
-          paidprev: "Au plătit ceva între factura anterioară și cea a lunii alese",
-          overdue: "Facturi la care factura următoare a arătat datorie (restante confirmate)",
-          paidinv: "Factura lunii alese are statusul Achitată (se știe după ce factura următoare arată datorie 0, sau când avansul o acoperă)",
-        };
-        const chips: { key: string; label: string; status: string; bal: NotifyFilters["bal"] }[] = [
-          { key: "all", label: "Toate", status: "", bal: "" },
-          { key: "settled", label: "Achitate", status: "", bal: "settled" },
-          { key: "owes", label: "Neachitate", status: "", bal: "owes" },
-          { key: "partial", label: "Parțial achitate", status: "", bal: "partial" },
-          { key: "advance", label: "Cu avans", status: "", bal: "advance" },
-          { key: "paidprev", label: "Cu plată primită", status: "", bal: "paidprev" },
-          { key: "paidinv", label: "Factură achitată", status: "PAID", bal: "" },
-          { key: "overdue", label: "Restante", status: "OVERDUE", bal: "" },
-        ];
-        return (
-          <div className="mb-1.5 flex flex-wrap items-center gap-1.5" data-pay-chips="">
-            <span className="text-[11px] font-semibold text-ink-soft">{t("Plăți pe luna")}</span>
-            <select value={pm} onChange={(e) => setFilter({ month: e.target.value })} className={fld("x")} aria-label={t("Luna facturii")}>
-              {months.map((m) => <option key={m.month} value={m.month}>{monthLabel(m.month)} ({nf(m.count)})</option>)}
-            </select>
-            {chips.map((c) => {
-              const on = c.key === "all" ? !filters.invoiceStatus && !filters.bal : filters.invoiceStatus === c.status && filters.bal === c.bal;
-              return (
-                <button
-                  key={c.key}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => setFilter(on || c.key === "all" ? { invoiceStatus: "", bal: "" } : { invoiceStatus: c.status, bal: c.bal, month: pm })}
-                  title={TIPS[c.key] ? t(TIPS[c.key]) : t("Plătitorii după factura lunii alese; datoria și plățile sunt deduse din lanțul de facturi")}
-                  className={`tap h-7 cursor-pointer rounded-lg border px-2.5 text-[11px] ${on ? "border-brand bg-brand text-white font-semibold" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-                >
-                  {t(c.label)}
-                </button>
-              );
-            })}
-          </div>
-        );
-      })()}
-
-      {/* ── Filtre (stil Task-uri: colorate când sunt active) ─────────────────── */}
-      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+      {/* ── Bară compactă: filtre, număr, selecție, acțiuni, mod telefon și rânduri pe pagină — un singur rând (mai mult loc pentru listă) ── */}
+      <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         <FiltersToggle open={fOpen} onToggle={toggleF} activeCount={active} />
+        {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}
+        {ds.rows ? (
+          <button
+            type="button"
+            onClick={() => void ds.refresh()}
+            disabled={ds.loading}
+            title={t("Lista e ținută în memorie și filtrată instant în browser. Apasă ca să o reîncarci de pe server.")}
+            className="tap cursor-pointer text-ink-soft hover:text-brand disabled:cursor-default"
+          >
+            ⚡ {t("local")}{ds.loading ? ` · ${t("se reîmprospătează…")}` : ds.loadedAt ? ` · ${agoLabel(new Date(ds.loadedAt).toISOString(), t)}` : ""} ↻
+          </button>
+        ) : ds.loading ? (
+          <span className="text-ink-soft">{t("se încarcă lista completă…")}</span>
+        ) : null}
+        {canSelect && selCount > 0 && (
+          <span className="font-semibold text-brand">
+            {t("{n} selectați", { n: nf(selCount) })} {canSend && <span className="font-normal text-ink-soft">· {t("{n} cu email", { n: nf(selEmail) })} · {t("{n} cu telefon", { n: nf(selPhone) })}</span>}
+          </span>
+        )}
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {canSelect && view.total > 0 && (
+            <button
+              type="button"
+              onClick={selectAllMatching}
+              disabled={resolving}
+              title={view.total > pageRows.length ? t("Selectează toți cei {n} din filtru (toate paginile)", { n: nf(view.total) }) : t("Selectează toți cei {n} din filtru", { n: nf(view.total) })}
+              className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-60"
+            >
+              {resolving ? t("Se selectează…") : `☑ ${t("Toți {n}", { n: nf(view.total) })}`}
+            </button>
+          )}
+          {canSelect && selCount > 0 && (
+            <button type="button" onClick={() => setSelected(new Map())} className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] hover:bg-[var(--color-surface-2)]">
+              ✕ {t("Golește selecția")}
+            </button>
+          )}
+          {canSelect && canDelete && (
+            <button
+              type="button"
+              onClick={() => setDeleting(true)}
+              disabled={selCount === 0}
+              className="tap h-7 cursor-pointer rounded-lg border border-st-cancelled/40 px-2 text-[11px] font-semibold text-st-cancelled hover:bg-st-cancelled/10 disabled:cursor-default disabled:opacity-40"
+              title={t("Șterge plătitorii selectați (doar cei fără facturi etc.)")}
+            >
+              🗑 {t("Șterge selectați")}{selCount ? ` (${nf(selCount)})` : ""}
+            </button>
+          )}
+          {canSelect && canSend && (
+            <button
+              type="button"
+              onClick={openForSelection}
+              disabled={selCount === 0}
+              className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:cursor-default disabled:opacity-40"
+            >
+              ✉ {t("Trimite notificare")}{selCount ? ` (${nf(selCount)})` : ""}
+            </button>
+          )}
+          {canSend && (
+            <button
+              type="button"
+              onClick={() => setTplOpen(true)}
+              className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] font-medium hover:bg-brand-soft"
+              title={t("Creează, editează sau șterge șabloanele de mesaje")}
+            >
+              📝 {t("Șabloane")}{templates.length ? ` (${templates.length})` : ""}
+            </button>
+          )}
+          {topActions}
+        </div>
+      </div>
+
+      <div className={`flex-wrap items-center gap-1.5 ${fOpen ? "mb-1.5 flex" : "hidden"}`}>
         <div className={fOpen ? "contents" : "hidden"}>
         <input
           value={draft.q}
@@ -952,6 +1014,16 @@ export default function PayerNotifyManager({
           <option value="installDesc">{t("Instalare: recente")}</option>
           <option value="installAsc">{t("Instalare: vechi")}</option>
         </select>
+          {browseOnly && canExport && (
+            <span className="ml-auto">
+              <ExportButton
+                entity="payers"
+                params={{ ...Object.fromEntries(Object.entries(sanitizeFilters(filters)).filter(([, v]) => v)) }}
+                label={t("Export (cu filtrele)")}
+                className="tap inline-flex h-6 items-center gap-1 rounded-full border border-[var(--color-line)] px-2.5 text-[11px] hover:border-brand hover:bg-brand-soft"
+              />
+            </span>
+          )}
         </div>
         {(active > 0 || filters.sort) && (
           <button
@@ -963,121 +1035,6 @@ export default function PayerNotifyManager({
           </button>
         )}
       </div>
-
-      {/* Filtre rapide */}
-      <div className={`flex flex-wrap items-center gap-1 text-[11px] ${browseOnly || canSend ? "mb-2" : ""}`}>
-        {browseOnly && canExport && (
-          <span className="ml-auto">
-            <ExportButton
-              entity="payers"
-              params={{ ...Object.fromEntries(Object.entries(sanitizeFilters(filters)).filter(([, v]) => v)) }}
-              label={t("Export (cu filtrele)")}
-              className="tap inline-flex h-6 items-center gap-1 rounded-full border border-[var(--color-line)] px-2.5 text-[11px] hover:border-brand hover:bg-brand-soft"
-            />
-          </span>
-        )}
-        {canSend && (
-          <button
-            type="button"
-            onClick={() => setTplOpen(true)}
-            className="tap ml-auto h-6 rounded-full border border-[var(--color-line)] px-3 hover:border-brand hover:bg-brand-soft"
-            title={t("Creează, editează sau șterge șabloanele de mesaje")}
-          >
-            📝 {t("Șabloane")}{templates.length ? ` (${templates.length})` : ""}
-          </button>
-        )}
-      </div>
-
-      {/* ── Bară de selecție / acțiuni ─────────────────────────────────────── */}
-      {canSelect && (
-        <div className={`mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs ${selCount ? "border-brand bg-brand/10" : "border-[var(--color-line)] bg-[var(--color-surface-2)]"}`}>
-          {selCount > 0 ? (
-            <span className="font-semibold text-brand">
-              {t("{n} selectați", { n: nf(selCount) })} {canSend && <span className="font-normal text-ink-soft">· {t("{n} cu email", { n: nf(selEmail) })} · {t("{n} cu telefon", { n: nf(selPhone) })}</span>}
-            </span>
-          ) : (
-            <span className="text-ink-soft">{t("Bifează plătitorii (Shift = interval) sau selectează-i pe toți din filtru. Click pe un rând = datele lui.")}</span>
-          )}
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {view.total > 0 && (
-              <button
-                type="button"
-                onClick={selectAllMatching}
-                disabled={resolving}
-                className="tap h-7 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] font-medium hover:bg-brand-soft disabled:opacity-60"
-              >
-                {resolving ? t("Se selectează…") : (view.total > pageRows.length ? t("Selectează toți cei {n} din filtru (toate paginile)", { n: nf(view.total) }) : t("Selectează toți cei {n} din filtru", { n: nf(view.total) }))}
-              </button>
-            )}
-            {selCount > 0 && (
-              <button type="button" onClick={() => setSelected(new Map())} className="tap h-7 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] hover:bg-[var(--color-surface-2)]">
-                {t("Golește selecția")}
-              </button>
-            )}
-            {canDelete && (
-              <button
-                type="button"
-                onClick={() => setDeleting(true)}
-                disabled={selCount === 0}
-                className="tap h-7 rounded-lg border border-st-cancelled/40 px-3 text-[11px] font-semibold text-st-cancelled hover:bg-st-cancelled/10 disabled:opacity-40"
-                title={t("Șterge plătitorii selectați (doar cei fără facturi etc.)")}
-              >
-                🗑 {t("Șterge selectați")}{selCount ? ` (${nf(selCount)})` : ""}
-              </button>
-            )}
-            {canSend && (
-              <button
-                type="button"
-                onClick={openForSelection}
-                disabled={selCount === 0}
-                className="tap h-7 rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong disabled:opacity-40"
-              >
-                ✉ {t("Trimite notificare")}{selCount ? ` (${nf(selCount)})` : ""}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Sumar + rânduri pe pagină ─────────────────────────────────────── */}
-      <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-        <span><b>{nf(view.total)}</b> {t("plătitori")}{active > 0 ? ` ${t("(filtrat)")}` : ""}</span>
-        {view.total > 0 && <span className="text-ink-soft">{t("afișați {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(view.total) })}{totalPages > 1 ? ` · ${t("pagina {cur}/{pages}", { cur: page, pages: totalPages })}` : ""}</span>}
-        {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}
-        {ds.rows ? (
-          <button
-            type="button"
-            onClick={() => void ds.refresh()}
-            disabled={ds.loading}
-            title={t("Lista e ținută în memorie și filtrată instant în browser. Apasă ca să o reîncarci de pe server.")}
-            className="tap cursor-pointer text-ink-soft hover:text-brand disabled:cursor-default"
-          >
-            ⚡ {t("local")}{ds.loading ? ` · ${t("se reîmprospătează…")}` : ds.loadedAt ? ` · ${agoLabel(new Date(ds.loadedAt).toISOString(), t)}` : ""} ↻
-          </button>
-        ) : ds.loading ? (
-          <span className="text-ink-soft">{t("se încarcă lista completă…")}</span>
-        ) : null}
-        <button
-          type="button"
-          onClick={toggleCards}
-          aria-pressed={cards}
-          title={cards ? t("Înapoi la tabel") : t("Afișează plătitorii într-o coloană mică; apeși pe unul ca să vezi detaliile (potrivit pentru telefon)")}
-          className={`tap ml-auto h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-        >
-          {cards ? `▦ ${t("Tabel")}` : `📱 ${t("Mod telefon")}`}
-        </button>
-        <label className="flex items-center gap-1.5 text-xs text-ink-soft">
-          {t("Afișează")}
-          <select
-            value={wantPerPage}
-            onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
-            className={fld(wantPerPage === DEFAULT_PER_PAGE ? "" : "x")}
-            aria-label={t("Rânduri pe pagină")}
-          >
-            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
-          </select>
-        </label>
-      </div>
       {loading && <div className="mb-2 h-0.5 animate-pulse rounded-full bg-brand opacity-60" />}
       {error && (
         <p className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
@@ -1086,313 +1043,26 @@ export default function PayerNotifyManager({
         </p>
       )}
 
-      {/* ── Tabel (stil 1C) ───────────────────────────────────────────────── */}
-      {cards ? (
-        <div className={`flex flex-col gap-1.5 transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
-          {renderRows(pageRows, (r, i) => {
-            const sel = selected.has(r.id);
-            const st = r.latestInvoice ? INVOICE_STATUS[r.latestInvoice.status as InvoiceStatusKey] : null;
-            const flags = flagsOf(r);
-            const recent = notifiedRecently(r.lastNotifiedAt);
-            return (
-              <CompactCard
-                key={r.id}
-                selected={sel}
-                avatar={r.name.trim().charAt(0).toUpperCase()}
-                leading={
-                  canSelect ? (
-                    <input
-                      type="checkbox"
-                      checked={sel}
-                      onChange={() => toggleRow(i, false)}
-                      className="size-4 shrink-0 cursor-pointer accent-[var(--color-brand)]"
-                      aria-label={`${t("Selectează")} ${r.name}`}
-                    />
-                  ) : undefined
-                }
-                title={r.name}
-                subtitle={
-                  <>
-                    <span>{r.meterSeries ?? r.contract ?? "—"}</span>
-                    {st && <span className={`inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{t(st.label)}</span>}
-                  </>
-                }
-                trailing={r.latestInvoice ? <span className={`tabular-nums ${r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>{money(r.latestInvoice.grandTotal)}</span> : undefined}
-              >
-                <dl>
-                  <CompactField label={t("Adresă")}>{r.consumAddress ?? <Dash />}</CompactField>
-                  <CompactField label={t("Email")}>
-                    {r.email ? <span className={flags & 1 ? "" : "text-st-progress"} title={flags & 1 ? undefined : t("Adresă invalidă")}>{r.email}</span> : <Dash />}
-                  </CompactField>
-                  <CompactField label={t("Telefon")}>
-                    {r.phone ? <span className={`tabular-nums ${flags & 2 ? "" : "text-st-progress"}`} title={flags & 2 ? undefined : t("Număr invalid pentru SMS")}>{r.phone}</span> : <Dash />}
-                  </CompactField>
-                  <CompactField label={t("Contract expiră")}>{r.contractExpiresAt ? <ContractExpiry date={r.contractExpiresAt} compact /> : <Dash />}</CompactField>
-                  <CompactField label={t("Verificare metrologică")}>{r.metrologyDueAt ? <ContractExpiry date={r.metrologyDueAt} compact /> : <Dash />}</CompactField>
-                  <CompactField label={t("Nereguli contoare")}>{r.issuesOpen > 0 ? <>{r.issuesOpen}{r.issueDueAt ? <> · <ContractExpiry date={r.issueDueAt} compact /></> : null}</> : <Dash />}</CompactField>
-                  <CompactField label={t("Factură")}>{r.latestInvoice?.number ?? <Dash />}</CompactField>
-                  <CompactField label={t("Scadență")}>{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</CompactField>
-                  <CompactField label={t("Portal")}>{r.activated ? <span className="text-st-done">✓ {t("activ")}</span> : <span className="text-ink-soft/60">—</span>}</CompactField>
-                  <CompactField label={t("Facturi")}>{r.invoiceCount}</CompactField>
-                  <CompactField label={t("Ultima notificare")}>
-                    {r.lastNotifiedAt ? <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt, t)}</span> : <Dash />}
-                  </CompactField>
-                </dl>
-                <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-line)]/60 px-2.5 py-1.5">
-                  <button type="button" onClick={() => setDetailRow(r)} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">{t("Fișa plătitorului")}</button>
-                  {canSend && (
-                    <button
-                      type="button"
-                      disabled={flags === 0}
-                      onClick={() => openForRow(r)}
-                      title={flags === 0 ? t("Fără email/telefon valid") : t("Trimite doar acestui plătitor")}
-                      className="tap h-7 cursor-pointer rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft disabled:cursor-default disabled:opacity-30"
-                    >
-                      ✉ {t("Trimite")}
-                    </button>
-                  )}
-                  {canTask && (
-                    <Link href={taskHref(r)} prefetch={false} className="tap inline-flex h-7 items-center rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft">
-                      + {t("Sarcină")}
-                    </Link>
-                  )}
-                  {canTask && (
-                    <Link href={ticketHref(r)} prefetch={false} data-new-ticket="" className="tap inline-flex h-7 items-center rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft">
-                      + {t("Cerere")}
-                    </Link>
-                  )}
-                </div>
-              </CompactCard>
-            );
-          })}
-          {pageRows.length === 0 && !loading && (
-            <div className="card p-8 text-center text-ink-soft">
-              {t("Niciun plătitor cu filtrele acestea.")}{" "}
-              {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">{t("Resetează filtrele")}</button>}
-            </div>
-          )}
-        </div>
-      ) : (
-      <div
-        ref={scrollRef}
-        onScroll={virtualTable ? onTableScroll : undefined}
-        className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}
-        style={{ maxHeight: rowCount > 50 ? "max(78vh, 890px)" : undefined }}
-      >
-        <table className="min-w-full table-fixed border-separate border-spacing-0 text-[11px] leading-[14px]" style={{ width: COL_W.reduce((a, b) => a + b, 0) + (canSelect ? 28 : 0) + (canSend ? 32 : 0) + (canTask ? 50 : 0) }}>
-          <colgroup>
-            {canSelect && <col style={{ width: 28 }} />}
-            {COL_W.map((w, i) => <col key={i} style={{ width: w }} />)}
-            {canSend && <col style={{ width: 32 }} />}
-            {canTask && <col style={{ width: 50 }} />}
-          </colgroup>
-          <thead className="sticky top-0 z-20 bg-[var(--color-surface-2)]">
-            <tr>
-              {canSelect && (
-                <th className="sticky left-0 z-30 w-7 border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1">
-                  <input
-                    ref={headerCheck}
-                    type="checkbox"
-                    checked={allOnPage}
-                    onChange={togglePage}
-                    className="size-3 accent-[var(--color-brand)]"
-                    aria-label={t("Selectează pagina")}
-                  />
-                </th>
-              )}
-              <Th sticky={canSelect ? "left-7" : "left-0"} minW={220}>{t("Adresă")}</Th>
-              <Th minW={200}>
-                <button type="button" onClick={() => setFilter({ sort: "" })} className="font-semibold hover:text-brand">{t("Plătitor")}</button>
-              </Th>
-              <Th minW={108}>{t("Cont / contract")}</Th>
-              <Th minW={80}>{t("Contract expiră")}</Th>
-              <Th minW={96}>{t("Verificare metrologică")}</Th>
-              <Th minW={96}>{t("Nereguli contoare")}</Th>
-              <Th minW={160}>{t("Email")}</Th>
-              <Th minW={108}>{t("Telefon")}</Th>
-              <Th minW={120}>{t("Factură")}</Th>
-              <Th minW={70}>{t("Scadență")}</Th>
-              <Th minW={80} right>
-                <button type="button" onClick={() => sortToggle("debtDesc", "debtAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-                  {t("De achitat")} <span className="text-[10px] text-ink-soft">{arrow("debtDesc", "debtAsc")}</span>
-                </button>
-              </Th>
-              <Th minW={65}>{t("Status")}</Th>
-              <Th minW={50}>{t("Portal")}</Th>
-              <Th minW={45} right>{t("Facturi")}</Th>
-              <Th minW={95}>{t("Ultima notificare")}</Th>
-              {canSend && <Th minW={32}> </Th>}
-              {canTask && <Th minW={50}> </Th>}
-            </tr>
-          </thead>
-          <tbody>
-            {winStart > 0 && (
-              <tr aria-hidden>
-                <td colSpan={colCount} style={{ height: winStart * ROW_H, padding: 0, border: 0 }} />
-              </tr>
-            )}
-            {winRows.map((r, k) => {
-              const i = winStart + k;
-              const sel = selected.has(r.id);
-              const st = r.latestInvoice ? INVOICE_STATUS[r.latestInvoice.status as InvoiceStatusKey] : null;
-              const flags = flagsOf(r);
-              const recent = notifiedRecently(r.lastNotifiedAt);
-              const bg = sel ? "bg-brand-soft" : "bg-[var(--color-surface)]";
-              return (
-                <tr
-                  key={r.id}
-                  onClick={() => setDetailRow(r)}
-                  style={{ height: ROW_H }}
-                  className={`cursor-pointer ${sel ? "bg-brand-soft/60" : "hover:bg-brand-soft/30"}`}
-                >
-                  {canSelect && (
-                    <td
-                      className={`sticky left-0 z-10 cursor-pointer border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px ${bg}`}
-                      onClick={(e) => { e.stopPropagation(); toggleRow(i, e.shiftKey); }}
-                      onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
-                      title={t("Bifează (Shift = interval)")}
-                    >
-                      <input type="checkbox" checked={sel} readOnly tabIndex={-1} className="pointer-events-none block size-3 accent-[var(--color-brand)]" aria-label={`${t("Selectează")} ${r.name}`} />
-                    </td>
-                  )}
-                  <td className={`sticky ${canSelect ? "left-7" : "left-0"} z-10 border-b border-r border-[var(--color-line)] px-1.5 py-px ${bg}`} style={{ maxWidth: 220 }}>
-                    <div className="truncate" title={r.consumAddress ?? ""}>{r.consumAddress ?? <Dash />}</div>
-                  </td>
-                  <td className="border-b border-[var(--color-line)] px-1.5 py-px font-medium" style={{ maxWidth: 200 }}>
-                    <div className="truncate hover:text-brand" title={r.name}>{r.name}</div>
-                  </td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" title={r.meterSeries ?? r.contract ?? ""}>{r.meterSeries ?? r.contract ?? "—"}</td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px tabular-nums">{r.contractExpiresAt ? <ContractExpiry date={r.contractExpiresAt} compact /> : <Dash />}</td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px tabular-nums" data-metro={r.metrologyDueAt ?? ""}>{r.metrologyDueAt ? <ContractExpiry date={r.metrologyDueAt} compact /> : <Dash />}</td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px tabular-nums" data-issues={r.issuesOpen}>{r.issuesOpen > 0 ? <a href={`/contoare/nereguli?q=${encodeURIComponent(r.meterSeries ?? r.contract ?? r.name)}`} onClick={(e) => e.stopPropagation()} className="hover:underline" title={t("Vezi neregulile în „Nereguli contoare”")}><b>{r.issuesOpen}</b>{r.issueDueAt ? <> · <ContractExpiry date={r.issueDueAt} compact /></> : null}</a> : <Dash />}</td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" style={{ maxWidth: 190 }}>
-                    {r.email ? (
-                      <div className={`truncate ${flags & 1 ? "" : "text-st-progress"}`} title={flags & 1 ? r.email : `${t("Adresă invalidă")}: ${r.email}`}>{r.email}</div>
-                    ) : <Dash />}
-                  </td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px tabular-nums">
-                    {r.phone ? (
-                      <span className={flags & 2 ? "" : "text-st-progress"} title={flags & 2 ? undefined : t("Număr invalid pentru SMS")}>{r.phone}</span>
-                    ) : <Dash />}
-                  </td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" title={r.latestInvoice?.number ?? ""}>{r.latestInvoice?.number ?? <Dash />}</td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px">{r.latestInvoice?.dueDate ? fmtDay(r.latestInvoice.dueDate) : <Dash />}</td>
-                  <td className={`border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px text-right tabular-nums ${r.latestInvoice && r.latestInvoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>
-                    {r.latestInvoice ? money(r.latestInvoice.grandTotal) : <Dash />}
-                  </td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px">
-                    {st ? <span className={`inline-block rounded-full px-1.5 text-[10px] leading-[14px] font-medium ${st.cls}`}>{t(st.label)}</span> : <Dash />}
-                  </td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" title={r.activated ? t("Cont portal activat") : t("Cont portal neactivat")}>
-                    {r.activated ? <span className="text-st-done">✓ {t("activ")}</span> : <span className="text-ink-soft/60">—</span>}
-                  </td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px text-right tabular-nums text-ink-soft">{r.invoiceCount}</td>
-                  <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px whitespace-nowrap" title={r.lastNotifiedAt ? new Date(r.lastNotifiedAt).toLocaleString(tag) : t("Niciodată notificat")}>
-                    {r.lastNotifiedAt ? (
-                      <span className={recent ? "font-medium text-st-done" : "text-ink-soft"}>● {agoLabel(r.lastNotifiedAt, t)}</span>
-                    ) : <Dash />}
-                  </td>
-                  {canSend && (
-                    <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px">
-                      <button
-                        type="button"
-                        disabled={flags === 0}
-                        onClick={(e) => { e.stopPropagation(); openForRow(r); }}
-                        title={flags === 0 ? t("Fără email/telefon valid") : t("Trimite doar acestui plătitor")}
-                        className="tap grid size-4 place-items-center rounded border text-[9px] leading-none border-[var(--color-line)] hover:bg-brand-soft disabled:opacity-30"
-                      >
-                        ✉
-                      </button>
-                    </td>
-                  )}
-                  {canTask && (
-                    <td className="border-b border-[var(--color-line)] overflow-hidden text-ellipsis whitespace-nowrap px-1.5 py-px" onClick={(e) => e.stopPropagation()}>
-                      <span className="flex items-center gap-1">
-                        <Link
-                          href={taskHref(r)}
-                          prefetch={false}
-                          title={t("Creează sarcină pentru acest plătitor (adresa se completează singură)")}
-                          aria-label={t("Creează sarcină pentru acest plătitor (adresa se completează singură)")}
-                          className="grid size-4 place-items-center rounded bg-brand text-[11px] font-bold leading-none text-white hover:bg-brand-strong"
-                        >
-                          +
-                        </Link>
-                        <Link
-                          href={ticketHref(r)}
-                          prefetch={false}
-                          data-new-ticket=""
-                          title={t("Creează cerere pentru acest plătitor (datele lui se completează singure, și în șabloane)")}
-                          aria-label={t("Creează cerere pentru acest plătitor (datele lui se completează singure, și în șabloane)")}
-                          className="grid size-4 place-items-center rounded bg-st-progress text-[10px] font-bold leading-none text-white hover:opacity-80"
-                        >
-                          C
-                        </Link>
-                      </span>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-            {winEnd > pageRows.length && winStart < winEnd &&
-              Array.from({ length: winEnd - Math.max(winStart, pageRows.length) }, (_, k) => (
-                <tr key={`sk-${Math.max(winStart, pageRows.length) + k}`} aria-hidden style={{ height: ROW_H }}>
-                  <td colSpan={colCount} className="border-b border-[var(--color-line)] px-2 text-ink-soft/40">…</td>
-                </tr>
-              ))}
-            {winEnd < rowCount && (
-              <tr aria-hidden>
-                <td colSpan={colCount} style={{ height: (rowCount - winEnd) * ROW_H, padding: 0, border: 0 }} />
-              </tr>
-            )}
-            {pageRows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={colCount} className="p-8 text-center text-ink-soft">
-                  {t("Niciun plătitor cu filtrele acestea.")}{" "}
-                  {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">{t("Resetează filtrele")}</button>}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {!localList && view.total > data.items.length && !loading && (
+        <p className="mb-1 text-[11px] text-ink-soft">
+          {t("Se afișează doar primele {n} rânduri; restul apar când se încarcă lista completă.", { n: nf(data.items.length) })}{" "}
+          <button type="button" onClick={reload} className="cursor-pointer font-semibold text-brand underline">{t("Reîncearcă")}</button>
+        </p>
       )}
-
-      {/* ── Paginare numerică (ca în Task-uri) ─────────────────────────────── */}
-      {view.total > 0 && (
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-            className="tap grid size-7 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
-            aria-label={t("Pagina anterioară")}
-          >
-            <IconChevronLeft className="size-4" />
-          </button>
-          {pageButtons.map((b, i) =>
-            b === "…" ? (
-              <span key={`e${i}`} className="flex h-7 w-6 items-center justify-center text-sm text-ink-soft">…</span>
-            ) : (
-              <button
-                key={b}
-                onClick={() => setPage(b)}
-                className={`tap h-7 min-w-[28px] rounded-lg px-2 text-xs font-medium ${
-                  b === page ? "bg-brand text-white" : "border border-[var(--color-line)] text-ink hover:bg-[var(--color-surface-2)]"
-                }`}
-              >
-                {b}
-              </button>
-            ),
-          )}
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage(page + 1)}
-            className="tap grid size-7 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
-            aria-label={t("Pagina următoare")}
-          >
-            <IconChevronRight className="size-4" />
-          </button>
-        </div>
-      )}
+      <DataTable<PayerRow>
+        storageKey={browseOnly ? "payers" : "payer-notify"}
+        rows={localList ?? data.items}
+        columns={columns}
+        filters={[]}
+        noun={t("plătitori")}
+        emptyText={t("Niciun plătitor cu filtrele acestea.")}
+        pending={localList ? undefined : { total: view.total }}
+        onRowClick={(r) => setDetailRow(r)}
+        rowClickSkipsControls
+        rowColor={(r) => (selected.has(r.id) ? BRAND.brand : null)}
+        cardKeys={["name", "address", "amount"]}
+        onVisibleKeys={(keys) => setNeed1c(keys.some((k) => k.startsWith("onec:")))}
+      />
 
       {tplOpen && (
         <PayerTemplatesDialog
@@ -1465,36 +1135,5 @@ function Dash() {
   return <span className="text-ink-soft/60">—</span>;
 }
 
-function Th({
-  children, minW, right, sticky,
-}: {
-  children: React.ReactNode;
-  minW: number;
-  right?: boolean;
-  sticky?: string;
-}) {
-  return (
-    <th
-      style={{ minWidth: minW }}
-      className={`border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 py-1 font-semibold ${right ? "text-right" : "text-left"} ${
-        sticky ? `sticky ${sticky} z-30` : ""
-      }`}
-    >
-      {children}
-    </th>
-  );
-}
 
 /** Butoanele de paginare cu „…" pentru spații mari (aceeași logică ca în Task-uri). */
-function buildPageButtons(current: number, total: number): (number | "…")[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = new Set<number>([1, total]);
-  for (let i = Math.max(2, current - 2); i <= Math.min(total - 1, current + 2); i++) pages.add(i);
-  const sorted = [...pages].sort((a, b) => a - b);
-  const out: (number | "…")[] = [];
-  for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i] - sorted[i - 1] > 1) out.push("…");
-    out.push(sorted[i]);
-  }
-  return out;
-}

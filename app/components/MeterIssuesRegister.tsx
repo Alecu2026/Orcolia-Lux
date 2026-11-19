@@ -1,31 +1,18 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { resolveIssueAction } from "@/app/actions/meter-routes";
 import { countActiveIssueFilters, countIssues, EMPTY_ISSUE_FILTERS, filterIssues, type IssueFilters, type IssueRow } from "@/lib/meter-issue-register";
 import { ISSUE_LABELS, ISSUE_KINDS, SERIOUS_ISSUES, type IssueDto, type IssueRegisterRow } from "@/lib/meter-issues";
-import { DEFAULT_PER_PAGE, NOTIFY_PER_PAGE, PER_PAGE_ALL, normalizePerPageClient, perPageLabel } from "@/lib/payer-notify";
-import { ISSUES_PP_COOKIE } from "@/lib/payer-prefs";
 import { useT } from "@/lib/i18n/context";
-import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useToast } from "./toast";
+import DataTable, { type Col } from "./DataTable";
 import { useIssueDataset } from "./useIssueDataset";
 import IssueEditDialog from "./IssueEditDialog";
 import IssueMessagesDialog from "./IssueMessagesDialog";
 import type { AutoNotifySettings } from "@/lib/auto-notify";
 import type { IssueMessages } from "@/lib/issue-messages";
-
-const ROW_H = 38;
-const VIEW_H = 640; // înălțimea zonei derulabile a tabelului când rândurile sunt virtualizate
-const VIRT_MIN = 60; // peste atâtea rânduri pe pagină se desenează doar cele vizibile
-// Contor, Abonat, Tip, Responsabil, Secția, Termen de remediere, Stare, Rezolvat de, Raportat, Adresă, acțiuni
-const COLS_HEAD = [104, 158, 150, 92, 112, 196, 92, 176, 88, 190];
-/** Lățimea coloanei de acțiuni: butoanele stau pe un singur rând, deci coloana trebuie să le încapă (Editează 92 + Rezolvată 104 + Cerere 84 + spații). */
-const actionsWidth = (edit: boolean, resolve: boolean, ticket: boolean) => {
-  const w = [edit ? 76 : 0, resolve ? 84 : 0, ticket ? 68 : 0].filter(Boolean);
-  return w.reduce((a, b) => a + b, 0) + Math.max(0, w.length - 1) * 4 + 12;
-};
 
 /** Butoanele din rândul neregulii: text pe un singur rând, aceeași înălțime, fără să se strângă (altfel textul trecea pe al doilea rând și ieșea din chenar). */
 const ACT_BTN = "tap inline-flex h-6 shrink-0 cursor-pointer items-center gap-0.5 whitespace-nowrap rounded-md border bg-[var(--color-surface)] px-1.5 text-[10px] font-medium leading-none";
@@ -42,7 +29,6 @@ const dmy = (k: string | null | undefined) => (k ? k.slice(0, 10).split("-").rev
 export default function MeterIssuesRegister({
   initialRows,
   initialFilters,
-  initialPerPage,
   teams,
   canManage: canManageServer,
   canTicket = false,
@@ -82,21 +68,13 @@ export default function MeterIssuesRegister({
   /** Marchează rezolvată: cine gestionează contoarele sau membrul secției responsabile. */
   const canResolve = (r: { _o: boolean; teamId: string | null }) => r._o && (canManage || (!!r.teamId && ownTeamIds.includes(r.teamId)));
   const [filters, setFilters] = useState<IssueFilters>(initialFilters);
-  const [perPage, setPerPage] = useState(normalizePerPageClient(initialPerPage));
-  const [page, setPage] = useState(1);
   const [edit, setEdit] = useState<IssueRow | null>(null);
   const [msgOpen, setMsgOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [scroll, setScroll] = useState(0);
-  const box = useRef<HTMLDivElement>(null);
   const q = useDeferredValue(filters.q);
 
   const list = useMemo(() => filterIssues(ds.rows, { ...filters, q }, ownTeamIds), [ds.rows, filters, q, ownTeamIds]);
   const counts = useMemo(() => countIssues(ds.rows), [ds.rows]);
-  const uiPerPage = perPage === PER_PAGE_ALL ? Math.max(list.length, 1) : perPage;
-  const totalPages = Math.max(1, Math.ceil(list.length / uiPerPage));
-  const cur = Math.min(page, totalPages);
-  const pageRows = useMemo(() => list.slice((cur - 1) * uiPerPage, cur * uiPerPage), [list, cur, uiPerPage]);
   /** Cine vede toate neregulile și are o secție pornește pe „Secția mea”; revenirea la filtrele implicite păstrează asta. */
   const defaultTeam = !restricted && ownTeamIds.length > 0 ? "mine" : "";
   const baseFilters: IssueFilters = { ...EMPTY_ISSUE_FILTERS, team: defaultTeam };
@@ -104,10 +82,9 @@ export default function MeterIssuesRegister({
 
   const setFilter = useCallback((patch: Partial<IssueFilters>) => {
     setFilters((f) => ({ ...f, ...patch }));
-    setPage(1);
   }, []);
 
-  // adresa + preferința „câte pe pagină” (cookie → prima randare de pe server)
+  // adresa (filtrele rămân în link)
   useEffect(() => {
     const usp = new URLSearchParams();
     for (const [k, v] of Object.entries(filters)) {
@@ -116,19 +93,8 @@ export default function MeterIssuesRegister({
     const qs = usp.toString();
     try {
       window.history.replaceState(null, "", `/contoare/nereguli${qs ? `?${qs}` : ""}`);
-      document.cookie = `${ISSUES_PP_COOKIE}=${perPage}; path=/; max-age=31536000; samesite=lax`;
     } catch {}
-  }, [filters, perPage, defaultTeam]);
-
-  useEffect(() => {
-    if (box.current) box.current.scrollTop = 0;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- inițializare / resetare declanșată de schimbarea dependențelor (nu se poate deriva în randare)
-    setScroll(0);
-  }, [cur, filters, perPage]);
-
-  const virt = pageRows.length > VIRT_MIN;
-  const start = virt ? Math.max(0, Math.floor(scroll / ROW_H) - 6) : 0;
-  const end = virt ? Math.min(pageRows.length, Math.ceil((scroll + VIEW_H) / ROW_H) + 6) : pageRows.length;
+  }, [filters, defaultTeam]);
 
   const respLabel = (r: IssueDto) => (r.responsible === "CLIENT" ? t("Clientul") : r.responsible === "COMPANY" ? t("Compania") : t("De stabilit"));
 
@@ -202,9 +168,6 @@ export default function MeterIssuesRegister({
     return `/tickets?${sp.toString()}`;
   };
 
-  const cols = [...COLS_HEAD, actionsWidth(canManage, canManage || ownTeamIds.length > 0, canTicket)];
-  const grid = cols.map((w) => `${w}px`).join(" ");
-  const gridW = cols.reduce((a, b) => a + b, 0);
 
   const actions = (r: IssueRow, wrap = false) =>
     canManage || canTicket || canResolve(r) ? (
@@ -219,9 +182,34 @@ export default function MeterIssuesRegister({
       </span>
     ) : null;
 
-  const pageButtons = buildPageButtons(cur, totalPages);
-  const from = list.length === 0 ? 0 : (cur - 1) * uiPerPage + 1;
-  const to = Math.min(cur * uiPerPage, list.length);
+  const columns: Col<IssueRow>[] = [
+    {
+      key: "contor", label: "Contor", minW: 100, sticky: true, sort: (r) => r.contor,
+      render: (r) => (restricted ? <span className="font-mono font-medium">{r.contor}</span> : <Link href={`/contoare/${encodeURIComponent(r.meterId)}`} className="font-mono font-medium hover:text-brand hover:underline">{r.contor}</Link>),
+    },
+    {
+      key: "name", label: "Abonat", minW: 150, maxW: 260, sort: (r) => r.name,
+      render: (r) => (r.clientId && !restricted ? <Link href={`/platitori/${r.clientId}`} className="hover:text-brand hover:underline">{r.name}</Link> : r.name),
+    },
+    {
+      key: "kind", label: "Tip", minW: 140, sort: (r) => t(ISSUE_LABELS[r.kind]),
+      render: (r) => <span className={SERIOUS_ISSUES.includes(r.kind) && r._o ? "font-semibold text-st-cancelled" : ""} title={r.note ?? t(ISSUE_LABELS[r.kind])}>{t(ISSUE_LABELS[r.kind])}</span>,
+    },
+    { key: "resp", label: "Responsabil", minW: 90, sort: (r) => respLabel(r), render: (r) => respLabel(r) },
+    { key: "team", label: "Secția", minW: 110, sort: (r) => r.teamName ?? "", render: (r) => r.teamName ?? <span className="text-ink-soft/60">—</span> },
+    { key: "due", label: "Termen de remediere", minW: 190, sort: (r) => r.dueAt ?? "9999-12-31", render: (r) => dueCell(r) },
+    { key: "state", label: "Stare", minW: 90, sort: (r) => (r._o ? 0 : 1), render: (r) => (r._o ? t("Deschisă") : `✓ ${t("Rezolvată")}`) },
+    {
+      key: "resolvedBy", label: "Rezolvat de", minW: 160, maxW: 240, sort: (r) => r.resolvedName ?? "",
+      render: (r) => (r._o ? <span className="text-ink-soft/60">—</span> : <>{r.resolvedName || "—"}{r.resolvedAt ? <span className="ml-1 tabular-nums text-ink-soft">{dmy(r.resolvedAt)}</span> : null}</>),
+    },
+    { key: "reported", label: "Raportat", minW: 85, sort: (r) => r.reportedAt ?? "", render: (r) => <span className="tabular-nums" title={r.userName}>{dmy(r.reportedAt)}</span> },
+    { key: "address", label: "Adresă", minW: 180, maxW: 300, sort: (r) => r.address ?? "", render: (r) => r.address ?? "—" },
+    { key: "note", label: "Observații", minW: 200, maxW: 320, defaultHidden: true, sort: (r) => r.note ?? "", render: (r) => r.note ?? "—" },
+    { key: "resolution", label: "Rezolvare", minW: 200, maxW: 320, defaultHidden: true, sort: (r) => r.resolvedNote ?? "", render: (r) => r.resolvedNote ?? "—" },
+    { key: "act", label: "", minW: 230, render: (r) => actions(r) },
+  ];
+
 
   return (
     <div className="w-full" data-issues-register="">
@@ -293,15 +281,9 @@ export default function MeterIssuesRegister({
           <option value="contor">{t("Sortare: nr. contor")}</option>
         </select>
         {active > 0 && (
-          <button type="button" onClick={() => { setFilters({ ...baseFilters, sort: filters.sort }); setPage(1); }} className="tap h-8 rounded-lg border border-[var(--color-line)] px-2 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]">{t("Resetează filtrele")} ({active})</button>
+          <button type="button" onClick={() => setFilters({ ...baseFilters, sort: filters.sort })} className="tap h-8 rounded-lg border border-[var(--color-line)] px-2 text-xs text-ink-soft hover:bg-[var(--color-surface-2)]">{t("Resetează filtrele")} ({active})</button>
         )}
         <button type="button" onClick={exportCsv} disabled={list.length === 0} className="tap h-8 rounded-lg border border-[var(--color-line)] px-2.5 text-xs font-medium hover:bg-brand-soft disabled:opacity-40" data-export="">⭳ {t("Export")}</button>
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-ink-soft">
-          {t("Afișează")}
-          <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }} className={fld(perPage !== DEFAULT_PER_PAGE)} aria-label={t("Rânduri pe pagină")}>
-            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
-          </select>
-        </label>
       </div>
       {ds.loading && <div className="mb-2 h-0.5 animate-pulse rounded-full bg-brand opacity-60" />}
       {ds.error && (
@@ -311,77 +293,16 @@ export default function MeterIssuesRegister({
         </p>
       )}
 
-      {/* Tabel (ecrane late) */}
-      <div className="card hidden overflow-hidden md:block">
-        <div ref={box} onScroll={(e) => virt && setScroll((e.target as HTMLDivElement).scrollTop)} className="overflow-auto" style={{ maxHeight: virt ? VIEW_H : undefined }} data-issue-scroll="">
-          <div role="table" className="text-[11px]" style={{ width: gridW, minWidth: "100%" }}>
-            <div role="row" className="sticky top-0 z-10 grid bg-[var(--color-surface-2)]" style={{ gridTemplateColumns: grid }}>
-              {["Contor", "Abonat", "Tip", "Responsabil", "Secția", "Termen de remediere", "Stare", "Rezolvat de", "Raportat", "Adresă", ""].map((h, i) => (
-                <div key={i} role="columnheader" className="border-b border-[var(--color-line)] px-2 py-1.5 font-semibold text-ink-soft">{h ? t(h) : ""}</div>
-              ))}
-            </div>
-            {virt && start > 0 && <div style={{ height: start * ROW_H }} />}
-            {pageRows.slice(start, end).map((r) => (
-              <div key={r.id} role="row" data-issue-row={r.id} className={`grid items-center hover:bg-brand-soft/30 ${r._o ? "" : "text-ink-soft"}`} style={{ gridTemplateColumns: grid, height: ROW_H }}>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2 font-mono font-medium">{restricted ? r.contor : <Link href={`/contoare/${encodeURIComponent(r.meterId)}`} className="hover:text-brand hover:underline">{r.contor}</Link>}</div>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" title={r.name}>{r.clientId && !restricted ? <Link href={`/platitori/${r.clientId}`} className="hover:text-brand hover:underline">{r.name}</Link> : r.name}</div>
-                <div role="cell" className={`truncate border-b border-[var(--color-line)] px-2 ${SERIOUS_ISSUES.includes(r.kind) && r._o ? "font-semibold text-st-cancelled" : ""}`} title={r.note ?? t(ISSUE_LABELS[r.kind])}>{t(ISSUE_LABELS[r.kind])}</div>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" data-resp={r.responsible ?? ""}>{respLabel(r)}</div>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" title={r.teamName ?? ""}>{r.teamName ?? <span className="text-ink-soft/60">—</span>}</div>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2 tabular-nums" data-due={r.dueAt ?? ""}>{dueCell(r)}</div>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" title={r.resolvedNote ?? ""}>{r._o ? t("Deschisă") : `✓ ${t("Rezolvată")}`}</div>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" data-resolved-by={r.resolvedName ?? ""} title={r._o ? "" : [r.resolvedName, dmy(r.resolvedAt), r.resolvedNote].filter(Boolean).join(" · ")}>
-                  {r._o ? <span className="text-ink-soft/60">—</span> : <>{r.resolvedName || "—"}{r.resolvedAt ? <span className="ml-1 tabular-nums text-ink-soft">{dmy(r.resolvedAt)}</span> : null}</>}
-                </div>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2 tabular-nums" title={r.userName}>{dmy(r.reportedAt)}</div>
-                <div role="cell" className="truncate border-b border-[var(--color-line)] px-2" title={r.address ?? ""}>{r.address ?? "—"}</div>
-                <div role="cell" className="border-b border-[var(--color-line)] px-1">{actions(r)}</div>
-              </div>
-            ))}
-            {virt && end < pageRows.length && <div style={{ height: (pageRows.length - end) * ROW_H }} />}
-          </div>
-        </div>
-        {pageRows.length === 0 && <p className="p-8 text-center text-ink-soft">{t("Nicio neregulă cu filtrele acestea.")}</p>}
-      </div>
-
-      {/* Carduri (telefon) */}
-      <div className="flex flex-col gap-1.5 md:hidden">
-        {pageRows.map((r) => (
-          <div key={r.id} data-issue-card={r.id} className={`card p-3 text-sm ${r._o ? "" : "opacity-70"}`}>
-            <div className="flex items-start justify-between gap-2">
-              {restricted ? <span className="font-mono font-semibold">{r.contor}</span> : <Link href={`/contoare/${encodeURIComponent(r.meterId)}`} className="font-mono font-semibold hover:text-brand">{r.contor}</Link>}
-              <span className={`text-xs ${SERIOUS_ISSUES.includes(r.kind) && r._o ? "font-semibold text-st-cancelled" : "text-ink-soft"}`}>{t(ISSUE_LABELS[r.kind])}</span>
-            </div>
-            <p className="truncate text-xs text-ink-soft">{r.clientId && !restricted ? <Link href={`/platitori/${r.clientId}`} className="hover:text-brand">{r.name}</Link> : r.name}{r.address ? ` · ${r.address}` : ""}</p>
-            <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-              <div><dt className="text-ink-soft">{t("Responsabil")}</dt><dd className="font-medium">{respLabel(r)}</dd></div>
-              <div><dt className="text-ink-soft">{t("Secția")}</dt><dd className="font-medium">{r.teamName ?? "—"}</dd></div>
-              <div className="col-span-2"><dt className="text-ink-soft">{t("Termen de remediere")}</dt><dd className="font-medium">{dueCell(r)}</dd></div>
-            </dl>
-            {r.note && <p className="mt-1 text-xs">{r.note}</p>}
-            {!r._o && <p className="mt-1 text-xs text-st-done" data-resolved-card="">✓ {t("Rezolvată de")} <b>{r.resolvedName || "—"}</b>{r.resolvedAt ? ` · ${dmy(r.resolvedAt)}` : ""}{r.resolvedNote ? ` — ${r.resolvedNote}` : ""}</p>}
-            {(canManage || canTicket || canResolve(r)) && <div className="mt-2">{actions(r, true)}</div>}
-          </div>
-        ))}
-        {pageRows.length === 0 && <div className="card p-8 text-center text-ink-soft">{t("Nicio neregulă cu filtrele acestea.")}</div>}
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-ink-soft" data-issue-pager="">
-        <span>{list.length === 0 ? t("0 nereguli") : t("{from}–{to} din {total}", { from, to, total: list.length })}</span>
-        {totalPages > 1 && (
-          <div className="flex items-center gap-1">
-            <button disabled={cur <= 1} onClick={() => setPage(cur - 1)} className="tap grid size-7 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label={t("Pagina anterioară")}><IconChevronLeft className="size-4" /></button>
-            {pageButtons.map((b, i) =>
-              b === "…" ? (
-                <span key={`e${i}`} className="flex h-7 w-6 items-center justify-center text-sm">…</span>
-              ) : (
-                <button key={b} onClick={() => setPage(b)} className={`tap h-7 min-w-[28px] rounded-lg px-2 text-xs font-medium ${b === cur ? "bg-brand text-white" : "border border-[var(--color-line)] text-ink hover:bg-[var(--color-surface-2)]"}`}>{b}</button>
-              ),
-            )}
-            <button disabled={cur >= totalPages} onClick={() => setPage(cur + 1)} className="tap grid size-7 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40" aria-label={t("Pagina următoare")}><IconChevronRight className="size-4" /></button>
-          </div>
-        )}
-      </div>
+      <DataTable<IssueRow>
+        storageKey="meter-issues"
+        rows={list}
+        columns={columns}
+        filters={[]}
+        noun={t("nereguli")}
+        emptyText={t("Nicio neregulă cu filtrele acestea.")}
+        rowClassName={(r) => (r._o ? "" : "text-ink-soft")}
+        cardKeys={["contor", "name", "kind"]}
+      />
 
       {msgOpen && messages && autoNotify && (
         <IssueMessagesDialog initial={messages} autoNotify={autoNotify} canEdit={canEditMessages} isSuper={isSuper} emailEnabled={emailEnabled} smsEnabled={smsEnabled} onClose={() => setMsgOpen(false)} />
@@ -404,17 +325,4 @@ function Chip({ label, n, onClick, active, tone }: { label: string; n: number; o
       {label} <b className="tabular-nums">{n}</b>
     </button>
   );
-}
-
-function buildPageButtons(current: number, total: number): (number | "…")[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = new Set<number>([1, total]);
-  for (let i = Math.max(2, current - 2); i <= Math.min(total - 1, current + 2); i++) pages.add(i);
-  const sorted = [...pages].sort((a, b) => a - b);
-  const out: (number | "…")[] = [];
-  for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i] - sorted[i - 1] > 1) out.push("…");
-    out.push(sorted[i]);
-  }
-  return out;
 }

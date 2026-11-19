@@ -51,26 +51,24 @@ export default async function PayersPage({
 
   return (
     <div className="w-full">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold">{t("Plătitori")}</h1>
-          <p className="mt-0.5 text-sm text-ink-soft">{t("Plătitori Apă-Canal — click pe un rând pentru datele lui, facturi și notificări.")}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href="/platitori/tabel"
-            className="tap inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]"
-          >
-            {t("Tabel 1C")}
-          </Link>
-          {can(user, "admin") && <PaymentChainRunner />}
-          {canSyncApi && <ApaCanalApiSync />}
-          {canImport && <ImportButton entity="payers" hideAi />}
-        </div>
-      </div>
+      {/* Titlul „Plătitori” e deja în antetul aplicației: aici rămâne doar rândul îngust cu butoanele (mai mult loc pentru listă) */}
+      <div className="sr-only" title={t("Plătitori Apă-Canal — click pe un rând pentru datele lui, facturi și notificări.")}>{t("Plătitori")}</div>
       <PayerNotifyManager
         basePath="/platitori"
         browseOnly
+        topActions={
+          <>
+            <Link
+              href="/platitori/tabel"
+              className="tap inline-flex h-7 items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] font-medium text-ink-soft hover:bg-[var(--color-surface-2)]"
+            >
+              {t("Tabel 1C")}
+            </Link>
+            {can(user, "admin") && <PaymentChainRunner />}
+            {canSyncApi && <ApaCanalApiSync />}
+            {canImport && <ImportButton entity="payers" hideAi className="tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] font-medium text-ink-soft hover:bg-[var(--color-surface-2)]" />}
+          </>
+        }
         canExport={can(user, "payers.export")}
         canTask={can(user, "tasks.create")}
         nameFixCount={nameFixCount}

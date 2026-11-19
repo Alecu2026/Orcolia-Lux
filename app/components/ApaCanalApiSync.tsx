@@ -223,7 +223,7 @@ export default function ApaCanalApiSync() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="tap inline-flex h-9 items-center gap-1.5 rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium text-ink-soft hover:bg-[var(--color-surface-2)]"
+        className="tap inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] px-2 text-[11px] font-medium text-ink-soft hover:bg-[var(--color-surface-2)]"
       >
         {t("🔌 Sincronizare API")}
       </button>

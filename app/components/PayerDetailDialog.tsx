@@ -160,8 +160,6 @@ export default function PayerDetailDialog({
         <div className="mb-3 flex flex-wrap gap-1.5 border-y border-[var(--color-line)] py-2">
           <Link
             href={`/platitori/${row.id}`}
-            target="_blank"
-            rel="noreferrer"
             className="tap inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg bg-brand px-3 text-xs font-semibold text-white hover:bg-brand-strong"
           >
             {t("Pagina plătitorului →")}

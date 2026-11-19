@@ -1,7 +1,7 @@
 "use client";
 
 import DateFilterInput from "./DateFilterInput";
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   EMPTY_METER_FILTERS,
@@ -14,17 +14,14 @@ import {
   type MeterFilters,
   type MeterRowBase,
 } from "@/lib/meters";
-import { DEFAULT_PER_PAGE, NOTIFY_PER_PAGE, PER_PAGE_ALL, normalizePerPageClient, perPageLabel } from "@/lib/payer-notify";
+import { DEFAULT_PER_PAGE, PER_PAGE_ALL, normalizePerPageClient } from "@/lib/payer-notify";
 import { METERS_PP_COOKIE } from "@/lib/payer-prefs";
 import { INVOICE_STATUS, INVOICE_STATUS_LIST, type InvoiceStatusKey } from "./invoice-meta";
-import { IconChevronLeft, IconChevronRight } from "./icons";
 import { useLocale, useT } from "@/lib/i18n/context";
 import FiltersToggle from "./FiltersToggle";
 import { useFiltersOpen } from "./useFiltersOpen";
 import { dateTag } from "@/lib/i18n/t";
 import { useToast } from "./toast";
-import CompactCard, { CompactField } from "./CompactCard";
-import VirtualList from "./VirtualList";
 import MeterDetailDialog from "./MeterDetailDialog";
 import ContractExpiry from "./ContractExpiry";
 import { METROLOGY_FILTER_OPTIONS } from "@/lib/metrology";
@@ -32,6 +29,7 @@ import { ISSUE_KINDS, ISSUE_LABELS } from "@/lib/meter-issues";
 import { useMeterDataset } from "./useMeterDataset";
 import SectorFilter from "./SectorFilter";
 import { addressLocality, distinctBy, distinctSectors } from "@/lib/sector-filter";
+import DataTable, { type Col } from "./DataTable";
 
 type Page = { items: MeterRowBase[]; total: number };
 type TextKey = "q" | "street";
@@ -46,19 +44,7 @@ const txtFld = (val: string) =>
     val ? "border-brand bg-brand/10 font-semibold text-brand placeholder:font-normal" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink"
   }`;
 
-/** Lățimile coloanelor (px), în ordinea din antet: contor, abonat, cont/contract, adresă, consumator, status, instalat, sigiliu, citire ant., citire curentă,
- * verificare metrologică, data citirii, consum, sursă, apă, canal, contoare abonat, factură, de achitat, status factură, telefon, portal. */
-const COL_W = [115, 190, 95, 210, 150, 62, 80, 85, 125, 118, 108, 80, 92, 100, 150, 150, 62, 115, 90, 72, 140, 60];
 const SERVER_MAX_ROWS = 200; // doar cât timp lista completă nu e încă în browser (răspunsul vine de pe server)
-const VIRTUAL_MIN = 80; // peste atâtea rânduri se desenează doar cele vizibile
-const ROW_H = 24; // înălțimea fixă a unui rând de tabel (necesară virtualizării)
-const GRID = COL_W.map((w) => `${w}px`).join(" ");
-const GRID_TASK = `${GRID} 28px`;
-const GRID_W = COL_W.reduce((x, y) => x + y, 0);
-/** Celula de rând: pe o singură linie, tăiată cu „…", vertical centrată în rândul de 24 px. */
-const CELL = "truncate border-b border-[var(--color-line)] px-1.5 leading-[23px]";
-const ROW_BLOCK = 8; // fereastra de rânduri desenate se mută din 8 în 8 rânduri
-const ROW_OVERSCAN = 40; // rânduri desenate în plus, deasupra și dedesubt, ca derularea rapidă să nu arate goluri
 
 const fmtCache = new Map<string, { num: (n: number) => string; money: (n: number) => string }>();
 /** Formatoare de numere create O DATĂ per limbă (nu la fiecare celulă). */
@@ -122,23 +108,6 @@ export default function MetersManager({
   const abortRef = useRef<AbortController | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
 
-  // Mod telefon: fiecare contor devine un card. `cardsPref` = alegerea utilizatorului; null = automat (carduri pe ecrane înguste, tabel pe restul).
-  const [cardsPref, setCardsPref] = useState<boolean | null>(null);
-  const [narrow, setNarrow] = useState(false);
-  const cards = cardsPref ?? narrow;
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setNarrow(window.matchMedia("(max-width: 639px)").matches);
-    try {
-      const v = localStorage.getItem("meters-view");
-      if (v === "cards" || v === "table") setCardsPref(v === "cards");
-    } catch {}
-  }, []);
-  function toggleCards() {
-    const next = !cards;
-    setCardsPref(next);
-    try { localStorage.setItem("meters-view", next ? "cards" : "table"); } catch {}
-  }
 
   // ── Motor local: toate contoarele în memorie, filtrate/sortate/paginate în JS (instant). Până se încarcă setul, pagina folosește serverul. ──
   const ds = useMeterDataset(ready);
@@ -279,32 +248,7 @@ export default function MetersManager({
   const uSectors = useMemo(() => (ds.rows ? distinctSectors(ds.rows) : []), [ds.rows]);
   const uLocs = useMemo(() => (ds.rows ? distinctBy(ds.rows, (r) => addressLocality(r.address)) : []), [ds.rows]);
 
-  // ── Virtualizare: din cele (până la ~25.000) de rânduri ale paginii se desenează doar cele din zona vizibilă ──
-  const pageRows = view.items;
-  const rowCount = showAll ? view.total : pageRows.length;
-  /** Carduri (mod telefon): listă virtualizată cu înălțimi variabile (cardurile se desfac la atingere). */
-  function renderRows(rows: MeterRowBase[], fn: (r: MeterRowBase) => React.ReactNode) {
-    const n = showAll ? view.total : rows.length;
-    if (n <= VIRTUAL_MIN) return rows.map(fn);
-    return (
-      <VirtualList
-        count={n}
-        itemKey={(i) => (rows[i] ? rows[i].id : `sk-${i}`)}
-        render={(i) => (rows[i] ? fn(rows[i]) : <div className="h-11 animate-pulse rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)]" />)}
-      />
-    );
-  }
 
-  /** Sortarea aleasă din antetul tabelului (callback stabil: tabelul nu se re-randează degeaba). */
-  const onSort = useCallback((next: MeterFilters["sort"]) => {
-    setFilters((f) => ({ ...f, sort: next }));
-    setPage(1);
-  }, []);
-
-  const pageButtons = buildPageButtons(page, totalPages);
-  const from = view.total === 0 ? 0 : (page - 1) * uiPerPage + 1;
-  const to = Math.min(page * uiPerPage, view.total);
-  const colCount = COL_W.length + (canTask ? 1 : 0);
   /** Sarcină nouă pentru acest contor: pagina de sarcini deschide fereastra de creare cu clientul ales și adresa lui completată. */
   const taskHref = (r: MeterRowBase) => {
     const sp = new URLSearchParams({
@@ -349,19 +293,120 @@ export default function MetersManager({
     toast.success(t("{n} contoare exportate.", { n: nf(localList.length) }));
   }
 
-  const statusChip = (r: MeterRowBase) =>
-    r.removedAt ? (
-      <span className="inline-block rounded-full bg-st-cancelled/12 px-1.5 text-[10px] leading-[14px] font-medium text-st-cancelled" title={`${t("Scos la")} ${dmy(r.removedAt)}`}>{t("Scos")}</span>
-    ) : (
-      <span className="inline-block rounded-full bg-st-done/12 px-1.5 text-[10px] leading-[14px] font-medium text-st-done">{t("Activ")}</span>
-    );
   const water = (vol: number | null, sum: number | null) => (vol == null && sum == null ? null : `${vol == null ? "—" : num(vol)} m³ · ${sum == null ? "—" : `${money(sum)} MDL`}`);
+
+  // ── Coloane (ca la Sarcini): se mută, se ascund, se redimensionează și se colorează din „⚙ Coloane”; alegerea rămâne salvată în browser („Resetează” revine la cele de la început). ──
+  const dash = <Dash />;
+  const columns: Col<MeterRowBase>[] = [
+    { key: "contor", label: "Nr. contor", minW: 110, sticky: true, sort: (r) => r.contor, render: (r) => <MeterLink id={r.id} contor={r.contor} /> },
+    { key: "name", label: "Abonat", minW: 190, maxW: 260, sort: (r) => r.name, render: (r) => r.name },
+    { key: "account", label: "Cont / contract", minW: 95, sort: (r) => r.account ?? r.contract ?? "", render: (r) => r.account ?? r.contract ?? "—" },
+    { key: "address", label: "Adresă", minW: 210, maxW: 300, sort: (r) => r.address ?? "", render: (r) => r.address ?? dash },
+    { key: "consumator", label: "Consumator", minW: 150, maxW: 220, sort: (r) => r.consumator ?? "", render: (r) => r.consumator ?? dash },
+    {
+      key: "status", label: "Status", minW: 90, sort: (r) => (r.removedAt ? 1 : 0),
+      render: (r) => {
+        const issueLabel = r.issue && (ISSUE_KINDS as readonly string[]).includes(r.issue) ? t(ISSUE_LABELS[r.issue as (typeof ISSUE_KINDS)[number]]) : r.issue;
+        return (
+          <>
+            {r.removedAt
+              ? <span className="inline-block rounded-full bg-st-cancelled/12 px-1.5 text-[10px] leading-[14px] font-medium text-st-cancelled" title={`${t("Scos la")} ${dmy(r.removedAt)}`}>{t("Scos")}</span>
+              : <span className="inline-block rounded-full bg-st-done/12 px-1.5 text-[10px] leading-[14px] font-medium text-st-done">{t("Activ")}</span>}
+            {r.issue && <span className="ml-1 inline-block max-w-28 truncate rounded-full bg-st-cancelled/12 px-1.5 align-bottom text-[10px] leading-[14px] font-medium text-st-cancelled" title={issueLabel ?? ""}>⚠ {issueLabel}</span>}
+          </>
+        );
+      },
+    },
+    { key: "installed", label: "Instalat", minW: 80, sort: (r) => r.installedAt ?? "", render: (r) => (r.installedAt ? dmy(r.installedAt) : dash) },
+    { key: "sigiliu", label: "Sigiliu", minW: 85, sort: (r) => r.sigiliu ?? "", render: (r) => r.sigiliu ?? dash },
+    {
+      key: "metro", label: "Verificare metrologică", minW: 118, sort: (r) => r.metroDue ?? "",
+      render: (r) => (r.metroDue
+        ? <span className="tabular-nums" title={r.metroVerified ? `${t("Ultima verificare")}: ${dmy(r.metroVerified)}` : t("Data verificării metrologice nu e introdusă")}><ContractExpiry date={r.metroDue} compact /></span>
+        : dash),
+    },
+    { key: "prev", label: "Citire anterioară", minW: 100, right: true, sort: (r) => r.prev, render: (r) => (r.prev != null ? <span title={r.prevDate ? dmy(r.prevDate) : undefined}>{num(r.prev)}</span> : dash) },
+    { key: "curr", label: "Citire curentă", minW: 100, right: true, sort: (r) => r.curr, render: (r) => (r.curr != null ? num(r.curr) : dash) },
+    { key: "currDate", label: "Data citirii", minW: 85, sort: (r) => r.currDate ?? "", render: (r) => (r.currDate ? dmy(r.currDate) : dash) },
+    {
+      key: "consum", label: "Consum (m³)", minW: 90, right: true, sort: (r) => r.consum,
+      render: (r) => (r.consum != null ? <span className={r.consum > 0 ? "font-semibold" : "text-ink-soft"}>{num(r.consum)} m³</span> : dash),
+    },
+    { key: "sursa", label: "Sursa citirii", minW: 100, sort: (r) => (r.sursa ? enumLabel(r.sursa, t) : ""), render: (r) => (r.sursa ? enumLabel(r.sursa, t) : dash) },
+    { key: "apa", label: "Apă (m³ · MDL)", minW: 150, sort: (r) => r.apaVol, render: (r) => water(r.apaVol, r.apaSum) ?? dash },
+    { key: "canal", label: "Canal (m³ · MDL)", minW: 150, sort: (r) => r.canalVol, render: (r) => water(r.canalVol, r.canalSum) ?? dash },
+    {
+      key: "meterCount", label: "Contoare", minW: 62, right: true, sort: (r) => r.meterCount,
+      render: (r) => <span className={r.meterCount > 1 ? "font-semibold text-brand" : "text-ink-soft"} title={r.meterCount > 1 ? t("Abonatul are {n} contoare active", { n: r.meterCount }) : undefined}>{r.meterCount}</span>,
+    },
+    { key: "invoice", label: "Factură", minW: 115, sort: (r) => r.invoice?.number ?? "", render: (r) => r.invoice?.number ?? dash },
+    {
+      key: "debt", label: "De achitat", minW: 90, right: true, sort: (r) => r.invoice?.grandTotal ?? null,
+      render: (r) => (r.invoice ? <span className={r.invoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}>{money(r.invoice.grandTotal)}</span> : dash),
+    },
+    {
+      key: "invStatus", label: "Status factură", minW: 85, sort: (r) => r.invoice?.status ?? "",
+      render: (r) => {
+        const st = r.invoice ? INVOICE_STATUS[r.invoice.status as InvoiceStatusKey] : null;
+        return st ? <span className={`inline-block rounded-full px-1.5 text-[10px] leading-[14px] font-medium ${st.cls}`}>{t(st.label)}</span> : dash;
+      },
+    },
+    { key: "phone", label: "Telefon", minW: 120, sort: (r) => r.phone ?? "", render: (r) => (r.phone ? <span className="tabular-nums">{r.phone}</span> : dash) },
+    {
+      key: "portal", label: "Portal", minW: 60, sort: (r) => (r.activated ? 1 : 0),
+      render: (r) => (r.activated ? <span className="text-st-done" title={t("Cont portal activat")}>✓ {t("activ")}</span> : <span className="text-ink-soft/60" title={t("Cont portal neactivat")}>—</span>),
+    },
+    ...(canTask
+      ? [{
+          key: "task", label: "", minW: 34,
+          render: (r: MeterRowBase) => (r.clientId
+            ? (
+              <Link
+                href={taskHref(r)}
+                prefetch={false}
+                title={t("Creează sarcină pentru acest contor (adresa se completează singură)")}
+                aria-label={t("Creează sarcină pentru acest contor (adresa se completează singură)")}
+                className="grid size-4 place-items-center rounded bg-brand text-[11px] font-bold leading-none text-white hover:bg-brand-strong"
+              >
+                +
+              </Link>
+            )
+            : null),
+        }]
+      : []),
+  ];
+
 
   return (
     <div>
-      {/* ── Filtre (stil Plătitori: colorate când sunt active) ─────────────────── */}
-      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+      {/* ── Bară compactă: filtre, stare listă, export — un singur rând (mai mult loc pentru listă) ── */}
+      <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         <FiltersToggle open={fOpen} onToggle={toggleF} activeCount={active} />
+        {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}
+        {ds.rows ? (
+          <button
+            type="button"
+            onClick={() => void ds.refresh()}
+            disabled={ds.loading}
+            title={t("Lista e ținută în memorie și filtrată instant în browser. Apasă ca să o reîncarci de pe server.")}
+            className="tap cursor-pointer text-ink-soft hover:text-brand disabled:cursor-default"
+          >
+            ⚡ {t("local")}{ds.loading ? ` · ${t("se reîmprospătează…")}` : ""} ↻
+          </button>
+        ) : ds.loading ? (
+          <span className="text-ink-soft">{t("se încarcă lista completă…")}</span>
+        ) : null}
+        {canExport && <button
+          type="button"
+          onClick={exportCsv}
+          disabled={!localList || localList.length === 0}
+          title={t("Descarcă lista filtrată (CSV, se deschide în Excel)")}
+          className="tap ml-auto inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40"
+        >
+          ⬇ {t("Export (cu filtrele)")}
+        </button>}
+      </div>
+      <div className={`flex-wrap items-center gap-1.5 ${fOpen ? "mb-1.5 flex" : "hidden"}`}>
         <div className={fOpen ? "contents" : "hidden"}>
         <input
           value={draft.q}
@@ -479,54 +524,6 @@ export default function MetersManager({
         )}
       </div>
 
-      {/* ── Sumar + rânduri pe pagină ─────────────────────────────────────── */}
-      <div className="mb-1 mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
-        <span><b>{nf(view.total)}</b> {t("contoare")}{active > 0 ? ` ${t("(filtrat)")}` : ""}</span>
-        {view.total > 0 && <span className="text-ink-soft">{t("afișate {from}–{to} din {total}", { from: nf(from), to: nf(to), total: nf(view.total) })}{totalPages > 1 ? ` · ${t("pagina {cur}/{pages}", { cur: page, pages: totalPages })}` : ""}</span>}
-        {loading && <span className="text-ink-soft">{t("se încarcă…")}</span>}
-        {ds.rows ? (
-          <button
-            type="button"
-            onClick={() => void ds.refresh()}
-            disabled={ds.loading}
-            title={t("Lista e ținută în memorie și filtrată instant în browser. Apasă ca să o reîncarci de pe server.")}
-            className="tap cursor-pointer text-ink-soft hover:text-brand disabled:cursor-default"
-          >
-            ⚡ {t("local")}{ds.loading ? ` · ${t("se reîmprospătează…")}` : ""} ↻
-          </button>
-        ) : ds.loading ? (
-          <span className="text-ink-soft">{t("se încarcă lista completă…")}</span>
-        ) : null}
-        {canExport && <button
-          type="button"
-          onClick={exportCsv}
-          disabled={!localList || localList.length === 0}
-          title={t("Descarcă lista filtrată (CSV, se deschide în Excel)")}
-          className="tap ml-auto inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface)] px-2 text-[11px] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:cursor-default disabled:opacity-40"
-        >
-          ⬇ {t("Export (cu filtrele)")}
-        </button>}
-        <button
-          type="button"
-          onClick={toggleCards}
-          aria-pressed={cards}
-          title={cards ? t("Înapoi la tabel") : t("Afișează contoarele într-o coloană mică; apeși pe unul ca să vezi detaliile (potrivit pentru telefon)")}
-          className={`tap h-7 cursor-pointer rounded-lg border px-2 text-[11px] ${cards ? "border-brand bg-brand/10 font-semibold text-brand" : "border-[var(--color-line)] bg-[var(--color-surface)] text-ink-soft hover:bg-[var(--color-surface-2)]"}`}
-        >
-          {cards ? `▦ ${t("Tabel")}` : `📱 ${t("Mod telefon")}`}
-        </button>
-        <label className="flex items-center gap-1.5 text-xs text-ink-soft">
-          {t("Afișează")}
-          <select
-            value={wantPerPage}
-            onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
-            className={fld(wantPerPage === DEFAULT_PER_PAGE ? "" : "x")}
-            aria-label={t("Rânduri pe pagină")}
-          >
-            {NOTIFY_PER_PAGE.map((n) => <option key={n} value={n}>{perPageLabel(n, t)}</option>)}
-          </select>
-        </label>
-      </div>
       {loading && <div className="mb-2 h-0.5 animate-pulse rounded-full bg-brand opacity-60" />}
       {error && (
         <p className="mb-2 flex items-center justify-between gap-3 rounded-lg bg-st-cancelled/10 px-3 py-2 text-sm text-st-cancelled">
@@ -535,120 +532,25 @@ export default function MetersManager({
         </p>
       )}
 
-      {/* ── Tabel (stil 1C) ───────────────────────────────────────────────── */}
-      {cards ? (
-        <div className={`flex flex-col gap-1.5 transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}>
-          {renderRows(pageRows, (r) => {
-            const st = r.invoice ? INVOICE_STATUS[r.invoice.status as InvoiceStatusKey] : null;
-            return (
-              <CompactCard
-                key={r.id}
-                avatar={r.contor.trim().charAt(0).toUpperCase()}
-                title={<span className="font-mono">{r.contor}</span>}
-                subtitle={
-                  <>
-                    <span className="truncate">{r.name}</span>
-                    {statusChip(r)}
-                  </>
-                }
-                trailing={r.consum != null ? <span className="tabular-nums font-semibold">{num(r.consum)} m³</span> : undefined}
-              >
-                <dl>
-                  <CompactField label={t("Cont / contract")}>{r.account ?? r.contract ?? <Dash />}</CompactField>
-                  <CompactField label={t("Adresă")}>{r.address ?? <Dash />}</CompactField>
-                  <CompactField label={t("Consumator")}>{r.consumator ?? <Dash />}</CompactField>
-                  <CompactField label={t("Instalat")}>{r.installedAt ? dmy(r.installedAt) : <Dash />}</CompactField>
-                  <CompactField label={t("Sigiliu")}>{r.sigiliu ?? <Dash />}</CompactField>
-                  {r.issue && <CompactField label={t("Neregulă")}><span className="font-medium text-st-cancelled">⚠ {(ISSUE_KINDS as readonly string[]).includes(r.issue) ? t(ISSUE_LABELS[r.issue as (typeof ISSUE_KINDS)[number]]) : r.issue}</span></CompactField>}
-                  <CompactField label={t("Verificare metrologică")}>{r.metroDue ? <>{dmy(r.metroDue)} <ContractExpiry date={r.metroDue} /></> : <Dash />}</CompactField>
-                  <CompactField label={t("Citire anterioară")}>{r.prev != null ? `${num(r.prev)} m³${r.prevDate ? ` (${dmy(r.prevDate)})` : ""}` : <Dash />}</CompactField>
-                  <CompactField label={t("Citire curentă")}>{r.curr != null ? `${num(r.curr)} m³${r.currDate ? ` (${dmy(r.currDate)})` : ""}` : <Dash />}</CompactField>
-                  <CompactField label={t("Consum (m³)")}>{r.consum != null ? `${num(r.consum)} m³` : <Dash />}</CompactField>
-                  <CompactField label={t("Sursa citirii")}>{r.sursa ? enumLabel(r.sursa, t) : <Dash />}</CompactField>
-                  <CompactField label={t("Apă")}>{water(r.apaVol, r.apaSum) ?? <Dash />}</CompactField>
-                  <CompactField label={t("Canal")}>{water(r.canalVol, r.canalSum) ?? <Dash />}</CompactField>
-                  <CompactField label={t("Contoare active la abonat")}>{r.meterCount}</CompactField>
-                  <CompactField label={t("Factură")}>
-                    {r.invoice ? <>{r.invoice.number} {st && <span className={`ml-1 inline-block rounded-full px-1.5 text-[10px] font-medium ${st.cls}`}>{t(st.label)}</span>}</> : <Dash />}
-                  </CompactField>
-                  <CompactField label={t("De achitat")}>{r.invoice ? <span className="tabular-nums font-semibold">{money(r.invoice.grandTotal)}</span> : <Dash />}</CompactField>
-                  <CompactField label={t("Telefon")}>{r.phone ?? <Dash />}</CompactField>
-                </dl>
-                <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-line)]/60 px-2.5 py-1.5">
-                  <button type="button" onClick={() => setDetailRow(r)} className="tap h-7 cursor-pointer rounded-lg bg-brand px-3 text-[11px] font-semibold text-white hover:bg-brand-strong">{t("Fișa contorului")}</button>
-                  {canTask && r.clientId && (
-                    <Link href={taskHref(r)} prefetch={false} className="tap inline-flex h-7 items-center rounded-lg border border-[var(--color-line)] px-3 text-[11px] font-medium hover:bg-brand-soft">
-                      + {t("Sarcină")}
-                    </Link>
-                  )}
-                </div>
-              </CompactCard>
-            );
-          })}
-          {pageRows.length === 0 && !loading && (
-            <div className="card p-8 text-center text-ink-soft">
-              {ds.rows || error ? t("Niciun contor cu filtrele acestea.") : t("se încarcă lista completă…")}{" "}
-              {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">{t("Resetează filtrele")}</button>}
-            </div>
-          )}
-        </div>
-      ) : (
-        <GridTable
-          rows={pageRows}
-          rowCount={rowCount}
-          loading={loading}
-          canTask={canTask}
-          sort={filters.sort}
-          onSort={onSort}
-          onOpen={setDetailRow}
-          resetKey={key}
-          empty={
-            pageRows.length === 0 && !loading ? (
-              <div className="p-8 text-center text-[13px] text-ink-soft">
-                {ds.rows || error ? t("Niciun contor cu filtrele acestea.") : t("se încarcă lista completă…")}{" "}
-                {active > 0 && <button type="button" onClick={clearAll} className="font-semibold text-brand underline">{t("Resetează filtrele")}</button>}
-              </div>
-            ) : null
-          }
-        />
+      {!localList && view.total > data.items.length && !loading && (
+        <p className="mb-1 text-[11px] text-ink-soft">
+          {t("Se afișează doar primele {n} rânduri; restul apar când se încarcă lista completă.", { n: nf(data.items.length) })}{" "}
+          <button type="button" onClick={retry} className="cursor-pointer font-semibold text-brand underline">{t("Reîncearcă")}</button>
+        </p>
       )}
-
-      {/* ── Paginare numerică ─────────────────────────────────────────────── */}
-      {view.total > 0 && totalPages > 1 && (
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-1">
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-            className="tap grid size-7 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
-            aria-label={t("Pagina anterioară")}
-          >
-            <IconChevronLeft className="size-4" />
-          </button>
-          {pageButtons.map((b, i) =>
-            b === "…" ? (
-              <span key={`e${i}`} className="flex h-7 w-6 items-center justify-center text-sm text-ink-soft">…</span>
-            ) : (
-              <button
-                key={b}
-                onClick={() => setPage(b)}
-                className={`tap h-7 min-w-[28px] rounded-lg px-2 text-xs font-medium ${
-                  b === page ? "bg-brand text-white" : "border border-[var(--color-line)] text-ink hover:bg-[var(--color-surface-2)]"
-                }`}
-              >
-                {b}
-              </button>
-            ),
-          )}
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage(page + 1)}
-            className="tap grid size-7 place-items-center rounded-lg border border-[var(--color-line)] text-ink-soft hover:bg-[var(--color-surface-2)] disabled:opacity-40"
-            aria-label={t("Pagina următoare")}
-          >
-            <IconChevronRight className="size-4" />
-          </button>
-        </div>
-      )}
+      <DataTable<MeterRowBase>
+        storageKey="meters"
+        rows={localList ?? data.items}
+        columns={columns}
+        filters={[]}
+        noun={t("contoare")}
+        emptyText={ds.rows || error ? t("Niciun contor cu filtrele acestea.") : t("se încarcă lista completă…")}
+        pending={localList ? undefined : { total: view.total }}
+        onRowClick={(r) => setDetailRow(r)}
+        rowClickSkipsControls
+        rowClassName={(r) => (r.removedAt ? "text-ink-soft" : "")}
+        cardKeys={["contor", "name", "address"]}
+      />
 
       {detailRow && (
         <MeterDetailDialog
@@ -666,242 +568,30 @@ export default function MetersManager({
   );
 }
 
-/** Un rând al tabelului (grilă CSS, layout izolat: `contain`). Memoizat: la derulare se desenează doar rândurile care intră în fereastră, cele existente nu se refac. */
-const MeterTr = memo(function MeterTr({ r, canTask, onOpen }: { r: MeterRowBase; canTask: boolean; onOpen: (r: MeterRowBase) => void }) {
-  const t = useT();
-  const { num, money } = getFmt(dateTag(useLocale()));
-  // Pagina contorului se pregătește în fundal când treci cu mouse-ul / atingi numărul, ca la click să se deschidă instant (ca la meniul din stânga).
-  const [intent, setIntent] = useState(false);
-  const dmy = (d: string | null) => (d ? d.slice(0, 10).split("-").reverse().join(".") : "");
-  const st = r.invoice ? INVOICE_STATUS[r.invoice.status as InvoiceStatusKey] : null;
-  const water = (vol: number | null, sum: number | null) => (vol == null && sum == null ? null : `${vol == null ? "—" : num(vol)} m³ · ${sum == null ? "—" : `${money(sum)} MDL`}`);
-  const a = water(r.apaVol, r.apaSum);
-  const c = water(r.canalVol, r.canalSum);
-  const chip = r.removedAt ? (
-    <span className="inline-block rounded-full bg-st-cancelled/12 px-1.5 text-[10px] leading-[14px] font-medium text-st-cancelled" title={`${t("Scos la")} ${dmy(r.removedAt)}`}>{t("Scos")}</span>
-  ) : (
-    <span className="inline-block rounded-full bg-st-done/12 px-1.5 text-[10px] leading-[14px] font-medium text-st-done">{t("Activ")}</span>
-  );
-  const issueLabel = r.issue && (ISSUE_KINDS as readonly string[]).includes(r.issue) ? t(ISSUE_LABELS[r.issue as (typeof ISSUE_KINDS)[number]]) : r.issue;
-  // doar când rândul are „+”: linkul de sarcină nouă (nu se construiește pentru toate rândurile)
-  const taskHref =
-    canTask && r.clientId
-      ? `/tasks?${new URLSearchParams({ create: "task", client: r.clientId, desc: [`${t("Contor")} ${r.contor}`, r.name, r.account ?? r.contract, r.phone].filter(Boolean).join(" · ") }).toString()}`
-      : "";
-  const sursa = r.sursa ? enumLabel(r.sursa, t) : "";
-  const num_ = `${CELL} text-right tabular-nums`;
-  return (
-    <div
-      role="row"
-      data-row=""
-      onClick={() => onOpen(r)}
-      className={`grid cursor-pointer hover:bg-brand-soft/30 ${r.removedAt ? "text-ink-soft" : ""}`}
-      style={{ gridTemplateColumns: canTask ? GRID_TASK : GRID, height: ROW_H, contain: "layout style" }}
-    >
-      <div role="cell" className={`${CELL} sticky left-0 z-10 bg-[var(--color-surface)] font-mono font-medium`}>
-        <Link href={`/contoare/${encodeURIComponent(r.id)}`} prefetch={intent ? true : null} onMouseEnter={() => setIntent(true)} onTouchStart={() => setIntent(true)} onFocus={() => setIntent(true)} onClick={(e) => e.stopPropagation()} title={t("Deschide pagina contorului")} className="hover:text-brand hover:underline">{r.contor}</Link>
-      </div>
-      <div role="cell" className={CELL} title={r.name}>{r.name}</div>
-      <div role="cell" className={CELL}>{r.account ?? r.contract ?? "—"}</div>
-      <div role="cell" className={CELL} title={r.address ?? ""}>{r.address ?? <Dash />}</div>
-      <div role="cell" className={CELL} title={r.consumator ?? ""}>{r.consumator ?? <Dash />}</div>
-      <div role="cell" className={CELL} data-issue={r.issue ?? ""}>
-        {chip}
-        {r.issue && <span className="ml-1 inline-block max-w-28 truncate rounded-full bg-st-cancelled/12 px-1.5 align-bottom text-[10px] leading-[14px] font-medium text-st-cancelled" title={issueLabel ?? ""}>⚠ {issueLabel}</span>}
-      </div>
-      <div role="cell" className={CELL}>{r.installedAt ? dmy(r.installedAt) : <Dash />}</div>
-      <div role="cell" className={CELL} title={r.sigiliu ?? ""}>{r.sigiliu ?? <Dash />}</div>
-      <div role="cell" className={`${CELL} tabular-nums`} data-metro={r.metroDue ?? ""} title={r.metroVerified ? `${t("Ultima verificare")}: ${dmy(r.metroVerified)}` : t("Data verificării metrologice nu e introdusă")}>{r.metroDue ? <ContractExpiry date={r.metroDue} compact /> : <Dash />}</div>
-      <div role="cell" className={num_} title={r.prevDate ? dmy(r.prevDate) : undefined}>{r.prev != null ? num(r.prev) : <Dash />}</div>
-      <div role="cell" className={num_}>{r.curr != null ? num(r.curr) : <Dash />}</div>
-      <div role="cell" className={CELL}>{r.currDate ? dmy(r.currDate) : <Dash />}</div>
-      <div role="cell" className={`${num_} ${r.consum != null && r.consum > 0 ? "font-semibold" : "text-ink-soft"}`}>{r.consum != null ? `${num(r.consum)} m³` : <Dash />}</div>
-      <div role="cell" className={CELL} title={sursa}>{sursa || <Dash />}</div>
-      <div role="cell" className={`${CELL} tabular-nums`}>{a ?? <Dash />}</div>
-      <div role="cell" className={`${CELL} tabular-nums`}>{c ?? <Dash />}</div>
-      <div role="cell" className={`${num_} ${r.meterCount > 1 ? "font-semibold text-brand" : "text-ink-soft"}`} title={r.meterCount > 1 ? t("Abonatul are {n} contoare active", { n: r.meterCount }) : undefined}>{r.meterCount}</div>
-      <div role="cell" className={CELL} title={r.invoice?.number ?? ""}>{r.invoice?.number ?? <Dash />}</div>
-      <div role="cell" className={`${num_} ${r.invoice && r.invoice.grandTotal > 0 ? "font-semibold" : "text-ink-soft"}`}>{r.invoice ? money(r.invoice.grandTotal) : <Dash />}</div>
-      <div role="cell" className={CELL}>
-        {st ? <span className={`inline-block rounded-full px-1.5 text-[10px] leading-[14px] font-medium ${st.cls}`}>{t(st.label)}</span> : <Dash />}
-      </div>
-      <div role="cell" className={`${CELL} tabular-nums`} title={r.phone ?? ""}>{r.phone ?? <Dash />}</div>
-      <div role="cell" className={CELL} title={r.activated ? t("Cont portal activat") : t("Cont portal neactivat")}>
-        {r.activated ? <span className="text-st-done">✓ {t("activ")}</span> : <span className="text-ink-soft/60">—</span>}
-      </div>
-      {canTask && (
-        <div role="cell" className={`${CELL} flex items-center`} onClick={(e) => e.stopPropagation()}>
-          {r.clientId && (
-            <Link
-              href={taskHref}
-              prefetch={false}
-              title={t("Creează sarcină pentru acest contor (adresa se completează singură)")}
-              aria-label={t("Creează sarcină pentru acest contor (adresa se completează singură)")}
-              className="grid size-4 place-items-center rounded bg-brand text-[11px] font-bold leading-none text-white hover:bg-brand-strong"
-            >
-              +
-            </Link>
-          )}
-        </div>
-      )}
-    </div>
-  );
-});
 
 function Dash() {
   return <span className="text-ink-soft/60">—</span>;
 }
 
-/**
- * Tabelul (antet + rânduri virtualizate). Starea de derulare stă AICI, nu în pagină: la derulare se re-randează doar această componentă (și doar când se
- * trece într-un alt bloc de rânduri), nu filtrele, pop-up-ul și restul paginii. Rândurile sunt memoizate, deci se montează doar cele noi.
- */
-const GridTable = memo(function GridTable({
-  rows,
-  rowCount,
-  loading,
-  canTask,
-  sort,
-  onSort,
-  onOpen,
-  resetKey,
-  empty,
-}: {
-  rows: MeterRowBase[];
-  /** Câte rânduri are lista (poate fi mai mult decât rows.length cât timp lista completă încă se încarcă). */
-  rowCount: number;
-  loading: boolean;
-  canTask: boolean;
-  sort: MeterFilters["sort"];
-  onSort: (next: MeterFilters["sort"]) => void;
-  onOpen: (r: MeterRowBase) => void;
-  /** Se schimbă la alt filtru / altă pagină: tabelul revine sus. */
-  resetKey: string;
-  empty: React.ReactNode;
-}) {
+
+
+
+
+/** Numărul contorului ca link: pagina contorului se pregătește în fundal când treci cu mouse-ul / atingi numărul, ca la click să se deschidă instant. */
+function MeterLink({ id, contor }: { id: string; contor: string }) {
   const t = useT();
-  const virtual = rowCount > VIRTUAL_MIN;
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [vBlock, setVBlock] = useState(0); // blocul de rânduri din capul zonei vizibile (se schimbă rar, nu la fiecare cadru de derulare)
-  const [vH, setVH] = useState(800);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !virtual) return;
-    const upd = () => setVH((h) => (h === el.clientHeight ? h : el.clientHeight));
-    upd();
-    const obs = new ResizeObserver(upd);
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, [virtual]);
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [resetKey]);
-  function onScroll(e: React.UIEvent<HTMLDivElement>) {
-    // Starea se schimbă doar când se trece într-un alt bloc de rânduri; între blocuri derularea e doar a browserului (fără randări React).
-    const b = Math.floor(e.currentTarget.scrollTop / (ROW_H * ROW_BLOCK));
-    setVBlock((cur) => (cur === b ? cur : b));
-  }
-  const winStart = virtual ? Math.max(0, vBlock * ROW_BLOCK - ROW_OVERSCAN) : 0;
-  const winEnd = virtual ? Math.min(rowCount, (vBlock + 1) * ROW_BLOCK + Math.ceil(vH / ROW_H) + ROW_OVERSCAN) : rows.length;
-  const winRows = virtual ? rows.slice(winStart, Math.min(winEnd, rows.length)) : rows;
-  const cycle = (up: MeterFilters["sort"], down: MeterFilters["sort"]) => onSort(sort === up ? down : sort === down ? "" : up);
-  const arrow = (up: MeterFilters["sort"], down: MeterFilters["sort"]) => (sort === up ? "▲" : sort === down ? "▼" : "↕");
-
+  const [intent, setIntent] = useState(false);
   return (
-    <div
-      ref={scrollRef}
-      onScroll={virtual ? onScroll : undefined}
-      className={`card overflow-auto transition-opacity duration-150 ${loading ? "opacity-60" : ""}`}
-      style={{ maxHeight: rowCount > 50 ? "max(78vh, 890px)" : undefined, overflowAnchor: "none" }}
+    <Link
+      href={`/contoare/${encodeURIComponent(id)}`}
+      prefetch={intent ? true : null}
+      onMouseEnter={() => setIntent(true)}
+      onTouchStart={() => setIntent(true)}
+      onFocus={() => setIntent(true)}
+      title={t("Deschide pagina contorului")}
+      className="font-mono font-medium hover:text-brand hover:underline"
     >
-      <div role="table" className="text-[11px]" style={{ width: GRID_W + (canTask ? 28 : 0), minWidth: "100%" }}>
-        <div role="row" className="sticky top-0 z-20 grid bg-[var(--color-surface-2)]" style={{ gridTemplateColumns: canTask ? GRID_TASK : GRID }}>
-          <HeadCell sticky>
-            <button type="button" onClick={() => onSort(sort === "contor" ? "" : "contor")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-              {t("Nr. contor")} <span className="text-[10px] text-ink-soft">{sort === "contor" ? "▲" : "↕"}</span>
-            </button>
-          </HeadCell>
-          <HeadCell>
-            <button type="button" onClick={() => onSort("")} className="font-semibold hover:text-brand">{t("Abonat")}</button>
-          </HeadCell>
-          <HeadCell>{t("Cont / contract")}</HeadCell>
-          <HeadCell>{t("Adresă")}</HeadCell>
-          <HeadCell>{t("Consumator")}</HeadCell>
-          <HeadCell>{t("Status")}</HeadCell>
-          <HeadCell>
-            <button type="button" onClick={() => cycle("installDesc", "installAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-              {t("Instalat")} <span className="text-[10px] text-ink-soft">{arrow("installDesc", "installAsc")}</span>
-            </button>
-          </HeadCell>
-          <HeadCell>{t("Sigiliu")}</HeadCell>
-          <HeadCell title={t("Scadența următoarei verificări metrologice (ultima verificare + 5 ani)")}>
-            <button type="button" onClick={() => onSort(sort === "metroAsc" ? "" : "metroAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-              {t("Verificare metrologică")} <span className="text-[10px] text-ink-soft">{sort === "metroAsc" ? "▲" : "↕"}</span>
-            </button>
-          </HeadCell>
-          <HeadCell right title={t("Indexul contorului (m³) la citirea anterioară")}>{t("Citire anterioară")}</HeadCell>
-          <HeadCell right title={t("Indexul contorului (m³) la ultima citire")}>{t("Citire curentă")}</HeadCell>
-          <HeadCell>
-            <button type="button" onClick={() => onSort(sort === "readDesc" ? "" : "readDesc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-              {t("Data citirii")} <span className="text-[10px] text-ink-soft">{sort === "readDesc" ? "▼" : "↕"}</span>
-            </button>
-          </HeadCell>
-          <HeadCell right title={t("Consum = citire curentă − citire anterioară, în metri cubi")}>
-            <button type="button" onClick={() => cycle("consumDesc", "consumAsc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-              {t("Consum (m³)")} <span className="text-[10px] text-ink-soft">{arrow("consumDesc", "consumAsc")}</span>
-            </button>
-          </HeadCell>
-          <HeadCell>{t("Sursa citirii")}</HeadCell>
-          <HeadCell title={t("Volum (m³) · sumă (MDL)")}>{t("Apă (m³ · MDL)")}</HeadCell>
-          <HeadCell title={t("Volum (m³) · sumă (MDL)")}>{t("Canal (m³ · MDL)")}</HeadCell>
-          <HeadCell right>{t("Contoare")}</HeadCell>
-          <HeadCell>{t("Factură")}</HeadCell>
-          <HeadCell right>
-            <button type="button" onClick={() => onSort(sort === "debtDesc" ? "" : "debtDesc")} className="inline-flex items-center gap-1 font-semibold hover:text-brand">
-              {t("De achitat")} <span className="text-[10px] text-ink-soft">{sort === "debtDesc" ? "▼" : "↕"}</span>
-            </button>
-          </HeadCell>
-          <HeadCell>{t("Status factură")}</HeadCell>
-          <HeadCell>{t("Telefon")}</HeadCell>
-          <HeadCell>{t("Portal")}</HeadCell>
-          {canTask && <HeadCell>{" "}</HeadCell>}
-        </div>
-        {winStart > 0 && <div aria-hidden style={{ height: winStart * ROW_H }} />}
-        {winRows.map((r) => <MeterTr key={r.id} r={r} canTask={canTask} onOpen={onOpen} />)}
-        {winEnd > rows.length && winStart < winEnd &&
-          Array.from({ length: winEnd - Math.max(winStart, rows.length) }, (_, k) => (
-            <div key={`sk-${Math.max(winStart, rows.length) + k}`} aria-hidden className="border-b border-[var(--color-line)] px-2 leading-[23px] text-ink-soft/40" style={{ height: ROW_H }}>…</div>
-          ))}
-        {winEnd < rowCount && <div aria-hidden style={{ height: (rowCount - winEnd) * ROW_H }} />}
-        {empty}
-      </div>
-    </div>
+      {contor}
+    </Link>
   );
-});
-
-/** Celulă de antet (grilă). */
-function HeadCell({ children, right, sticky, title }: { children: React.ReactNode; right?: boolean; sticky?: boolean; title?: string }) {
-  return (
-    <div
-      role="columnheader"
-      title={title}
-      className={`flex h-7 items-center overflow-hidden whitespace-nowrap border-b border-[var(--color-line)] bg-[var(--color-surface-2)] px-1.5 font-semibold ${right ? "justify-end text-right" : ""} ${sticky ? "sticky left-0 z-30" : ""}`}
-    >
-      {children}
-    </div>
-  );
-}
-
-/** Butoanele de paginare cu „…" pentru spații mari (aceeași logică ca la Plătitori). */
-function buildPageButtons(current: number, total: number): (number | "…")[] {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = new Set<number>([1, total]);
-  for (let i = Math.max(2, current - 2); i <= Math.min(total - 1, current + 2); i++) pages.add(i);
-  const sorted = [...pages].sort((a, b) => a - b);
-  const out: (number | "…")[] = [];
-  for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i] - sorted[i - 1] > 1) out.push("…");
-    out.push(sorted[i]);
-  }
-  return out;
 }
