@@ -15,10 +15,6 @@ export const ONEC_SOURCE = {
   SUBSCRIBER: "Абонент",
   /** contor LoRaWAN, citit automat (valoare nouă, se adaugă în 1C) */
   LORAWAN: "LoRaWAN",
-  /** index calculat (estimat) */
-  ESTIMATED: "Расчетный",
-  /** act */
-  ACT: "Акт",
 } as const;
 
 export type OneCSource = (typeof ONEC_SOURCE)[keyof typeof ONEC_SOURCE];

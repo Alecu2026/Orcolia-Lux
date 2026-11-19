@@ -14,8 +14,6 @@ const SOURCE_LABEL: Record<OneCSource, string> = {
   [ONEC_SOURCE.CONTROLLER]: "Cititor din teren (Контролер)",
   [ONEC_SOURCE.SUBSCRIBER]: "Din portal (Абонент)",
   [ONEC_SOURCE.LORAWAN]: "LoRaWAN",
-  [ONEC_SOURCE.ESTIMATED]: "Estimate (Расчетный)",
-  [ONEC_SOURCE.ACT]: "Act (Акт)",
 };
 
 type Step = { text: string; kind: "info" | "ok" | "err" };
@@ -257,7 +255,6 @@ export default function SendTo1cButton({ scope = null }: { scope?: SendScope | n
                     {preview.resend ? <li>{t("Retrimitere completă: se trimit și citirile deja trimise.")}</li> : <li>{t("Citiri deja trimise (nu se mai trimit): {n}", { n: nf(preview.alreadySent) })}</li>}
                     {preview.correctedReadings > 0 && <li>{t("Corectate după trimitere (se retrimit): {n}", { n: nf(preview.correctedReadings) })}</li>}
                     {preview.unmatched > 0 && <li className="text-amber-700 dark:text-amber-300">{t("Care nu pot fi trimise (lipsește contul / contractul sau contorul): {n}", { n: nf(preview.unmatched) })}</li>}
-                    <li>{t("Estimate (Расчетный): 0 — aplicația nu generează citiri estimate, ele rămân calculate de 1C.")}</li>
                     <li>{t("Luni verificate: {a}", { a: preview.periods.join(", ") })}</li>
                     {preview.scopeMeters != null && <li className="font-medium text-brand">{t("Limitat la lista filtrată: {n} contoare.", { n: nf(preview.scopeMeters) })}</li>}
                     {Object.keys(preview.byPeriod).length > 0 && <li>{t("Citiri de trimis, pe luna citirii: {a}", { a: Object.entries(preview.byPeriod).sort(([x], [y]) => x.localeCompare(y)).map(([p, n]) => `${p}: ${nf(n)}`).join(" · ") })}</li>}

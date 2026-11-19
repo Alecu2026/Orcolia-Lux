@@ -25,7 +25,7 @@ import {
 
 /**
  * Trimiterea citirilor către 1C (serviciul `to1c`): documentele „Introducerea indicilor contoarelor pentru un abonat”, câte unul pentru fiecare
- * abonat + sursă + zi. Sursele (Контролер / Абонент / LoRaWAN / Расчетный / Акт) nu se amestecă niciodată într-un document.
+ * abonat + sursă + zi. Sursele (Контролер / Абонент / LoRaWAN — singurele trimise de CRM) nu se amestecă niciodată într-un document.
  *
  * Se trimit într-o LISTĂ (loturi de BATCH documente); serviciul întoarce lungimea listei primite. Dacă lungimea întoarsă e egală cu a celei trimise, citirile lotului
  * se marchează ca trimise (`sent1cAt` / `sent1cValue`) și nu se mai trimit; altfel lotul rămâne „netrimis” și apare în rezultat, ca să se vadă care s-au trimis și care nu.
@@ -46,7 +46,8 @@ const MAX_DEAD_GROUPS = 2;
 
 export const oneCReadingsConfigured = () => !!env.onecReadings.token && !!env.onecReadings.url;
 
-const SOURCE_ORDER: OneCSource[] = [ONEC_SOURCE.CONTROLLER, ONEC_SOURCE.SUBSCRIBER, ONEC_SOURCE.LORAWAN, ONEC_SOURCE.ESTIMATED, ONEC_SOURCE.ACT];
+/** Către 1C pleacă doar aceste trei surse (Контролер, Абонент, LoRaWAN); Расчетный și Акт le calculează / le face 1C, CRM-ul nu le trimite. */
+const SOURCE_ORDER: OneCSource[] = [ONEC_SOURCE.CONTROLLER, ONEC_SOURCE.SUBSCRIBER, ONEC_SOURCE.LORAWAN];
 
 type Pending = {
   id: string;
