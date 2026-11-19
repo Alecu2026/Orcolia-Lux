@@ -15,12 +15,14 @@ import type { CategoryLite } from "./types";
 import type { AssignmentSetting } from "@/lib/services/tasks";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
+import { taskNo } from "@/lib/task-number";
 
 type Opt = { id: string; name: string; sectionId?: string | null };
 
 export type TaskForEdit = {
   id: string;
   seq: number | null;
+  number?: string | null;
   title: string;
   description: string | null;
   priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
@@ -198,7 +200,7 @@ function EditDialog({
   const dueDate = task.dueAt ? dateKeyOf(new Date(task.dueAt), TZ) : "";
   const dueTimeRaw = task.dueAt ? formatTime(new Date(task.dueAt), TZ) : "";
   const dueTime = dueTimeRaw !== "00:00" ? dueTimeRaw : "";
-  const seqLabel = task.seq != null ? ` #${task.seq}` : "";
+  const seqLabel = taskNo(task) ? ` ${taskNo(task)}` : "";
 
   return (
     <div

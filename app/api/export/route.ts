@@ -21,6 +21,7 @@ import { getPayerStatement } from "@/lib/services/payer-statement";
 import { formatDate, formatTime, DEFAULT_TZ } from "@/lib/date";
 import { formatMinutes } from "@/lib/resolution";
 import type { TaskStatus, TaskType, TaskPriority, ProjectStatus, AppointmentStatus, InvoiceStatus } from "@prisma/client";
+import { taskNo } from "@/lib/task-number";
 
 const TZ = DEFAULT_TZ;
 
@@ -88,7 +89,7 @@ function fmtDelay(msDiff: number): string {
  * rezolvată după termen. „Cine” = utilizatorul care a pus statusul „Finalizat” (din jurnalul de activitate).
  */
 async function deadlineReport(
-  items: { id: string; seq: number | null; title: string; status: string; dueAt: Date | null; closedAt: Date | null; executedOn: string | null; assigneeName: string | null; teamName: string | null }[],
+  items: { id: string; seq: number | null; number?: string | null; title: string; status: string; dueAt: Date | null; closedAt: Date | null; executedOn: string | null; assigneeName: string | null; teamName: string | null }[],
   sectionById: Map<string, string>,
   label: string,
 ) {
@@ -130,7 +131,7 @@ async function deadlineReport(
     widths: [8, 50, 24, 24, 24, 22, 14, 18, 16],
     rows: [
       HEAD,
-      ...late.sort((a, b) => b.delay - a.delay).map(({ t, delay, closed }): (string | number)[] => [t.seq ?? "", t.title, who(t.id), t.assigneeName ?? "", t.teamName ?? "", sectionById.get(t.id) ?? "", fmtDate(t.dueAt), fmtDateTime(new Date(closed)), fmtDelay(delay)]),
+      ...late.sort((a, b) => b.delay - a.delay).map(({ t, delay, closed }): (string | number)[] => [taskNo(t) ?? "", t.title, who(t.id), t.assigneeName ?? "", t.teamName ?? "", sectionById.get(t.id) ?? "", fmtDate(t.dueAt), fmtDateTime(new Date(closed)), fmtDelay(delay)]),
     ],
   };
   return { summaryRows, sheet, lateCount: late.length };
@@ -232,7 +233,7 @@ async function handle(sp: URLSearchParams, ids: string[] | null) {
     const HEADERS = ["#", "Titlu", "Tip", "Status", "Prioritate", "Asignat", "Echipă", "Secție", "Proiect", "Client", "Adresă", "Nume consumator", "Tip serviciu", "Tip consumator", ...(origin ? ["Origine", "Șablon din portal", "Șablon intern"] : []), "Categorie", "Scadent", "Situație termen", "Data finalizării", "Data executării", "Măsuri luate", "Timp de rezolvare", "Feedback client (1-5)", "Comentariu feedback", "Progres (%)", "Creat la", "Creat de", "Descriere"];
     const rows = items.map((t) => ({
       ...(origin ? { "Origine": ORIGIN_LABEL[origin.byId.get(t.id)!.origin], "Șablon din portal": origin.byId.get(t.id)!.template, "Șablon intern": origin.byId.get(t.id)!.internal } : {}),
-      "#": t.seq ?? "",
+      "#": taskNo(t) ?? "",
       "Titlu": t.title,
       "Tip": TYPE_RO[t.type] ?? t.type,
       "Status": STATUS_RO[t.status] ?? t.status,

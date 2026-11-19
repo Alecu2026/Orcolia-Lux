@@ -22,6 +22,8 @@ export type UserRow = {
   permissions: string[];
   notifyEvents: string[];
   telegramChatId: string | null;
+  /** Codul utilizatorului (numărul sarcinilor lui: „cod-AN/nr”); null = cont fără cod încă. */
+  code?: number | null;
   notifyScope: string;
   notifyTeamIds: string[];
   notifyMemberIds: string[];
@@ -109,6 +111,9 @@ export default function UserDialog({
   // ── Starea întregului formular (controlată: la o eroare nu se pierde nimic din ce ai scris) ──
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
+  // codul: la un utilizator nou rămâne gol (= se dă automat primul liber, arătat ca sugestie); poate fi scris de mână, dar trebuie să fie unic
+  const [code, setCode] = useState(user?.code != null ? String(user.code) : "");
+  const suggestedCode = useMemo(() => allUsers.reduce((mx, u) => Math.max(mx, u.code ?? 0), 0) + 1, [allUsers]);
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [telegram, setTelegram] = useState(user?.telegramChatId ?? "");
@@ -223,6 +228,12 @@ export default function UserDialog({
   function validate(): string | null {
     if (name.trim().length < 2) return t("Nume prea scurt.");
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return t("Email invalid.");
+    const cd = code.trim();
+    if (cd) {
+      if (!/^\d{1,6}$/.test(cd) || Number(cd) < 1) return t("Codul trebuie să fie un număr întreg între 1 și 999999.");
+      const taken = allUsers.find((u) => u.id !== user?.id && u.code === Number(cd));
+      if (taken) return t("Codul {n} e deja folosit de {name}. Alege altul.", { n: cd, name: taken.name });
+    }
     if (!user && password.length < 6) return t("Parola: minim 6 caractere.");
     if (user && password !== "" && password.length < 6) return t("Parola nouă: minim 6 caractere (sau lasă gol ca să rămână neschimbată).");
     const tg = telegram.trim();
@@ -244,6 +255,7 @@ export default function UserDialog({
     if (user) fd.set("id", user.id);
     fd.set("name", name.trim());
     fd.set("email", email.trim());
+    fd.set("code", code.trim());
     if (password) fd.set("password", password);
     fd.set("telegramChatId", telegram.trim());
     fd.set("role", role);
@@ -332,6 +344,20 @@ export default function UserDialog({
               <label className="text-xs font-semibold text-ink-soft">
                 {t("Email *")}
                 <input value={email} onChange={(e) => mark(setEmail)(e.target.value)} type="email" autoComplete="off" required className={`${input} mt-1 font-normal text-ink`} />
+              </label>
+              <label className="text-xs font-semibold text-ink-soft sm:col-span-2">
+                {t("Cod utilizator")}
+                <input
+                  value={code}
+                  onChange={(e) => mark(setCode)(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder={user && user.code == null ? t("se atribuie automat la prima sarcină") : t("automat: {n}", { n: user ? (user.code ?? suggestedCode) : suggestedCode })}
+                  className={`${input} mt-1 font-normal text-ink sm:w-48`}
+                />
+                <span className="mt-1 block text-[11px] font-normal text-ink-soft">
+                  {t("Unic. Intră în numărul sarcinilor și cererilor create de acest utilizator: cod-AN/nr (ex. {ex}). Lasă gol ca să se dea automat; la schimbare, cele deja create își păstrează numărul.", { ex: `${code.trim() || user?.code || suggestedCode}-${String(new Date().getFullYear() % 100).padStart(2, "0")}/1` })}
+                </span>
               </label>
             </div>
             <div>

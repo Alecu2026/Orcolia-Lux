@@ -60,6 +60,7 @@ import { dateTag } from "@/lib/i18n/t";
 import { SERVICE_TYPES, SERVICE_TYPE_LABEL, serviceTypeLabel } from "@/lib/service-type";
 import { CONSUMER_TYPES, CONSUMER_TYPE_LABEL, consumerTypeLabel } from "@/lib/consumer-type";
 import { DEADLINE_FILTER_OPTIONS, DEADLINE_OVER, deadlineState, isOverDeadline } from "@/lib/task-deadline";
+import { taskNo, matchesTaskNo } from "@/lib/task-number";
 
 const PRIO_RANK = { LOW: 1, MEDIUM: 2, HIGH: 3, URGENT: 4 } as const;
 /** Prioritatea ca etichetă colorată (se vede și pe rânduri colorate / cu zebră): urgent roșu, ridicată portocaliu, medie albastru, scăzută gri. */
@@ -430,10 +431,10 @@ export default function TasksTable({
   const columns: Col<Task>[] = [
     ...(canEdit ? [{ key: "rc", label: "", minW: 28, render: (t: Task) => <div onClick={(e) => e.stopPropagation()}><RowColorPicker value={t.color ?? null} onChange={(c) => setColor(t, c)} /></div> } satisfies Col<Task>] : []),
     {
-      key: "seq", label: "#", minW: 45, sort: (t) => t.seq,
+      key: "seq", label: "#", minW: 80, sort: (t) => t.seq,
       render: (t) => (
         <button type="button" onClick={() => setOpenId(t.id)} title={tr("Deschide detaliile")} className="dt-ctl cursor-pointer rounded px-0.5 font-mono font-semibold text-brand hover:underline">
-          {t.seq != null ? `#${t.seq}` : "↗"}
+          {taskNo(t) ?? "↗"}
         </button>
       ),
     },
@@ -696,8 +697,7 @@ export default function TasksTable({
       {
         kind: "text", key: "q", label: "Caută", grow: true, placeholder: m.tasks.searchPlaceholder,
         test: (t, v) => {
-          const seq = v.match(/^#?(\d+)$/);
-          if (seq && t.seq === Number(seq[1])) return true;
+          if (matchesTaskNo(t, v)) return true;
           return derivedOf(t).hay.includes(v);
         },
       },
@@ -1042,7 +1042,7 @@ function TaskDetailDialog({
         <div className="mb-2 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-lg font-bold leading-tight">
-              {t.seq != null && <span className="mr-1.5 rounded bg-brand/10 px-1.5 font-mono text-xs font-semibold text-brand">#{t.seq}</span>}
+              {taskNo(t) != null && <span className="mr-1.5 rounded bg-brand/10 px-1.5 font-mono text-xs font-semibold text-brand">{taskNo(t)}</span>}
               {t.title}
             </h2>
             <p className="mt-0.5 text-xs text-ink-soft">

@@ -14,6 +14,7 @@ import { listCategories } from "@/lib/queries/categories";
 import { todayKey, addDaysToKey, dayBoundsUtc } from "@/lib/date";
 import CalendarControls from "@/app/components/CalendarControls";
 import type { TaskType } from "@prisma/client";
+import { taskNo } from "@/lib/task-number";
 
 export const dynamic = "force-dynamic";
 
@@ -56,8 +57,8 @@ function CalCard({ item }: { item: CalItem }) {
     <Link href={href} prefetch={false} className="card flex items-start gap-1.5 p-1.5 text-[11px] hover:opacity-80">
       {dot(item)}
       <div className="min-w-0 flex-1 overflow-hidden">
-        {item.seq != null && (
-          <span className="mr-0.5 font-mono text-[10px] font-semibold text-brand">#{item.seq}</span>
+        {taskNo(item) != null && (
+          <span className="mr-0.5 font-mono text-[10px] font-semibold text-brand">{taskNo(item)}</span>
         )}
         <span className="truncate">{item.title}</span>
         {item.clientName && <div className="truncate text-ink-soft">{item.clientName}</div>}
@@ -317,7 +318,7 @@ async function DayView({ anchor, tz, items, limit, sp }: { anchor: string; tz: s
               <span className={`size-2.5 shrink-0 rounded-full ${TASK_DOT[item.status] ?? "bg-ink-soft"}`} />
             )}
             <span className="min-w-0 flex-1 truncate text-sm font-medium">
-              {item.seq != null && <span className="mr-1 font-mono text-xs text-brand">#{item.seq}</span>}
+              {taskNo(item) != null && <span className="mr-1 font-mono text-xs text-brand">{taskNo(item)}</span>}
               {item.title}
             </span>
             <span className="shrink-0 rounded bg-[var(--color-surface-2)] px-1.5 py-0.5 text-[10px] text-ink-soft">

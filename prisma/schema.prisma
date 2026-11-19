@@ -122,6 +122,9 @@ model User {
   name         String
   email        String   @unique
   phone        String?
+  // Codul utilizatorului (număr întreg, unic): intră în numărul sarcinilor și cererilor create de el („cod-AN/nr”, ex. 1-26/1).
+  // Fără index unic în DB (pe MongoDB un index unic pe un câmp opțional ar trata toate valorile lipsă ca duplicate): unicitatea o verifică lib/services/task-number.ts.
+  code         Int?
   passwordHash String
   role         UserRole @default(ADMIN)
   isActive     Boolean  @default(true)
@@ -323,6 +326,8 @@ model Task {
   // Identificator scurt, secvențial (#123), pentru afișare ușoară (UI + Telegram).
   // Opțional în schemă fiindcă task-urile vechi nu îl au — vezi scripts/backfill-task-seq.mjs.
   seq         Int?
+  // Numărul afișat, „codul creatorului-AN/nr” (ex. 1-26/1), la sarcini și cereri. Cele create înainte nu-l au și rămân cu #seq.
+  number      String?
   type        TaskType     @default(TASK)
   title       String
   description String?

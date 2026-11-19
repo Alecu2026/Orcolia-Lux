@@ -4,6 +4,7 @@ import { env } from "./env";
 import { prisma } from "./prisma";
 import { logDelivery, withDeliveryMeta, wrapMailTransport, type DeliveryMeta } from "./delivery-log";
 import { BRAND } from "./brand";
+import { taskNoOf } from "./task-number";
 
 let cached: Transporter | null = null;
 
@@ -70,6 +71,7 @@ export type TaskReminderEmailData = {
   userName: string;
   taskTitle: string;
   seq: number | null | undefined;
+  number?: string | null;
   taskUrl: string;
   isOverdue?: boolean;
   /** Numele companiei din Setări (antetul emailului); lipsă → „Apă-Canal Cahul”. */
@@ -82,7 +84,8 @@ function taskReminderTemplate(raw: TaskReminderEmailData): string {
   const badge = d.isOverdue
     ? `<div style="background:#fee2e2;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:#991b1b;font-weight:600">⏰ Sarcină în întârziere</div>`
     : `<div style="background:#ede9fe;border-radius:8px;padding:10px 14px;margin-bottom:16px;color:#5b21b6;font-weight:600">🔔 Reamintire sarcină</div>`;
-  const ref = d.seq != null ? ` <span style="color:#6366f1">#${d.seq}</span>` : "";
+  const noRef = taskNoOf(d);
+  const ref = noRef ? ` <span style="color:#6366f1">${noRef}</span>` : "";
   return `<!doctype html>
 <html lang="ro"><body style="margin:0;background:#f5f6f8;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0">
@@ -122,7 +125,7 @@ async function sendTaskReminderEmailImpl(d: TaskReminderEmailData): Promise<void
     from,
     to: d.to,
     subject,
-    text: `Bună, ${d.userName}. Sarcina „${d.taskTitle}"${d.seq != null ? ` (#${d.seq})` : ""} necesită atenția ta. ${d.taskUrl}`,
+    text: `Bună, ${d.userName}. Sarcina „${d.taskTitle}"${taskNoOf(d) ? ` (${taskNoOf(d)})` : ""} necesită atenția ta. ${d.taskUrl}`,
     html: taskReminderTemplate({ ...d, companyName }),
   });
 }
@@ -454,6 +457,7 @@ export type TicketMessageEmailData = {
   clientName: string;
   ticketTitle: string;
   seq: number | null;
+  number?: string | null;
   /** Numele operatorului care a scris. */
   authorName: string;
   message: string;
@@ -470,7 +474,7 @@ async function sendTicketMessageEmailImpl(d: TicketMessageEmailData): Promise<vo
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
   const company = escapeHtml(d.companyName?.trim() || "Apă-Canal");
-  const ref = d.seq != null ? `#${d.seq}` : "";
+  const ref = taskNoOf(d) ?? "";
   const excerpt = d.message.length > 700 ? `${d.message.slice(0, 700)}…` : d.message;
   const subject = `Răspuns la cererea ${ref} ${d.ticketTitle}`.replace(/\s+/g, " ").trim().slice(0, 200);
   const text = [
@@ -512,6 +516,7 @@ export type TicketResolvedEmailData = {
   clientName: string;
   ticketTitle: string;
   seq: number | null;
+  number?: string | null;
   /** DONE = executată; CANCELLED = închisă fără execuție. */
   outcome: "DONE" | "CANCELLED";
   /** „YYYY-MM-DD” — data executării, dacă e setată. */
@@ -532,7 +537,7 @@ async function sendTicketResolvedEmailImpl(d: TicketResolvedEmailData): Promise<
   const transporter = getTransporter();
   if (!transporter) throw new Error("SMTP neconfigurat.");
   const company = d.companyName?.trim() || "Apă-Canal";
-  const ref = d.seq != null ? `#${d.seq}` : "";
+  const ref = taskNoOf(d) ?? "";
   const date = d.executedOn ? d.executedOn.split("-").reverse().join(".") : null;
   const done = d.outcome === "DONE";
   const roLine = done

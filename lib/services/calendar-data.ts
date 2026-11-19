@@ -19,6 +19,7 @@ export type CalItem = {
   dateAt: Date;
   status: string;
   seq: number | null;
+  number?: string | null;
   assigneeName: string | null;
   clientName: string | null;
   color: string | null;
@@ -61,7 +62,7 @@ export function getCalendarItems(a: CalendarArgs): Promise<CalItem[]> {
     ]);
     return [
       ...tasks.map((t): CalItem => ({
-        id: t.id, kind: t.type as CalItem["kind"], title: t.title, dateAt: t.dueAt, status: t.status, seq: t.seq, assigneeName: t.assigneeName, clientName: null, color: null,
+        id: t.id, kind: t.type as CalItem["kind"], title: t.title, dateAt: t.dueAt, status: t.status, seq: t.seq, number: t.number, assigneeName: t.assigneeName, clientName: null, color: null,
       })),
       ...appts.map((p): CalItem => ({
         id: p.id, kind: "APPT", title: p.title, dateAt: p.startAt, status: p.status, seq: null, assigneeName: null, clientName: p.clientNameSnapshot, color: p.categoryColorSnapshot,

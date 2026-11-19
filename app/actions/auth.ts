@@ -23,6 +23,7 @@ import { logAudit } from "@/lib/services/audit";
 import { DEMO } from "@/lib/demo";
 import { createVerificationCode, consumeVerificationCode } from "@/lib/services/verification-codes";
 import { sendVerificationCodeEmail } from "@/lib/email";
+import { nextFreeUserCode } from "@/lib/services/task-number";
 
 export type AuthState = { error?: string } | undefined;
 
@@ -195,6 +196,7 @@ export async function register(
     data: {
       name,
       email,
+      code: await nextFreeUserCode(),
       passwordHash: await hashPassword(password),
       role: "ADMIN",
       isSuperAdmin: true,

@@ -12,6 +12,7 @@ import { useResolutionPrompt } from "./ResolutionDialog";
 import type { Resolution } from "@/lib/resolution";
 import { useMessages } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/context";
+import { taskNo } from "@/lib/task-number";
 
 type Opt = { id: string; name: string };
 type Status = "NEW" | "ASSIGNED" | "READ" | "IN_PROGRESS" | "ON_HOLD" | "REVIEW" | "DONE" | "CANCELLED";
@@ -21,6 +22,7 @@ type TaskType = "TASK" | "TICKET" | "WORK_ORDER";
 type Task = {
   id: string;
   seq: number | null;
+  number?: string | null;
   type: TaskType;
   title: string;
   status: Status;
@@ -433,9 +435,9 @@ export default function TaskKanban({
                         {t.type === "TICKET" ? m.tasks.typeTicket : m.tasks.typeTask}
                       </span>
                     </div>
-                    {t.seq != null && (
+                    {taskNo(t) != null && (
                       <span className="mt-1 inline-block rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-brand">
-                        #{t.seq}
+                        {taskNo(t)}
                       </span>
                     )}
                     <p className="mt-1 truncate text-[11px] text-ink-soft">

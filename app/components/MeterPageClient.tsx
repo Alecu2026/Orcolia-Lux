@@ -15,6 +15,7 @@ import { IconChevronLeft } from "./icons";
 import { useMeterDataset } from "./useMeterDataset";
 import { useLocale, useT } from "@/lib/i18n/context";
 import { dateTag } from "@/lib/i18n/t";
+import { taskNo } from "@/lib/task-number";
 
 const CARD_BTN = "tap inline-flex h-9 items-center gap-1 rounded-xl border border-[var(--color-line)] px-3 text-sm font-medium hover:bg-brand-soft";
 
@@ -442,7 +443,7 @@ export default function MeterPageClient({
                         <Link href={x.type === "TICKET" ? `/tickets/${x.id}` : `/tasks/${x.id}`} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-brand-soft/40">
                           <span className="min-w-0">
                             <span className="block truncate font-medium">
-                              {x.seq ? `#${x.seq} · ` : ""}
+                              {taskNo(x) ? `${taskNo(x)} · ` : ""}
                               {x.title}
                             </span>
                             <span className="block text-[11px] text-ink-soft">

@@ -78,7 +78,7 @@ export const env = {
     concurrency: Math.min(6, Math.max(1, int("ONEC_READINGS_CONCURRENCY", 3))),
     /** "buffer" (implicit): 1C adaugă documentele într-un document-buffer comun și întoarce TOTALUL din buffer (cumulat), deci loturile se trimit pe rând și se verifică creșterea; "batch": 1C întoarce lungimea listei primite. */
     confirm: optional("ONEC_READINGS_CONFIRM", "buffer") === "batch" ? ("batch" as const) : ("buffer" as const),
-    /** primul document al primului lot din fiecare trimitere poartă `sterge_buffer: true` (1C șterge buffer-ul vechi înainte de a adăuga); "0" = fără acest semnal (rămâne doar `lot`). */
+    /** primul document al fiecărui lot poartă `sterge_buffer: true` (1C șterge buffer-ul vechi înainte de a adăuga); "0" = fără acest semnal (rămâne doar `lot`). */
     resetBuffer: optional("ONEC_READINGS_RESET", "1") !== "0",
   },
   emailInboundSecret: optional("EMAIL_INBOUND_SECRET"),

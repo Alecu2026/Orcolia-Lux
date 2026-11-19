@@ -23,6 +23,7 @@ import PayerIssues from "@/app/components/PayerIssues";
 import { listClientIssues } from "@/lib/services/meter-issues";
 import type { IssueRegisterRow } from "@/lib/meter-issues";
 import { dateTag } from "@/lib/i18n/t";
+import { taskNo } from "@/lib/task-number";
 
 export const dynamic = "force-dynamic";
 
@@ -225,7 +226,7 @@ export default async function PayerDetailPage({
                   <li key={t.id}>
                     <Link href={`/tickets/${t.id}`} className="tap flex items-center justify-between gap-3 px-3 py-1.5 hover:bg-brand-soft/30">
                       <span className="min-w-0 truncate text-[13px] font-medium">
-                        {t.seq ? `#${t.seq} · ` : ""}
+                        {taskNo(t) ? `${taskNo(t)} · ` : ""}
                         {t.title}
                         <span className="ml-2 text-xs font-normal text-ink-soft">{fmtDate(t.createdAt)}</span>
                       </span>

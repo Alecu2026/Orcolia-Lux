@@ -12,6 +12,8 @@ import { TASK_PRIORITY_LIST, TASK_STATUS_LIST, type TaskNames, type TaskTuple } 
 export type TaskRow = {
   id: string;
   seq: number | null;
+  /** Numărul „cod-AN/nr” (ex. 1-26/1); gol la cele create înainte (se arată #seq). */
+  number: string | null;
   type: TaskType;
   title: string;
   description: string | null;
@@ -70,6 +72,7 @@ export type TaskRow = {
 const TASK_SELECT = {
   id: true,
   seq: true,
+  number: true,
   type: true,
   title: true,
   description: true,
@@ -186,6 +189,7 @@ function toRow(t: TaskDbRow, l: Lookups): TaskRow {
   return {
     id: t.id,
     seq: t.seq ?? null,
+    number: t.number ?? null,
     type: t.type,
     title: t.title,
     description: t.description ?? null,
@@ -409,10 +413,12 @@ function buildWhere(filter: TaskFilter): Prisma.TaskWhereInput {
     const term = filter.search.trim();
     const stripped = term.startsWith("#") ? term.slice(1) : term;
     const seqNum = /^\d+$/.test(stripped) ? parseInt(stripped, 10) : NaN;
+    // și după numărul „cod-AN/nr” (ex. 1-26/1)
+    const byNumber = { number: { contains: term, mode: "insensitive" as const } };
     if (!isNaN(seqNum)) {
-      and.push({ OR: [{ seq: seqNum }, { title: { contains: term, mode: "insensitive" } }] });
+      and.push({ OR: [{ seq: seqNum }, byNumber, { title: { contains: term, mode: "insensitive" } }] });
     } else {
-      where.title = { contains: term, mode: "insensitive" };
+      and.push({ OR: [byNumber, { title: { contains: term, mode: "insensitive" } }] });
     }
   }
 
@@ -574,6 +580,7 @@ function toTuple(t: TaskDbRow): TaskTuple {
     t.closedAt ? t.closedAt.getTime() : null,
     t.consumerType ?? null,
     t.sectionId ?? null,
+    t.number ?? null,
   ];
 }
 
@@ -636,6 +643,7 @@ export async function encodeTaskNames(tuples: TaskTuple[], hideClientNames: bool
 export type CalendarTask = {
   id: string;
   seq: number | null;
+  number: string | null;
   title: string;
   type: TaskType;
   status: TaskStatus;
@@ -687,7 +695,7 @@ export async function tasksDueBetween(opts: {
   if (opts.lean) {
     const rows = await prisma.task.findMany({ where, select: { id: true, title: true, type: true, status: true, dueAt: true }, orderBy: { dueAt: "asc" } });
     return rows.map((r) => ({
-      id: r.id, seq: null, title: r.title, type: r.type, status: r.status, priority: "MEDIUM" as TaskPriority, dueAt: r.dueAt as Date,
+      id: r.id, seq: null, number: null, title: r.title, type: r.type, status: r.status, priority: "MEDIUM" as TaskPriority, dueAt: r.dueAt as Date,
       creatorId: "", assigneeId: null, assigneeName: null, teamId: null, projectId: null, clientId: null,
     }));
   }
@@ -697,6 +705,7 @@ export async function tasksDueBetween(opts: {
     select: {
       id: true,
       seq: true,
+      number: true,
       title: true,
       type: true,
       status: true,
@@ -713,6 +722,7 @@ export async function tasksDueBetween(opts: {
   return rows.map((r) => ({
     id: r.id,
     seq: r.seq ?? null,
+    number: r.number ?? null,
     title: r.title,
     type: r.type,
     status: r.status,

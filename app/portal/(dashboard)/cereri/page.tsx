@@ -7,6 +7,7 @@ import PortalNewTicketForm from "@/app/components/PortalNewTicketForm";
 import { IconTicket } from "@/app/components/icons";
 import { getT } from "@/lib/i18n/server-t";
 import { listPortalTemplates } from "@/lib/queries/portal-templates";
+import { taskNo } from "@/lib/task-number";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export default async function PortalTicketsPage({ searchParams }: { searchParams
   const rows = await prisma.task.findMany({
     where: { clientId: client.id, type: "TICKET" },
     select: {
-      id: true, seq: true, title: true, description: true, status: true, createdAt: true, address: true, executedAt: true,
+      id: true, seq: true, number: true, title: true, description: true, status: true, createdAt: true, address: true, executedAt: true,
       chatLastMsgAt: true, chatLastSender: true, chatClientReadAt: true,
     },
   });
@@ -60,7 +61,7 @@ export default async function PortalTicketsPage({ searchParams }: { searchParams
             <Link key={t.id} href={`/portal/cereri/${t.id}`} className="card block cursor-pointer p-4 hover:border-brand">
               <div className="flex items-start justify-between gap-3">
                 <p className="text-sm font-semibold">
-                  {t.seq ? <span className="text-ink-soft">#{t.seq} · </span> : ""}
+                  {taskNo(t) ? <span className="text-ink-soft">{taskNo(t)} · </span> : ""}
                   {t.title}
                 </p>
                 <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${TICKET_STATUS_CLS[t.status] ?? "bg-[var(--color-surface-2)] text-ink-soft"}`}>

@@ -48,7 +48,7 @@ export type OneCDocument = {
   contoare: { nr_uzina: string; indice: number }[];
   /** identificatorul trimiterii (o apăsare pe „Trimite către 1C”), același în TOATE documentele ei: 1C păstrează doar documentele cu cel mai nou `lot` și le șterge pe celelalte (resturile trimiterilor de dinainte) */
   lot?: string;
-  /** doar la primul document al primului lot dintr-o trimitere: 1C șterge buffer-ul vechi înainte de a adăuga lotul */
+  /** doar la primul document al fiecărui lot: 1C șterge buffer-ul vechi înainte de a adăuga lotul */
   sterge_buffer?: true;
 };
 

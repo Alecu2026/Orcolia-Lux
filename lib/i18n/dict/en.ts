@@ -3681,4 +3681,13 @@ export const EN: Record<string, string> = {
   "Doar {email} poate modifica bifele.": "Only {email} can change the ticks.",
   "Bifele pot fi modificate doar de {email}. Tu le poți vedea și exporta în PDF.": "The ticks can only be changed by {email}. You can view them and export them to PDF.",
   "Nu ai dreptul să modifici bifele.": "You are not allowed to change the ticks.",
+  "Codul trebuie să fie un număr întreg între 1 și 999999.": "The code must be a whole number between 1 and 999999.",
+  "Codul {n} e deja folosit de {name}. Alege altul.": "Code {n} is already used by {name}. Choose another.",
+  "Cod utilizator": "User code",
+  "se atribuie automat la prima sarcină": "assigned automatically at the first task",
+  "automat: {n}": "automatic: {n}",
+  "Unic. Intră în numărul sarcinilor și cererilor create de acest utilizator: cod-AN/nr (ex. {ex}). Lasă gol ca să se dea automat; la schimbare, cele deja create își păstrează numărul.": "Unique. It becomes part of the number of the tasks and requests this user creates: code-YY/no (e.g. {ex}). Leave empty to assign automatically; if you change it, the ones already created keep their number.",
+  "Cod utilizator: intră în numărul sarcinilor și cererilor create de el": "User code: part of the number of the tasks and requests they create",
+  "cod": "code",
+  "Nu am putut citi feedul LoRaWAN.": "Could not read the LoRaWAN feed.",
 };

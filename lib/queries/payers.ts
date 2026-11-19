@@ -758,7 +758,7 @@ export async function getPayerTickets(clientId: string) {
   return prisma.task.findMany({
     where: { clientId, type: "TICKET" },
     orderBy: { createdAt: "desc" },
-    select: { id: true, seq: true, title: true, status: true, createdAt: true },
+    select: { id: true, seq: true, number: true, title: true, status: true, createdAt: true },
   });
 }
 

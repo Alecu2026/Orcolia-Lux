@@ -44,6 +44,7 @@ import { resolveTemplateTextAction } from "@/app/actions/task-templates";
 import { useT } from "@/lib/i18n/context";
 import { SERVICE_TYPES, SERVICE_TYPE_LABEL } from "@/lib/service-type";
 import { CONSUMER_TYPES, CONSUMER_TYPE_LABEL } from "@/lib/consumer-type";
+import { taskNo } from "@/lib/task-number";
 
 export type HistoryRow = {
   id: string;
@@ -67,6 +68,7 @@ export type Status = "NEW" | "ASSIGNED" | "READ" | "IN_PROGRESS" | "ON_HOLD" | "
 export type Task = {
   id: string;
   seq: number | null;
+  number?: string | null;
   type: "TASK" | "TICKET" | "WORK_ORDER";
   title: string;
   status: Status;
@@ -680,13 +682,13 @@ export default function TasksManager({
                   className="min-w-0 basis-full text-left sm:basis-0 sm:flex-1"
                 >
                   <div className="flex min-w-0 items-center gap-2">
-                    {t.seq != null && (
+                    {taskNo(t) != null && (
                       <Link
                         href={`/${t.type === "TICKET" ? "tickets" : "tasks"}/${t.id}`}
                         onClick={(e) => e.stopPropagation()}
                         className="shrink-0 rounded bg-brand/10 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-brand hover:bg-brand/20"
                       >
-                        #{t.seq}
+                        {taskNo(t)}
                       </Link>
                     )}
                     <span className="min-w-0 truncate text-sm font-medium">{t.title}</span>
@@ -1198,7 +1200,7 @@ export function EditDialog({
   const dueDate = task.dueAt ? dateKeyOf(new Date(task.dueAt), TZ) : "";
   const dueTimeRaw = task.dueAt ? formatTime(new Date(task.dueAt), TZ) : "";
   const dueTime = dueTimeRaw !== "00:00" ? dueTimeRaw : "";
-  const seqLabel = task.seq != null ? ` #${task.seq}` : "";
+  const seqLabel = taskNo(task) ? ` ${taskNo(task)}` : "";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>

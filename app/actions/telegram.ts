@@ -10,6 +10,7 @@ import { hashPassword } from "@/lib/password";
 import { setWebhook, sendMessage, mainMenu, workerMenu } from "@/lib/telegram";
 import { logAudit } from "@/lib/services/audit";
 import { DEMO } from "@/lib/demo";
+import { nextFreeUserCode } from "@/lib/services/task-number";
 
 export type TgState = { ok?: boolean; error?: string; message?: string } | undefined;
 
@@ -81,6 +82,7 @@ export async function approveTelegramContact(
     data: {
       name,
       email,
+      code: await nextFreeUserCode(),
       phone: phone || null,
       passwordHash: await hashPassword(rawPassword),
       role,

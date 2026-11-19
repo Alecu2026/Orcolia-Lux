@@ -31,7 +31,7 @@ export function notifyClientTicketClosed(taskId: string, outcome: "DONE" | "CANC
   inBackground(async () => {
     const t = await prisma.task.findUnique({
       where: { id: taskId },
-      select: { id: true, seq: true, title: true, type: true, clientId: true, fromName: true, emailSource: true, executedAt: true, status: true, measuresTaken: true, resolutionMinutes: true },
+      select: { id: true, seq: true, number: true, title: true, type: true, clientId: true, fromName: true, emailSource: true, executedAt: true, status: true, measuresTaken: true, resolutionMinutes: true },
     });
     if (!t || !isPortalTicket(t) || !t.clientId) return;
     // starea s-a schimbat între timp (redeschis imediat): nu mai trimitem „rezolvat”
@@ -44,6 +44,7 @@ export function notifyClientTicketClosed(taskId: string, outcome: "DONE" | "CANC
       clientName: client.name,
       ticketTitle: t.title,
       seq: t.seq,
+      number: t.number,
       outcome,
       executedOn: t.executedAt ? t.executedAt.toISOString().slice(0, 10) : null,
       measures: t.measuresTaken,

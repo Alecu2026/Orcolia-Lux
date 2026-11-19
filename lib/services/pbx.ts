@@ -98,7 +98,7 @@ export type CallerContext = {
   /** „De achitat" pe ultima factură + statusul ei (din rezumatul Client.lastInvoice*). */
   debt: number | null;
   invoiceStatus: string | null;
-  openTickets: { id: string; seq: number | null; title: string; status: string }[];
+  openTickets: { id: string; seq: number | null; number: string | null; title: string; status: string }[];
   openTicketCount: number;
   lastNote: { body: string; userName: string; createdAt: string } | null;
 };
@@ -115,7 +115,7 @@ export async function getCallerContext(clientId: string): Promise<CallerContext 
   if (!c) return null;
   const openWhere = { clientId, type: "TICKET" as const, status: { notIn: ["DONE", "CANCELLED"] as ("DONE" | "CANCELLED")[] } };
   const [tickets, openTicketCount, note] = await Promise.all([
-    prisma.task.findMany({ where: openWhere, orderBy: { createdAt: "desc" }, take: 3, select: { id: true, seq: true, title: true, status: true } }),
+    prisma.task.findMany({ where: openWhere, orderBy: { createdAt: "desc" }, take: 3, select: { id: true, seq: true, number: true, title: true, status: true } }),
     prisma.task.count({ where: openWhere }),
     prisma.payerNote.findFirst({ where: { clientId }, orderBy: { createdAt: "desc" }, select: { body: true, userName: true, createdAt: true } }),
   ]);

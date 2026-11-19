@@ -13,6 +13,8 @@ import { logAudit } from "@/lib/services/audit";
 import { USER_SPEC, diffFields } from "@/lib/services/audit-diff";
 import { invalidateSuperAdminCheck, otherActiveSuperAdmins } from "@/lib/services/super-admin";
 import { NOTIFY_EVENT_KEYS } from "@/lib/notify-meta";
+import { parseUserCode } from "@/lib/task-number";
+import { nextFreeUserCode, userWithCode } from "@/lib/services/task-number";
 
 export type UserState = { ok?: boolean; error?: string; id?: string } | undefined;
 
@@ -98,6 +100,20 @@ function parseTableLook(formData: FormData): Prisma.InputJsonValue {
   }
 }
 
+/**
+ * Codul din formular (intră în numărul sarcinilor create de utilizator: „cod-AN/nr”): întreg 1–999999, unic.
+ * Gol = `auto` (la utilizator nou se dă primul liber; la editare codul rămâne cum e). `exceptUserId` = utilizatorul editat.
+ */
+async function parseCode(formData: FormData, exceptUserId?: string): Promise<{ code: number | null; error?: string }> {
+  const raw = String(formData.get("code") ?? "").trim();
+  if (!raw) return { code: null };
+  const code = parseUserCode(raw);
+  if (code == null) return { code: null, error: "Codul trebuie să fie un număr întreg între 1 și 999999." };
+  const owner = await userWithCode(code, exceptUserId);
+  if (owner) return { code: null, error: `Codul ${code} e deja folosit de ${owner.name}. Alege altul.` };
+  return { code };
+}
+
 const TASK_VIEW_SCOPES = ["ALL", "RESTRICTED"];
 function parseTaskViewScope(formData: FormData): string {
   const v = String(formData.get("taskViewScope") ?? "ALL");
@@ -137,11 +153,15 @@ export async function createUser(
 
   const teamIds = await parseTeamIds(formData);
   const sectionId = await parseSectionId(formData);
+  const codeIn = await parseCode(formData);
+  if (codeIn.error) return { error: codeIn.error };
+  const code = codeIn.code ?? (await nextFreeUserCode());
 
   const created = await prisma.user.create({
     data: {
       name,
       email,
+      code,
       passwordHash: await hashPassword(password),
       role,
       isActive,
@@ -166,7 +186,7 @@ export async function createUser(
     module: "Users",
     objectId: created.id,
     objectName: name,
-    newValue: JSON.stringify({ role, isActive }),
+    newValue: JSON.stringify({ role, isActive, code }),
   });
   invalidate();
   return { ok: true, id: created.id };
@@ -241,6 +261,9 @@ export async function updateUser(
   const beforeTeamIds = newTeamIds
     ? (await prisma.user.findUnique({ where: { id }, select: { teamIds: true } }))?.teamIds ?? []
     : [];
+  // codul se schimbă doar dacă a fost completat; gol = rămâne cel de acum (sau, la un cont fără cod, se atribuie automat la prima sarcină)
+  const codeIn = await parseCode(formData, id);
+  if (codeIn.error) return { error: codeIn.error };
 
   try {
     await prisma.user.update({
@@ -248,6 +271,7 @@ export async function updateUser(
       data: {
         name,
         email,
+        ...(codeIn.code != null ? { code: codeIn.code } : {}),
         role,
         isActive,
         permissions: newPerms,

@@ -31,7 +31,7 @@ export type MeterPageMeter = {
 };
 export type MeterPagePayer = {
   invoices: { id: string; number: string; status: string; total: number; currency: string; issueDate: string; dueDate: string | null; token: string; label: string | null }[];
-  tasks: { id: string; seq: number | null; type: string; title: string; status: string; statusRo: string; createdAt: string }[];
+  tasks: { id: string; seq: number | null; number: string | null; type: string; title: string; status: string; statusRo: string; createdAt: string }[];
 };
 
 /**
@@ -57,7 +57,7 @@ export async function GET(req: Request) {
               where: { clientId: client },
               orderBy: { createdAt: "desc" },
               take: 40,
-              select: { id: true, seq: true, type: true, title: true, status: true, createdAt: true, creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true },
+              select: { id: true, seq: true, number: true, type: true, title: true, status: true, createdAt: true, creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true },
             })
           : Promise.resolve([]),
       ]);
@@ -76,7 +76,7 @@ export async function GET(req: Request) {
         tasks: all
           .filter((x) => canViewTask(user, x))
           .slice(0, 10)
-          .map((x) => ({ id: x.id, seq: x.seq, type: x.type, title: x.title, status: x.status, statusRo: TASK_STATUS_RO[x.status] ?? x.status, createdAt: x.createdAt.toISOString() })),
+          .map((x) => ({ id: x.id, seq: x.seq, number: x.number ?? null, type: x.type, title: x.title, status: x.status, statusRo: TASK_STATUS_RO[x.status] ?? x.status, createdAt: x.createdAt.toISOString() })),
       };
       return Response.json(body, { headers: { "Cache-Control": "private, no-store" } });
     }

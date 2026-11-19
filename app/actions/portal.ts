@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireClient } from "@/lib/client-dal";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "@/lib/services/notifications";
 import { auditPortalAction } from "@/lib/services/impersonation";
+import { allocateTaskNumber } from "@/lib/services/task-number";
 import { parseServiceType, serviceTypeLabel } from "@/lib/service-type";
 import { addDaysToKey, todayKey, zonedToUtc } from "@/lib/date";
 import { DEFAULT_PORTAL_TEMPLATES, PETITION_MIN_CHARS, PORTAL_REQUEST_MAX_ADDRESS, PORTAL_REQUEST_MAX_CONSUMER, isPetitionName } from "@/lib/portal-default-templates";
@@ -65,9 +66,12 @@ export async function createPortalTicket(
     select: { value: true },
   });
 
+  // numărul cererii pornește de la contul administratorului-substitut: „cod-AN/nr”
+  const number = await allocateTaskNumber(systemUser.id);
   const ticket = await prisma.task.create({
     data: {
       seq: counter.value,
+      number,
       type: "TICKET",
       title,
       description: description || null,
@@ -87,7 +91,7 @@ export async function createPortalTicket(
       fromName: client.name,
       fromEmail: client.email ?? null,
     },
-    select: { id: true, seq: true },
+    select: { id: true, seq: true, number: true },
   });
 
   after(async () => {
@@ -105,6 +109,7 @@ export async function createPortalTicket(
             url: `/tickets/${ticket.id}`,
             taskId: ticket.id,
             seq: ticket.seq,
+            number: ticket.number,
           },
           { telegram: true },
         );

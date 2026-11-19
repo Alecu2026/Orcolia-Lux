@@ -35,6 +35,8 @@ import {
 const REQUEST_TIMEOUT_MS = 60_000;
 /** Cât timp lucrează o cerere (limita funcției e 300 s); restul se continuă cu o nouă cerere. */
 const RUN_BUDGET_MS = 230_000;
+/** pauza dintre două loturi (grupe de cereri): 1C confirmă primirea în câteva zeci de ms, dar procesează după, deci nu-l încărcăm cu toate loturile deodată */
+const BATCH_PAUSE_MS = 1000;
 const SAMPLE_DOCS = 3;
 const MAX_FAILED_LISTED = 300;
 const LOCK_KEY = "onec-readings-lock";
@@ -368,8 +370,8 @@ export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]
         group.map((chunk, k) => {
           // fiecare document poartă identificatorul trimiterii (`lot`); 1C păstrează doar lotul cel mai nou
           const docsToSend: OneCDocument[] = chunk.map((c) => ({ ...c.doc, lot: session }));
-          // semnalul explicit „șterge buffer-ul vechi”: doar primul document al primului lot din prima cerere a seriei
-          const reset = bufferMode && env.onecReadings.resetBuffer && opts.first !== false && batchNo + k === 0;
+          // semnalul explicit „șterge buffer-ul vechi”: la FIECARE lot, doar primul său document
+          const reset = bufferMode && env.onecReadings.resetBuffer;
           if (reset) docsToSend[0] = { ...docsToSend[0], sterge_buffer: true };
           const expect: Expect = bufferMode ? { kind: "buffer", prev: bufferTotal, reset } : { kind: "batch" };
           return postList(docsToSend, expect).then((r) => ({ chunk, r, n: batchNo + k + 1, reset }));
@@ -434,6 +436,7 @@ export async function sendReadings(actor: AuditActor, opts: { exclude?: string[]
         out.message = out.message ?? results.find(({ r }) => r.message)?.r.message ?? "Serviciul 1C nu răspunde.";
         break;
       }
+      if (idx < chunks.length) await new Promise((resolve) => setTimeout(resolve, BATCH_PAUSE_MS));
     }
     out.remaining = chunks.slice(idx).reduce((a, c) => a + c.length, 0);
     out.bySource = SOURCE_ORDER.filter((x) => sentBySource.has(x)).map((x) => sentBySource.get(x)!);

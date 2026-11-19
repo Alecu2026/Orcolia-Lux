@@ -5,6 +5,7 @@ import { env } from "../env";
 import { sendPushToUser } from "../push";
 import { sendMessage, invisibleLink, type InlineButton } from "../telegram";
 import { logDelivery, withDeliveryMeta } from "../delivery-log";
+import { taskNoOf } from "../task-number";
 
 export type NotifyPayload = {
   title: string;
@@ -13,6 +14,8 @@ export type NotifyPayload = {
   taskId?: string;
   /** Id-ul scurt al task-ului (#123) — afișat + folosit pentru link-ul invizibil din Telegram. */
   seq?: number | null;
+  /** Numărul „cod-AN/nr” (ex. 1-26/1); are prioritate față de #seq la afișare. */
+  number?: string | null;
   /** Corpul complet al emailului/tichetului — afișat în mesajul Telegram. */
   emailBody?: string;
 };
@@ -142,8 +145,9 @@ async function notifyUsersImpl(userIds: string[], payload: NotifyPayload, opts: 
               : null;
 
             let titleHtml = escapeHtml(payload.title);
-            if (payload.seq != null && fullUrl) {
-              const seqTag = `#${payload.seq}`;
+            const noTag = taskNoOf({ seq: payload.seq, number: payload.number });
+            if (noTag && fullUrl) {
+              const seqTag = noTag;
               const seqLink = `<a href="${fullUrl}">${seqTag}</a>`;
               if (titleHtml.includes(seqTag)) {
                 titleHtml = titleHtml.replace(seqTag, seqLink);

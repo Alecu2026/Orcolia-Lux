@@ -8,6 +8,7 @@ import type { CallerContext } from "@/lib/services/pbx";
 import { IconX } from "./icons";
 import { useToast } from "./toast";
 import { useT } from "@/lib/i18n/context";
+import { taskNo } from "@/lib/task-number";
 
 type ActiveCall = {
   callId: string;
@@ -185,7 +186,7 @@ function CallCard({ call: c, canEdit, canTask, canClient, onDismiss }: { call: A
               <span className="flex flex-col items-end gap-0.5">
                 {ctx.openTickets.map((t) => (
                   <Link key={t.id} href={`/tickets/${t.id}`} className="max-w-[14rem] cursor-pointer truncate text-brand hover:underline" title={t.title}>
-                    {t.seq != null ? `#${t.seq} ` : ""}{t.title}
+                    {taskNo(t) ? `${taskNo(t)} ` : ""}{t.title}
                   </Link>
                 ))}
                 {ctx.openTicketCount > ctx.openTickets.length && <span className="text-ink-soft">+{ctx.openTicketCount - ctx.openTickets.length} {tr("altele")}</span>}

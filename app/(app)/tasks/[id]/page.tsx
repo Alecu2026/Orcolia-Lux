@@ -22,6 +22,7 @@ import CloseTicketButton from "@/app/components/CloseTicketButton";
 import ExecutionDateField from "@/app/components/ExecutionDateField";
 import TicketResolution from "@/app/components/TicketResolution";
 import { getT } from "@/lib/i18n/server-t";
+import { taskNo } from "@/lib/task-number";
 
 export const dynamic = "force-dynamic";
 
@@ -246,6 +247,7 @@ export default async function TaskDetailPage({
           task={{
             id: task.id,
             seq: task.seq ?? null,
+            number: task.number ?? null,
             title: task.title,
             description: task.description ?? null,
             priority: task.priority,
@@ -278,9 +280,9 @@ export default async function TaskDetailPage({
       {/* ── Header ────────────────────────────────────────── */}
       <div className="card mb-3 p-4">
         <div className="mb-2 flex flex-wrap items-center gap-1.5">
-          {task.seq != null && (
+          {taskNo(task) != null && (
             <span className="rounded bg-brand/10 px-2 py-0.5 font-mono text-sm font-bold text-brand">
-              #{task.seq}
+              {taskNo(task)}
             </span>
           )}
           <span className="rounded bg-[var(--color-surface-2)] px-2 py-0.5 text-[11px] text-ink-soft">

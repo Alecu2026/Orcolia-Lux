@@ -4,6 +4,7 @@ import { prisma } from "../prisma";
 import { DEMO } from "../demo";
 import { FEEDBACK_LOW, FEEDBACK_MAX, validateFeedback } from "../ticket-feedback";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "./notifications";
+import { taskNo } from "../task-number";
 
 /**
  * Feedback-ul clientului după închiderea cererii lui din portal: nota 1–5 + comentariu opțional, salvate pe cerere (`Task.feedback*`). Se poate da doar după „Finalizat”
@@ -24,7 +25,7 @@ export async function submitTicketFeedback(client: Client, taskId: string, ratin
 
   const task = await prisma.task.findFirst({
     where: { id: taskId, clientId: client.id, type: "TICKET" },
-    select: { id: true, seq: true, title: true, status: true, assigneeId: true, extraAssigneeIds: true, teamId: true, feedbackAt: true },
+    select: { id: true, seq: true, number: true, title: true, status: true, assigneeId: true, extraAssigneeIds: true, teamId: true, feedbackAt: true },
   });
   if (!task) return { ok: false, error: "Cerere inexistentă." };
   if (task.status !== "DONE") return { ok: false, error: "Poți evalua cererea după ce este finalizată." };
@@ -43,7 +44,7 @@ export async function submitTicketFeedback(client: Client, taskId: string, ratin
 
 async function notifyStaff(
   client: Client,
-  task: { id: string; seq: number | null; title: string; assigneeId: string | null; extraAssigneeIds: string[]; teamId: string | null },
+  task: { id: string; seq: number | null; number?: string | null; title: string; assigneeId: string | null; extraAssigneeIds: string[]; teamId: string | null },
   rating: number,
   comment: string | null,
   updated: boolean,
@@ -58,7 +59,7 @@ async function notifyStaff(
   ];
   if (ids.length === 0) return;
   const low = rating <= FEEDBACK_LOW;
-  const ref = task.seq != null ? ` #${task.seq}` : "";
+  const ref = taskNo(task) ? ` ${taskNo(task)}` : "";
   await notifyUsers(
     ids,
     {
@@ -67,6 +68,7 @@ async function notifyStaff(
       url: `/tickets/${task.id}`,
       taskId: task.id,
       seq: task.seq,
+      number: task.number,
     },
     { telegram: true },
   );

@@ -3681,4 +3681,13 @@ export const RU: Record<string, string> = {
   "Doar {email} poate modifica bifele.": "Изменять отметки может только {email}.",
   "Bifele pot fi modificate doar de {email}. Tu le poți vedea și exporta în PDF.": "Отметки может изменять только {email}. Вы можете просматривать их и экспортировать в PDF.",
   "Nu ai dreptul să modifici bifele.": "У вас нет права изменять отметки.",
+  "Codul trebuie să fie un număr întreg între 1 și 999999.": "Код должен быть целым числом от 1 до 999999.",
+  "Codul {n} e deja folosit de {name}. Alege altul.": "Код {n} уже используется: {name}. Выберите другой.",
+  "Cod utilizator": "Код пользователя",
+  "se atribuie automat la prima sarcină": "присваивается автоматически при первой задаче",
+  "automat: {n}": "авто: {n}",
+  "Unic. Intră în numărul sarcinilor și cererilor create de acest utilizator: cod-AN/nr (ex. {ex}). Lasă gol ca să se dea automat; la schimbare, cele deja create își păstrează numărul.": "Уникальный. Входит в номер задач и заявок, созданных этим пользователем: код-ГГ/№ (напр. {ex}). Оставьте пустым для автоматического назначения; при смене уже созданные сохраняют свой номер.",
+  "Cod utilizator: intră în numărul sarcinilor și cererilor create de el": "Код пользователя: входит в номер созданных им задач и заявок",
+  "cod": "код",
+  "Nu am putut citi feedul LoRaWAN.": "Не удалось прочитать данные LoRaWAN.",
 };

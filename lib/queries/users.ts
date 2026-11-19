@@ -7,6 +7,8 @@ export type UserRow = {
   id: string;
   name: string;
   email: string;
+  /** Codul utilizatorului (intră în numărul sarcinilor create de el); null = cont mai vechi, fără cod încă. */
+  code: number | null;
   role: "ADMIN" | "STAFF";
   isActive: boolean;
   isSuperAdmin: boolean;
@@ -31,6 +33,7 @@ const USER_SELECT = {
   id: true,
   name: true,
   email: true,
+  code: true,
   role: true,
   isActive: true,
   isSuperAdmin: true,
@@ -51,7 +54,7 @@ const USER_SELECT = {
 export async function listUsers(): Promise<UserRow[]> {
   if (DEMO) {
     return [
-      { id: "demo-user", name: "Cont Demo", email: "demo@local", role: "ADMIN", isActive: true, isSuperAdmin: true, permissions: [], notifyEvents: [], telegramChatId: null, notifyScope: "ALL", notifyTeamIds: [], notifyMemberIds: [], taskViewScope: "ALL", taskViewTeamIds: [], taskViewMemberIds: [], teamIds: [], sectionId: null },
+      { id: "demo-user", name: "Cont Demo", email: "demo@local", code: 1, role: "ADMIN", isActive: true, isSuperAdmin: true, permissions: [], notifyEvents: [], telegramChatId: null, notifyScope: "ALL", notifyTeamIds: [], notifyMemberIds: [], taskViewScope: "ALL", taskViewTeamIds: [], taskViewMemberIds: [], teamIds: [], sectionId: null },
     ];
   }
   const rows = await prisma.user.findMany({

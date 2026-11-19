@@ -12,6 +12,7 @@ import { useT } from "@/lib/i18n/context";
 import { addressCounts, REPEAT_OPTIONS, repeatsAtLeast } from "@/lib/address-repeat";
 import { decodeCall, type PbxCallRow } from "@/lib/pbx-data";
 import { usePbxDataset } from "./usePbxDataset";
+import { taskNo } from "@/lib/task-number";
 
 export type { PbxCallRow };
 
@@ -335,7 +336,7 @@ function CallDialog({ call: c, onClose, onChanged, onPlay, canManage, canTask, c
               {ctx.debt != null && <Item label={tr("De achitat")}><b className={ctx.debt > 0 ? "text-st-cancelled" : "text-st-done"}>{ctx.debt.toLocaleString("ro-RO", { minimumFractionDigits: 2 })} MDL</b></Item>}
               <Item label={tr("Cereri deschise")}>
                 {ctx.openTicketCount === 0 ? "niciunul" : ctx.openTickets.map((t) => (
-                  <Link key={t.id} href={`/tickets/${t.id}`} className="block cursor-pointer text-brand hover:underline">{t.seq != null ? `#${t.seq} ` : ""}{t.title}</Link>
+                  <Link key={t.id} href={`/tickets/${t.id}`} className="block cursor-pointer text-brand hover:underline">{taskNo(t) ? `${taskNo(t)} ` : ""}{t.title}</Link>
                 ))}
               </Item>
               {ctx.lastNote && <Item label={tr("Ultima notiță")}>{ctx.lastNote.body}</Item>}

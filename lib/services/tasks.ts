@@ -25,6 +25,8 @@ import { parseServiceType, SERVICE_TYPE_LABEL } from "../service-type";
 import { parseConsumerType, CONSUMER_TYPE_LABEL } from "../consumer-type";
 import type { TaskStatus, TaskType, TaskPriority, CreatedFrom } from "@prisma/client";
 import { computeNextRun, parseReminderSchedule, type ReminderSchedule } from "../reminder-schedule";
+import { allocateTaskNumber } from "./task-number";
+import { taskNo, taskNoOf, type TaskNoArg } from "../task-number";
 
 /** Contor atomic (MongoDB nu are autoincrement nativ) — folosit pentru Task.seq. */
 async function nextSeq(name: string): Promise<number> {
@@ -104,8 +106,8 @@ function taskUrl(taskId: string): string {
 }
 
 /** "#123" ca hyperlink HTML — textul "#N" este el însuși ancora, clic-abil în Telegram. */
-function taskRef(seq: number | null | undefined, taskId: string): string {
-  const label = seq != null ? `#${seq}` : "#—";
+function taskRef(ref: TaskNoArg, taskId: string): string {
+  const label = taskNoOf(ref) ?? "#—";
   return `<a href="${taskUrl(taskId)}">${label}</a>`;
 }
 
@@ -115,7 +117,7 @@ function taskUpdateTelegramText(
   taskTitle: string,
   statusLabel: string,
   taskId: string,
-  seq: number | null | undefined,
+  ref: TaskNoArg,
   lineLabel: string = "Status",
 ): string {
   const time = formatTime(new Date(), DEFAULT_TZ);
@@ -123,19 +125,19 @@ function taskUpdateTelegramText(
     "🔔 <b>Actualizare sarcină</b>",
     "",
     `Lucrător: ${escapeHtml(actorName)}`,
-    `Sarcină: ${escapeHtml(taskTitle)} (${taskRef(seq, taskId)})`,
+    `Sarcină: ${escapeHtml(taskTitle)} (${taskRef(ref, taskId)})`,
     `${lineLabel}: <b>${escapeHtml(statusLabel)}</b>`,
     `Ora: ${time}`,
   ].join("\n");
 }
 
 /** Mesaj Telegram pentru task întârziat (fără actor — notificare automată). */
-function taskOverdueTelegramText(taskTitle: string, taskId: string, seq: number | null | undefined): string {
+function taskOverdueTelegramText(taskTitle: string, taskId: string, ref: TaskNoArg): string {
   const time = formatTime(new Date(), DEFAULT_TZ);
   return [
     "⏰ <b>Sarcină în întârziere</b>",
     "",
-    `Sarcină: ${escapeHtml(taskTitle)} (${taskRef(seq, taskId)})`,
+    `Sarcină: ${escapeHtml(taskTitle)} (${taskRef(ref, taskId)})`,
     `Ora: ${time}`,
   ].join("\n");
 }
@@ -149,6 +151,7 @@ async function notifyTaskUpdateTelegram(
     statusLabel: string;
     taskId: string;
     seq: number | null | undefined;
+    number?: string | null;
     lineLabel?: string;
   },
 ): Promise<void> {
@@ -157,7 +160,7 @@ async function notifyTaskUpdateTelegram(
     info.taskTitle,
     info.statusLabel,
     info.taskId,
-    info.seq,
+    { seq: info.seq, number: info.number },
     info.lineLabel,
   );
   await Promise.all(
@@ -168,7 +171,7 @@ async function notifyTaskUpdateTelegram(
           console.log(`[tasks] telegram: user ${uid} nu are chat Telegram legat — sărit`);
           return;
         }
-        const res = await sendMessage(chatId, text, taskOpenButton(info.seq, info.taskId));
+        const res = await sendMessage(chatId, text, taskOpenButton({ seq: info.seq, number: info.number }, info.taskId));
         if (!res) {
           console.error(`[tasks] telegram: sendMessage a eșuat pentru user ${uid}`);
         }
@@ -184,15 +187,15 @@ async function notifyTaskOverdueTelegram(
   userIds: string[],
   taskTitle: string,
   taskId: string,
-  seq: number | null | undefined,
+  ref: TaskNoArg,
 ): Promise<void> {
-  const text = taskOverdueTelegramText(taskTitle, taskId, seq);
+  const text = taskOverdueTelegramText(taskTitle, taskId, ref);
   await Promise.all(
     userIds.map(async (uid) => {
       try {
         const chatId = await telegramChatFor(uid);
         if (!chatId) return;
-        const res = await sendMessage(chatId, text, taskOpenButton(seq, taskId));
+        const res = await sendMessage(chatId, text, taskOpenButton(ref, taskId));
         if (!res) console.error(`[tasks] telegram: sendMessage (overdue) a eșuat pentru user ${uid}`);
       } catch (e) {
         console.error(`[tasks] telegram: notificare overdue eșuată pentru user ${uid}`, e);
@@ -202,9 +205,10 @@ async function notifyTaskOverdueTelegram(
 }
 
 /** Textul notificării in-app, exact pe tipul de tranziție (cerut de spec). */
-function taskLabel(seq: number | null | undefined, title: string): string {
+function taskLabel(ref: TaskNoArg, title: string): string {
   const t = title.length > 40 ? `${title.slice(0, 40)}…` : title;
-  return seq != null ? `#${seq} · ${t}` : t;
+  const no = taskNoOf(ref);
+  return no ? `${no} · ${t}` : t;
 }
 
 type TaskAccessShape = {
@@ -313,7 +317,7 @@ export async function notifyTaskAssigned(taskId: string, userIds: string[], acto
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       select: {
-        id: true, seq: true, title: true, description: true, type: true, priority: true, status: true, address: true,
+        id: true, seq: true, number: true, title: true, description: true, type: true, priority: true, status: true, address: true,
         assigneeId: true, assignmentSettingsJson: true,
         assignee: { select: { name: true } },
         project: { select: { name: true, lat: true, lng: true, address: true } },
@@ -322,7 +326,7 @@ export async function notifyTaskAssigned(taskId: string, userIds: string[], acto
     if (!task) return;
     const settings: AssignmentSetting[] = task.assignmentSettingsJson ? (JSON.parse(task.assignmentSettingsJson) as AssignmentSetting[]) : [];
     const text =
-      taskCardText(task, `📌 <b>${TASK_TYPE_RO[task.type]} asignat ție</b> (${taskRef(task.seq, task.id)})`) +
+      taskCardText(task, `📌 <b>${TASK_TYPE_RO[task.type]} asignat ție</b> (${taskRef(task, task.id)})`) +
       `\n✏️ De: ${escapeHtml(actorName)}`;
     let stored = false;
     for (const uid of userIds) {
@@ -343,10 +347,11 @@ export async function notifyTaskAssigned(taskId: string, userIds: string[], acto
     await notifyUsers(
       userIds,
       {
-        title: `${TASK_TYPE_RO[task.type]} asignat: ${taskLabel(task.seq, task.title)}`,
+        title: `${TASK_TYPE_RO[task.type]} asignat: ${taskLabel(task, task.title)}`,
         body: `de ${actorName}`,
         taskId: task.id,
         seq: task.seq,
+        number: task.number,
         url: `/tasks/${task.id}`,
       },
       { telegram: false },
@@ -414,6 +419,7 @@ export async function createTask(
   // Asignat cuiva => ASSIGNED; altfel NEW
   const status: TaskStatus = assigneeId || teamId ? "ASSIGNED" : "NEW";
   const seq = await nextSeq("task");
+  const number = await allocateTaskNumber(creatorId);
   // secția: cea aleasă în formular, altfel cea a echipelor / persoanelor atribuite
   const sectionId = (await existingSectionId(input.sectionId)) ?? (await deriveTaskSectionId([teamId, ...(input.extraTeamIds ?? [])], [assigneeId, ...(input.extraAssigneeIds ?? [])]));
 
@@ -424,6 +430,7 @@ export async function createTask(
   const task = await prisma.task.create({
     data: {
       seq,
+      number,
       title: input.title.trim(),
       description: input.description?.trim() || null,
       type: input.type ?? "TASK",
@@ -450,10 +457,10 @@ export async function createTask(
       nextReminderAt,
       bypassQuietHours: input.bypassQuietHours ?? false,
     },
-    select: { id: true, title: true, seq: true },
+    select: { id: true, title: true, seq: true, number: true },
   });
 
-  return { ok: true as const, id: task.id, title: task.title, seq: task.seq };
+  return { ok: true as const, id: task.id, title: task.title, seq: task.seq, number: task.number };
 }
 
 /** Trimite notificarea de task nou către asignat / membrii echipei (best-effort). */
@@ -463,7 +470,7 @@ export async function notifyNewTask(taskId: string): Promise<void> {
       where: { id: taskId },
       select: {
         id: true,
-        seq: true,
+        seq: true, number: true,
         title: true,
         description: true,
         type: true,
@@ -501,7 +508,7 @@ export async function notifyNewTask(taskId: string): Promise<void> {
       team?.memberIds.forEach((id) => recipients.add(id));
     }
 
-    const text = taskCardText(task, `🆕 <b>${TASK_TYPE_RO[task.type]} nou</b> (${taskRef(task.seq, task.id)})`);
+    const text = taskCardText(task, `🆕 <b>${TASK_TYPE_RO[task.type]} nou</b> (${taskRef(task, task.id)})`);
 
     let stored = false;
     for (const uid of recipients) {
@@ -530,10 +537,11 @@ export async function notifyNewTask(taskId: string): Promise<void> {
     await notifyUsers(
       [...recipients],
       {
-        title: `${TASK_TYPE_RO[task.type]} nou: ${taskLabel(task.seq, task.title)}`,
+        title: `${TASK_TYPE_RO[task.type]} nou: ${taskLabel(task, task.title)}`,
         body: task.project?.name ? `Proiect: ${task.project.name}` : undefined,
         taskId: task.id,
         seq: task.seq,
+        number: task.number,
         url: `/tasks/${task.id}`,
       },
       { telegram: false },
@@ -558,7 +566,7 @@ export async function notifyNewTask(taskId: string): Promise<void> {
       await notifyUsers(
         [...observerIds],
         {
-          title: `${TASK_TYPE_RO[task.type]} nou: ${taskLabel(task.seq, task.title)}`,
+          title: `${TASK_TYPE_RO[task.type]} nou: ${taskLabel(task, task.title)}`,
           body: task.assignee?.name
             ? `Asignat: ${task.assignee.name}`
             : task.project?.name
@@ -566,6 +574,7 @@ export async function notifyNewTask(taskId: string): Promise<void> {
               : undefined,
           taskId: task.id,
           seq: task.seq,
+          number: task.number,
           url: `/tasks/${task.id}`,
         },
         { telegram: true },
@@ -590,7 +599,7 @@ export async function changeTaskStatus(
     where: { id: taskId },
     select: {
       id: true,
-      seq: true,
+      seq: true, number: true,
       title: true,
       description: true,
       type: true,
@@ -740,10 +749,11 @@ export async function changeTaskStatus(
     await notifyUsers(
       recipientIds,
       {
-        title: `${taskLabel(task.seq, task.title)} → ${TASK_STATUS_RO[newStatus]}`,
+        title: `${taskLabel(task, task.title)} → ${TASK_STATUS_RO[newStatus]}`,
         body: `de ${actorName}`,
         taskId: task.id,
         seq: task.seq,
+        number: task.number,
         url: `/tasks/${task.id}`,
       },
       { telegram: false },
@@ -754,11 +764,12 @@ export async function changeTaskStatus(
       statusLabel: TASK_STATUS_RO[newStatus],
       taskId: task.id,
       seq: task.seq,
+      number: task.number,
     });
 
     if (opts.fromTelegram && task.telegramChatId && task.telegramMessageId) {
       const editLines = [
-        `📋 <b>${TASK_TYPE_RO[task.type]}</b> (${taskRef(task.seq, task.id)})`,
+        `📋 <b>${TASK_TYPE_RO[task.type]}</b> (${taskRef(task, task.id)})`,
         `<b>${escapeHtml(task.title)}</b>`,
       ];
       if (!closed && task.description?.trim()) {
@@ -794,7 +805,7 @@ export async function changeTaskProgress(taskId: string, actorId: string, progre
     where: { id: taskId },
     select: {
       id: true,
-      seq: true,
+      seq: true, number: true,
       title: true,
       type: true,
       progress: true,
@@ -843,10 +854,11 @@ export async function changeTaskProgress(taskId: string, actorId: string, progre
     await notifyUsers(
       recipientIds,
       {
-        title: `${taskLabel(task.seq, task.title)} · ${p}%`,
+        title: `${taskLabel(task, task.title)} · ${p}%`,
         body: `de ${actorName}`,
         taskId: task.id,
         seq: task.seq,
+        number: task.number,
         url: `/tasks/${task.id}`,
       },
       { telegram: false },
@@ -857,6 +869,7 @@ export async function changeTaskProgress(taskId: string, actorId: string, progre
       statusLabel: `Progres ${p}%`,
       taskId: task.id,
       seq: task.seq,
+      number: task.number,
     });
   } catch (e) {
     console.error(`[tasks] changeTaskProgress: pipeline-ul de notificare a eșuat pentru task ${taskId}`, e);
@@ -880,7 +893,7 @@ export async function addTaskComment(
     where: { id: taskId },
     select: {
       id: true,
-      seq: true,
+      seq: true, number: true,
       title: true,
       creatorId: true,
       assigneeId: true,
@@ -931,10 +944,11 @@ export async function addTaskComment(
     await notifyUsers(
       recipientIds,
       {
-        title: taskLabel(task.seq, task.title),
+        title: taskLabel(task, task.title),
         body: `${actorName}: ${preview}`,
         taskId: task.id,
         seq: task.seq,
+        number: task.number,
         url: `/tasks/${task.id}`,
       },
       { telegram: false },
@@ -945,6 +959,7 @@ export async function addTaskComment(
       statusLabel: preview,
       taskId: task.id,
       seq: task.seq,
+      number: task.number,
       lineLabel: "Comentariu",
     });
   } catch (e) {
@@ -983,7 +998,7 @@ export async function checkOverdueTasks(): Promise<{ checked: number; notified: 
       status: { notIn: ["DONE", "CANCELLED"] },
     },
     select: {
-      id: true, seq: true, title: true, status: true, dueAt: true,
+      id: true, seq: true, number: true, title: true, status: true, dueAt: true,
       creatorId: true, assigneeId: true, teamId: true,
       overdueNotifiedAt: true,
       assignee: { select: { teamIds: true } },
@@ -1023,14 +1038,15 @@ export async function checkOverdueTasks(): Promise<{ checked: number; notified: 
       await notifyUsers(
         recipientIds,
         {
-          title: `⏰ ${taskLabel(task.seq, task.title)} – Întârziat`,
+          title: `⏰ ${taskLabel(task, task.title)} – Întârziat`,
           taskId: task.id,
           seq: task.seq,
+          number: task.number,
           url: `/tasks/${task.id}`,
         },
         { telegram: false },
       );
-      await notifyTaskOverdueTelegram(recipientIds, task.title, task.id, task.seq);
+      await notifyTaskOverdueTelegram(recipientIds, task.title, task.id, task);
       notified++;
     } catch (e) {
       console.error(`[tasks] checkOverdueTasks: eșuat pentru task ${task.id}`, e);
@@ -1082,7 +1098,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: {
-      id: true, seq: true, title: true, type: true,
+      id: true, seq: true, number: true, title: true, type: true,
       description: true, priority: true, dueAt: true,
       assigneeId: true, teamId: true, projectId: true, address: true, consumerName: true, serviceType: true, consumerType: true, sectionId: true,
       creatorId: true, extraAssigneeIds: true, extraTeamIds: true,
@@ -1300,7 +1316,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
             "✏️ <b>Sarcină modificată</b>",
             "",
             `Lucrător: ${escapeHtml(actorName)}`,
-            `Sarcină: ${escapeHtml(task.title)} (${taskRef(task.seq, taskId)})`,
+            `Sarcină: ${escapeHtml(task.title)} (${taskRef(task, taskId)})`,
             "Modificări:",
             changeLines,
             `Ora: ${formatTime(new Date(), DEFAULT_TZ)}`,
@@ -1310,7 +1326,7 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
             try {
               const chatId = await telegramChatFor(uid);
               if (!chatId) return;
-              await sendMessage(chatId, text, taskOpenButton(task.seq, taskId));
+              await sendMessage(chatId, text, taskOpenButton(task, taskId));
             } catch { /* best-effort */ }
           }));
 
@@ -1318,10 +1334,11 @@ export async function updateTask(taskId: string, actorId: string, input: UpdateT
           await notifyUsers(
             [...allRecipients],
             {
-              title: `${TASK_TYPE_RO[task.type]} modificat: ${taskLabel(task.seq, task.title)}`,
+              title: `${TASK_TYPE_RO[task.type]} modificat: ${taskLabel(task, task.title)}`,
               body: `de ${actorName}`,
               taskId,
               seq: task.seq,
+              number: task.number,
               url: `/tasks/${taskId}`,
             },
             { telegram: false },
@@ -1348,7 +1365,7 @@ export async function checkTaskReminders(): Promise<{ checked: number; notified:
     // `not: null` e necesar: filtrul `lte` al lui Prisma pe MongoDB potrivește și documentele cu nextReminderAt = null (o programare „o singură dată” deja trimisă ar pleca la nesfârșit)
     where: { status: { notIn: ["DONE", "CANCELLED"] }, AND: [{ nextReminderAt: { not: null } }, { nextReminderAt: { lte: now } }] },
     select: {
-      id: true, seq: true, title: true, description: true,
+      id: true, seq: true, number: true, title: true, description: true,
       type: true, status: true, priority: true,
       dueAt: true, reminderIntervalMinutes: true, reminderSchedule: true, nextReminderAt: true,
       creatorId: true, assigneeId: true, teamId: true,
@@ -1410,8 +1427,8 @@ export async function checkTaskReminders(): Promise<{ checked: number; notified:
 
           // Construiește mesaj detaliat (același format ca notifyNewTask)
           const header = isOverdue
-            ? `⏰ <b>Sarcină în întârziere</b> (${taskRef(task.seq, task.id)})`
-            : `🔔 <b>Reamintire ${TASK_TYPE_RO[task.type]}</b> (${taskRef(task.seq, task.id)})`;
+            ? `⏰ <b>Sarcină în întârziere</b> (${taskRef(task, task.id)})`
+            : `🔔 <b>Reamintire ${TASK_TYPE_RO[task.type]}</b> (${taskRef(task, task.id)})`;
 
           const lines = [
             header,
@@ -1452,7 +1469,7 @@ export async function checkTaskReminders(): Promise<{ checked: number; notified:
       }
 
       // ── In-app + PWA + Telegram pentru ceilalți destinatari ──────────────────
-      const lbl = taskLabel(task.seq, task.title);
+      const lbl = taskLabel(task, task.title);
       const notifTitle = isOverdue ? `⏰ Întârziat: ${lbl}` : `🔔 Reamintire: ${lbl}`;
       const notifBody = task.dueAt ? `Deadline: ${formatDate(task.dueAt, DEFAULT_TZ)}` : undefined;
 
@@ -1461,7 +1478,7 @@ export async function checkTaskReminders(): Promise<{ checked: number; notified:
       if (othersIds.length > 0) {
         await notifyUsers(
           othersIds,
-          { title: notifTitle, body: notifBody, taskId: task.id, seq: task.seq, url: `/tasks/${task.id}` },
+          { title: notifTitle, body: notifBody, taskId: task.id, seq: task.seq, number: task.number, url: `/tasks/${task.id}` },
           { telegram: true },
         );
       }
@@ -1469,7 +1486,7 @@ export async function checkTaskReminders(): Promise<{ checked: number; notified:
       if (task.assigneeId) {
         await notifyUsers(
           [task.assigneeId],
-          { title: notifTitle, body: notifBody, taskId: task.id, seq: task.seq, url: `/tasks/${task.id}` },
+          { title: notifTitle, body: notifBody, taskId: task.id, seq: task.seq, number: task.number, url: `/tasks/${task.id}` },
           { telegram: false },
         );
       }
@@ -1527,7 +1544,7 @@ export async function notifyAttachmentTelegram(
     const task = await prisma.task.findUnique({
       where: { id: taskId },
       select: {
-        seq: true, title: true, type: true,
+        seq: true, number: true, title: true, type: true,
         assigneeId: true, teamId: true,
         extraAssigneeIds: true, extraTeamIds: true,
       },
@@ -1551,7 +1568,7 @@ export async function notifyAttachmentTelegram(
     const typeLabel = TASK_TYPE_RO[task.type] ?? "Sarcină";
     const ref = task.seq != null ? `#${task.seq}` : taskId.slice(-6);
     const caption = `📎 <b>${escapeHtml(attName)}</b>\n${typeLabel} ${ref}: ${escapeHtml(task.title)}`;
-    const keyboard = taskOpenButton(task.seq, taskId);
+    const keyboard = taskOpenButton(task, taskId);
     const isImage = mimeType?.startsWith("image/") && !mimeType.includes("svg");
 
     for (const uid of recipients) {

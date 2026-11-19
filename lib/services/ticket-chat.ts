@@ -8,9 +8,10 @@ import { canWorkOnTask, canViewTask, canViewTaskData } from "../permissions";
 import { sendTicketMessageEmail } from "../email";
 import { filteredAdminRecipients, notifyUsers, observerRecipients } from "./notifications";
 import type { ChatMessage, ChatSender, ChatState } from "../ticket-chat-shared";
+import { taskNo } from "../task-number";
 
 const TASK_SELECT = {
-  id: true, seq: true, title: true, type: true, status: true, clientId: true,
+  id: true, seq: true, number: true, title: true, type: true, status: true, clientId: true,
   creatorId: true, assigneeId: true, extraAssigneeIds: true, teamId: true, extraTeamIds: true,
   chatLastMsgAt: true, chatLastSender: true, chatStaffReadAt: true, chatClientReadAt: true, chatClientEmailedAt: true,
 } as const;
@@ -164,11 +165,12 @@ export async function notifyReopened(access: Extract<ChatAccess, { ok: true }>):
     await notifyUsers(
       ids,
       {
-        title: `🔄 ${viewer.name} a redeschis cererea${task.seq != null ? ` #${task.seq}` : ""}`,
+        title: `🔄 ${viewer.name} a redeschis cererea${taskNo(task) ? ` ${taskNo(task)}` : ""}`,
         body: excerpt(task.title),
         url: `/tickets/${task.id}`,
         taskId: task.id,
         seq: task.seq,
+        number: task.number,
       },
       { telegram: true },
     );
@@ -199,11 +201,12 @@ export async function notifyChatMessage(access: Extract<ChatAccess, { ok: true }
         await notifyUsers(
           ids,
           {
-            title: `💬 ${viewer.name}: mesaj nou la cererea${task.seq != null ? ` #${task.seq}` : ""}`,
+            title: `💬 ${viewer.name}: mesaj nou la cererea${taskNo(task) ? ` ${taskNo(task)}` : ""}`,
             body: excerpt(message.body),
             url: `/tickets/${task.id}`,
             taskId: task.id,
             seq: task.seq,
+            number: task.number,
           },
           { telegram: true },
         );
@@ -223,6 +226,7 @@ export async function notifyChatMessage(access: Extract<ChatAccess, { ok: true }
       clientName: client.name,
       ticketTitle: task.title,
       seq: task.seq,
+      number: task.number,
       authorName: message.authorName,
       message: message.body,
       url: `${env.appUrl.replace(/\/$/, "")}/portal/cereri/${task.id}`,

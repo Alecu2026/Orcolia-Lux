@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac } from "node:crypto";
 import { env } from "./env";
 import { deliveryErrorText, logDelivery } from "./delivery-log";
+import { taskNoOf, type TaskNoArg } from "./task-number";
 
 const BASE = () => `https://api.telegram.org/bot${env.telegram.botToken}`;
 
@@ -10,8 +11,9 @@ export type InlineButton =
   | { text: string; url: string };
 
 /** Buton URL care deschide task-ul direct în PWA. */
-export function taskOpenButton(seq: number | null | undefined, taskId: string): InlineButton[][] {
-  const label = seq != null ? `🔗 Deschide sarcină #${seq}` : "🔗 Deschide sarcină";
+export function taskOpenButton(ref: TaskNoArg, taskId: string): InlineButton[][] {
+  const no = taskNoOf(ref);
+  const label = no ? `🔗 Deschide sarcină ${no}` : "🔗 Deschide sarcină";
   return [[{ text: label, url: `${env.appUrl}/tasks/${taskId}` }]];
 }
 

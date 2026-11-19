@@ -8,6 +8,8 @@ import { htmlToText } from "../email-body";
 import { wrapMailTransport, type DeliveryMeta } from "../delivery-log";
 import { AUTOCLOSE_DEFAULT_HOURS, cleanAutoCloseHours, roLast, roSpan } from "../ticket-autoclose";
 import { BRAND } from "../brand";
+import { allocateTaskNumber } from "./task-number";
+import { taskNo, taskNoOf } from "../task-number";
 
 // ── Email transport (shared with lib/email.ts logic) ────────────────────────
 function getTransport(meta?: DeliveryMeta) {
@@ -188,7 +190,7 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
         autoCloseWarnedAt: null,
         status: "NEW",
       },
-      select: { id: true, seq: true, title: true, status: true, assigneeId: true },
+      select: { id: true, seq: true, number: true, title: true, status: true, assigneeId: true },
     });
 
     await prisma.emailMessage.create({
@@ -204,7 +206,7 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
       },
     });
 
-    await notifyStaff(existingId, ticket.seq, ticket.title, "reply", fromEmail, fromName, ticket.assigneeId, body);
+    await notifyStaff(existingId, ticket, ticket.title, "reply", fromEmail, fromName, ticket.assigneeId, body);
     return { action: "updated", ticketId: existingId, seq: ticket.seq ?? null };
   }
 
@@ -216,9 +218,11 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
     select: { value: true },
   });
 
+  const number = await allocateTaskNumber(systemUser.id);
   const ticket = await prisma.task.create({
     data: {
       seq: counter.value,
+      number,
       type: "TICKET",
       title: subject,
       description: body,
@@ -233,7 +237,7 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
       emailThreadId: email.messageId,
       lastClientEmailAt: new Date(),
     },
-    select: { id: true, seq: true },
+    select: { id: true, seq: true, number: true },
   });
 
   await prisma.emailMessage.create({
@@ -256,6 +260,7 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
     subject,
     companyName,
     ticketSeq: ticket.seq,
+    ticketNumber: ticket.number,
     emailThreadId: email.messageId,
   });
   if (autoAckMsgId) {
@@ -270,7 +275,7 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
           fromEmail: env.smtp.user || "",
           toEmail: fromEmail,
           subject: `Re: ${subject}`,
-          body: `Confirmare automată recepție cerere #${ticket.seq ?? ""}`,
+          body: `Confirmare automată recepție cerere ${taskNo(ticket) ?? ""}`,
           messageId: autoAckMsgId,
           sentAt: new Date(),
         },
@@ -278,14 +283,14 @@ export async function processInboundEmail(email: InboundEmail): Promise<{
     ]);
   }
 
-  await notifyStaff(ticket.id, ticket.seq, subject, "new", fromEmail, fromName, null, body);
+  await notifyStaff(ticket.id, ticket, subject, "new", fromEmail, fromName, null, body);
   return { action: "created", ticketId: ticket.id, seq: ticket.seq ?? null };
 }
 
 // ── Notifică admini (tichet nou) sau persoana asignată (reply client) ────────
 async function notifyStaff(
   taskId: string,
-  seq: number | null | undefined,
+  ref: { seq?: number | null; number?: string | null },
   title: string,
   type: "new" | "reply",
   fromEmail: string,
@@ -295,14 +300,16 @@ async function notifyStaff(
 ) {
   const sender = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
   const heading = type === "new" ? "📨 Cerere nouă" : "↩️ Răspuns cerere";
-  const seqLabel = seq != null ? ` #${seq}` : "";
+  const noLabel = taskNoOf(ref);
+  const seqLabel = noLabel ? ` ${noLabel}` : "";
   const url = `/tickets/${taskId}`;
 
   const payload = {
     title: `${heading}${seqLabel}: ${title.slice(0, 60)}`,
     body: `De la: ${sender}`,
     taskId,
-    seq: seq ?? null,
+    seq: ref.seq ?? null,
+    number: ref.number ?? null,
     url,
     emailBody: emailBody?.slice(0, 800),
   };
@@ -323,12 +330,14 @@ async function sendAutoAck(opts: {
   subject: string;
   companyName: string;
   ticketSeq: number | null;
+  ticketNumber?: string | null;
   emailThreadId: string | null | undefined;
 }): Promise<string | null> {
   const transport = getTransport({ kind: "ticket.ack", toName: opts.toName ?? null, objectType: "ticket" });
   if (!transport) return null;
 
-  const seqLabel = opts.ticketSeq != null ? ` (#${opts.ticketSeq})` : "";
+  const noLabel = taskNoOf({ seq: opts.ticketSeq, number: opts.ticketNumber });
+  const seqLabel = noLabel ? ` (${noLabel})` : "";
   const clientName = opts.toName || opts.toEmail;
   const msgId = `<ack-${Date.now()}@${msgDomain()}>`;
 
@@ -501,7 +510,7 @@ export async function checkUnansweredEmailTickets(): Promise<number> {
       status: { notIn: ["DONE", "CANCELLED"] },
       lastClientEmailAt: { not: null, lte: threshold },
     },
-    select: { id: true, seq: true, title: true, lastClientEmailAt: true },
+    select: { id: true, seq: true, number: true, title: true, lastClientEmailAt: true },
   });
 
   let count = 0;
@@ -528,7 +537,8 @@ export async function checkUnansweredEmailTickets(): Promise<number> {
     const admins = await filteredAdminRecipients({ eventKeys: ["ticket.email"] });
     if (!admins.length) continue;
 
-    const seqLabel = t.seq != null ? ` #${t.seq}` : "";
+    const noLabel = taskNoOf(t);
+    const seqLabel = noLabel ? ` ${noLabel}` : "";
     await notifyUsers(
       admins,
       {
@@ -536,6 +546,7 @@ export async function checkUnansweredEmailTickets(): Promise<number> {
         body: "Clientul aşteaptă răspuns.",
         taskId: t.id,
         seq: t.seq ?? null,
+        number: t.number ?? null,
         url: dedupUrl,
       },
       { telegram: true },

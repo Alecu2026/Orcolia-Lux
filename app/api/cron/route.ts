@@ -19,15 +19,17 @@ import { checkMeterIssueDeadlines } from "@/lib/services/meter-issue-deadlines";
 import { TASK_STATUS_RO, TASK_TYPE_RO } from "@/lib/telegram";
 import { formatTime, DEFAULT_TZ } from "@/lib/date";
 import type { TaskStatus } from "@prisma/client";
+import { taskNoOf, type TaskNoArg } from "@/lib/task-number";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const CHECKPOINT = "task-notifications";
 
-function label(seq: number | null | undefined, title: string) {
+function label(ref: TaskNoArg, title: string) {
   const t = title.length > 40 ? `${title.slice(0, 40)}…` : title;
-  return seq != null ? `#${seq} · ${t}` : t;
+  const no = taskNoOf(ref);
+  return no ? `${no} · ${t}` : t;
 }
 
 async function run() {
@@ -106,7 +108,7 @@ async function processStatusChanges(since: Date, until: Date): Promise<number> {
       toStatus: true,
       task: {
         select: {
-          id: true, seq: true, title: true, type: true,
+          id: true, seq: true, number: true, title: true, type: true,
           teamId: true, assigneeId: true, creatorId: true,
         },
       },
@@ -140,10 +142,11 @@ async function processStatusChanges(since: Date, until: Date): Promise<number> {
     await notifyUsers(
       admins,
       {
-        title: `${label(task.seq, task.title)} → ${TASK_STATUS_RO[act.toStatus as TaskStatus]}`,
+        title: `${label(task, task.title)} → ${TASK_STATUS_RO[act.toStatus as TaskStatus]}`,
         body: `de ${actor.name}`,
         taskId: task.id,
         seq: task.seq,
+        number: task.number,
         url: `/tasks/${task.id}`,
       },
       { telegram: true },
@@ -166,7 +169,7 @@ async function processNewAdminTasks(since: Date, until: Date): Promise<number> {
       assigneeId: { not: null },
     },
     select: {
-      id: true, seq: true, title: true, type: true,
+      id: true, seq: true, number: true, title: true, type: true,
       assigneeId: true, createdAt: true,
       creator: { select: { name: true } },
       project: { select: { name: true } },
@@ -192,12 +195,13 @@ async function processNewAdminTasks(since: Date, until: Date): Promise<number> {
     await notifyUsers(
       [task.assigneeId],
       {
-        title: `${TASK_TYPE_RO[task.type]} nou: ${label(task.seq, task.title)}`,
+        title: `${TASK_TYPE_RO[task.type]} nou: ${label(task, task.title)}`,
         body: task.project?.name
           ? `Proiect: ${task.project.name}`
           : `de ${task.creator.name}`,
         taskId: task.id,
         seq: task.seq,
+        number: task.number,
         url: `/tasks/${task.id}`,
       },
       { telegram: true },

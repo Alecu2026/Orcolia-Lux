@@ -57,7 +57,7 @@ export default function UsersManager({
       if (fRole === "ADMIN" && u.role !== "ADMIN") return false;
       if (fRole === "STAFF" && u.role !== "STAFF") return false;
       if (fRole === "INACTIVE" && u.isActive) return false;
-      if (term && !`${u.name} ${u.email}`.toLowerCase().includes(term)) return false;
+      if (term && !`${u.name} ${u.email} ${u.code ?? ""}`.toLowerCase().includes(term)) return false;
       return true;
     });
   }, [rows, fSearch, fRole]);
@@ -167,6 +167,7 @@ export default function UsersManager({
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">
                   {u.name}
+                  {u.code != null && <span className="ml-2 rounded bg-[var(--color-surface-2)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-ink-soft" title={t("Cod utilizator: intră în numărul sarcinilor și cererilor create de el")}>{t("cod")} {u.code}</span>}
                   {u.isSuperAdmin && (
                     <span className="ml-2 rounded bg-brand-soft px-1.5 py-0.5 text-[10px] font-bold uppercase text-brand-strong">{m.users.superLabel}</span>
                   )}

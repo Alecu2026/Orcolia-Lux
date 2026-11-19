@@ -46,6 +46,7 @@ export type TaskTuple = [
   number | null, // 34 când s-a finalizat / anulat (ms) — lipsește în listele salvate înainte de această versiune
   string | null, // 35 categoria consumatorului (HOUSEHOLD / NON_HOUSEHOLD) — lipsește în listele salvate înainte de această versiune
   string | null, // 36 secția (id) — lipsește în listele salvate înainte de această versiune
+  string | null, // 37 numărul „cod-AN/nr” (ex. 1-26/1) — lipsește în listele salvate înainte de această versiune și la sarcinile vechi
 ];
 
 export type TaskNames = {
@@ -67,6 +68,8 @@ export type TaskDatasetPayload = { v: 1; rows: TaskTuple[]; names: TaskNames };
 export type DecodedTask = {
   id: string;
   seq: number | null;
+  /** Numărul „cod-AN/nr”; gol la cele create înainte (se arată #seq). */
+  number: string | null;
   type: "TASK" | "TICKET" | "WORK_ORDER";
   title: string;
   description: string | null;
@@ -132,6 +135,7 @@ export function decodeTasks(tuples: TaskTuple[], names: TaskNames): DecodedTask[
     out[i] = {
       id: r[0],
       seq: r[1],
+      number: r[37] ?? null,
       type: r[2] as DecodedTask["type"],
       title: r[3],
       description: r[4],
