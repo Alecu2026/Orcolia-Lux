@@ -1,0 +1,48 @@
+# Exemplu nginx în fața CRM-ului (HTTPS obligatoriu: cookie-ul de sesiune e Secure în producție; fără HTTPS nu merg nici PWA, nici notificările push).
+# Valorile (domeniu, port) trebuie să fie cele din .env: PORT (implicit 3000) și NEXT_PUBLIC_APP_URL.
+server {
+    listen 80;
+    server_name crm.dns.accahul.md;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name crm.dns.accahul.md;
+    # ssl_certificate / ssl_certificate_key (ex. certbot)
+
+    client_max_body_size 25m;          # poze de contor, atașamente (acțiunile de server au limita de 25 MB)
+
+    # Import Apă-Canal (~50 MB): limită mai mare doar pe ruta lui
+    location = /api/upload/apa-canal-import {
+        client_max_body_size 160m;
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_request_buffering off;
+        proxy_read_timeout 310s;
+    }
+
+    # Pozele și atașamentele: nginx le ține în cache, ca Node să nu mai fie atins la a doua cerere (opțional; cere în `http { }`:
+    #   proxy_cache_path /var/cache/nginx/crm levels=1:2 keys_zone=crm_files:10m max_size=2g inactive=30d;)
+    # location ^~ /files/ {
+    #     proxy_pass http://127.0.0.1:3000;
+    #     proxy_set_header Host $host;
+    #     proxy_cache crm_files;
+    #     proxy_cache_valid 200 30d;
+    #     proxy_cache_key $uri$is_args$args;   # miniaturile (?w=…) se țin separat; nu folosi `alias` spre storage/public
+    # }
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;   # = PORT din .env
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;   # limitarea încercărilor de login folosește IP-ul real
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 310s;   # sincronizarea Apă-Canal, importurile și trimiterea către 1C pot dura minute
+    }
+}

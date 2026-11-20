@@ -54,3 +54,6 @@ public/maplibre-gl-worker.mjs
 
 # fișierele încărcate (poze, atașamente) — pe disc, nu în git
 /storage/
+
+# loguri pm2 / deploy (pe server)
+/logs/

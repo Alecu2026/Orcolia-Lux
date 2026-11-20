@@ -1,0 +1,2 @@
+# Scripturile de pe server trebuie să rămână cu sfârșit de rând LF (CRLF le strică pe Linux: „$'\r': command not found”), indiferent de setarea git de pe Windows.
+*.sh text eol=lf

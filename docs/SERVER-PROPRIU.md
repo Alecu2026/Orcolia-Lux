@@ -26,6 +26,32 @@ Prima oră după o actualizare: utilizatorii să închidă complet aplicația PW
 
 Pornire: `npm run start` (implicit portul 3000; `PORT=3010 npm run start` pentru alt port). Exemplu pm2: `pm2 start npm --name crm -- run start`.
 
+## 2b. pm2 și deploy automat (`ecosystem.config.js`, `deploy/`)
+
+Pașii de mai sus (pull, `npm ci`, `prisma generate`, build, restart) sunt automatizați:
+
+- `ecosystem.config.js` pornește două procese pm2: aplicația (`crm`, un singur proces) și `crm-autodeploy`, care o dată pe minut verifică GitHub-ul și, la un commit nou, rulează `deploy/deploy.sh`.
+- `deploy/deploy.sh` (se poate rula și manual: `bash deploy/deploy.sh`): `git pull --ff-only`, `npm ci` doar dacă s-au schimbat dependențele, `prisma generate`, build, reload pm2 și verificare (`GET /login`).
+  Dacă build-ul pică sau aplicația nu răspunde, revine la commit-ul anterior, îl reține în `logs/.failed-commit` și nu îl mai reîncearcă; un commit nou da.
+- Dacă `prisma/schema.prisma` s-a schimbat, deploy-ul te avertizează. Câmpurile noi opționale merg fără pași în plus; pentru indexuri sau modele noi rulezi `npm run db:push`
+  (sau pui `AUTO_DB_PUSH=1` în `.env`, ca să ruleze singur la deploy).
+- Build-ul (`rimraf .next` + `next build`) durează câteva minute, timp în care aplicația răspunde cu erori: pune push-urile în afara orelor de lucru.
+
+**Prima instalare pe server** (clona trebuie să fie pe branch-ul `main`, cu `.env` completat; minim `DATABASE_URL` și `SESSION_SECRET` — fără ele aplicația pornește în mod DEMO):
+
+```bash
+npm i -g pm2
+git clone <repo> crm && cd crm && cp .env.example .env     # completează .env
+bash deploy/deploy.sh                                       # construiește și pornește aplicația
+pm2 start ecosystem.config.js --only crm-autodeploy         # pornește și deploy-ul automat
+pm2 save && pm2 startup                                     # repornire după restartul serverului (rulează comanda pe care o afișează)
+pm2 install pm2-logrotate                                   # logurile din logs/ nu cresc la nesfârșit
+```
+
+Dacă pe server există deja un proces `crm` pornit cu `pm2 start npm --name crm -- run start`, înlocuiește-l o singură dată: `pm2 delete crm`, apoi pașii de mai sus
+(un `reload` nu preia comanda nouă). Variabile opționale în `.env`: `PM2_NAME` (implicit `crm`), `PORT` (implicit 3000), `PM2_HEAP_MB` (memoria aplicației, implicit 2048),
+`BUILD_HEAP_MB` (memoria build-ului, implicit 4096), `AUTO_DB_PUSH=1`. Exemplu nginx: `deploy/nginx.conf.example`. Joburile din crontab (secțiunea 4) rămân separate.
+
 ## 3. Variabile de mediu
 
 Fișier `.env` în rădăcina proiectului (model: `.env.example`). Cele esențiale:
