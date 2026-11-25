@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   /* config options here */
+  // Telefonul intră pe serverul de dezvoltare prin adresa din rețea (192.168.x.x, nu localhost). Fără asta Next 16 blochează resursele de dezvoltare cerute de pe alte adrese
+  // și pagina se vede, dar nu devine interactivă (meniul, butonul „+” și restul nu răspund, fără nicio eroare). Se aplică doar în dezvoltare (`next dev`); în producție nu are efect.
+  allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*"],
   reactCompiler: true,
   // fără antetul „X-Powered-By: Next.js” (nu ajută pe nimeni în afară de cine caută versiuni vulnerabile)
   poweredByHeader: false,

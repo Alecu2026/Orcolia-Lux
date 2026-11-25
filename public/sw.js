@@ -1,9 +1,12 @@
 /* Service Worker — caching + push notifications + badge */
 
 // Cache version tied to deploy — update this string to bust old caches
-const CACHE_VER = "v8";
+const CACHE_VER = "v9";
 const CACHE = `app-${CACHE_VER}`;
 const OFFLINE_URL = "/offline.html";
+// Pe calculatorul de dezvoltare (localhost) NU se păstrează nimic în cache: serverul de dezvoltare refolosește aceleași adrese pentru fișiere cu conținut nou
+// după fiecare reconstruire, iar un fișier vechi din cache strică pagina (butoanele nu mai răspund: „module factory is not available”).
+const IS_LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(self.location.hostname);
 
 // Pagini care trebuie să se deschidă și fără internet (citiri făcute în teren): ultima versiune văzută cu internet se păstrează în cache.
 const OFFLINE_PAGES = ["/contoare/citiri"];
@@ -31,7 +34,7 @@ self.addEventListener("activate", (event) => {
     Promise.all([
       // Delete old cache versions
       caches.keys().then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))),
+        Promise.all(keys.filter((k) => IS_LOCAL || k !== CACHE).map((k) => caches.delete(k))),
       ),
       // Enable navigation preload if supported (speeds up page navigation)
       self.registration.navigationPreload?.enable(),
@@ -44,6 +47,7 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  if (IS_LOCAL) return; // dezvoltare: totul merge direct la server
   if (url.origin !== self.location.origin) return;
   // fișierele încărcate au adrese unice și cache HTTP propriu; nu le dublăm în cache-ul aplicației
   if (url.pathname.startsWith("/files/")) return;
