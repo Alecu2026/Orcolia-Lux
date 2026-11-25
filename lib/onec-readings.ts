@@ -41,6 +41,7 @@ export type OneCDocument = {
   /** doar la persoane juridice */
   nr_contract: string | null;
   sursa: OneCSource;
+  /** `indice` = număr întreg, fără zecimale (1C nu le acceptă) */
   contoare: { nr_uzina: string; indice: number }[];
   /** identificatorul trimiterii (o apăsare pe „Trimite către 1C”), același în TOATE documentele ei: 1C păstrează doar documentele cu cel mai nou `lot` și le șterge pe celelalte (resturile trimiterilor de dinainte) */
   lot?: string;

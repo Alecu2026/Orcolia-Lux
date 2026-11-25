@@ -41,7 +41,7 @@ export default function CompactCard({
   }
 
   return (
-    <div className={`overflow-hidden rounded-xl border bg-[var(--color-surface)] ${selected ? "border-brand bg-brand-soft/40" : "border-[var(--color-line)]"} ${className}`}>
+    <div className={`shrink-0 overflow-hidden rounded-xl border bg-[var(--color-surface)] ${selected ? "border-brand bg-brand-soft/40" : "border-[var(--color-line)]"} ${className}`}>
       <div
         role="button"
         tabIndex={0}

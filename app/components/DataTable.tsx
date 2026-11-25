@@ -746,7 +746,7 @@ export default function DataTable<T extends { id: string }>({
       {hideRows ? (
         <div className="card animate-pulse p-8 text-center text-ink-soft">{t("Se încarcă lista completă… filtrele se aplică imediat ce e gata.")}</div>
       ) : cards ? (
-        <div ref={cardsBox} className={`flex flex-col gap-1.5 ${fitMax && pageRows.length <= 60 ? "overflow-y-auto overscroll-contain" : ""} ${TEXT_CLS[look.text]}`} style={fitMax && pageRows.length <= 60 ? { maxHeight: fitMax } : undefined}>
+        <div ref={cardsBox} className={`flex flex-col gap-1.5 [&>*]:shrink-0 ${fitMax && pageRows.length <= 60 ? "overflow-y-auto overscroll-contain" : ""} ${TEXT_CLS[look.text]}`} style={fitMax && pageRows.length <= 60 ? { maxHeight: fitMax } : undefined}>
           {(() => {
             const renderCard = (r: T) => {
             if (cardRender) return cardRender(r);

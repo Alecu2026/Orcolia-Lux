@@ -30,6 +30,12 @@ export function meterDigitCores(n: string): string[] {
   return [...out];
 }
 
+/**
+ * Indexul unui contor LoRaWAN, rotunjit la număr întreg: 0,4 sau mai puțin în jos, de la 0,5 în sus în sus (1C nu primește zecimale).
+ * Se folosește la salvarea citirii, la afișare și la trimiterea către 1C.
+ */
+export const lwIndex = (v: number): number => Math.round(v);
+
 /** Același număr fără zerourile din față — pentru potrivirea când unul dintre sisteme nu le scrie. */
 export const stripLeadingZeros = (n: string): string => n.replace(/^0+(?=.)/, "");
 

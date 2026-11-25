@@ -154,7 +154,10 @@ export const localityOf = (address: string | null): string => (address ? address
 export const fieldConsum = (value: number | null, lastIndex: number | null): number | null => (value != null && lastIndex != null ? round3(value - lastIndex) : null);
 
 export function decodeField(t: FieldTuple[]): FieldRow[] {
-  return t.map((x) => ({
+  // citirile LoRaWAN (x[21] === 2) se arată rotunjite la întreg, chiar dacă în baza de date mai au zecimale (se corectează și la următoarea sincronizare)
+  return t.map((x0) => {
+    const x = x0[21] === 2 && x0[6] != null ? ([...x0.slice(0, 6), Math.round(x0[6]), ...x0.slice(7)] as FieldTuple) : x0;
+    return {
     id: x[0],
     contor: x[1],
     name: x[2],
@@ -183,7 +186,8 @@ export function decodeField(t: FieldTuple[]): FieldRow[] {
     _day: x[7] != null ? dayOf(x[7]) : null,
     _h: [x[1], x[2], x[3]].filter(Boolean).join("\n").toLowerCase(),
     _a: (x[3] ?? "").toLowerCase(),
-  }));
+    };
+  });
 }
 
 // ── Filtre + sortare pentru tabelul „Citiri teren” (rulează în browser, pe toată lista) ───────────────────────────────

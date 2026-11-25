@@ -9,7 +9,7 @@ import { invalidateLorawanMap } from "./lorawan-map";
 import { invalidatePayers } from "./payer-cache";
 import { currentPeriod, shiftPeriod, READING_TZ } from "../meter-readings";
 import type { DiagKind, DiagTuple, LorawanDiag } from "../lorawan";
-import { LORAWAN_HOUR, LORAWAN_MINUTE, LORAWAN_SOURCE, normalizeMeterName, parseLorawan, meterDigitCores, stripLeadingZeros, type LorawanRow, type LorawanStats, type LorawanStatus } from "../lorawan";
+import { LORAWAN_HOUR, LORAWAN_MINUTE, LORAWAN_SOURCE, lwIndex, normalizeMeterName, parseLorawan, meterDigitCores, stripLeadingZeros, type LorawanRow, type LorawanStats, type LorawanStatus } from "../lorawan";
 
 /**
  * Extragerea contoarelor LoRaWAN: o dată pe zi, la 23:30 (ora firmei), se citește lista de la serverul de noduri (`[{ name, volume_m3, ts }]`). Pentru fiecare contor:
@@ -314,7 +314,7 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
         const ex = readBy.get(row.id);
         if (ex && ex.source == null) {
           stats.skippedField++;
-        } else if (ex && ex.source === LORAWAN_SOURCE && ex.value === lw.volume) {
+        } else if (ex && ex.source === LORAWAN_SOURCE && ex.value === lwIndex(lw.volume)) {
           stats.unchanged++;
           savedPeriod = period;
         } else if (lw.ts.getTime() > nowMs + 10 * 60_000) {
@@ -331,12 +331,12 @@ export async function runLorawanSync(trigger: Trigger, opts: { activate?: boolea
               prevDate = fd;
             }
           }
-          if (prev != null && lw.volume < prev) stats.lowerThanPrev++;
+          if (prev != null && lwIndex(lw.volume) < prev) stats.lowerThanPrev++;
           readingOps.push({
             q: { meterId: row.id, period },
             u: {
               $set: {
-                contor: row.contor, clientId: OID(row.clientId), value: lw.volume, prevValue: prev, readAt: D(lw.ts), lat: null, lng: null, accuracy: null, distanceM: null,
+                contor: row.contor, clientId: OID(row.clientId), value: lwIndex(lw.volume), prevValue: prev, readAt: D(lw.ts), lat: null, lng: null, accuracy: null, distanceM: null,
                 userId: null, userName: "LoRaWAN", source: LORAWAN_SOURCE, verifiedAt: null, disputedAt: null, disputeNote: null, updatedAt: D(now),
               },
               $setOnInsert: { createdAt: D(now), avgConsum: null },

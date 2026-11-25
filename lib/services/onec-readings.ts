@@ -55,7 +55,7 @@ type Pending = {
   contor: string;
   /** indexul exact, ca în baza de date (marcarea „trimis” se potrivește pe el) */
   raw: number;
-  /** indexul trimis (3 zecimale) */
+  /** indexul trimis: număr întreg (1C nu primește zecimale) */
   value: number;
   readAt: Date;
   sursa: OneCSource;
@@ -78,7 +78,8 @@ type Prepared = {
 };
 
 const same = (a: number, b: number) => Math.abs(a - b) < 1e-9;
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
+/** Indexul pentru 1C, fără zecimale: 0,4 sau mai puțin în jos, de la 0,5 în sus în sus. */
+const oneCIndex = (n: number) => Math.round(n);
 
 /** Citirile din luna curentă și din cea de dinainte, împărțite în „de trimis” / „deja trimise”, și documentele formate din cele de trimis. */
 /** Ce citiri se iau în calcul: implicit luna curentă + cea dinainte, toate contoarele; cu `scope`, doar lunile și contoarele din lista filtrată (ca la export). */
@@ -114,7 +115,7 @@ async function prepare(exclude: ReadonlySet<string> = new Set(), opts: { resend?
     }
     const isCorrected = r.sent1cAt != null && !unchanged;
     if (exclude.has(r.id)) continue;
-    pending.push({ id: r.id, meterId: r.meterId, contor: r.contor, raw: r.value, value: round3(r.value), readAt: r.readAt, sursa: oneCSourceOf(r.source), corrected: isCorrected, period: r.period });
+    pending.push({ id: r.id, meterId: r.meterId, contor: r.contor, raw: r.value, value: oneCIndex(r.value), readAt: r.readAt, sursa: oneCSourceOf(r.source), corrected: isCorrected, period: r.period });
   }
 
   const unmatched: FailedItem[] = [];
