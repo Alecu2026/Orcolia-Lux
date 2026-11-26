@@ -36,6 +36,7 @@ export default function ProjectMapPicker({
   const mapRef = useRef<MlMap | null>(null);
   const setRef = useRef(false); // locația e setată: mișcarea hărții o actualizează
   const [failed, setFailed] = useState(false);
+  const [error, setError] = useState("");
   const [big, setBig] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -60,7 +61,13 @@ export default function ProjectMapPicker({
     let raf = 0;
     setRef.current = hasInitial;
 
-    import("maplibre-gl").then((ml) => {
+    import("maplibre-gl").catch((e) => {
+      console.error("[harta] biblioteca hărții nu s-a încărcat:", e);
+      setError(String((e as Error)?.message ?? e).slice(0, 220));
+      setFailed(true);
+      return null;
+    }).then((ml) => {
+      if (!ml) return;
       if (gone || !containerRef.current) return;
       setLocalMapWorker(ml);
       let map: MlMap;
@@ -76,7 +83,9 @@ export default function ProjectMapPicker({
           attributionControl: { compact: true },
           dragRotate: false,
         });
-      } catch {
+      } catch (e) {
+        console.error("[harta] inițializarea hărții a eșuat:", e);
+        setError(String((e as Error)?.message ?? e).slice(0, 220));
         setFailed(true);
         return;
       }
@@ -167,7 +176,7 @@ export default function ProjectMapPicker({
           <input name={latName} type="number" step="any" defaultValue={initialLat ?? ""} placeholder={m.projects.map.latPlaceholder} className={inputCls} />
           <input name={lngName} type="number" step="any" defaultValue={initialLng ?? ""} placeholder={m.projects.map.lngPlaceholder} className={inputCls} />
         </div>
-        <p className="text-xs text-ink-soft">{m.projects.map.unavailable}</p>
+        <p className="text-xs text-ink-soft">{m.projects.map.unavailable}{error ? ` — ${error}` : ""}</p>
       </div>
     );
   }

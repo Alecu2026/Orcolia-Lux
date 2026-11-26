@@ -424,7 +424,7 @@ function AppShellInner({
         <div className="flex min-h-dvh min-w-0 flex-col" style={impersonation ? ({ "--imp-h": "calc(2.25rem + env(safe-area-inset-top, 0px))" } as CSSProperties) : undefined}>
           {impersonation && <ImpersonationBanner who={impersonation.who} by={impersonation.by} expiresAt={impersonation.expiresAt} serverNow={impersonation.serverNow} exitAction="/api/simulare/exit" className="sticky top-0" />}
           {/* Header */}
-          <header className={`sticky top-[var(--imp-h,0px)] z-30 flex items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-app)] px-4 py-3 lg:bg-[var(--color-app)]/80 ${impersonation ? "" : "pt-[max(0.75rem,env(safe-area-inset-top))]"} lg:backdrop-blur`}>
+          <header className={`sticky top-[var(--imp-h,0px)] z-30 flex items-center gap-3 border-b border-[var(--color-line)] bg-[var(--color-app)] px-4 py-3 ${impersonation ? "" : "pt-[max(0.75rem,env(safe-area-inset-top))]"}`}>
             <button
               onClick={() => setDrawer(true)}
               className="tap grid size-10 place-items-center rounded-xl bg-[var(--color-surface-2)] lg:hidden"

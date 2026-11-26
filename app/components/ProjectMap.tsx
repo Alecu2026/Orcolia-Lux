@@ -20,6 +20,7 @@ export default function ProjectMap({
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -27,7 +28,13 @@ export default function ProjectMap({
     let map: MlMap | undefined;
     let gone = false;
 
-    import("maplibre-gl").then((ml) => {
+    import("maplibre-gl").catch((e) => {
+      console.error("[harta] biblioteca hărții nu s-a încărcat:", e);
+      setError(String((e as Error)?.message ?? e).slice(0, 220));
+      setFailed(true);
+      return null;
+    }).then((ml) => {
+      if (!ml) return;
       if (gone || !containerRef.current) return;
       setLocalMapWorker(ml);
       try {
@@ -42,7 +49,9 @@ export default function ProjectMap({
           attributionControl: { compact: true },
           dragRotate: false,
         });
-      } catch {
+      } catch (e) {
+        console.error("[harta] inițializarea hărții a eșuat:", e);
+        setError(String((e as Error)?.message ?? e).slice(0, 220));
         setFailed(true);
         return;
       }
@@ -67,6 +76,7 @@ export default function ProjectMap({
     return (
       <div className="grid h-40 place-items-center rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] text-center text-sm text-ink-soft">
         <p>{m.projects.map.unavailable}</p>
+        {error && <p className="mt-1 max-w-xs break-words px-2 text-xs">{error}</p>}
       </div>
     );
   }

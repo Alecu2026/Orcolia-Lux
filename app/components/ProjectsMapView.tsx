@@ -94,6 +94,8 @@ export default function ProjectsMapView({ pins, meters = false }: { pins: Projec
   const tipRef = useRef<MlPopup | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapFailed, setMapFailed] = useState(false);
+  /** Motivul pentru care harta nu s-a putut porni (afișat sub „Hartă indisponibilă”, ca să se vadă cauza reală: fără WebGL2, coordonată invalidă, bibliotecă neîncărcată). */
+  const [mapError, setMapError] = useState("");
 
   type Props = Record<string, unknown>;
   const taskUnit = m.projects.taskUnit;
@@ -171,17 +173,25 @@ export default function ProjectsMapView({ pins, meters = false }: { pins: Projec
     let map: MlMap | undefined;
     let gone = false;
 
-    import("maplibre-gl").then((ml) => {
+    import("maplibre-gl").catch((e) => {
+      console.error("[harta] biblioteca hărții nu s-a încărcat:", e);
+      setMapError(String((e as Error)?.message ?? e).slice(0, 220));
+      setMapFailed(true);
+      return null;
+    }).then((ml) => {
+      if (!ml) return;
       if (gone || !containerRef.current) return;
       mlRef.current = ml;
       setLocalMapWorker(ml);
 
+      // primul proiect cu coordonate valide (un proiect fără locație nu mai strică harta: „Invalid LngLat”)
+      const p0 = pins.find((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
       try {
         map = new ml.Map({
           container: containerRef.current,
           style: MAP_STYLE_URL,
-          center: pins[0] ? [pins[0].lng, pins[0].lat] : MAP_DEFAULT_CENTER,
-          zoom: pins[0] ? 7 : 11,
+          center: p0 ? [p0.lng, p0.lat] : MAP_DEFAULT_CENTER,
+          zoom: p0 ? 7 : 11,
           minZoom: MAP_MIN_ZOOM,
           maxZoom: MAP_MAX_ZOOM,
           // nu se încarcă plăci din afara zonei de lucru
@@ -192,7 +202,9 @@ export default function ProjectsMapView({ pins, meters = false }: { pins: Projec
           pitchWithRotate: false,
           touchPitch: false,
         });
-      } catch {
+      } catch (e) {
+        console.error("[harta] inițializarea hărții a eșuat:", e);
+        setMapError(String((e as Error)?.message ?? e).slice(0, 220));
         setMapFailed(true);
         return;
       }
@@ -386,6 +398,7 @@ export default function ProjectsMapView({ pins, meters = false }: { pins: Projec
     return (
       <div className="card grid place-items-center p-16 text-center text-sm text-ink-soft">
         <p className="font-semibold text-ink">{m.projects.map.unavailable}</p>
+        {mapError && <p className="mt-2 max-w-md break-words text-xs">{mapError}</p>}
       </div>
     );
   }
