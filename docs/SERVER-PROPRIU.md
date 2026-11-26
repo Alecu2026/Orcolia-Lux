@@ -49,7 +49,7 @@ pm2 install pm2-logrotate                                   # logurile din logs/
 ```
 
 Dacă pe server există deja un proces `crm` pornit cu `pm2 start npm --name crm -- run start`, înlocuiește-l o singură dată: `pm2 delete crm`, apoi pașii de mai sus
-(un `reload` nu preia comanda nouă). Variabile opționale în `.env`: `PM2_NAME` (implicit `crm`), `PORT` (implicit 3000), `PM2_HEAP_MB` (memoria aplicației, implicit 2048),
+(un `reload` nu preia comanda nouă). Variabile opționale în `.env`: `PM2_NAME` (implicit `crm`), `PORT` (implicit 3002), `PM2_HEAP_MB` (memoria aplicației, implicit 2048),
 `BUILD_HEAP_MB` (memoria build-ului, implicit 4096), `AUTO_DB_PUSH=1`. Exemplu nginx: `deploy/nginx.conf.example`. Joburile din crontab (secțiunea 4) rămân separate.
 
 ## 3. Variabile de mediu
@@ -67,7 +67,7 @@ Fișier `.env` în rădăcina proiectului (model: `.env.example`). Cele esenția
 | `CRM_TOKEN` | tokenul webhook-ului PBX Moldcell (`/api/pbx`) |
 | `PBX_API_KEY`, `PBX_API_URL` | doar pentru butonul „Sună” cu operator și ascultarea înregistrărilor |
 | `SMTP_*`, `IMAP_*`, `EMAIL_FROM` | email trimis / citit |
-| `INTERNAL_APP_URL` | **nou:** adresa la care serverul se apelează pe el însuși (ex. `http://127.0.0.1:3000`), pentru PDF-ul facturii |
+| `INTERNAL_APP_URL` | **nou:** adresa la care serverul se apelează pe el însuși (ex. `http://127.0.0.1:3002`), pentru PDF-ul facturii |
 | `CHROME_PATH` | **nou:** opțional, calea spre Chrome/Chromium pentru PDF (vezi secțiunea 6) |
 | `UPLOAD_DIR` | folderul în care se salvează pozele și atașamentele (secțiunea 7); implicit `./storage` lângă aplicație |
 
@@ -139,7 +139,7 @@ server {
   # ... certificatul SSL ...
   client_max_body_size 25m;
   location / {
-    proxy_pass http://127.0.0.1:3000;
+    proxy_pass http://127.0.0.1:3002;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;
@@ -156,7 +156,7 @@ Se generează cu un Chromium fără interfață. Pe Vercel e inclus; pe server p
 1. `npx playwright-core install --with-deps chromium` — rulat **cu același utilizator cu care pornește aplicația** (Chromium se pune în `~/.cache/ms-playwright` al acelui utilizator; descarcă și bibliotecile de sistem), **sau**
 2. folosești un Chrome/Chromium deja instalat: `CHROME_PATH=/usr/bin/chromium`.
 
-Și setezi `INTERNAL_APP_URL=http://127.0.0.1:3000`, ca serverul să-și poată deschide singur pagina facturii (adresa publică nu e
+Și setezi `INTERNAL_APP_URL=http://127.0.0.1:3002`, ca serverul să-și poată deschide singur pagina facturii (adresa publică nu e
 mereu accesibilă din interior).
 
 ## 7. Poze și atașamente (stocare pe disc)
@@ -199,7 +199,7 @@ Codul proiectului e numărul lui (`012`): dacă îl redenumești, pozele noi con
   proxy_cache_path /var/cache/nginx/crm levels=1:2 keys_zone=crm_files:10m max_size=2g inactive=30d;
 
   location ^~ /files/ {
-    proxy_pass http://127.0.0.1:3000;
+    proxy_pass http://127.0.0.1:3002;
     proxy_set_header Host $host;
     proxy_cache crm_files;
     proxy_cache_valid 200 30d;
@@ -214,7 +214,7 @@ Codul proiectului e numărul lui (`012`): dacă îl redenumești, pozele noi con
   ```nginx
   location = /api/upload/apa-canal-import {
     client_max_body_size 160m;
-    proxy_pass http://127.0.0.1:3000;
+    proxy_pass http://127.0.0.1:3002;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto $scheme;

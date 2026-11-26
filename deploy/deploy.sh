@@ -33,7 +33,7 @@ done
 for c in git npm npx pm2 flock curl; do command -v "$c" >/dev/null || die "$c nu e instalat (pm2:  npm i -g pm2;  flock vine cu util-linux)."; done
 
 NAME=$(env_get PM2_NAME); NAME=${NAME:-crm}
-PORT=$(env_get PORT); PORT=${PORT:-3000}
+PORT=$(env_get PORT); PORT=${PORT:-3002}
 BUILD_HEAP=$(env_get BUILD_HEAP_MB); BUILD_HEAP=${BUILD_HEAP:-4096}
 
 exec 9>/tmp/"$NAME"-deploy.lock

@@ -1,5 +1,5 @@
 # Exemplu nginx în fața CRM-ului (HTTPS obligatoriu: cookie-ul de sesiune e Secure în producție; fără HTTPS nu merg nici PWA, nici notificările push).
-# Valorile (domeniu, port) trebuie să fie cele din .env: PORT (implicit 3000) și NEXT_PUBLIC_APP_URL.
+# Valorile (domeniu, port) trebuie să fie cele din .env: PORT (implicit 3002) și NEXT_PUBLIC_APP_URL.
 server {
     listen 80;
     server_name crm.dns.accahul.md;
@@ -16,7 +16,7 @@ server {
     # Import Apă-Canal (~50 MB): limită mai mare doar pe ruta lui
     location = /api/upload/apa-canal-import {
         client_max_body_size 160m;
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3002;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -29,7 +29,7 @@ server {
     # Pozele și atașamentele: nginx le ține în cache, ca Node să nu mai fie atins la a doua cerere (opțional; cere în `http { }`:
     #   proxy_cache_path /var/cache/nginx/crm levels=1:2 keys_zone=crm_files:10m max_size=2g inactive=30d;)
     # location ^~ /files/ {
-    #     proxy_pass http://127.0.0.1:3000;
+    #     proxy_pass http://127.0.0.1:3002;
     #     proxy_set_header Host $host;
     #     proxy_cache crm_files;
     #     proxy_cache_valid 200 30d;
@@ -37,7 +37,7 @@ server {
     # }
 
     location / {
-        proxy_pass http://127.0.0.1:3000;   # = PORT din .env
+        proxy_pass http://127.0.0.1:3002;   # = PORT din .env
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

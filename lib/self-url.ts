@@ -34,6 +34,6 @@ export async function selfBaseUrl(requestUrl?: string): Promise<string> {
       return c;
     }
   }
-  console.error("[self-url] nicio adresă nu răspunde:", candidates.join(", "), "— setează INTERNAL_APP_URL (ex. http://127.0.0.1:3000)");
+  console.error("[self-url] nicio adresă nu răspunde:", candidates.join(", "), "— setează INTERNAL_APP_URL (ex. http://127.0.0.1:3002)");
   return (env.internalAppUrl || env.appUrl).replace(/\/$/, "");
 }

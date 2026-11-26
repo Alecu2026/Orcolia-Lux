@@ -8,7 +8,7 @@
  *     branch, face deploy (deploy/deploy.sh: git pull, npm ci doar dacă s-au schimbat dependențele, prisma generate, build, reload, verificare;
  *     la build eșuat sau aplicație care nu pornește revine la commit-ul anterior). Nu are nevoie de webhook sau SSH dinspre GitHub.
  *
- * Valorile se citesc din .env.local, apoi din .env (ca în Next): PM2_NAME (implicit „crm”), PORT (implicit 3000) și PM2_HEAP_MB (implicit 2048).
+ * Valorile se citesc din .env.local, apoi din .env (ca în Next): PM2_NAME (implicit „crm”), PORT (implicit 3002) și PM2_HEAP_MB (implicit 2048).
  * Next NU citește PORT din fișierele .env (serverul HTTP pornește înainte să se încarce), de aceea îl dăm noi explicit cu `-p`.
  * Restul variabilelor (DATABASE_URL, SESSION_SECRET…) le citește Next singur din .env.
  */
@@ -27,7 +27,7 @@ function fromEnvFile(key, fallback) {
   return process.env[key] || fallback;
 }
 const NAME = fromEnvFile("PM2_NAME", "crm");
-const PORT = fromEnvFile("PORT", "3000");
+const PORT = fromEnvFile("PORT", "3002");
 // Memoria: listele mari (plătitori, contoare, facturi, sarcini) stau comprimate în proces, plus generarea PDF-urilor și a pozelor.
 const HEAP = Math.max(512, Number(fromEnvFile("PM2_HEAP_MB", "2048")) || 2048);
 
