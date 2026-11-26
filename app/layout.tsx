@@ -18,7 +18,9 @@ const baseMetadata: Metadata = {
   title: "AquaCRM",
   description: "Gestionare proiecte, sarcini și cereri — rapid și simplu.",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "AquaCRM" },
+  // Bara de stare a iPhone-ului în aplicația instalată: „default” = fundal plin, pagina începe sub ea. Cu „black-translucent” pagina intra sub bara de stare,
+  // iar iOS punea peste antet o estompare (blur) care se vedea doar în aplicația instalată, nu și în Safari.
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "AquaCRM" },
   icons: {
     icon: [
       { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
